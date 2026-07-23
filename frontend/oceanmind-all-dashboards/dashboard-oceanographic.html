@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OceanMind AI — Oceanographic Analytics</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --teal-500: #00d4aa;
+      --teal-400: #2eebc4;
+      --teal-600: #00a88a;
+      --teal-glow: rgba(0, 212, 170, 0.25);
+      --blue-500: #3b82f6;
+      --orange-500: #f97316;
+      --red-500: #ef4444;
+      --purple-500: #a855f7;
+      --yellow-500: #eab308;
+      --dark-950: #060e12;
+      --dark-900: #0a1a1f;
+      --dark-800: #0f2530;
+      --dark-700: #14303d;
+      --dark-600: #1a3d4d;
+      --surface: rgba(255,255,255,0.03);
+      --surface-2: rgba(255,255,255,0.06);
+      --border: rgba(255,255,255,0.07);
+      --text-primary: #f0f4f5;
+      --text-secondary: rgba(240,244,245,0.6);
+      --text-muted: rgba(240,244,245,0.35);
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--dark-950);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 240px;
+      background: var(--dark-900);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 100vh;
+      z-index: 10;
+    }
+
+    .sidebar-logo {
+      padding: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-logo-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--teal-500), var(--teal-600));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .sidebar-logo-icon svg { width: 20px; height: 20px; fill: #fff; }
+
+    .sidebar-logo-text {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .sidebar-logo-text span { color: var(--teal-500); }
+
+    .sidebar-nav {
+      flex: 1;
+      padding: 12px 0;
+      overflow-y: auto;
+    }
+
+    .nav-section-label {
+      padding: 16px 20px 6px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 20px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      border-left: 3px solid transparent;
+    }
+
+    .nav-item:hover {
+      background: var(--surface-2);
+      color: var(--text-primary);
+    }
+
+    .nav-item.active {
+      background: rgba(0,212,170,0.08);
+      color: var(--teal-500);
+      border-left-color: var(--teal-500);
+    }
+
+    .nav-item svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      opacity: 0.7;
+    }
+
+    .nav-item.active svg { opacity: 1; }
+
+    .sidebar-footer {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .logout-btn {
+      width: 100%;
+      padding: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      font-family: inherit;
+      color: var(--text-secondary);
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .logout-btn:hover {
+      background: rgba(239,68,68,0.1);
+      border-color: rgba(239,68,68,0.3);
+      color: var(--red-500);
+    }
+
+    .user-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--teal-500), var(--blue-500));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .user-name {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .user-role {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Main */
+    .main {
+      flex: 1;
+      margin-left: 240px;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* Top Bar */
+    .topbar {
+      height: 56px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      background: rgba(10,26,31,0.8);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+
+    .topbar-title {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .topbar-btn {
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      font-family: inherit;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .topbar-btn:hover {
+      background: var(--surface-2);
+      color: var(--text-primary);
+    }
+
+    .topbar-btn.primary {
+      background: linear-gradient(135deg, var(--teal-500), var(--teal-600));
+      border: none;
+      color: #fff;
+    }
+
+    .topbar-btn.primary:hover {
+      box-shadow: 0 4px 16px var(--teal-glow);
+    }
+
+    /* Content */
+    .content {
+      flex: 1;
+      padding: 24px 28px 40px;
+    }
+
+    /* Region Selector */
+    .region-bar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .region-bar label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .region-select {
+      padding: 9px 14px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--text-primary);
+      background: var(--dark-800);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      outline: none;
+      cursor: pointer;
+      min-width: 200px;
+    }
+
+    .region-select:focus {
+      border-color: rgba(0,212,170,0.5);
+    }
+
+    .region-chips {
+      display: flex;
+      gap: 8px;
+    }
+
+    .chip {
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .chip.active, .chip:hover {
+      background: rgba(0,212,170,0.12);
+      border-color: var(--teal-500);
+      color: var(--teal-500);
+    }
+
+    /* Stats Row */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .stat-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .stat-value {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .stat-change {
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
+    .stat-change.up { color: var(--teal-500); }
+    .stat-change.down { color: var(--red-500); }
+
+    /* Charts Grid */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .chart-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .chart-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .chart-badge {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 10px;
+      border-radius: 12px;
+      background: rgba(0,212,170,0.1);
+      color: var(--teal-500);
+    }
+
+    .chart-canvas-wrap {
+      position: relative;
+      width: 100%;
+      height: 200px;
+    }
+
+    .chart-canvas-wrap canvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* AI Trend Section */
+    .ai-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .ai-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .ai-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--purple-500), var(--blue-500));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .ai-icon svg { width: 18px; height: 18px; fill: #fff; }
+
+    .ai-title {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .ai-tag {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(168,85,247,0.15);
+      color: var(--purple-500);
+    }
+
+    .ai-insights {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .insight-card {
+      background: var(--dark-800);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    .insight-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+    }
+
+    .insight-value {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .insight-desc {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .insight-trend {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 2px 8px;
+      border-radius: 6px;
+      margin-top: 8px;
+    }
+
+    .insight-trend.up {
+      background: rgba(0,212,170,0.1);
+      color: var(--teal-500);
+    }
+
+    .insight-trend.down {
+      background: rgba(239,68,68,0.1);
+      color: var(--red-500);
+    }
+
+    /* Data Table */
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .table-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .table-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      padding: 10px 20px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 12px 20px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    tr:hover td { background: var(--surface-2); }
+
+    .badge {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 10px;
+      border-radius: 12px;
+    }
+
+    .badge-warm {
+      background: rgba(249,115,22,0.12);
+      color: var(--orange-500);
+    }
+
+    .badge-cool {
+      background: rgba(59,130,246,0.12);
+      color: var(--blue-500);
+    }
+
+    .badge-normal {
+      background: rgba(0,212,170,0.1);
+      color: var(--teal-500);
+    }
+
+    .badge-alert {
+      background: rgba(239,68,68,0.12);
+      color: var(--red-500);
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .sidebar { display: none; }
+      .main { margin-left: 0; }
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+      .charts-grid { grid-template-columns: 1fr; }
+      .ai-insights { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
+    }
+
+    /* Toast */
+    .toast-wrap{position:fixed;bottom:20px;right:20px;z-index:100;display:flex;flex-direction:column;gap:8px}
+    .toast{padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;color:#fff;opacity:0;transform:translateY(10px);animation:toastIn .3s forwards;backdrop-filter:blur(12px)}
+    .toast.success{background:rgba(0,212,170,0.9)}
+    .toast.info{background:rgba(59,130,246,0.9)}
+    .toast.warn{background:rgba(249,115,22,0.9)}
+    @keyframes toastIn{to{opacity:1;transform:translateY(0)}}
+
+    /* Loading overlay */
+    .loading-overlay{position:absolute;inset:0;background:rgba(6,14,18,0.8);display:flex;align-items:center;justify-content:center;z-index:20;border-radius:12px;opacity:0;pointer-events:none;transition:opacity .2s}
+    .loading-overlay.show{opacity:1;pointer-events:auto}
+    .spinner{width:32px;height:32px;border:3px solid rgba(255,255,255,0.1);border-top-color:var(--teal-500);border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* Report panel */
+    .report-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-top:16px;display:none}
+    .report-panel.show{display:block}
+    .report-panel h3{font-size:14px;font-weight:600;margin-bottom:12px}
+    .report-list{list-style:none}
+    .report-list li{padding:10px 0;border-bottom:1px solid var(--border);font-size:13px;color:var(--text-secondary);display:flex;justify-content:space-between}
+    .report-list li:last-child{border-bottom:none}
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" data-od-id="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+      </div>
+      <div class="sidebar-logo-text">Ocean<span>Mind</span> AI</div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Dashboards</div>
+      <a class="nav-item active" href="dashboard-oceanographic.html">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        Oceanographic Analytics
+      </a>
+      <a class="nav-item" href="dashboard-fisheries.html">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        Fisheries Prediction
+      </a>
+      <a class="nav-item" href="dashboard-biodiversity.html">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        Biodiversity Analysis
+      </a>
+      <a class="nav-item" href="dashboard-3d-map.html">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        3D Ocean Map
+      </a>
+      <div class="nav-section-label">System</div>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1115.6 12 3.611 3.611 0 0112 15.6z"/></svg>
+        Settings
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar">RS</div>
+        <div>
+          <div class="user-name">Dr. Sharma</div>
+          <div class="user-role">Marine Scientist</div>
+        </div>
+      </div>
+      <button class="logout-btn" onclick="window.location.href='login.html'">Sign Out</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-title" data-od-id="page-title">Oceanographic Analytics</div>
+      <div class="topbar-actions">
+        <button class="topbar-btn" data-od-id="btn-refresh">Refresh Data</button>
+        <button class="topbar-btn primary" data-od-id="btn-download-report">
+          <span>↓ Download Report</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="content">
+      <!-- Region Selector -->
+      <div class="region-bar" data-od-id="region-selector">
+        <label>Select Region</label>
+        <select class="region-select" id="regionSelect">
+          <option value="arabian-sea">Arabian Sea</option>
+          <option value="bay-of-bengal">Bay of Bengal</option>
+          <option value="indian-ocean">Indian Ocean</option>
+          <option value="pacific">Pacific Ocean</option>
+          <option value="atlantic">Atlantic Ocean</option>
+          <option value="southern-ocean">Southern Ocean</option>
+        </select>
+        <div class="region-chips">
+          <span class="chip active" data-param="sst">SST</span>
+          <span class="chip" data-param="chlorophyll">Chlorophyll</span>
+          <span class="chip" data-param="salinity">Salinity</span>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-row" data-od-id="stats-row">
+        <div class="stat-card">
+          <div class="stat-label"><span class="stat-dot" style="background:var(--orange-500)"></span>Sea Surface Temp</div>
+          <div class="stat-value" style="color:var(--orange-500)">28.4°C</div>
+          <div class="stat-change up">↑ +1.2°C from last week</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label"><span class="stat-dot" style="background:var(--teal-500)"></span>Chlorophyll-a</div>
+          <div class="stat-value" style="color:var(--teal-500)">3.7 mg/m³</div>
+          <div class="stat-change up">↑ +0.4 mg/m³</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label"><span class="stat-dot" style="background:var(--blue-500)"></span>Salinity</div>
+          <div class="stat-value" style="color:var(--blue-500)">35.2 PSU</div>
+          <div class="stat-change down">↓ -0.3 PSU</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label"><span class="stat-dot" style="background:var(--purple-500)"></span>Dissolved O₂</div>
+          <div class="stat-value" style="color:var(--purple-500)">6.8 mg/L</div>
+          <div class="stat-change up">↑ +0.1 mg/L</div>
+        </div>
+      </div>
+
+      <!-- Charts -->
+      <div class="charts-grid" data-od-id="charts-grid">
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title">SST Trend (30 Days)</div>
+            <div class="chart-badge">Live</div>
+          </div>
+          <div class="chart-canvas-wrap"><canvas id="chartSST"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title">Chlorophyll Concentration</div>
+            <div class="chart-badge">Live</div>
+          </div>
+          <div class="chart-canvas-wrap"><canvas id="chartChlor"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title">Salinity Profile</div>
+            <div class="chart-badge">Live</div>
+          </div>
+          <div class="chart-canvas-wrap"><canvas id="chartSalinity"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title">Dissolved Oxygen</div>
+            <div class="chart-badge">Live</div>
+          </div>
+          <div class="chart-canvas-wrap"><canvas id="chartOxygen"></canvas></div>
+        </div>
+      </div>
+
+      <!-- AI Trend Analysis -->
+      <div class="ai-section" data-od-id="ai-trend-section">
+        <div class="ai-header">
+          <div class="ai-icon">
+            <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+          </div>
+          <div class="ai-title">AI Trend Analysis</div>
+          <div class="ai-tag">AI Powered</div>
+        </div>
+        <div class="ai-insights">
+          <div class="insight-card">
+            <div class="insight-label">Warming Trend</div>
+            <div class="insight-value">+2.1°C</div>
+            <div class="insight-desc">Arabian Sea surface temperatures are trending above the 10-year average. Potential coral bleaching risk in shallow reef zones.</div>
+            <div class="insight-trend up">↑ Above seasonal norm</div>
+          </div>
+          <div class="insight-card">
+            <div class="insight-label">Bloom Detection</div>
+            <div class="insight-value">Active</div>
+            <div class="insight-desc">Phytoplankton bloom detected in the northern Arabian Sea. Chlorophyll concentrations 3× above baseline — likely nutrient upwelling driven.</div>
+            <div class="insight-trend up">↑ Bloom expanding northward</div>
+          </div>
+          <div class="insight-card">
+            <div class="insight-label">Salinity Anomaly</div>
+            <div class="insight-value">-0.8 PSU</div>
+            <div class="insight-desc">Freshwater influx from monsoon runoff reducing coastal salinity. Stratification may impact nutrient mixing in upper water column.</div>
+            <div class="insight-trend down">↓ Monsoon-driven dilution</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Data Table -->
+      <div class="table-card" data-od-id="data-table">
+        <div class="table-header">
+          <div class="table-title">Recent Sensor Readings</div>
+          <button class="topbar-btn">Export CSV</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Station</th>
+              <th>Region</th>
+              <th>SST (°C)</th>
+              <th>Chl-a (mg/m³)</th>
+              <th>Salinity (PSU)</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>ARB-001</td><td>Arabian Sea North</td><td>29.1</td><td>4.2</td><td>34.8</td><td><span class="badge badge-warm">Warm</span></td></tr>
+            <tr><td>ARB-002</td><td>Arabian Sea Central</td><td>28.4</td><td>3.7</td><td>35.2</td><td><span class="badge badge-normal">Normal</span></td></tr>
+            <tr><td>BOB-001</td><td>Bay of Bengal East</td><td>29.8</td><td>2.9</td><td>33.5</td><td><span class="badge badge-warm">Warm</span></td></tr>
+            <tr><td>IND-003</td><td>Indian Ocean South</td><td>25.6</td><td>1.8</td><td>35.9</td><td><span class="badge badge-normal">Normal</span></td></tr>
+            <tr><td>ARB-005</td><td>Arabian Sea West</td><td>27.9</td><td>5.1</td><td>34.1</td><td><span class="badge badge-alert">Alert</span></td></tr>
+            <tr><td>BOB-003</td><td>Bay of Bengal West</td><td>28.7</td><td>3.3</td><td>33.9</td><td><span class="badge badge-cool">Cool</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <div class="toast-wrap" id="toastWrap"></div>
+
+  <script>
+    // Toast helper
+    function showToast(msg, type='success') {
+      const wrap = document.getElementById('toastWrap');
+      const t = document.createElement('div');
+      t.className = 'toast ' + type;
+      t.textContent = msg;
+      wrap.appendChild(t);
+      setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
+    }
+    // --- Chart Drawing Utilities ---
+    function drawChart(canvasId, data, color, unit, min, max) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+      const w = rect.width, h = rect.height;
+      const pad = { top: 10, right: 10, bottom: 24, left: 40 };
+      const plotW = w - pad.left - pad.right;
+      const plotH = h - pad.top - pad.bottom;
+
+      // Grid
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.top + (plotH / 4) * i;
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+        const val = max - ((max - min) / 4) * i;
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.font = '10px Inter';
+        ctx.textAlign = 'right';
+        ctx.fillText(val.toFixed(1), pad.left - 6, y + 3);
+      }
+
+      // Line
+      const points = data.map((v, i) => ({
+        x: pad.left + (plotW / (data.length - 1)) * i,
+        y: pad.top + plotH - ((v - min) / (max - min)) * plotH
+      }));
+
+      // Gradient fill
+      const grad = ctx.createLinearGradient(0, pad.top, 0, h - pad.bottom);
+      grad.addColorStop(0, color + '30');
+      grad.addColorStop(1, color + '00');
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, h - pad.bottom);
+      points.forEach(p => ctx.lineTo(p.x, p.y));
+      ctx.lineTo(points[points.length - 1].x, h - pad.bottom);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // Stroke
+      ctx.beginPath();
+      points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Dots
+      points.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+      });
+
+      // X labels
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.font = '10px Inter';
+      ctx.textAlign = 'center';
+      const labels = ['W1','W2','W3','W4','W5','W6'];
+      labels.forEach((l, i) => {
+        const x = pad.left + (plotW / (labels.length - 1)) * i;
+        ctx.fillText(l, x, h - 4);
+      });
+    }
+
+    // Generate sample data
+    function genData(base, variance, n) {
+      return Array.from({ length: n }, () => base + (Math.random() - 0.4) * variance);
+    }
+
+    function renderCharts() {
+      drawChart('chartSST', genData(28.5, 2, 30), '#f97316', '°C', 26, 31);
+      drawChart('chartChlor', genData(3.5, 2, 30), '#00d4aa', 'mg/m³', 0.5, 6);
+      drawChart('chartSalinity', genData(35, 2, 30), '#3b82f6', 'PSU', 33, 37);
+      drawChart('chartOxygen', genData(6.8, 1.5, 30), '#a855f7', 'mg/L', 4, 9);
+    }
+
+    renderCharts();
+    window.addEventListener('resize', renderCharts);
+
+    // Chip toggle
+    document.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+      });
+    });
+
+    // Region select
+    document.getElementById('regionSelect').addEventListener('change', () => {
+      renderCharts();
+    });
+
+    // Download report
+    document.querySelector('[data-od-id="btn-download-report"]').addEventListener('click', () => {
+      const btn = document.querySelector('[data-od-id="btn-download-report"]');
+      btn.textContent = 'Generating...';
+      btn.disabled = true;
+      setTimeout(() => {
+        btn.textContent = 'Download Report';
+        btn.disabled = false;
+        let panel = document.getElementById('reportPanel');
+        if (!panel) {
+          panel = document.createElement('div');
+          panel.id = 'reportPanel';
+          panel.className = 'report-panel show';
+          panel.innerHTML = '<h3>Report Generated Successfully</h3><ul class="report-list"><li><span>Report Type</span><span style="color:#00d4aa">Oceanographic Analytics</span></li><li><span>Region</span><span id="reportRegion">Arabian Sea</span></li><li><span>Generated</span><span style="color:#00d4aa">Just now</span></li><li><span>Format</span><span style="color:#00d4aa">PDF (2.4 MB)</span></li><li><span>Status</span><span style="color:#00d4aa">Ready to download</span></li></ul>';
+          document.querySelector('.table-card').parentNode.insertBefore(panel, document.querySelector('.table-card').nextSibling);
+        }
+        panel.classList.add('show');
+        showToast('Report generated! Download starting...');
+        // Simulate CSV download
+        const rows = [['Station','Region','SST','Chl-a','Salinity','Status'],['ARB-001','Arabian Sea North','29.1','4.2','34.8','Warm'],['ARB-002','Arabian Sea Central','28.4','3.7','35.2','Normal'],['BOB-001','Bay of Bengal East','29.8','2.9','33.5','Warm'],['IND-003','Indian Ocean South','25.6','1.8','35.9','Normal'],['ARB-005','Arabian Sea West','27.9','5.1','34.1','Alert'],['BOB-003','Bay of Bengal West','28.7','3.3','33.9','Cool']];
+        const csv = rows.map(r => r.join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'ocean-report.csv'; a.click();
+        URL.revokeObjectURL(url);
+      }, 1500);
+    });
+
+    // Refresh Data
+    document.querySelector('[data-od-id="btn-refresh"]').addEventListener('click', function() {
+      this.textContent = 'Refreshing...';
+      this.disabled = true;
+      setTimeout(() => {
+        renderCharts();
+        this.textContent = 'Refresh Data';
+        this.disabled = false;
+        showToast('Data refreshed successfully!', 'info');
+      }, 1000);
+    });
+
+    // Export CSV
+    document.querySelector('.table-card .topbar-btn').addEventListener('click', function() {
+      const rows = [['Station','Region','SST (°C)','Chl-a (mg/m³)','Salinity (PSU)','Status']];
+      document.querySelectorAll('.table-card tbody tr').forEach(tr => {
+        const cells = Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim());
+        rows.push(cells);
+      });
+      const csv = rows.map(r => r.join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'sensor-readings.csv';
+      a.click(); URL.revokeObjectURL(url);
+      this.textContent = 'Exported!';
+      showToast('CSV exported successfully!');
+      setTimeout(() => { this.textContent = 'Export CSV'; }, 2000);
+    });
+
+    // Stat cards clickable
+    document.querySelectorAll('.stat-card').forEach(card => {
+      card.style.cursor = 'pointer';
+      card.addEventListener('click', () => {
+        const label = card.querySelector('.stat-label').textContent.trim();
+        const value = card.querySelector('.stat-value').textContent.trim();
+        showToast(label + ': ' + value, 'info');
+      });
+      card.addEventListener('mouseenter', () => { card.style.borderColor = 'rgba(0,212,170,0.3)'; });
+      card.addEventListener('mouseleave', () => { card.style.borderColor = ''; });
+    });
+
+    // Insight cards clickable
+    document.querySelectorAll('.insight-card').forEach(card => {
+      card.style.cursor = 'pointer';
+      card.addEventListener('click', () => {
+        const label = card.querySelector('.insight-label').textContent;
+        const value = card.querySelector('.insight-value').textContent;
+        showToast(label + ': ' + value, 'info');
+      });
+      card.addEventListener('mouseenter', () => { card.style.borderColor = 'rgba(168,85,247,0.3)'; });
+      card.addEventListener('mouseleave', () => { card.style.borderColor = ''; });
+    });
+
+    // Table rows clickable
+    document.querySelectorAll('.table-card tbody tr').forEach(tr => {
+      tr.style.cursor = 'pointer';
+      tr.addEventListener('click', () => {
+        const cells = Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim());
+        showToast('Station ' + cells[0] + ' — ' + cells[1] + ' — Status: ' + cells[5], 'info');
+      });
+    });
+  </script>
+</body>
+</html>

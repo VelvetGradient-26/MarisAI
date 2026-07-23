@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OceanMind AI — Fisheries Prediction</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --teal-500: #00d4aa; --teal-400: #2eebc4; --teal-600: #00a88a;
+      --teal-glow: rgba(0,212,170,0.25); --blue-500: #3b82f6; --orange-500: #f97316;
+      --red-500: #ef4444; --purple-500: #a855f7; --yellow-500: #eab308;
+      --green-500: #22c55e; --dark-950: #060e12; --dark-900: #0a1a1f;
+      --dark-800: #0f2530; --dark-700: #14303d; --dark-600: #1a3d4d;
+      --surface: rgba(255,255,255,0.03); --surface-2: rgba(255,255,255,0.06);
+      --border: rgba(255,255,255,0.07); --text-primary: #f0f4f5;
+      --text-secondary: rgba(240,244,245,0.6); --text-muted: rgba(240,244,245,0.35);
+    }
+    body { font-family:'Inter',sans-serif; background:var(--dark-950); color:var(--text-primary); min-height:100vh; display:flex; }
+    .sidebar { width:240px; background:var(--dark-900); border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; position:fixed; top:0; left:0; height:100vh; z-index:10; }
+    .sidebar-logo { padding:20px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--border); }
+    .sidebar-logo-icon { width:36px; height:36px; background:linear-gradient(135deg,var(--teal-500),var(--teal-600)); border-radius:10px; display:flex; align-items:center; justify-content:center; }
+    .sidebar-logo-icon svg { width:20px; height:20px; fill:#fff; }
+    .sidebar-logo-text { font-size:16px; font-weight:700; }
+    .sidebar-logo-text span { color:var(--teal-500); }
+    .sidebar-nav { flex:1; padding:12px 0; overflow-y:auto; }
+    .nav-section-label { padding:16px 20px 6px; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); }
+    .nav-item { display:flex; align-items:center; gap:10px; padding:10px 20px; font-size:13px; font-weight:500; color:var(--text-secondary); text-decoration:none; cursor:pointer; transition:all 0.15s ease; border-left:3px solid transparent; }
+    .nav-item:hover { background:var(--surface-2); color:var(--text-primary); }
+    .nav-item.active { background:rgba(0,212,170,0.08); color:var(--teal-500); border-left-color:var(--teal-500); }
+    .nav-item svg { width:18px; height:18px; flex-shrink:0; opacity:0.7; }
+    .nav-item.active svg { opacity:1; }
+    .sidebar-footer { padding:16px 20px; border-top:1px solid var(--border); flex-shrink:0; }
+    .user-info { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+    .logout-btn { width:100%; padding:8px; font-size:12px; font-weight:500; font-family:inherit; color:var(--text-secondary); background:transparent; border:1px solid var(--border); border-radius:8px; cursor:pointer; transition:all 0.15s ease; }
+    .logout-btn:hover { background:rgba(239,68,68,0.1); border-color:rgba(239,68,68,0.3); color:var(--red-500); }
+    .user-avatar { width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg,var(--teal-500),var(--blue-500)); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; color:#fff; }
+    .user-name { font-size:13px; font-weight:500; }
+    .user-role { font-size:11px; color:var(--text-muted); }
+    .main { flex:1; margin-left:240px; display:flex; flex-direction:column; min-height:100vh; }
+    .topbar { height:56px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; padding:0 28px; background:rgba(10,26,31,0.8); backdrop-filter:blur(12px); position:sticky; top:0; z-index:5; }
+    .topbar-title { font-size:15px; font-weight:600; }
+    .topbar-actions { display:flex; align-items:center; gap:10px; }
+    .topbar-btn { padding:7px 14px; font-size:12px; font-weight:500; font-family:inherit; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text-secondary); cursor:pointer; transition:all 0.15s ease; }
+    .topbar-btn:hover { background:var(--surface-2); color:var(--text-primary); }
+    .topbar-btn.primary { background:linear-gradient(135deg,var(--teal-500),var(--teal-600)); border:none; color:#fff; }
+    .topbar-btn.primary:hover { box-shadow:0 4px 16px var(--teal-glow); }
+    .content { flex:1; padding:24px 28px 40px; }
+    .region-bar { display:flex; align-items:center; gap:14px; margin-bottom:24px; flex-wrap:wrap; }
+    .region-bar label { font-size:13px; font-weight:500; color:var(--text-secondary); }
+    .region-select { padding:9px 14px; font-size:13px; font-family:inherit; color:var(--text-primary); background:var(--dark-800); border:1px solid var(--border); border-radius:8px; outline:none; cursor:pointer; min-width:200px; }
+    .region-select:focus { border-color:rgba(0,212,170,0.5); }
+    .stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px; }
+    .stat-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:18px 20px; }
+    .stat-label { font-size:12px; color:var(--text-muted); margin-bottom:6px; display:flex; align-items:center; gap:6px; }
+    .stat-dot { width:8px; height:8px; border-radius:50%; }
+    .stat-value { font-size:26px; font-weight:700; letter-spacing:-0.02em; }
+    .stat-change { font-size:12px; margin-top:4px; }
+    .stat-change.up { color:var(--teal-500); }
+    .stat-change.down { color:var(--red-500); }
+    .charts-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px; }
+    .chart-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; }
+    .chart-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+    .chart-title { font-size:14px; font-weight:600; }
+    .chart-badge { font-size:11px; font-weight:500; padding:3px 10px; border-radius:12px; background:rgba(0,212,170,0.1); color:var(--teal-500); }
+    .chart-canvas-wrap { position:relative; width:100%; height:200px; }
+    .chart-canvas-wrap canvas { width:100%; height:100%; }
+    .ai-section { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:24px; margin-bottom:24px; }
+    .ai-header { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+    .ai-icon { width:32px; height:32px; border-radius:8px; background:linear-gradient(135deg,var(--purple-500),var(--blue-500)); display:flex; align-items:center; justify-content:center; }
+    .ai-icon svg { width:18px; height:18px; fill:#fff; }
+    .ai-title { font-size:15px; font-weight:600; }
+    .ai-tag { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; padding:3px 8px; border-radius:6px; background:rgba(168,85,247,0.15); color:var(--purple-500); }
+    .ai-insights { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+    .insight-card { background:var(--dark-800); border:1px solid var(--border); border-radius:10px; padding:16px; }
+    .insight-label { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px; }
+    .insight-value { font-size:18px; font-weight:700; margin-bottom:4px; }
+    .insight-desc { font-size:12px; color:var(--text-secondary); line-height:1.5; }
+    .insight-trend { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:500; padding:2px 8px; border-radius:6px; margin-top:8px; }
+    .insight-trend.up { background:rgba(0,212,170,0.1); color:var(--teal-500); }
+    .insight-trend.down { background:rgba(239,68,68,0.1); color:var(--red-500); }
+
+    /* Fishing Window Section */
+    .fishing-window { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px; }
+    .window-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:24px; }
+    .window-card h3 { font-size:14px; font-weight:600; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+    .window-card h3 svg { width:18px; height:18px; fill:var(--teal-500); }
+    .window-list { list-style:none; }
+    .window-list li { padding:10px 0; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; font-size:13px; }
+    .window-list li:last-child { border-bottom:none; }
+    .window-time { color:var(--text-secondary); }
+    .window-score { font-weight:600; }
+    .window-score.high { color:var(--teal-500); }
+    .window-score.med { color:var(--yellow-500); }
+    .window-score.low { color:var(--red-500); }
+    .window-bar { height:6px; border-radius:3px; background:var(--dark-700); flex:1; margin:0 12px; }
+    .window-bar-fill { height:100%; border-radius:3px; }
+
+    /* Catch History Table */
+    .table-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; margin-bottom:24px; }
+    .table-header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); }
+    .table-title { font-size:14px; font-weight:600; }
+    table { width:100%; border-collapse:collapse; }
+    th { text-align:left; padding:10px 20px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); border-bottom:1px solid var(--border); }
+    td { padding:12px 20px; font-size:13px; border-bottom:1px solid var(--border); }
+    tr:last-child td { border-bottom:none; }
+    tr:hover td { background:var(--surface-2); }
+    .badge { font-size:11px; font-weight:500; padding:3px 10px; border-radius:12px; }
+    .badge-high { background:rgba(0,212,170,0.1); color:var(--teal-500); }
+    .badge-med { background:rgba(234,179,8,0.12); color:var(--yellow-500); }
+    .badge-low { background:rgba(239,68,68,0.12); color:var(--red-500); }
+
+    /* Species Breakdown */
+    .species-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
+    .species-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px; text-align:center; }
+    .species-icon { font-size:28px; margin-bottom:8px; }
+    .species-name { font-size:12px; color:var(--text-secondary); margin-bottom:4px; }
+    .species-catch { font-size:18px; font-weight:700; }
+    .species-unit { font-size:11px; color:var(--text-muted); }
+
+    @media (max-width:1024px) { .sidebar{display:none;} .main{margin-left:0;} .stats-row{grid-template-columns:repeat(2,1fr);} .charts-grid{grid-template-columns:1fr;} .ai-insights{grid-template-columns:1fr;} .fishing-window{grid-template-columns:1fr;} .species-grid{grid-template-columns:repeat(2,1fr);} }
+    @media (prefers-reduced-motion:reduce) { *{transition:none!important;} }
+
+    .toast-wrap{position:fixed;bottom:20px;right:20px;z-index:100;display:flex;flex-direction:column;gap:8px}
+    .toast{padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;color:#fff;opacity:0;transform:translateY(10px);animation:toastIn .3s forwards;backdrop-filter:blur(12px)}
+    .toast.success{background:rgba(0,212,170,0.9)}
+    .toast.info{background:rgba(59,130,246,0.9)}
+    @keyframes toastIn{to{opacity:1;transform:translateY(0)}}
+
+    .prediction-result{background:var(--dark-800);border:1px solid var(--teal-500);border-radius:12px;padding:20px;margin-bottom:20px;display:none}
+    .prediction-result.show{display:block}
+    .prediction-result h3{font-size:15px;font-weight:600;color:var(--teal-500);margin-bottom:12px}
+    .pred-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .pred-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center}
+    .pred-item .lbl{font-size:11px;color:var(--text-muted);margin-bottom:4px}
+    .pred-item .val{font-size:20px;font-weight:700}
+  </style>
+</head>
+<body>
+
+  <aside class="sidebar" data-od-id="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg></div>
+      <div class="sidebar-logo-text">Ocean<span>Mind</span> AI</div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Dashboards</div>
+      <a class="nav-item" href="dashboard-oceanographic.html">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        Oceanographic Analytics
+      </a>
+      <a class="nav-item active" href="dashboard-fisheries.html">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        Fisheries Prediction
+      </a>
+      <a class="nav-item" href="dashboard-biodiversity.html">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        Biodiversity Analysis
+      </a>
+      <a class="nav-item" href="dashboard-3d-map.html">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        3D Ocean Map
+      </a>
+      <div class="nav-section-label">System</div>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1115.6 12 3.611 3.611 0 0112 15.6z"/></svg>Settings</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info"><div class="user-avatar">RS</div><div><div class="user-name">Dr. Sharma</div><div class="user-role">Marine Scientist</div></div></div>
+      <button class="logout-btn" onclick="window.location.href='login.html'">Sign Out</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-title">Fisheries Prediction</div>
+      <div class="topbar-actions">
+        <button class="topbar-btn">Refresh</button>
+        <button class="topbar-btn primary" data-od-id="btn-run-prediction">▶ Run AI Prediction</button>
+      </div>
+    </header>
+
+    <div class="content">
+      <!-- Zone Selector -->
+      <div class="region-bar" data-od-id="zone-selector">
+        <label>Select Fishing Zone</label>
+        <select class="region-select" id="zoneSelect">
+          <option value="zone-a">Zone A — Arabian Sea North</option>
+          <option value="zone-b">Zone B — Arabian Sea Central</option>
+          <option value="zone-c">Zone C — Bay of Bengal East</option>
+          <option value="zone-d">Zone D — Indian Ocean South</option>
+          <option value="zone-e">Zone E — Bay of Bengal West</option>
+        </select>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-row" data-od-id="stats-row">
+        <div class="stat-card">
+          <div class="stat-label"><span class="stat-dot" style="background:var(--teal-500)"></span>Est. Fish Yield</div>
+          <div class="stat-value" style="color:var(--teal-500)">1,247 t</div>
+          <div class="stat-change up">↑ +18% from last month</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label"><span class="stat-dot" style="background:var(--blue-500)"></span>Optimal Zones</div>
+          <div class="stat-value" style="color:var(--blue-500)">3</div>
+          <div class="stat-change up">↑ 2 new high-yield areas</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label"><span class="stat-dot" style="background:var(--yellow-500)"></span>Season Score</div>
+          <div class="stat-value" style="color:var(--yellow-500)">8.4</div>
+          <div class="stat-change up">↑ Peak season window</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label"><span class="stat-dot" style="background:var(--orange-500)"></span>Confidence</div>
+          <div class="stat-value" style="color:var(--orange-500)">92%</div>
+          <div class="stat-change up">↑ Model accuracy</div>
+        </div>
+      </div>
+
+      <!-- Charts -->
+      <div class="charts-grid" data-od-id="charts-grid">
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title">Historical Catch Data (12 Months)</div>
+            <div class="chart-badge">Loaded</div>
+          </div>
+          <div class="chart-canvas-wrap"><canvas id="chartCatch"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title">AI Predicted Yield (Next 6 Months)</div>
+            <div class="chart-badge">AI</div>
+          </div>
+          <div class="chart-canvas-wrap"><canvas id="chartPredicted"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Species Breakdown -->
+      <div class="species-grid" data-od-id="species-grid">
+        <div class="species-card">
+          <div class="species-icon">🐟</div>
+          <div class="species-name">Indian Mackerel</div>
+          <div class="species-catch">423 t</div>
+          <div class="species-unit">predicted yield</div>
+        </div>
+        <div class="species-card">
+          <div class="species-icon">🦐</div>
+          <div class="species-name">Tiger Prawn</div>
+          <div class="species-catch">312 t</div>
+          <div class="species-unit">predicted yield</div>
+        </div>
+        <div class="species-card">
+          <div class="species-icon">🐠</div>
+          <div class="species-name">Oil Sardine</div>
+          <div class="species-catch">289 t</div>
+          <div class="species-unit">predicted yield</div>
+        </div>
+        <div class="species-card">
+          <div class="species-icon">🦀</div>
+          <div class="species-name">Crab</div>
+          <div class="species-catch">223 t</div>
+          <div class="species-unit">predicted yield</div>
+        </div>
+      </div>
+
+      <!-- AI Prediction & Fishing Window -->
+      <div class="fishing-window" data-od-id="fishing-window">
+        <div class="window-card">
+          <h3>
+            <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+            AI Prediction Summary
+          </h3>
+          <div class="ai-insights" style="grid-template-columns:1fr;">
+            <div class="insight-card">
+              <div class="insight-label">Predicted Total Yield</div>
+              <div class="insight-value">1,247 tonnes</div>
+              <div class="insight-desc">Based on SST patterns, chlorophyll concentrations, historical catch data, and monsoon forecasting models. The northern Arabian Sea shows optimal conditions for pelagic species in the coming 60-day window.</div>
+              <div class="insight-trend up">↑ 18% above seasonal average</div>
+            </div>
+            <div class="insight-card">
+              <div class="insight-label">Primary Driver</div>
+              <div class="insight-value">Upwelling Event</div>
+              <div class="insight-desc">Strong upwelling along the western coast is bringing nutrient-rich deep water to the surface. Chlorophyll-a levels 3× above baseline indicate high primary productivity — a leading indicator for fish aggregation.</div>
+            </div>
+          </div>
+        </div>
+        <div class="window-card">
+          <h3>
+            <svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+            Recommended Fishing Windows
+          </h3>
+          <ul class="window-list">
+            <li>
+              <span class="window-time">Jul 24 — Jul 28</span>
+              <div class="window-bar"><div class="window-bar-fill" style="width:92%;background:var(--teal-500);"></div></div>
+              <span class="window-score high">92% Optimal</span>
+            </li>
+            <li>
+              <span class="window-time">Aug 02 — Aug 07</span>
+              <div class="window-bar"><div class="window-bar-fill" style="width:85%;background:var(--teal-500);"></div></div>
+              <span class="window-score high">85% Optimal</span>
+            </li>
+            <li>
+              <span class="window-time">Aug 12 — Aug 16</span>
+              <div class="window-bar"><div class="window-bar-fill" style="width:71%;background:var(--yellow-500);"></div></div>
+              <span class="window-score med">71% Good</span>
+            </li>
+            <li>
+              <span class="window-time">Aug 22 — Aug 25</span>
+              <div class="window-bar"><div class="window-bar-fill" style="width:58%;background:var(--yellow-500);"></div></div>
+              <span class="window-score med">58% Fair</span>
+            </li>
+            <li>
+              <span class="window-time">Sep 01 — Sep 04</span>
+              <div class="window-bar"><div class="window-bar-fill" style="width:34%;background:var(--red-500);"></div></div>
+              <span class="window-score low">34% Low</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Catch History Table -->
+      <div class="table-card" data-od-id="catch-table">
+        <div class="table-header">
+          <div class="table-title">Historical Catch Records</div>
+          <button class="topbar-btn">Export CSV</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Zone</th>
+              <th>Species</th>
+              <th>Catch (t)</th>
+              <th>Effort (hrs)</th>
+              <th>CPUE</th>
+              <th>Rating</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Jul 18, 2026</td><td>Zone A</td><td>Indian Mackerel</td><td>42.3</td><td>180</td><td>0.235</td><td><span class="badge badge-high">High</span></td></tr>
+            <tr><td>Jul 15, 2026</td><td>Zone B</td><td>Tiger Prawn</td><td>38.1</td><td>210</td><td>0.181</td><td><span class="badge badge-high">High</span></td></tr>
+            <tr><td>Jul 12, 2026</td><td>Zone A</td><td>Oil Sardine</td><td>29.7</td><td>160</td><td>0.186</td><td><span class="badge badge-med">Medium</span></td></tr>
+            <tr><td>Jul 08, 2026</td><td>Zone C</td><td>Crab</td><td>21.4</td><td>190</td><td>0.113</td><td><span class="badge badge-med">Medium</span></td></tr>
+            <tr><td>Jul 05, 2026</td><td>Zone D</td><td>Indian Mackerel</td><td>15.8</td><td>220</td><td>0.072</td><td><span class="badge badge-low">Low</span></td></tr>
+            <tr><td>Jul 01, 2026</td><td>Zone B</td><td>Tiger Prawn</td><td>44.6</td><td>170</td><td>0.262</td><td><span class="badge badge-high">High</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <div class="toast-wrap" id="toastWrap"></div>
+
+  <script>
+    function showToast(msg, type='success') {
+      const wrap = document.getElementById('toastWrap');
+      const t = document.createElement('div');
+      t.className = 'toast ' + type;
+      t.textContent = msg;
+      wrap.appendChild(t);
+      setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
+    }
+
+    function drawBarChart(canvasId, data, color, labels, max) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+      const w = rect.width, h = rect.height;
+      const pad = { top: 10, right: 10, bottom: 28, left: 44 };
+      const plotW = w - pad.left - pad.right;
+      const plotH = h - pad.top - pad.bottom;
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.top + (plotH / 4) * i;
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.font = '10px Inter';
+        ctx.textAlign = 'right';
+        ctx.fillText(Math.round(max - (max / 4) * i), pad.left - 6, y + 3);
+      }
+
+      const barW = (plotW / data.length) * 0.6;
+      const gap = (plotW / data.length) * 0.4;
+      data.forEach((v, i) => {
+        const x = pad.left + (plotW / data.length) * i + gap / 2;
+        const barH = (v / max) * plotH;
+        const y = pad.top + plotH - barH;
+        const grad = ctx.createLinearGradient(0, y, 0, pad.top + plotH);
+        grad.addColorStop(0, color);
+        grad.addColorStop(1, color + '40');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.roundRect(x, y, barW, barH, [4, 4, 0, 0]);
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.font = '10px Inter';
+        ctx.textAlign = 'center';
+        ctx.fillText(labels[i], x + barW / 2, h - 6);
+      });
+    }
+
+    function drawLineChart(canvasId, data, color, labels, min, max) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+      const w = rect.width, h = rect.height;
+      const pad = { top: 10, right: 10, bottom: 28, left: 44 };
+      const plotW = w - pad.left - pad.right;
+      const plotH = h - pad.top - pad.bottom;
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.top + (plotH / 4) * i;
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.font = '10px Inter';
+        ctx.textAlign = 'right';
+        ctx.fillText(Math.round(max - ((max - min) / 4) * i), pad.left - 6, y + 3);
+      }
+
+      const points = data.map((v, i) => ({
+        x: pad.left + (plotW / (data.length - 1)) * i,
+        y: pad.top + plotH - ((v - min) / (max - min)) * plotH
+      }));
+
+      const grad = ctx.createLinearGradient(0, pad.top, 0, h - pad.bottom);
+      grad.addColorStop(0, color + '30');
+      grad.addColorStop(1, color + '00');
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, h - pad.bottom);
+      points.forEach(p => ctx.lineTo(p.x, p.y));
+      ctx.lineTo(points[points.length - 1].x, h - pad.bottom);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      ctx.beginPath();
+      points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      points.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+      });
+
+      // Predicted region shading
+      const predStart = Math.floor(data.length * 0.5);
+      const predX = points[predStart].x;
+      ctx.fillStyle = 'rgba(168,85,247,0.06)';
+      ctx.fillRect(predX, pad.top, w - pad.right - predX, plotH);
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(168,85,247,0.4)';
+      ctx.beginPath();
+      ctx.moveTo(predX, pad.top);
+      ctx.lineTo(predX, pad.top + plotH);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(168,85,247,0.5)';
+      ctx.font = '10px Inter';
+      ctx.textAlign = 'left';
+      ctx.fillText('← Historical | Predicted →', predX + 6, pad.top + 14);
+
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.font = '10px Inter';
+      ctx.textAlign = 'center';
+      labels.forEach((l, i) => {
+        const x = pad.left + (plotW / (labels.length - 1)) * i;
+        ctx.fillText(l, x, h - 6);
+      });
+    }
+
+    function renderCharts() {
+      const months = ['Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May','Jun','Jul'];
+      const future = ['Aug','Sep','Oct','Nov','Dec','Jan'];
+      const catchData = [98,87,76,105,120,134,112,95,118,130,142,148];
+      const predData = [148,162,155,138,125,115];
+      drawBarChart('chartCatch', catchData, '#00d4aa', months, 180);
+      drawLineChart('chartPredicted', predData, '#a855f7', future, 90, 180);
+    }
+
+    renderCharts();
+    window.addEventListener('resize', renderCharts);
+
+    document.getElementById('zoneSelect').addEventListener('change', () => renderCharts());
+
+    document.querySelector('[data-od-id="btn-run-prediction"]').addEventListener('click', () => {
+      const btn = document.querySelector('[data-od-id="btn-run-prediction"]');
+      btn.textContent = 'Running...';
+      btn.disabled = true;
+      btn.style.opacity = '0.7';
+      setTimeout(() => {
+        btn.textContent = 'Prediction Complete';
+        btn.style.opacity = '1';
+        renderCharts();
+        showToast('AI Prediction complete! Results updated.');
+        // Update stats with new values
+        const statValues = document.querySelectorAll('.stat-value');
+        statValues[0].textContent = (1200 + Math.floor(Math.random() * 100)) + ' t';
+        statValues[1].textContent = Math.floor(Math.random() * 3 + 2);
+        statValues[2].textContent = (7 + Math.random() * 2).toFixed(1);
+        statValues[3].textContent = Math.floor(85 + Math.random() * 10) + '%';
+        setTimeout(() => {
+          btn.textContent = 'Run AI Prediction';
+          btn.disabled = false;
+        }, 2000);
+      }, 1500);
+    });
+
+    // Refresh button
+    document.querySelector('.topbar-actions .topbar-btn:not(.primary)').addEventListener('click', function() {
+      this.textContent = 'Refreshing...';
+      this.disabled = true;
+      setTimeout(() => {
+        renderCharts();
+        this.textContent = 'Refresh';
+        this.disabled = false;
+        showToast('Data refreshed!', 'info');
+      }, 1000);
+    });
+
+    // Export CSV
+    document.querySelector('.table-header .topbar-btn').addEventListener('click', function() {
+      const rows = [['Date','Zone','Species','Catch (t)','Effort (hrs)','CPUE','Rating']];
+      document.querySelectorAll('.table-card tbody tr').forEach(tr => {
+        const cells = Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim());
+        rows.push(cells);
+      });
+      const csv = rows.map(r => r.join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'catch-history.csv';
+      a.click(); URL.revokeObjectURL(url);
+      this.textContent = 'Exported!';
+      showToast('CSV exported successfully!');
+      setTimeout(() => { this.textContent = 'Export CSV'; }, 2000);
+    });
+
+    // Stat cards clickable
+    document.querySelectorAll('.stat-card').forEach(card => {
+      card.style.cursor = 'pointer';
+      card.addEventListener('click', () => {
+        const label = card.querySelector('.stat-label').textContent.trim();
+        const value = card.querySelector('.stat-value').textContent.trim();
+        showToast(label + ': ' + value, 'info');
+      });
+      card.addEventListener('mouseenter', () => { card.style.borderColor = 'rgba(0,212,170,0.3)'; });
+      card.addEventListener('mouseleave', () => { card.style.borderColor = ''; });
+    });
+
+    // Species cards clickable
+    document.querySelectorAll('.species-card').forEach(card => {
+      card.style.cursor = 'pointer';
+      card.addEventListener('click', () => {
+        const name = card.querySelector('.species-name').textContent;
+        const catchVal = card.querySelector('.species-catch').textContent;
+        showToast(name + ': ' + catchVal + ' predicted', 'info');
+      });
+      card.addEventListener('mouseenter', () => { card.style.borderColor = 'rgba(0,212,170,0.3)'; });
+      card.addEventListener('mouseleave', () => { card.style.borderColor = ''; });
+    });
+
+    // Fishing window items clickable
+    document.querySelectorAll('.window-list li').forEach(li => {
+      li.style.cursor = 'pointer';
+      li.addEventListener('click', () => {
+        const time = li.querySelector('.window-time').textContent;
+        const score = li.querySelector('.window-score').textContent;
+        showToast('Window: ' + time + ' — ' + score, 'info');
+      });
+      li.addEventListener('mouseenter', () => { li.style.background = 'rgba(255,255,255,0.03)'; });
+      li.addEventListener('mouseleave', () => { li.style.background = ''; });
+    });
+
+    // Table rows clickable
+    document.querySelectorAll('.table-card tbody tr').forEach(tr => {
+      tr.style.cursor = 'pointer';
+      tr.addEventListener('click', () => {
+        const cells = Array.from(tr.querySelectorAll('td')).map(td => td.textContent.trim());
+        showToast(cells[0] + ' — ' + cells[1] + ' — ' + cells[2], 'info');
+      });
+    });
+  </script>
+</body>
+</html>
