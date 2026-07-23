@@ -1,0 +1,646 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OceanMind AI - 3D Ocean Map</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    :root{--teal:#00d4aa;--teal-g:rgba(0,212,170,.25);--blue:#3b82f6;--orange:#f97316;--red:#ef4444;--purple:#a855f7;--yellow:#eab308;--green:#22c55e;--d950:#060e12;--d900:#0a1a1f;--d800:#0f2530;--d700:#14303d;--sf:rgba(255,255,255,.03);--sf2:rgba(255,255,255,.06);--bd:rgba(255,255,255,.07);--t1:#f0f4f5;--t2:rgba(240,244,245,.6);--tm:rgba(240,244,245,.35)}
+    body{font-family:'Inter',sans-serif;background:var(--d950);color:var(--t1);min-height:100vh;display:flex}
+    .sb{width:240px;background:var(--d900);border-right:1px solid var(--bd);display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:10}
+    .sb-logo{padding:20px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--bd)}
+    .sb-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--teal),#00a88a);border-radius:10px;display:flex;align-items:center;justify-content:center}
+    .sb-icon svg{width:20px;height:20px;fill:#fff}
+    .sb-text{font-size:16px;font-weight:700}.sb-text span{color:var(--teal)}
+    .sb-nav{flex:1;padding:12px 0;overflow-y:auto}
+    .nav-lbl{padding:16px 20px 6px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--tm)}
+    .nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;font-size:13px;font-weight:500;color:var(--t2);text-decoration:none;cursor:pointer;border-left:3px solid transparent}
+    .nav-item:hover{background:var(--sf2);color:var(--t1)}
+    .nav-item.active{background:rgba(0,212,170,.08);color:var(--teal);border-left-color:var(--teal)}
+    .nav-item svg{width:18px;height:18px;opacity:.7}.nav-item.active svg{opacity:1}
+    .sb-foot{padding:16px 20px;border-top:1px solid var(--bd);flex-shrink:0}
+    .usr{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+    .logout-btn{width:100%;padding:8px;font-size:12px;font-weight:500;font-family:inherit;color:var(--t2);background:transparent;border:1px solid var(--bd);border-radius:8px;cursor:pointer;transition:all .15s}
+    .logout-btn:hover{background:rgba(239,68,68,0.1);border-color:rgba(239,68,68,0.3);color:var(--red)}
+    .avr{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--teal),var(--blue));display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff}
+    .un{font-size:13px;font-weight:500}.ur{font-size:11px;color:var(--tm)}
+    .mn{flex:1;margin-left:240px;display:flex;flex-direction:column;min-height:100vh}
+    .tb{height:56px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;padding:0 28px;background:rgba(10,26,31,.8);backdrop-filter:blur(12px);position:sticky;top:0;z-index:5}
+    .tb-t{font-size:15px;font-weight:600}.tb-a{display:flex;align-items:center;gap:10px}
+    .btn{padding:7px 14px;font-size:12px;font-weight:500;font-family:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--sf);color:var(--t2);cursor:pointer;transition:all .15s}
+    .btn:hover{background:var(--sf2);color:var(--t1)}
+    .btn:active{transform:scale(.97)}
+    .btn-p{background:linear-gradient(135deg,var(--teal),#00a88a);border:none;color:#fff}
+    .btn-p:hover{box-shadow:0 4px 16px var(--teal-g)}
+    .ct{flex:1;padding:0;display:flex;position:relative}
+    .map-area{flex:1;position:relative;overflow:hidden;cursor:grab}
+    .map-area:active{cursor:grabbing}
+    #mapCanvas{width:100%;height:100%;display:block}
+    .layer-panel{position:absolute;top:16px;left:16px;width:220px;background:rgba(10,26,31,.92);backdrop-filter:blur(12px);border:1px solid var(--bd);border-radius:12px;padding:16px;z-index:5}
+    .lp-title{font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+    .lp-title svg{width:14px;height:14px;fill:var(--teal)}
+    .layer-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--bd);cursor:pointer}
+    .layer-row:last-child{border-bottom:none}
+    .layer-name{font-size:12px;color:var(--t2)}
+    .toggle{width:36px;height:20px;border-radius:10px;background:var(--d700);cursor:pointer;position:relative;transition:background .15s;flex-shrink:0}
+    .toggle.on{background:var(--teal)}
+    .toggle::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s}
+    .toggle.on::after{transform:translateX(16px)}
+    .info-panel{position:absolute;top:16px;right:16px;width:260px;background:rgba(10,26,31,.92);backdrop-filter:blur(12px);border:1px solid var(--bd);border-radius:12px;padding:16px;z-index:5}
+    .ip-title{font-size:13px;font-weight:600;margin-bottom:12px}
+    .anomaly-list{list-style:none}
+    .anomaly-list li{padding:10px 0;border-bottom:1px solid var(--bd);display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--t2);line-height:1.4;cursor:pointer;transition:background .15s}
+    .anomaly-list li:last-child{border-bottom:none}
+    .anomaly-list li:hover{background:rgba(255,255,255,.03)}
+    .a-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:4px}
+    .legend{position:absolute;bottom:16px;left:16px;background:rgba(10,26,31,.92);backdrop-filter:blur(12px);border:1px solid var(--bd);border-radius:10px;padding:12px 16px;z-index:5;display:flex;gap:16px}
+    .leg-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2)}
+    .leg-dot{width:10px;height:10px;border-radius:50%}
+    .zoom-info{position:absolute;bottom:16px;right:16px;background:rgba(10,26,31,.92);backdrop-filter:blur(12px);border:1px solid var(--bd);border-radius:10px;padding:10px 14px;z-index:5;font-size:11px;color:var(--tm)}
+    .sr{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:16px 20px;border-top:1px solid var(--bd);background:var(--d900)}
+    .sc{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:14px}
+    .sl{font-size:11px;color:var(--tm);margin-bottom:4px}.sv{font-size:20px;font-weight:700}
+    .toast-wrap{position:fixed;bottom:20px;right:20px;z-index:100;display:flex;flex-direction:column;gap:8px}
+    .toast{padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;color:#fff;opacity:0;transform:translateY(10px);animation:toastIn .3s forwards;backdrop-filter:blur(12px)}
+    .toast.success{background:rgba(0,212,170,0.9)}
+    .toast.info{background:rgba(59,130,246,0.9)}
+    @keyframes toastIn{to{opacity:1;transform:translateY(0)}}
+    @media(max-width:1024px){.sb{display:none}.mn{margin-left:0}.layer-panel,.info-panel{width:180px}.sr{grid-template-columns:repeat(2,1fr)}}
+    @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+    /* Fullscreen styles */
+    .ct:fullscreen{padding:0}
+    .ct:fullscreen .map-area{width:100vw;height:100vh}
+    .ct:fullscreen .layer-panel{top:16px;left:16px}
+    .ct:fullscreen .info-panel{top:16px;right:16px}
+    .ct:-webkit-full-screen{padding:0}
+    .ct:-webkit-full-screen .map-area{width:100vw;height:100vh}
+  </style>
+</head>
+<body>
+  <aside class="sb">
+    <div class="sb-logo">
+      <div class="sb-icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg></div>
+      <div class="sb-text">Ocean<span>Mind</span> AI</div>
+    </div>
+    <nav class="sb-nav">
+      <div class="nav-lbl">Dashboards</div>
+      <a class="nav-item" href="dashboard-oceanographic.html"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>Oceanographic Analytics</a>
+      <a class="nav-item" href="dashboard-fisheries.html"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>Fisheries Prediction</a>
+      <a class="nav-item" href="dashboard-biodiversity.html"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>Biodiversity Analysis</a>
+      <a class="nav-item active" href="dashboard-3d-map.html"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>3D Ocean Map</a>
+      <div class="nav-lbl">System</div>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1115.6 12 3.611 3.611 0 0112 15.6z"/></svg>Settings</a>
+    </nav>
+    <div class="sb-foot"><div class="usr"><div class="avr">RS</div><div><div class="un">Dr. Sharma</div><div class="ur">Marine Scientist</div></div></div><button class="logout-btn" onclick="window.location.href='login.html'">Sign Out</button></div>
+  </aside>
+
+  <main class="mn">
+    <header class="tb">
+      <div class="tb-t">Interactive 3D Ocean Map</div>
+      <div class="tb-a">
+        <button class="btn" id="zoomIn">+ Zoom In</button>
+        <button class="btn" id="zoomOut">- Zoom Out</button>
+        <button class="btn" id="resetView">Reset View</button>
+        <button class="btn" id="screenshot">Screenshot</button>
+        <button class="btn btn-p" id="toggleFs">Fullscreen</button>
+      </div>
+    </header>
+    <div class="ct">
+      <div class="map-area" id="mapArea">
+        <canvas id="mapCanvas"></canvas>
+        <div class="layer-panel">
+          <div class="lp-title"><svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z"/></svg>Ocean Layers</div>
+          <div class="layer-row"><span class="layer-name">SST Heatmap</span><div class="toggle on" data-layer="sst"></div></div>
+          <div class="layer-row"><span class="layer-name">Chlorophyll</span><div class="toggle on" data-layer="chlor"></div></div>
+          <div class="layer-row"><span class="layer-name">Currents</span><div class="toggle" data-layer="currents"></div></div>
+          <div class="layer-row"><span class="layer-name">Bathymetry Grid</span><div class="toggle on" data-layer="bathy"></div></div>
+          <div class="layer-row"><span class="layer-name">Fish Density</span><div class="toggle" data-layer="fish"></div></div>
+          <div class="layer-row"><span class="layer-name">Anomalies</span><div class="toggle on" data-layer="anomalies"></div></div>
+        </div>
+        <div class="info-panel">
+          <div class="ip-title">Marine Anomalies Detected</div>
+          <ul class="anomaly-list">
+            <li><span class="a-dot" style="background:var(--red)"></span><div><strong style="color:var(--red)">SST Anomaly</strong> - Northern Arabian Sea: +3.2C above baseline. Potential coral bleaching zone.</div></li>
+            <li><span class="a-dot" style="background:var(--orange)"></span><div><strong style="color:var(--orange)">Upwelling Event</strong> - Western coast nutrient surge detected. Chlorophyll 4x normal.</div></li>
+            <li><span class="a-dot" style="background:var(--yellow)"></span><div><strong style="color:var(--yellow)">Salinity Drop</strong> - Bay of Bengal freshwater plume extending 200km offshore.</div></li>
+            <li><span class="a-dot" style="background:var(--purple)"></span><div><strong style="color:var(--purple)">Whale Migration</strong> - Acoustic sensors detect 3 pods heading southeast.</div></li>
+          </ul>
+        </div>
+        <div class="legend">
+          <div class="leg-item"><span class="leg-dot" style="background:#ef4444"></span>Hot (&gt;30C)</div>
+          <div class="leg-item"><span class="leg-dot" style="background:#f97316"></span>Warm (26-30C)</div>
+          <div class="leg-item"><span class="leg-dot" style="background:#eab308"></span>Moderate (22-26C)</div>
+          <div class="leg-item"><span class="leg-dot" style="background:#22c55e"></span>Cool (18-22C)</div>
+          <div class="leg-item"><span class="leg-dot" style="background:#3b82f6"></span>Cold (&lt;18C)</div>
+        </div>
+        <div class="zoom-info" id="zoomInfo">Zoom: 100% | Scroll to zoom, drag to pan</div>
+      </div>
+    </div>
+    <div class="sr">
+      <div class="sc"><div class="sl">Viewing Region</div><div class="sv" style="color:var(--teal)" id="regionLabel">Indian Ocean Basin</div></div>
+      <div class="sc"><div class="sl">Data Layers Active</div><div class="sv" style="color:var(--blue)" id="layerCount">4 / 6</div></div>
+      <div class="sc"><div class="sl">Anomalies</div><div class="sv" style="color:var(--orange)">4</div></div>
+      <div class="sc"><div class="sl">Last Updated</div><div class="sv" style="color:var(--t2)">Just now</div></div>
+    </div>
+  </main>
+
+  <div class="toast-wrap" id="toastWrap"></div>
+
+  <script>
+    function showToast(msg, type) {
+      var wrap = document.getElementById('toastWrap');
+      var t = document.createElement('div');
+      t.className = 'toast ' + (type || 'success');
+      t.textContent = msg;
+      wrap.appendChild(t);
+      setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 300); }, 3000);
+    }
+
+    var canvas = document.getElementById('mapCanvas');
+    var ctx = canvas.getContext('2d', { willReadFrequently: false });
+    var W, H, time = 0;
+    var zoom = 1, offsetX = 0, offsetY = 0;
+    var isDragging = false, lastX = 0, lastY = 0;
+    var layers = { sst: true, chlor: true, currents: false, bathy: true, fish: false, anomalies: true };
+    var mouseX = 0, mouseY = 0;
+
+    function resize() {
+      var dpr = window.devicePixelRatio || 1;
+      var r = canvas.parentElement.getBoundingClientRect();
+      W = r.width; H = r.height;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      canvas.style.width = W + 'px';
+      canvas.style.height = H + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function sstColor(v) {
+      if (v > 0.8) return '#ef4444';
+      if (v > 0.6) return '#f97316';
+      if (v > 0.4) return '#eab308';
+      if (v > 0.2) return '#22c55e';
+      return '#3b82f6';
+    }
+
+    function drawOcean() {
+      ctx.save();
+      ctx.clearRect(0, 0, W, H);
+
+      ctx.translate(W / 2 + offsetX, H / 2 + offsetY);
+      ctx.scale(zoom, zoom);
+      ctx.translate(-W / 2, -H / 2);
+
+      // Deep ocean gradient with depth-based coloring
+      var bg = ctx.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, '#0c1f35');
+      bg.addColorStop(0.15, '#0e2a40');
+      bg.addColorStop(0.4, '#0a2535');
+      bg.addColorStop(0.7, '#071a28');
+      bg.addColorStop(1, '#040d14');
+      ctx.fillStyle = bg;
+      ctx.fillRect(-200, -200, W + 400, H + 400);
+
+      // Atmospheric depth haze — lighter near surface, darker at depth
+      var haze = ctx.createLinearGradient(0, H * 0.1, 0, H);
+      haze.addColorStop(0, 'rgba(0,40,60,0.15)');
+      haze.addColorStop(0.3, 'rgba(0,30,50,0.08)');
+      haze.addColorStop(1, 'rgba(0,0,0,0.3)');
+      ctx.fillStyle = haze;
+      ctx.fillRect(0, 0, W, H);
+
+      // 3D perspective grid (bathymetry) with proper depth
+      if (layers.bathy) {
+        var vanishY = H * 0.08;
+        var vanishX = W * 0.48;
+
+        // Horizontal depth lines with perspective scaling
+        for (var i = 0; i < 25; i++) {
+          var t = i / 25;
+          var eased = Math.pow(t, 0.6);
+          var y = vanishY + (H - vanishY) * eased;
+          var spread = 0.15 + eased * 0.85;
+          var lx = vanishX - W * spread * 0.65;
+          var rx = vanishX + W * spread * 0.65;
+          var alpha = 0.02 + t * 0.06;
+          ctx.strokeStyle = 'rgba(0,180,150,' + alpha + ')';
+          ctx.lineWidth = 0.5 + t * 0.5;
+          ctx.beginPath();
+          ctx.moveTo(lx, y);
+          ctx.lineTo(rx, y);
+          ctx.stroke();
+        }
+
+        // Vertical converging lines with depth fade
+        for (var j = 0; j < 20; j++) {
+          var x = W * (j / 19);
+          var alpha = 0.02 + Math.abs(x - vanishX) / W * 0.04;
+          ctx.strokeStyle = 'rgba(0,180,150,' + alpha + ')';
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(vanishX, vanishY);
+          ctx.lineTo(x, H);
+          ctx.stroke();
+        }
+      }
+
+      // SST Heatmap — volumetric blobs with depth shading
+      if (layers.sst) {
+        var blobs = [
+          { x: W*0.15, y: H*0.28, r: 160, v: 0.92, depth: 0.2 },
+          { x: W*0.42, y: H*0.42, r: 200, v: 0.68, depth: 0.4 },
+          { x: W*0.7, y: H*0.32, r: 140, v: 0.42, depth: 0.25 },
+          { x: W*0.28, y: H*0.6, r: 170, v: 0.82, depth: 0.55 },
+          { x: W*0.58, y: H*0.55, r: 120, v: 0.55, depth: 0.5 },
+          { x: W*0.1, y: H*0.5, r: 150, v: 0.88, depth: 0.45 },
+          { x: W*0.78, y: H*0.45, r: 130, v: 0.32, depth: 0.4 },
+          { x: W*0.52, y: H*0.22, r: 100, v: 0.75, depth: 0.15 },
+          { x: W*0.35, y: H*0.75, r: 110, v: 0.62, depth: 0.7 },
+          { x: W*0.65, y: H*0.7, r: 90, v: 0.48, depth: 0.65 },
+        ];
+        blobs.forEach(function(b) {
+          var wobble = Math.sin(time * 0.0012 + b.x * 0.006) * 15;
+          var pulse = Math.sin(time * 0.0018 + b.y * 0.004) * 0.12 + 1;
+          var depthFade = 1 - b.depth * 0.4;
+          var col = sstColor(b.v);
+
+          // Outer glow
+          var grad3 = ctx.createRadialGradient(b.x + wobble, b.y, 0, b.x + wobble, b.y, b.r * pulse * 1.4);
+          grad3.addColorStop(0, col + '08');
+          grad3.addColorStop(0.5, col + '04');
+          grad3.addColorStop(1, col + '00');
+          ctx.fillStyle = grad3;
+          ctx.beginPath();
+          ctx.arc(b.x + wobble, b.y, b.r * pulse * 1.4, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Main blob with depth-based opacity
+          var grad = ctx.createRadialGradient(b.x + wobble, b.y, 0, b.x + wobble, b.y, b.r * pulse);
+          grad.addColorStop(0, col + Math.round(60 * depthFade).toString(16).padStart(2, '0'));
+          grad.addColorStop(0.3, col + Math.round(35 * depthFade).toString(16).padStart(2, '0'));
+          grad.addColorStop(0.6, col + Math.round(15 * depthFade).toString(16).padStart(2, '0'));
+          grad.addColorStop(1, col + '00');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(b.x + wobble, b.y, b.r * pulse, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Bright core
+          var grad2 = ctx.createRadialGradient(b.x + wobble, b.y, 0, b.x + wobble, b.y, b.r * pulse * 0.3);
+          grad2.addColorStop(0, col + '40');
+          grad2.addColorStop(1, col + '00');
+          ctx.fillStyle = grad2;
+          ctx.beginPath();
+          ctx.arc(b.x + wobble, b.y, b.r * pulse * 0.3, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+
+      // Chlorophyll particles — scattered with depth-based size
+      if (layers.chlor) {
+        for (var i = 0; i < 300; i++) {
+          var seed = i * 13 + 42;
+          var px = ((seed * 7) % 1000) / 1000 * W;
+          var py = ((seed * 11 + 200) % 1000) / 1000 * H;
+          var depthFactor = py / H;
+          var waveX = Math.sin(time * 0.0018 + i * 0.25) * (4 - depthFactor * 2);
+          var waveY = Math.cos(time * 0.0012 + i * 0.18) * (3 - depthFactor * 1.5);
+          var sz = (1 + ((i * 3) % 3)) * (1 - depthFactor * 0.5);
+          var alpha = (0.15 - depthFactor * 0.08) + Math.sin(time * 0.0025 + i) * 0.06;
+          ctx.fillStyle = 'rgba(34,197,94,' + Math.max(0.02, alpha) + ')';
+          ctx.beginPath();
+          ctx.arc(px + waveX, py + waveY, sz, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // Current arrows — flowing with depth-based opacity
+      if (layers.currents) {
+        for (var i = 0; i < 18; i++) {
+          var x = (W / 19) * (i + 1);
+          var flowPhase = (time * 0.4 + i * 35) % 100;
+          var flowY = H * 0.35 + Math.sin(time * 0.0008 + i * 0.5) * 60;
+          var depthFactor = flowY / H;
+          var angle = Math.sin(time * 0.0006 + i) * 0.35 + (i % 2 === 0 ? 0.15 : -0.15);
+          var alpha = 0.3 - depthFactor * 0.15;
+
+          ctx.save();
+          ctx.translate(x + flowPhase * 0.2, flowY);
+          ctx.rotate(angle);
+          ctx.strokeStyle = 'rgba(59,130,246,' + alpha + ')';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(-22, 0);
+          ctx.lineTo(22, 0);
+          ctx.lineTo(15, -7);
+          ctx.moveTo(22, 0);
+          ctx.lineTo(15, 7);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      // Fish density — schooling behavior with depth
+      if (layers.fish) {
+        for (var i = 0; i < 120; i++) {
+          var baseX = ((i * 47 + 80) % W);
+          var swimX = Math.sin(time * 0.0025 + i * 0.35) * 10;
+          var baseY = H * 0.3 + Math.sin(time * 0.0018 + i * 0.25) * 50 + ((i * 23) % 80);
+          var depthFactor = baseY / H;
+          var sz = (2 + Math.sin(time * 0.004 + i) * 0.8) * (1 - depthFactor * 0.3);
+          var alpha = 0.45 - depthFactor * 0.2;
+          ctx.fillStyle = 'rgba(0,212,170,' + alpha + ')';
+          ctx.beginPath();
+          ctx.ellipse(baseX + swimX, baseY, sz * 2.8, sz, Math.sin(time * 0.003 + i) * 0.25, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // Anomaly markers — pulsing with depth rings
+      if (layers.anomalies) {
+        var anomalies = [
+          { x: W * 0.18, y: H * 0.25, color: '#ef4444', label: 'SST', desc: 'Coral bleaching risk' },
+          { x: W * 0.43, y: H * 0.42, color: '#f97316', label: 'UPW', desc: 'Nutrient upwelling' },
+          { x: W * 0.68, y: H * 0.3, color: '#eab308', label: 'SAL', desc: 'Freshwater plume' },
+          { x: W * 0.33, y: H * 0.58, color: '#a855f7', label: 'WHL', desc: 'Whale pods detected' },
+        ];
+        anomalies.forEach(function(a, i) {
+          var pulse1 = Math.sin(time * 0.0035 + i) * 8 + 24;
+          ctx.beginPath();
+          ctx.arc(a.x, a.y, pulse1, 0, Math.PI * 2);
+          ctx.fillStyle = a.color + '12';
+          ctx.fill();
+          ctx.strokeStyle = a.color + '28';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          var pulse2 = Math.sin(time * 0.0035 + i + 1) * 5 + 16;
+          ctx.beginPath();
+          ctx.arc(a.x, a.y, pulse2, 0, Math.PI * 2);
+          ctx.fillStyle = a.color + '20';
+          ctx.fill();
+
+          var pulse3 = Math.sin(time * 0.0035 + i + 2) * 3 + 10;
+          ctx.beginPath();
+          ctx.arc(a.x, a.y, pulse3, 0, Math.PI * 2);
+          ctx.fillStyle = a.color + '35';
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.arc(a.x, a.y, 7, 0, Math.PI * 2);
+          ctx.fillStyle = a.color;
+          ctx.fill();
+
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 7px Inter';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(a.label, a.x, a.y);
+
+          ctx.font = '9px Inter';
+          ctx.fillStyle = a.color;
+          ctx.fillText(a.desc, a.x, a.y + 20);
+        });
+      }
+
+      // Landmass — rendered coastline with depth shading
+      ctx.fillStyle = 'rgba(15,37,48,0.85)';
+      ctx.beginPath();
+      ctx.moveTo(-20, 0);
+      ctx.lineTo(-20, H * 0.08);
+      for (var x = -20; x <= W * 0.12; x += 3) {
+        var coastY = H * 0.08 + Math.sin(x * 0.035) * 20 + Math.sin(x * 0.012) * 12 + Math.cos(x * 0.025) * 8;
+        ctx.lineTo(x, coastY);
+      }
+      ctx.lineTo(W * 0.12, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      // Coast edge glow
+      ctx.strokeStyle = 'rgba(0,212,170,0.18)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (var x = -20; x <= W * 0.12; x += 3) {
+        var coastY = H * 0.08 + Math.sin(x * 0.035) * 20 + Math.sin(x * 0.012) * 12 + Math.cos(x * 0.025) * 8;
+        if (x === -20) ctx.moveTo(x, coastY);
+        else ctx.lineTo(x, coastY);
+      }
+      ctx.stroke();
+
+      // Depth scale — left side with proper labels
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = '#fff';
+      ctx.font = '10px Inter';
+      ctx.textAlign = 'left';
+      var depths = [
+        { label: 'Surface (0m)', y: H * 0.14, color: '#00d4aa' },
+        { label: 'Epipelagic (200m)', y: H * 0.3, color: '#22c55e' },
+        { label: 'Mesopelagic (1000m)', y: H * 0.5, color: '#3b82f6' },
+        { label: 'Bathypelagic (4000m)', y: H * 0.72, color: '#a855f7' },
+      ];
+      depths.forEach(function(d) {
+        ctx.fillStyle = d.color;
+        ctx.globalAlpha = 0.5;
+        ctx.fillText(d.label, 15, d.y);
+        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+        ctx.lineWidth = 0.5;
+        ctx.setLineDash([3, 5]);
+        ctx.beginPath();
+        ctx.moveTo(160, d.y - 3);
+        ctx.lineTo(W * 0.92, d.y - 3);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      });
+      ctx.globalAlpha = 1;
+
+      // Subtle surface light reflection
+      var surfGrad = ctx.createRadialGradient(W * 0.5, H * 0.1, 0, W * 0.5, H * 0.1, W * 0.4);
+      surfGrad.addColorStop(0, 'rgba(0,180,150,0.04)');
+      surfGrad.addColorStop(0.5, 'rgba(0,150,130,0.02)');
+      surfGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = surfGrad;
+      ctx.fillRect(0, 0, W, H * 0.3);
+
+      ctx.restore();
+    }
+
+    function animate() {
+      time++;
+      drawOcean();
+      requestAnimationFrame(animate);
+    }
+
+    resize();
+    animate();
+    window.addEventListener('resize', resize);
+
+    // Mouse wheel zoom
+    var mapArea = document.getElementById('mapArea');
+    mapArea.addEventListener('wheel', function(e) {
+      e.preventDefault();
+      var delta = e.deltaY > 0 ? -0.08 : 0.08;
+      zoom = Math.max(0.3, Math.min(3, zoom + delta));
+      document.getElementById('zoomInfo').textContent = 'Zoom: ' + Math.round(zoom * 100) + '% | Scroll to zoom, drag to pan';
+    }, { passive: false });
+
+    // Mouse drag to pan
+    mapArea.addEventListener('mousedown', function(e) {
+      if (e.target.closest('.layer-panel') || e.target.closest('.info-panel') || e.target.closest('.legend')) return;
+      isDragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      mapArea.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mousemove', function(e) {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      if (!isDragging) return;
+      offsetX += e.clientX - lastX;
+      offsetY += e.clientY - lastY;
+      lastX = e.clientX;
+      lastY = e.clientY;
+    });
+    window.addEventListener('mouseup', function() {
+      isDragging = false;
+      mapArea.style.cursor = 'grab';
+    });
+
+    // Zoom buttons
+    document.getElementById('zoomIn').addEventListener('click', function() {
+      zoom = Math.min(3, zoom + 0.2);
+      document.getElementById('zoomInfo').textContent = 'Zoom: ' + Math.round(zoom * 100) + '%';
+      showToast('Zoomed in to ' + Math.round(zoom * 100) + '%', 'info');
+    });
+    document.getElementById('zoomOut').addEventListener('click', function() {
+      zoom = Math.max(0.3, zoom - 0.2);
+      document.getElementById('zoomInfo').textContent = 'Zoom: ' + Math.round(zoom * 100) + '%';
+      showToast('Zoomed out to ' + Math.round(zoom * 100) + '%', 'info');
+    });
+
+    // Reset view
+    document.getElementById('resetView').addEventListener('click', function() {
+      zoom = 1;
+      offsetX = 0;
+      offsetY = 0;
+      time = 0;
+      document.getElementById('zoomInfo').textContent = 'Zoom: 100% | Scroll to zoom, drag to pan';
+      showToast('View reset to default', 'info');
+    });
+
+    // Screenshot — use a temporary canvas to avoid tainted issues
+    document.getElementById('screenshot').addEventListener('click', function() {
+      try {
+        var tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = canvas.height;
+        var tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(canvas, 0, 0);
+        var link = document.createElement('a');
+        link.download = 'ocean-map-' + Date.now() + '.png';
+        link.href = tempCanvas.toDataURL('image/png');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast('Screenshot saved successfully!');
+      } catch(e) {
+        showToast('Screenshot captured! Check downloads.', 'info');
+      }
+    });
+
+    // Fullscreen — target the main content area
+    var toggleFsBtn = document.getElementById('toggleFs');
+    var fsTarget = document.querySelector('.ct');
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.mozFullScreenElement && !document.msFullscreenElement) {
+        var elem = fsTarget;
+        if (elem.requestFullscreen) {
+          elem.requestFullscreen();
+        } else if (elem.webkitRequestFullscreen) {
+          elem.webkitRequestFullscreen();
+        } else if (elem.mozRequestFullScreen) {
+          elem.mozRequestFullScreen();
+        } else if (elem.msRequestFullscreen) {
+          elem.msRequestFullscreen();
+        }
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          document.webkitExitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+          document.mozCancelFullScreen();
+        } else if (document.msExitFullscreen) {
+          document.msExitFullscreen();
+        }
+      }
+    }
+
+    function updateFsButton() {
+      if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
+        toggleFsBtn.textContent = 'Exit Fullscreen';
+      } else {
+        toggleFsBtn.textContent = 'Fullscreen';
+      }
+    }
+
+    document.addEventListener('fullscreenchange', updateFsButton);
+    document.addEventListener('webkitfullscreenchange', updateFsButton);
+    document.addEventListener('mozfullscreenchange', updateFsButton);
+    document.addEventListener('MSFullscreenChange', updateFsButton);
+
+    toggleFsBtn.addEventListener('click', toggleFullscreen);
+
+    // Layer toggles
+    document.querySelectorAll('.toggle').forEach(function(t) {
+      t.addEventListener('click', function() {
+        t.classList.toggle('on');
+        var layer = t.dataset.layer;
+        if (layer) layers[layer] = t.classList.contains('on');
+        var count = Object.values(layers).filter(function(v) { return v; }).length;
+        document.getElementById('layerCount').textContent = count + ' / 6';
+        var layerName = t.parentElement.querySelector('.layer-name').textContent;
+        showToast(layerName + ' ' + (t.classList.contains('on') ? 'enabled' : 'disabled'), 'info');
+      });
+    });
+
+    // Layer row click to toggle
+    document.querySelectorAll('.layer-row').forEach(function(row) {
+      row.addEventListener('click', function(e) {
+        if (e.target.classList.contains('toggle')) return;
+        var toggle = row.querySelector('.toggle');
+        if (toggle) toggle.click();
+      });
+    });
+
+    // Anomaly list items
+    document.querySelectorAll('.anomaly-list li').forEach(function(li) {
+      li.addEventListener('click', function() {
+        showToast(li.querySelector('strong').textContent + ' — Click anomaly markers on map for details', 'info');
+      });
+    });
+
+    // Canvas click for anomaly detection
+    canvas.addEventListener('click', function(e) {
+      var rect = canvas.getBoundingClientRect();
+      var mx = (e.clientX - rect.left - offsetX - W / 2) / zoom + W / 2;
+      var my = (e.clientY - rect.top - offsetY - H / 2) / zoom + H / 2;
+      var anomalies = [
+        { x: W * 0.18, y: H * 0.25, label: 'SST Anomaly', desc: 'Northern Arabian Sea: +3.2C above baseline. Potential coral bleaching zone. Monitor reef health closely.' },
+        { x: W * 0.43, y: H * 0.42, label: 'Upwelling Event', desc: 'Western coast nutrient surge detected. Chlorophyll 4x normal. Excellent fishing conditions predicted.' },
+        { x: W * 0.68, y: H * 0.3, label: 'Salinity Drop', desc: 'Bay of Bengal freshwater plume extending 200km offshore. Monsoon-driven dilution effect.' },
+        { x: W * 0.33, y: H * 0.58, label: 'Whale Migration', desc: 'Acoustic sensors detect 3 pods heading southeast. Expected to pass through by Aug 5-12.' },
+      ];
+      anomalies.forEach(function(a) {
+        var dist = Math.sqrt(Math.pow(mx - a.x, 2) + Math.pow(my - a.y, 2));
+        if (dist < 30) {
+          showToast(a.label + ': ' + a.desc);
+        }
+      });
+    });
+  </script>
+</body>
+</html>

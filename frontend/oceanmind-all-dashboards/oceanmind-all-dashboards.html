@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OceanMind AI — All Dashboards</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    :root{--teal:#00d4aa;--teal-g:rgba(0,212,170,.25);--teal-d:#00a88a;--blue:#3b82f6;--orange:#f97316;--red:#ef4444;--purple:#a855f7;--yellow:#eab308;--green:#22c55e;--d950:#060e12;--d900:#0a1a1f;--d800:#0f2530;--d700:#14303d;--d600:#1a3d4d;--sf:rgba(255,255,255,.03);--sf2:rgba(255,255,255,.06);--bd:rgba(255,255,255,.07);--t1:#f0f4f5;--t2:rgba(240,244,245,.6);--tm:rgba(240,244,245,.35)}
+    body{font-family:'Inter',sans-serif;background:var(--d950);color:var(--t1);min-height:100vh;display:flex}
+
+    /* Sidebar */
+    .sb{width:240px;background:var(--d900);border-right:1px solid var(--bd);display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:10}
+    .sb-logo{padding:20px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--bd)}
+    .sb-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--teal),var(--teal-d));border-radius:10px;display:flex;align-items:center;justify-content:center}
+    .sb-icon svg{width:20px;height:20px;fill:#fff}
+    .sb-text{font-size:16px;font-weight:700}.sb-text span{color:var(--teal)}
+    .sb-nav{flex:1;padding:12px 0;overflow-y:auto}
+    .nav-lbl{padding:16px 20px 6px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--tm)}
+    .nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;font-size:13px;font-weight:500;color:var(--t2);text-decoration:none;cursor:pointer;border-left:3px solid transparent;transition:all .15s}
+    .nav-item:hover{background:var(--sf2);color:var(--t1)}
+    .nav-item.active{background:rgba(0,212,170,.08);color:var(--teal);border-left-color:var(--teal)}
+    .nav-item svg{width:18px;height:18px;opacity:.7}.nav-item.active svg{opacity:1}
+    .sb-foot{padding:16px 20px;border-top:1px solid var(--bd);flex-shrink:0}
+    .usr{display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;border-radius:8px;padding:4px;margin:-4px;transition:background .15s}
+    .usr:hover{background:var(--sf2)}
+    .avr{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--teal),var(--blue));display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff}
+    .un{font-size:13px;font-weight:500}.ur{font-size:11px;color:var(--tm)}
+    .logout-btn{width:100%;padding:8px;font-size:12px;font-weight:500;font-family:inherit;color:var(--t2);background:transparent;border:1px solid var(--bd);border-radius:8px;cursor:pointer;transition:all .15s}
+    .logout-btn:hover{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:var(--red)}
+
+    /* Main */
+    .mn{flex:1;margin-left:240px;display:flex;flex-direction:column;min-height:100vh}
+    .tb{height:56px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;padding:0 28px;background:rgba(10,26,31,.8);backdrop-filter:blur(12px);position:sticky;top:0;z-index:5}
+    .tb-t{font-size:15px;font-weight:600}
+    .tb-a{display:flex;align-items:center;gap:10px}
+    .btn{padding:7px 14px;font-size:12px;font-weight:500;font-family:inherit;border:1px solid var(--bd);border-radius:8px;background:var(--sf);color:var(--t2);cursor:pointer;transition:all .15s}
+    .btn:hover{background:var(--sf2);color:var(--t1)}
+    .btn-p{background:linear-gradient(135deg,var(--teal),var(--teal-d));border:none;color:#fff}
+    .btn-p:hover{box-shadow:0 4px 16px var(--teal-g)}
+    .ct{flex:1;padding:24px 28px 40px}
+    .db-section{display:none}.db-section.active{display:block}
+
+    /* Shared Components */
+    .rb{display:flex;align-items:center;gap:14px;margin-bottom:24px;flex-wrap:wrap}
+    .rb label{font-size:13px;font-weight:500;color:var(--t2)}
+    .rs{padding:9px 14px;font-size:13px;font-family:inherit;color:var(--t1);background:var(--d800);border:1px solid var(--bd);border-radius:8px;outline:none;min-width:200px;cursor:pointer}
+    .rs:focus{border-color:rgba(0,212,170,.5)}
+    .sr{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+    .sc{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:18px 20px;cursor:pointer;transition:all .15s}
+    .sc:hover{border-color:rgba(0,212,170,.3)}
+    .sl{font-size:12px;color:var(--tm);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+    .sd{width:8px;height:8px;border-radius:50%}
+    .sv{font-size:26px;font-weight:700;letter-spacing:-.02em}
+    .ch{font-size:12px;margin-top:4px}.ch.up{color:var(--teal)}.ch.dn{color:var(--red)}
+    .cg{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
+    .cc{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:20px}
+    .ch-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+    .ch-t{font-size:14px;font-weight:600}
+    .ch-b{font-size:11px;font-weight:500;padding:3px 10px;border-radius:12px;background:rgba(0,212,170,.1);color:var(--teal)}
+    .cw{position:relative;width:100%;height:200px}.cw canvas{width:100%;height:100%}
+    .ais{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:24px;margin-bottom:24px}
+    .aih{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+    .aii{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--purple),var(--blue));display:flex;align-items:center;justify-content:center}
+    .aii svg{width:18px;height:18px;fill:#fff}
+    .ait{font-size:15px;font-weight:600}
+    .aig{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;padding:3px 8px;border-radius:6px;background:rgba(168,85,247,.15);color:var(--purple)}
+    .ain{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+    .ic{background:var(--d800);border:1px solid var(--bd);border-radius:10px;padding:16px}
+    .il{font-size:11px;color:var(--tm);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+    .iv{font-size:18px;font-weight:700;margin-bottom:4px}
+    .id{font-size:12px;color:var(--t2);line-height:1.5}
+    .it{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;padding:2px 8px;border-radius:6px;margin-top:8px}
+    .it.up{background:rgba(0,212,170,.1);color:var(--teal)}.it.dn{background:rgba(239,68,68,.1);color:var(--red)}
+
+    /* Table */
+    .tbl{background:var(--sf);border:1px solid var(--bd);border-radius:12px;overflow:hidden;margin-bottom:24px}
+    .tbl-h{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--bd)}
+    .tbl-t{font-size:14px;font-weight:600}
+    table{width:100%;border-collapse:collapse}
+    th{text-align:left;padding:10px 20px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--tm);border-bottom:1px solid var(--bd)}
+    td{padding:12px 20px;font-size:13px;border-bottom:1px solid var(--bd)}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:var(--sf2);cursor:pointer}
+    .badge{font-size:11px;font-weight:500;padding:3px 10px;border-radius:12px}
+    .badge-h{background:rgba(0,212,170,.1);color:var(--teal)}
+    .badge-m{background:rgba(234,179,8,.12);color:var(--yellow)}
+    .badge-l{background:rgba(239,68,68,.12);color:var(--red)}
+    .badge-w{background:rgba(249,115,22,.12);color:var(--orange)}
+    .badge-c{background:rgba(59,130,246,.12);color:var(--blue)}
+    .badge-n{background:rgba(0,212,170,.1);color:var(--teal)}
+    .badge-a{background:rgba(239,68,68,.12);color:var(--red)}
+
+    /* Species */
+    .sp-g{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+    .sp-c{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:16px;text-align:center;cursor:pointer;transition:all .15s}
+    .sp-c:hover{border-color:rgba(0,212,170,.3)}
+    .sp-i{font-size:28px;margin-bottom:8px}
+    .sp-n{font-size:12px;color:var(--t2);margin-bottom:4px}
+    .sp-v{font-size:18px;font-weight:700}
+    .sp-u{font-size:11px;color:var(--tm)}
+
+    /* Fishing Window */
+    .fw{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
+    .wc{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:24px}
+    .wc h3{font-size:14px;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+    .wc h3 svg{width:18px;height:18px;fill:var(--teal)}
+    .wl{list-style:none}
+    .wl li{padding:10px 0;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;font-size:13px;cursor:pointer;transition:background .15s}
+    .wl li:hover{background:var(--sf);margin:0 -12px;padding:10px 12px;border-radius:6px}
+    .wl li:last-child{border-bottom:none}
+    .wt{color:var(--t2)}
+    .ws{font-weight:600}
+    .ws.h{color:var(--teal)}.ws.m{color:var(--yellow)}.ws.l{color:var(--red)}
+    .wb{height:6px;border-radius:3px;background:var(--d700);flex:1;margin:0 12px}
+    .wbf{height:100%;border-radius:3px}
+
+    /* Gauges */
+    .rg{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
+    .rc{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:24px;display:flex;flex-direction:column;align-items:center}
+    .gw{position:relative;width:180px;height:100px;margin-bottom:12px}
+    .gl{font-size:13px;color:var(--t2);margin-bottom:4px}
+    .gv{font-size:32px;font-weight:800}
+    .gd{font-size:12px;color:var(--tm);text-align:center;margin-top:8px;line-height:1.5}
+
+    /* eDNA */
+    .eg{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px}
+    .ec{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:18px}
+    .ech{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+    .eid{font-size:12px;font-weight:600;color:var(--teal)}.edt{font-size:11px;color:var(--tm)}
+    .es{font-size:13px;font-weight:500;margin-bottom:4px}.ecnt{font-size:12px;color:var(--t2)}
+    .eb{height:4px;border-radius:2px;background:var(--d700);margin-top:10px}.ebf{height:100%;border-radius:2px}
+
+    /* 3D Map */
+    .map-area{position:relative;width:100%;height:calc(100vh - 56px);background:#050d10;overflow:hidden;cursor:grab}
+    .map-area:active{cursor:grabbing}
+    .map-canvas{width:100%;height:100%}
+    .map-toolbar{position:absolute;top:16px;left:16px;display:flex;flex-direction:column;gap:6px;z-index:5}
+    .map-btn{width:36px;height:36px;border-radius:8px;border:1px solid var(--bd);background:rgba(10,26,31,.9);backdrop-filter:blur(8px);color:var(--t2);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+    .map-btn:hover{background:var(--sf2);color:var(--t1);border-color:rgba(0,212,170,.3)}
+    .map-layers{position:absolute;top:16px;right:16px;background:rgba(10,26,31,.9);backdrop-filter:blur(8px);border:1px solid var(--bd);border-radius:10px;padding:16px;width:220px;z-index:5}
+    .layer-title{font-size:13px;font-weight:600;margin-bottom:12px}
+    .layer-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:12px;color:var(--t2);cursor:pointer}
+    .layer-row:hover{color:var(--t1)}
+    .toggle{width:34px;height:18px;border-radius:9px;background:var(--d700);border:none;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0}
+    .toggle.on{background:var(--teal)}
+    .toggle::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .2s}
+    .toggle.on::after{transform:translateX(16px)}
+    .map-info{position:absolute;bottom:16px;left:16px;background:rgba(10,26,31,.9);backdrop-filter:blur(8px);border:1px solid var(--bd);border-radius:8px;padding:10px 14px;font-size:11px;color:var(--tm);z-index:5}
+    .anomaly-list{position:absolute;bottom:16px;right:16px;background:rgba(10,26,31,.9);backdrop-filter:blur(8px);border:1px solid var(--bd);border-radius:10px;padding:16px;width:240px;z-index:5}
+    .anomaly-title{font-size:13px;font-weight:600;margin-bottom:10px}
+    .anomaly-list li{padding:8px 0;border-bottom:1px solid var(--bd);font-size:12px;color:var(--t2);list-style:none;cursor:pointer;transition:color .15s}
+    .anomaly-list li:hover{color:var(--t1)}
+    .anomaly-list li:last-child{border-bottom:none}
+    .anomaly-list li strong{color:var(--teal)}
+
+    /* Modal */
+    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:200;display:none;align-items:center;justify-content:center}
+    .modal-overlay.show{display:flex}
+    .modal{background:var(--d900);border:1px solid var(--bd);border-radius:16px;width:520px;max-width:92vw;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+    .modal-header{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid var(--bd)}
+    .modal-header h2{font-size:16px;font-weight:600}
+    .modal-close{width:32px;height:32px;border-radius:8px;border:1px solid var(--bd);background:transparent;color:var(--t2);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+    .modal-close:hover{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:var(--red)}
+    .modal-body{padding:24px}
+    .modal-section{margin-bottom:24px}.modal-section:last-child{margin-bottom:0}
+    .modal-section-title{font-size:13px;font-weight:600;color:var(--t2);margin-bottom:14px;text-transform:uppercase;letter-spacing:.04em}
+    .form-group{margin-bottom:16px}
+    .form-group label{display:block;font-size:12px;font-weight:500;color:var(--t2);margin-bottom:6px}
+    .form-input{width:100%;padding:10px 14px;font-size:13px;font-family:inherit;color:var(--t1);background:var(--d800);border:1px solid var(--bd);border-radius:8px;outline:none;transition:border-color .15s}
+    .form-input:focus{border-color:rgba(0,212,170,.5)}
+    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .avatar-upload{display:flex;align-items:center;gap:16px}
+    .avatar-preview{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,var(--teal),var(--blue));display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:#fff;flex-shrink:0}
+    .avatar-btns{display:flex;flex-direction:column;gap:6px}
+    .avatar-btn{padding:6px 14px;font-size:12px;font-weight:500;font-family:inherit;border:1px solid var(--bd);border-radius:6px;background:transparent;color:var(--t2);cursor:pointer;transition:all .15s}
+    .avatar-btn:hover{background:var(--sf2);color:var(--t1)}
+    .toggle-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--bd)}
+    .toggle-row:last-child{border-bottom:none}
+    .toggle-label{font-size:13px;font-weight:500}
+    .toggle-desc{font-size:11px;color:var(--tm);margin-top:2px}
+    .toggle-lg{width:40px;height:22px;border-radius:11px;background:var(--d700);border:none;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0}
+    .toggle-lg.on{background:var(--teal)}
+    .toggle-lg::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s}
+    .toggle-lg.on::after{transform:translateX(18px)}
+    .modal-footer{padding:16px 24px;border-top:1px solid var(--bd);display:flex;justify-content:flex-end;gap:10px}
+    .modal-btn{padding:9px 20px;font-size:13px;font-weight:500;font-family:inherit;border-radius:8px;cursor:pointer;transition:all .15s}
+    .modal-btn.cancel{background:transparent;border:1px solid var(--bd);color:var(--t2)}
+    .modal-btn.cancel:hover{background:var(--sf2);color:var(--t1)}
+    .modal-btn.save{background:linear-gradient(135deg,var(--teal),var(--teal-d));border:none;color:#fff}
+    .modal-btn.save:hover{box-shadow:0 4px 16px var(--teal-g)}
+    .settings-tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--d800);border-radius:8px;padding:4px}
+    .settings-tab{flex:1;padding:8px;font-size:12px;font-weight:500;font-family:inherit;border:none;border-radius:6px;background:transparent;color:var(--t2);cursor:pointer;transition:all .15s}
+    .settings-tab.active{background:var(--teal);color:#fff}
+    .settings-tab:hover:not(.active){background:var(--sf2);color:var(--t1)}
+    .settings-panel{display:none}.settings-panel.active{display:block}
+    .select-input{width:100%;padding:10px 14px;font-size:13px;font-family:inherit;color:var(--t1);background:var(--d800);border:1px solid var(--bd);border-radius:8px;outline:none;cursor:pointer;transition:border-color .15s}
+    .select-input:focus{border-color:rgba(0,212,170,.5)}
+
+    /* Prediction Result */
+    .pred-result{background:var(--d800);border:1px solid var(--teal);border-radius:12px;padding:20px;margin-bottom:20px;display:none}
+    .pred-result.show{display:block}
+    .pred-result h3{font-size:15px;font-weight:600;color:var(--teal);margin-bottom:12px}
+    .pred-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .pred-item{background:var(--sf);border:1px solid var(--bd);border-radius:8px;padding:12px;text-align:center}
+    .pred-item .lbl{font-size:11px;color:var(--tm);margin-bottom:4px}
+    .pred-item .val{font-size:20px;font-weight:700}
+
+    /* Chips */
+    .chips{display:flex;gap:8px}
+    .chip{padding:6px 14px;font-size:12px;font-weight:500;border-radius:20px;border:1px solid var(--bd);background:var(--sf);color:var(--t2);cursor:pointer;transition:all .15s}
+    .chip.active,.chip:hover{background:rgba(0,212,170,.12);border-color:var(--teal);color:var(--teal)}
+
+    /* Toast */
+    .toast-wrap{position:fixed;bottom:20px;right:20px;z-index:100;display:flex;flex-direction:column;gap:8px}
+    .toast{padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;color:#fff;opacity:0;transform:translateY(10px);animation:toastIn .3s forwards;backdrop-filter:blur(12px)}
+    .toast.success{background:rgba(0,212,170,.9)}
+    .toast.info{background:rgba(59,130,246,.9)}
+    @keyframes toastIn{to{opacity:1;transform:translateY(0)}}
+
+    @media(max-width:1024px){.sb{display:none}.mn{margin-left:0}.sr{grid-template-columns:repeat(2,1fr)}.cg,.fw,.rg{grid-template-columns:1fr}.ain,.eg{grid-template-columns:1fr}.sp-g{grid-template-columns:repeat(2,1fr)}}
+    @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <aside class="sb">
+    <div class="sb-logo">
+      <div class="sb-icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg></div>
+      <div class="sb-text">Ocean<span>Mind</span> AI</div>
+    </div>
+    <nav class="sb-nav">
+      <div class="nav-lbl">Dashboards</div>
+      <a class="nav-item active" data-db="oceanographic">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        Oceanographic Analytics
+      </a>
+      <a class="nav-item" data-db="fisheries">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        Fisheries Prediction
+      </a>
+      <a class="nav-item" data-db="biodiversity">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        Biodiversity Analysis
+      </a>
+      <a class="nav-item" data-db="map3d">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        3D Ocean Map
+      </a>
+      <div class="nav-lbl">System</div>
+      <a class="nav-item" onclick="event.preventDefault();openModal('settingsModal')">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1115.6 12 3.611 3.611 0 0112 15.6z"/></svg>
+        Settings
+      </a>
+    </nav>
+    <div class="sb-foot">
+      <div class="usr" onclick="openModal('profileModal')">
+        <div class="avr" id="sidebarAvatar">RS</div>
+        <div><div class="un" id="sidebarName">Dr. Sharma</div><div class="ur" id="sidebarRole">Marine Scientist</div></div>
+      </div>
+      <button class="logout-btn" onclick="window.location.href='login.html'">Sign Out</button>
+    </div>
+  </aside>
+
+  <!-- Profile Modal -->
+  <div class="modal-overlay" id="profileModal">
+    <div class="modal">
+      <div class="modal-header"><h2>Profile Settings</h2><button class="modal-close" onclick="closeModal('profileModal')">&times;</button></div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <div class="modal-section-title">Avatar</div>
+          <div class="avatar-upload">
+            <div class="avatar-preview" id="avatarPreview">RS</div>
+            <div class="avatar-btns">
+              <button class="avatar-btn" onclick="document.getElementById('avatarInput').click()">Upload Photo</button>
+              <button class="avatar-btn" onclick="removeAvatar()">Remove</button>
+              <input type="file" id="avatarInput" accept="image/*" style="display:none" onchange="previewAvatar(event)">
+            </div>
+          </div>
+        </div>
+        <div class="modal-section">
+          <div class="modal-section-title">Personal Information</div>
+          <div class="form-row">
+            <div class="form-group"><label>First Name</label><input class="form-input" id="profileFirstName" value="Dr."></div>
+            <div class="form-group"><label>Last Name</label><input class="form-input" id="profileLastName" value="Sharma"></div>
+          </div>
+          <div class="form-group"><label>Email Address</label><input class="form-input" type="email" id="profileEmail" value="dr.sharma@oceanmind.ai"></div>
+          <div class="form-group"><label>Job Title</label><input class="form-input" id="profileRole" value="Marine Scientist"></div>
+          <div class="form-group"><label>Organization</label><input class="form-input" id="profileOrg" value="OceanMind Research Institute"></div>
+        </div>
+        <div class="modal-section">
+          <div class="modal-section-title">Change Password</div>
+          <div class="form-group"><label>Current Password</label><input class="form-input" type="password" placeholder="Enter current password"></div>
+          <div class="form-row">
+            <div class="form-group"><label>New Password</label><input class="form-input" type="password" placeholder="Enter new password"></div>
+            <div class="form-group"><label>Confirm Password</label><input class="form-input" type="password" placeholder="Confirm new password"></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer"><button class="modal-btn cancel" onclick="closeModal('profileModal')">Cancel</button><button class="modal-btn save" onclick="saveProfile()">Save Changes</button></div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="settingsModal">
+    <div class="modal">
+      <div class="modal-header"><h2>Settings</h2><button class="modal-close" onclick="closeModal('settingsModal')">&times;</button></div>
+      <div class="modal-body">
+        <div class="settings-tabs">
+          <button class="settings-tab active" onclick="switchSettingsTab('general',this)">General</button>
+          <button class="settings-tab" onclick="switchSettingsTab('notifications',this)">Notifications</button>
+          <button class="settings-tab" onclick="switchSettingsTab('appearance',this)">Appearance</button>
+          <button class="settings-tab" onclick="switchSettingsTab('data',this)">Data</button>
+        </div>
+        <div class="settings-panel active" id="settings-general">
+          <div class="form-group"><label>Language</label><select class="select-input"><option>English</option><option>Spanish</option><option>French</option><option>German</option><option>Hindi</option></select></div>
+          <div class="form-group"><label>Timezone</label><select class="select-input"><option>UTC</option><option>IST</option><option>EST</option><option>PST</option><option>CET</option></select></div>
+          <div class="form-group"><label>Date Format</label><select class="select-input"><option>MM/DD/YYYY</option><option>DD/MM/YYYY</option><option>YYYY-MM-DD</option></select></div>
+        </div>
+        <div class="settings-panel" id="settings-notifications">
+          <div class="toggle-row"><div><div class="toggle-label">Email Notifications</div><div class="toggle-desc">Receive alerts via email</div></div><button class="toggle-lg on" onclick="this.classList.toggle('on')"></button></div>
+          <div class="toggle-row"><div><div class="toggle-label">Push Notifications</div><div class="toggle-desc">Browser push alerts</div></div><button class="toggle-lg on" onclick="this.classList.toggle('on')"></button></div>
+          <div class="toggle-row"><div><div class="toggle-label">Weekly Summary</div><div class="toggle-desc">Weekly data digest</div></div><button class="toggle-lg" onclick="this.classList.toggle('on')"></button></div>
+          <div class="toggle-row"><div><div class="toggle-label">Fishery Alerts</div><div class="toggle-desc">Fishing zone notifications</div></div><button class="toggle-lg on" onclick="this.classList.toggle('on')"></button></div>
+          <div class="toggle-row"><div><div class="toggle-label">Biodiversity Updates</div><div class="toggle-desc">Species sighting alerts</div></div><button class="toggle-lg" onclick="this.classList.toggle('on')"></button></div>
+        </div>
+        <div class="settings-panel" id="settings-appearance">
+          <div class="toggle-row"><div><div class="toggle-label">Compact Mode</div><div class="toggle-desc">Reduce spacing</div></div><button class="toggle-lg" onclick="this.classList.toggle('on')"></button></div>
+          <div class="toggle-row"><div><div class="toggle-label">Animated Charts</div><div class="toggle-desc">Smooth transitions</div></div><button class="toggle-lg on" onclick="this.classList.toggle('on')"></button></div>
+          <div class="form-group" style="margin-top:16px"><label>Chart Color Theme</label><select class="select-input"><option>Ocean (Teal/Cyan)</option><option>Deep Sea (Blue/Indigo)</option><option>Coral Reef (Orange/Pink)</option><option>Arctic (Ice Blue/White)</option></select></div>
+        </div>
+        <div class="settings-panel" id="settings-data">
+          <div class="form-group"><label>Refresh Interval</label><select class="select-input"><option>30 seconds</option><option selected>1 minute</option><option>5 minutes</option><option>15 minutes</option><option>Manual only</option></select></div>
+          <div class="toggle-row"><div><div class="toggle-label">Cache Locally</div><div class="toggle-desc">Faster loading</div></div><button class="toggle-lg on" onclick="this.classList.toggle('on')"></button></div>
+          <div class="toggle-row"><div><div class="toggle-label">Auto-Export</div><div class="toggle-desc">Daily reports</div></div><button class="toggle-lg" onclick="this.classList.toggle('on')"></button></div>
+          <div style="margin-top:16px"><button class="modal-btn cancel" onclick="showToast('Cache cleared!','info')" style="font-size:12px">Clear Local Cache</button></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button class="modal-btn cancel" onclick="closeModal('settingsModal')">Cancel</button><button class="modal-btn save" onclick="closeModal('settingsModal');showToast('Settings saved!')">Save Settings</button></div>
+    </div>
+  </div>
+
+  <main class="mn">
+    <header class="tb">
+      <div class="tb-t" id="pageTitle">Oceanographic Analytics</div>
+      <div class="tb-a" id="topbarActions"></div>
+    </header>
+
+    <!-- ========== OCEANOGRAPHIC ========== -->
+    <div class="ct db-section active" id="db-oceanographic">
+      <div class="rb">
+        <label>Select Region</label>
+        <select class="rs" id="ocRegion">
+          <option>Arabian Sea</option><option>Bay of Bengal</option><option>Indian Ocean</option><option>Pacific Ocean</option><option>Atlantic Ocean</option>
+        </select>
+        <div class="chips">
+          <span class="chip active" data-param="sst">SST</span>
+          <span class="chip" data-param="chlor">Chlorophyll</span>
+          <span class="chip" data-param="sal">Salinity</span>
+        </div>
+      </div>
+      <div class="sr">
+        <div class="sc"><div class="sl"><span class="sd" style="background:var(--orange)"></span>Sea Surface Temp</div><div class="sv" style="color:var(--orange)">28.4°C</div><div class="ch up">↑ +1.2°C from last week</div></div>
+        <div class="sc"><div class="sl"><span class="sd" style="background:var(--teal)"></span>Chlorophyll-a</div><div class="sv" style="color:var(--teal)">3.7 mg/m³</div><div class="ch up">↑ +0.4 mg/m³</div></div>
+        <div class="sc"><div class="sl"><span class="sd" style="background:var(--blue)"></span>Salinity</div><div class="sv" style="color:var(--blue)">35.2 PSU</div><div class="ch dn">↓ -0.3 PSU</div></div>
+        <div class="sc"><div class="sl"><span class="sd" style="background:var(--purple)"></span>Dissolved O₂</div><div class="sv" style="color:var(--purple)">6.8 mg/L</div><div class="ch up">↑ +0.1 mg/L</div></div>
+      </div>
+      <div class="cg">
+        <div class="cc"><div class="ch-h"><div class="ch-t">SST Trend (30 Days)</div><div class="ch-b">Live</div></div><div class="cw"><canvas id="ocChartSST"></canvas></div></div>
+        <div class="cc"><div class="ch-h"><div class="ch-t">Chlorophyll Concentration</div><div class="ch-b">Live</div></div><div class="cw"><canvas id="ocChartChlor"></canvas></div></div>
+        <div class="cc"><div class="ch-h"><div class="ch-t">Salinity Profile</div><div class="ch-b">Live</div></div><div class="cw"><canvas id="ocChartSal"></canvas></div></div>
+        <div class="cc"><div class="ch-h"><div class="ch-t">Dissolved Oxygen</div><div class="ch-b">Live</div></div><div class="cw"><canvas id="ocChartO2"></canvas></div></div>
+      </div>
+      <div class="ais">
+        <div class="aih"><div class="aii"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg></div><div class="ait">AI Trend Analysis</div><div class="aig">AI Powered</div></div>
+        <div class="ain">
+          <div class="ic"><div class="il">Warming Trend</div><div class="iv">+2.1°C</div><div class="id">Arabian Sea surface temperatures trending above 10-year average. Coral bleaching risk in shallow zones.</div><div class="it up">↑ Above seasonal norm</div></div>
+          <div class="ic"><div class="il">Bloom Detection</div><div class="iv" style="color:var(--teal)">Active</div><div class="id">Phytoplankton bloom in northern Arabian Sea. Chlorophyll 3× above baseline — nutrient upwelling driven.</div><div class="it up">↑ Expanding northward</div></div>
+          <div class="ic"><div class="il">Salinity Anomaly</div><div class="iv" style="color:var(--blue)">-0.8 PSU</div><div class="id">Freshwater influx from monsoon runoff reducing coastal salinity. Stratification impacting nutrient mixing.</div><div class="it dn">↓ Monsoon dilution</div></div>
+        </div>
+      </div>
+      <div class="tbl">
+        <div class="tbl-h"><div class="tbl-t">Recent Sensor Readings</div><button class="btn" onclick="exportTable('ocTable')">Export CSV</button></div>
+        <table id="ocTable">
+          <thead><tr><th>Station</th><th>Region</th><th>SST</th><th>Chl-a</th><th>Salinity</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>ARB-001</td><td>Arabian Sea North</td><td>29.1°C</td><td>4.2 mg/m³</td><td>34.8 PSU</td><td><span class="badge badge-w">Warm</span></td></tr>
+            <tr><td>ARB-002</td><td>Arabian Sea Central</td><td>28.4°C</td><td>3.7 mg/m³</td><td>35.2 PSU</td><td><span class="badge badge-n">Normal</span></td></tr>
+            <tr><td>BOB-001</td><td>Bay of Bengal East</td><td>29.8°C</td><td>2.9 mg/m³</td><td>33.5 PSU</td><td><span class="badge badge-w">Warm</span></td></tr>
+            <tr><td>IND-003</td><td>Indian Ocean South</td><td>25.6°C</td><td>1.8 mg/m³</td><td>35.9 PSU</td><td><span class="badge badge-n">Normal</span></td></tr>
+            <tr><td>ARB-005</td><td>Arabian Sea West</td><td>27.9°C</td><td>5.1 mg/m³</td><td>34.1 PSU</td><td><span class="badge badge-a">Alert</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ========== FISHERIES ========== -->
+    <div class="ct db-section" id="db-fisheries">
+      <div class="rb">
+        <label>Select Fishing Zone</label>
+        <select class="rs" id="fishZone">
+          <option>Zone A — Arabian Sea North</option><option>Zone B — Arabian Sea Central</option><option>Zone C — Bay of Bengal East</option><option>Zone D — Indian Ocean South</option><option>Zone E — Bay of Bengal West</option>
+        </select>
+      </div>
+      <div class="pred-result" id="predResult">
+        <h3>AI Prediction Results</h3>
+        <div class="pred-grid">
+          <div class="pred-item"><div class="lbl">Predicted Yield</div><div class="val" style="color:var(--teal)" id="predYield">1,247 t</div></div>
+          <div class="pred-item"><div class="lbl">Best Window</div><div class="val" style="color:var(--blue)" id="predWindow">Jul 24-28</div></div>
+          <div class="pred-item"><div class="lbl">Confidence</div><div class="val" style="color:var(--orange)" id="predConf">92%</div></div>
+        </div>
+      </div>
+      <div class="sr">
+        <div class="sc"><div class="sl"><span class="sd" style="background:var(--teal)"></span>Est. Fish Yield</div><div class="sv" style="color:var(--teal)">1,247 t</div><div class="ch up">↑ +18% from last month</div></div>
+        <div class="sc"><div class="sl"><span class="sd" style="background:var(--blue)"></span>Optimal Zones</div><div class="sv" style="color:var(--blue)">3</div><div class="ch up">↑ 2 new high-yield areas</div></div>
+        <div class="sc"><div class="sl"><span class="sd" style="background:var(--yellow)"></span>Season Score</div><div class="sv" style="color:var(--yellow)">8.4</div><div class="ch up">↑ Peak season window</div></div>
+        <div class="sc"><div class="sl"><span class="sd" style="background:var(--orange)"></span>Confidence</div><div class="sv" style="color:var(--orange)">92%</div><div class="ch up">↑ Model accuracy</div></div>
+      </div>
+      <div class="cg">
+        <div class="cc"><div class="ch-h"><div class="ch-t">Historical Catch (12 Months)</div><div class="ch-b">Loaded</div></div><div class="cw"><canvas id="fishCatch"></canvas></div></div>
+        <div class="cc"><div class="ch-h"><div class="ch-t">AI Predicted Yield</div><div class="ch-b">AI</div></div><div class="cw"><canvas id="fishPred"></canvas></div></div>
+      </div>
+      <div class="sp-g">
+        <div class="sp-c"><div class="sp-i">🐟</div><div class="sp-n">Indian Mackerel</div><div class="sp-v" style="color:var(--teal)">423 t</div><div class="sp-u">predicted</div></div>
+        <div class="sp-c"><div class="sp-i">🦐</div><div class="sp-n">Tiger Prawn</div><div class="sp-v" style="color:var(--blue)">312 t</div><div class="sp-u">predicted</div></div>
+        <div class="sp-c"><div class="sp-i">🐠</div><div class="sp-n">Oil Sardine</div><div class="sp-v" style="color:var(--green)">289 t</div><div class="sp-u">predicted</div></div>
+        <div class="sp-c"><div class="sp-i">🦀</div><div class="sp-n">Crab</div><div class="sp-v" style="color:var(--orange)">223 t</div><div class="sp-u">predicted</div></div>
+      </div>
+      <div class="fw">
+        <div class="wc">
+          <h3><svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg> AI Prediction Summary</h3>
+          <div class="ain" style="grid-template-columns:1fr">
+            <div class="ic"><div class="il">Predicted Total Yield</div><div class="iv">1,247 tonnes</div><div class="id">Based on SST, chlorophyll, historical data, and monsoon models. Northern Arabian Sea optimal for pelagic species.</div><div class="it up">↑ 18% above seasonal average</div></div>
+            <div class="ic"><div class="il">Primary Driver</div><div class="iv" style="color:var(--teal)">Upwelling Event</div><div class="id">Strong upwelling along western coast bringing nutrient-rich deep water. Chlorophyll-a 3× baseline.</div></div>
+          </div>
+        </div>
+        <div class="wc">
+          <h3><svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg> Recommended Windows</h3>
+          <ul class="wl">
+            <li><span class="wt">Jul 24 — Jul 28</span><div class="wb"><div class="wbf" style="width:92%;background:var(--teal)"></div></div><span class="ws h">92% Optimal</span></li>
+            <li><span class="wt">Aug 02 — Aug 07</span><div class="wb"><div class="wbf" style="width:85%;background:var(--teal)"></div></div><span class="ws h">85% Optimal</span></li>
+            <li><span class="wt">Aug 12 — Aug 16</span><div class="wb"><div class="wbf" style="width:71%;background:var(--yellow)"></div></div><span class="ws m">71% Good</span></li>
+            <li><span class="wt">Aug 22 — Aug 25</span><div class="wb"><div class="wbf" style="width:58%;background:var(--yellow)"></div></div><span class="ws m">58% Fair</span></li>
+            <li><span class="wt">Sep 01 — Sep 04</span><div class="wb"><div class="wbf" style="width:34%;background:var(--red)"></div></div><span class="ws l">34% Low</span></li>
+          </ul>
+        </div>
+      </div>
+      <div class="tbl">
+        <div class="tbl-h"><div class="tbl-t">Historical Catch Records</div><button class="btn" onclick="exportTable('fishTable')">Export CSV</button></div>
+        <table id="fishTable">
+          <thead><tr><th>Date</th><th>Zone</th><th>Species</th><th>Catch (t)</th><th>Effort (hrs)</th><th>CPUE</th><th>Rating</th></tr></thead>
+          <tbody>
+            <tr><td>Jul 18, 2026</td><td>Zone A</td><td>Indian Mackerel</td><td>42.3</td><td>180</td><td>0.235</td><td><span class="badge badge-h">High</span></td></tr>
+            <tr><td>Jul 15, 2026</td><td>Zone B</td><td>Tiger Prawn</td><td>38.1</td><td>210</td><td>0.181</td><td><span class="badge badge-h">High</span></td></tr>
+            <tr><td>Jul 12, 2026</td><td>Zone A</td><td>Oil Sardine</td><td>29.7</td><td>160</td><td>0.186</td><td><span class="badge badge-m">Medium</span></td></tr>
+            <tr><td>Jul 08, 2026</td><td>Zone C</td><td>Crab</td><td>21.4</td><td>190</td><td>0.113</td><td><span class="badge badge-m">Medium</span></td></tr>
+            <tr><td>Jul 01, 2026</td><td>Zone B</td><td>Tiger Prawn</td><td>44.6</td><td>170</td><td>0.262</td><td><span class="badge badge-h">High</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ========== BIODIVERSITY ========== -->
+    <div class="ct db-section" id="db-biodiversity">
+      <div class="rb">
+        <label>Select Marine Region</label>
+        <select class="rs" id="bioRegion">
+          <option>Arabian Sea - North</option><option>Arabian Sea - Central</option><option>Bay of Bengal - East</option><option>Bay of Bengal - West</option><option>Indian Ocean - South</option>
+        </select>
+      </div>
+      <div class="edna-result" id="ednaResult">
+        <h4>eDNA Analysis Complete</h4>
+        <p id="ednaText">124 samples processed from Arabian Sea North. 847 unique species detected including 12 endangered. Shannon Diversity Index: 3.42 (High).</p>
+      </div>
+      <div class="sr">
+        <div class="sc"><div class="sl"><span class="sd" style="background:var(--teal)"></span>Species Detected</div><div class="sv" style="color:var(--teal)">847</div><div class="ch up">+32 from last survey</div></div>
+        <div class="sc"><div class="sl"><span class="sd" style="background:var(--blue)"></span>eDNA Samples</div><div class="sv" style="color:var(--blue)">124</div><div class="ch up">98% processed</div></div>
+        <div class="sc"><div class="sl"><span class="sd" style="background:var(--green)"></span>Shannon Index</div><div class="sv" style="color:var(--green)">3.42</div><div class="ch up">High diversity</div></div>
+        <div class="sc"><div class="sl"><span class="sd" style="background:var(--purple)"></span>Endangered Found</div><div class="sv" style="color:var(--purple)">12</div><div class="ch dn">-2 from baseline</div></div>
+      </div>
+      <div class="rg">
+        <div class="rc"><div class="gl">Ecological Risk Score</div><div class="gw"><canvas id="gaugeRisk"></canvas></div><div class="gv" style="color:var(--yellow)">6.2</div><div class="gd">Moderate risk. Habitat degradation in 3 of 12 zones. Seasonal fishing pressure contributing to localized decline.</div></div>
+        <div class="rc"><div class="gl">Conservation Status Index</div><div class="gw"><canvas id="gaugeCons"></canvas></div><div class="gv" style="color:var(--teal)">7.8</div><div class="gd">Healthy overall. Marine protected areas showing positive recovery. 89% of indicator species within sustainable thresholds.</div></div>
+      </div>
+      <div class="cg">
+        <div class="cc"><div class="ch-h"><div class="ch-t">Species Distribution by Taxonomy</div><div class="ch-b">eDNA</div></div><div class="cw"><canvas id="bioTax"></canvas></div></div>
+        <div class="cc"><div class="ch-h"><div class="ch-t">Biodiversity Trend (12 Months)</div><div class="ch-b">AI Model</div></div><div class="cw"><canvas id="bioTrend"></canvas></div></div>
+      </div>
+      <div class="sp-g">
+        <div class="sp-c"><div class="sp-i">🦈</div><div class="sp-n">Sharks & Rays</div><div class="sp-v" style="color:var(--teal)">42</div><div class="sp-u">species</div></div>
+        <div class="sp-c"><div class="sp-i">🐙</div><div class="sp-n">Cephalopods</div><div class="sp-v" style="color:var(--blue)">67</div><div class="sp-u">species</div></div>
+        <div class="sp-c"><div class="sp-i">🐢</div><div class="sp-n">Sea Turtles</div><div class="sp-v" style="color:var(--green)">5</div><div class="sp-u">species</div></div>
+        <div class="sp-c"><div class="sp-i">🪸</div><div class="sp-n">Corals</div><div class="sp-v" style="color:var(--orange)">124</div><div class="sp-u">species</div></div>
+      </div>
+      <div class="eg">
+        <div class="ec"><div class="ech"><span class="eid">eDNA-ARB-001</span><span class="edt">Jul 20, 2026</span></div><div class="es">Indian Mackerel</div><div class="ecnt">12,400 reads - High abundance</div><div class="eb"><div class="ebf" style="width:85%;background:var(--teal)"></div></div></div>
+        <div class="ec"><div class="ech"><span class="eid">eDNA-ARB-002</span><span class="edt">Jul 20, 2026</span></div><div class="es">Whale Shark</div><div class="ecnt">340 reads - Low abundance</div><div class="eb"><div class="ebf" style="width:12%;background:var(--red)"></div></div></div>
+        <div class="ec"><div class="ech"><span class="eid">eDNA-BOB-003</span><span class="edt">Jul 19, 2026</span></div><div class="es">Olive Ridley Turtle</div><div class="ecnt">890 reads - Moderate</div><div class="eb"><div class="ebf" style="width:42%;background:var(--yellow)"></div></div></div>
+        <div class="ec"><div class="ech"><span class="eid">eDNA-ARB-004</span><span class="edt">Jul 19, 2026</span></div><div class="es">Blue Whale</div><div class="ecnt">210 reads - Rare detection</div><div class="eb"><div class="ebf" style="width:8%;background:var(--orange)"></div></div></div>
+        <div class="ec"><div class="ech"><span class="eid">eDNA-IND-005</span><span class="edt">Jul 18, 2026</span></div><div class="es">Staghorn Coral DNA</div><div class="ecnt">5,600 reads - Reef recovery</div><div class="eb"><div class="ebf" style="width:68%;background:var(--teal)"></div></div></div>
+        <div class="ec"><div class="ech"><span class="eid">eDNA-BOB-006</span><span class="edt">Jul 18, 2026</span></div><div class="es">Giant Squid</div><div class="ecnt">85 reads - Very rare</div><div class="eb"><div class="ebf" style="width:4%;background:var(--red)"></div></div></div>
+      </div>
+      <div class="ais">
+        <div class="aih"><div class="aii"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg></div><div class="ait">AI Biodiversity Analysis</div><div class="aig">AI Powered</div></div>
+        <div class="ain">
+          <div class="ic"><div class="il">Habitat Health</div><div class="iv" style="color:var(--teal)">Stable</div><div class="id">Coral reef coverage increased 2.3% in protected zones. Mangrove restoration showing early success.</div><div class="it up">Recovery trend ongoing</div></div>
+          <div class="ic"><div class="il">Migration Alert</div><div class="iv" style="color:var(--orange)">Active</div><div class="id">Whale shark corridor detected along western Arabian Sea. Seasonal movement aligns with plankton bloom.</div><div class="it up">Expected: Aug 5-12</div></div>
+          <div class="ic"><div class="il">Threat Assessment</div><div class="iv" style="color:var(--yellow)">Moderate</div><div class="id">Bycatch risk elevated in Zones A and B. Ghost net accumulation near shipping lanes.</div><div class="it dn">2 critical zones</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 3D OCEAN MAP ========== -->
+    <div class="ct db-section" id="db-map3d" style="padding:0">
+      <div class="map-area" id="mapArea">
+        <canvas class="map-canvas" id="mapCanvas"></canvas>
+        <div class="map-toolbar">
+          <button class="map-btn" id="zoomIn">+</button>
+          <button class="map-btn" id="zoomOut">-</button>
+          <button class="map-btn" id="resetView">⟲</button>
+          <button class="map-btn" id="screenshot">📷</button>
+          <button class="map-btn" id="toggleFs">⛶</button>
+        </div>
+        <div class="map-layers">
+          <div class="layer-title">Map Layers <span id="layerCount" style="float:right;color:var(--teal)">6 / 6</span></div>
+          <div class="layer-row"><span class="layer-name">SST Temperature</span><button class="toggle on" data-layer="sst"></button></div>
+          <div class="layer-row"><span class="layer-name">Chlorophyll</span><button class="toggle on" data-layer="chlor"></button></div>
+          <div class="layer-row"><span class="layer-name">Salinity</span><button class="toggle on" data-layer="sal"></button></div>
+          <div class="layer-row"><span class="layer-name">Currents</span><button class="toggle on" data-layer="currents"></button></div>
+          <div class="layer-row"><span class="layer-name">Marine Zones</span><button class="toggle on" data-layer="zones"></button></div>
+          <div class="layer-row"><span class="layer-name">Anomalies</span><button class="toggle on" data-layer="anomalies"></button></div>
+        </div>
+        <div class="map-info" id="zoomInfo">Zoom: 100% | Scroll to zoom, drag to pan</div>
+        <div class="anomaly-list">
+          <div class="anomaly-title">Active Anomalies</div>
+          <ul style="list-style:none;padding:0">
+            <li><strong>SST Anomaly</strong> — Northern Arabian Sea: +3.2°C above baseline</li>
+            <li><strong>Upwelling Event</strong> — Western coast nutrient surge. Chlorophyll 4× normal</li>
+            <li><strong>Salinity Drop</strong> — Bay of Bengal freshwater plume 200km offshore</li>
+            <li><strong>Whale Migration</strong> — 3 pods detected heading southeast</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="toast-wrap" id="toastWrap"></div>
+
+  <script>
+    // ========== TOAST ==========
+    function showToast(msg, type) {
+      type = type || 'success';
+      var wrap = document.getElementById('toastWrap');
+      var t = document.createElement('div');
+      t.className = 'toast ' + type;
+      t.textContent = msg;
+      wrap.appendChild(t);
+      setTimeout(function() { t.style.opacity = '0'; setTimeout(function() { t.remove(); }, 300); }, 3000);
+    }
+
+    // ========== MODALS ==========
+    function openModal(id) { document.getElementById(id).classList.add('show'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+    document.querySelectorAll('.modal-overlay').forEach(function(o) {
+      o.addEventListener('click', function(e) { if (e.target === o) o.classList.remove('show'); });
+    });
+    function previewAvatar(e) {
+      var file = e.target.files[0]; if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(ev) { document.getElementById('avatarPreview').innerHTML = '<img src="'+ev.target.result+'" style="width:100%;height:100%;border-radius:50%;object-fit:cover">'; };
+      reader.readAsDataURL(file);
+    }
+    function removeAvatar() { document.getElementById('avatarPreview').textContent = 'RS'; document.getElementById('avatarInput').value = ''; }
+    function saveProfile() {
+      var fn = document.getElementById('profileFirstName').value.trim();
+      var ln = document.getElementById('profileLastName').value.trim();
+      var role = document.getElementById('profileRole').value.trim();
+      var initials = (fn.charAt(0) + ln.charAt(0)).toUpperCase() || 'RS';
+      document.getElementById('sidebarAvatar').textContent = initials;
+      document.getElementById('avatarPreview').textContent = initials;
+      if (fn || ln) document.getElementById('sidebarName').textContent = (fn + ' ' + ln).trim();
+      if (role) document.getElementById('sidebarRole').textContent = role;
+      closeModal('profileModal');
+      showToast('Profile updated successfully!');
+    }
+    function switchSettingsTab(tab, btn) {
+      document.querySelectorAll('.settings-tab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelectorAll('.settings-panel').forEach(function(p) { p.classList.remove('active'); });
+      btn.classList.add('active');
+      document.getElementById('settings-' + tab).classList.add('active');
+    }
+
+    // ========== DASHBOARD SWITCHING ==========
+    var titles = { oceanographic: 'Oceanographic Analytics', fisheries: 'Fisheries Prediction', biodiversity: 'Biodiversity Analysis', map3d: '3D Ocean Map' };
+
+    document.querySelectorAll('.nav-item[data-db]').forEach(function(item) {
+      item.addEventListener('click', function(e) {
+        e.preventDefault();
+        var db = item.getAttribute('data-db');
+        document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+        item.classList.add('active');
+        document.querySelectorAll('.db-section').forEach(function(s) { s.classList.remove('active'); });
+        document.getElementById('db-' + db).classList.add('active');
+        document.getElementById('pageTitle').textContent = titles[db];
+        if (db === 'map3d') { initMap(); }
+        else { renderAllCharts(); }
+        showToast('Switched to ' + titles[db], 'info');
+      });
+    });
+
+    // ========== EXPORT CSV ==========
+    function exportTable(tableId) {
+      var rows = [];
+      var table = document.getElementById(tableId);
+      table.querySelectorAll('tr').forEach(function(tr) {
+        var cells = Array.from(tr.querySelectorAll('th,td')).map(function(td) { return td.textContent.trim(); });
+        rows.push(cells);
+      });
+      var csv = rows.map(function(r) { return r.join(','); }).join('\n');
+      var blob = new Blob([csv], { type: 'text/csv' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a'); a.href = url; a.download = tableId + '.csv'; a.click();
+      URL.revokeObjectURL(url);
+      showToast('CSV exported!');
+    }
+
+    // ========== CHART DRAWING ==========
+    function drawLineChart(canvasId, data, color, min, max) {
+      var canvas = document.getElementById(canvasId);
+      if (!canvas || !canvas.parentElement) return;
+      var ctx = canvas.getContext('2d');
+      var dpr = window.devicePixelRatio || 1;
+      var rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+      var w = rect.width, h = rect.height;
+      var pad = { top: 10, right: 10, bottom: 24, left: 40 };
+      var plotW = w - pad.left - pad.right, plotH = h - pad.top - pad.bottom;
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
+      for (var i = 0; i <= 4; i++) {
+        var y = pad.top + (plotH / 4) * i;
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+        var val = max - ((max - min) / 4) * i;
+        ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '10px Inter'; ctx.textAlign = 'right';
+        ctx.fillText(val.toFixed(1), pad.left - 6, y + 3);
+      }
+      var points = data.map(function(v, i) { return { x: pad.left + (plotW / (data.length - 1)) * i, y: pad.top + plotH - ((v - min) / (max - min)) * plotH }; });
+      var grad = ctx.createLinearGradient(0, pad.top, 0, h - pad.bottom);
+      grad.addColorStop(0, color + '30'); grad.addColorStop(1, color + '00');
+      ctx.beginPath(); ctx.moveTo(points[0].x, h - pad.bottom);
+      points.forEach(function(p) { ctx.lineTo(p.x, p.y); });
+      ctx.lineTo(points[points.length - 1].x, h - pad.bottom); ctx.closePath();
+      ctx.fillStyle = grad; ctx.fill();
+      ctx.beginPath(); points.forEach(function(p, i) { i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); });
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+      points.forEach(function(p) { ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); });
+      ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '10px Inter'; ctx.textAlign = 'center';
+      ['W1','W2','W3','W4','W5','W6'].forEach(function(l, i) { ctx.fillText(l, pad.left + (plotW / 5) * i, h - 4); });
+    }
+
+    function drawBarChart(canvasId, data, color, max) {
+      var canvas = document.getElementById(canvasId);
+      if (!canvas || !canvas.parentElement) return;
+      var ctx = canvas.getContext('2d');
+      var dpr = window.devicePixelRatio || 1;
+      var rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+      var w = rect.width, h = rect.height;
+      var pad = { top: 10, right: 10, bottom: 28, left: 44 };
+      var plotW = w - pad.left - pad.right, plotH = h - pad.top - pad.bottom;
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
+      for (var i = 0; i <= 4; i++) {
+        var y = pad.top + (plotH / 4) * i;
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '10px Inter'; ctx.textAlign = 'right';
+        ctx.fillText(Math.round(max - (max / 4) * i) + 't', pad.left - 6, y + 3);
+      }
+      var barW = plotW / data.length * 0.6;
+      var gap = plotW / data.length;
+      data.forEach(function(v, i) {
+        var barH = (v / max) * plotH;
+        var x = pad.left + gap * i + (gap - barW) / 2;
+        var bY = pad.top + plotH - barH;
+        var grad = ctx.createLinearGradient(0, bY, 0, pad.top + plotH);
+        grad.addColorStop(0, color); grad.addColorStop(1, color + '40');
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.roundRect(x, bY, barW, barH, [4, 4, 0, 0]); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '10px Inter'; ctx.textAlign = 'center';
+        ctx.fillText('M' + (i + 1), x + barW / 2, h - 6);
+      });
+    }
+
+    function drawGauge(canvasId, value, max, color) {
+      var canvas = document.getElementById(canvasId);
+      if (!canvas || !canvas.parentElement) return;
+      var ctx = canvas.getContext('2d');
+      var dpr = window.devicePixelRatio || 1;
+      var rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+      var w = rect.width, h = rect.height;
+      var cx = w / 2, cy = h - 10, r = Math.min(w / 2, h) - 15;
+      ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI, 2 * Math.PI);
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.stroke();
+      var angle = Math.PI + (value / max) * Math.PI;
+      ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI, angle);
+      ctx.strokeStyle = color; ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.stroke();
+    }
+
+    function drawPieChart(canvasId, slices) {
+      var canvas = document.getElementById(canvasId);
+      if (!canvas || !canvas.parentElement) return;
+      var ctx = canvas.getContext('2d');
+      var dpr = window.devicePixelRatio || 1;
+      var rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+      var w = rect.width, h = rect.height;
+      var cx = w * 0.35, cy = h / 2, r = Math.min(w * 0.3, h / 2) - 10;
+      var total = slices.reduce(function(a, s) { return a + s.v; }, 0);
+      var startAngle = -Math.PI / 2;
+      slices.forEach(function(s) {
+        var sliceAngle = (s.v / total) * 2 * Math.PI;
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r, startAngle, startAngle + sliceAngle); ctx.closePath();
+        ctx.fillStyle = s.c; ctx.fill();
+        startAngle += sliceAngle;
+      });
+      ctx.beginPath(); ctx.arc(cx, cy, r * 0.55, 0, Math.PI * 2); ctx.fillStyle = '#060e12'; ctx.fill();
+      var legendX = w * 0.7, legendY = 20;
+      slices.forEach(function(s) {
+        ctx.fillStyle = s.c; ctx.fillRect(legendX, legendY, 10, 10);
+        ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '11px Inter'; ctx.textAlign = 'left';
+        ctx.fillText(s.l + ' (' + s.v + ')', legendX + 16, legendY + 9);
+        legendY += 20;
+      });
+    }
+
+    function genData(base, variance, n) {
+      return Array.from({ length: n }, function() { return base + (Math.random() - 0.4) * variance; });
+    }
+
+    function renderAllCharts() {
+      drawLineChart('ocChartSST', genData(28.5, 2, 30), '#f97316', 26, 31);
+      drawLineChart('ocChartChlor', genData(3.5, 2, 30), '#00d4aa', 0.5, 6);
+      drawLineChart('ocChartSal', genData(35, 2, 30), '#3b82f6', 33, 37);
+      drawLineChart('ocChartO2', genData(6.8, 1.5, 30), '#a855f7', 4, 9);
+      drawBarChart('fishCatch', [380,420,350,480,520,460,390,440,510,470,430,490], '#00d4aa', 600);
+      drawBarChart('fishPred', [0,0,0,0,0,0,480,520,560,490,440,380], '#3b82f6', 600);
+      drawGauge('gaugeRisk', 6.2, 10, '#eab308');
+      drawGauge('gaugeCons', 7.8, 10, '#00d4aa');
+      drawPieChart('bioTax', [
+        { l: 'Fish', v: 312, c: '#00d4aa' },
+        { l: 'Crustaceans', v: 187, c: '#3b82f6' },
+        { l: 'Mollusks', v: 145, c: '#f97316' },
+        { l: 'Corals', v: 98, c: '#a855f7' },
+        { l: 'Mammals', v: 42, c: '#eab308' },
+        { l: 'Reptiles', v: 23, c: '#22c55e' }
+      ]);
+      drawLineChart('bioTrend', genData(3.2, 0.8, 12), '#22c55e', 1.5, 5);
+    }
+
+    // ========== CHIP TOGGLE ==========
+    document.querySelectorAll('.chip').forEach(function(chip) {
+      chip.addEventListener('click', function() {
+        document.querySelectorAll('.chip').forEach(function(c) { c.classList.remove('active'); });
+        chip.classList.add('active');
+        renderAllCharts();
+        showToast('Showing ' + chip.textContent + ' data', 'info');
+      });
+    });
+
+    // ========== CLICKABLE CARDS ==========
+    document.querySelectorAll('.sc, .sp-c').forEach(function(card) {
+      card.addEventListener('click', function() {
+        var label = (card.querySelector('.sl') || card.querySelector('.sp-n')).textContent.trim();
+        var value = (card.querySelector('.sv') || card.querySelector('.sp-v')).textContent.trim();
+        showToast(label + ': ' + value, 'info');
+      });
+    });
+
+    // ========== 3D MAP ==========
+    var mapInited = false;
+    function initMap() {
+      if (mapInited) return;
+      mapInited = true;
+      var canvas = document.getElementById('mapCanvas');
+      var mapArea = document.getElementById('mapArea');
+      var ctx = canvas.getContext('2d');
+      var W, H, zoom = 1, offsetX = 0, offsetY = 0, time = 0, isDragging = false, lastX = 0, lastY = 0;
+      var layers = { sst: true, chlor: true, sal: true, currents: true, zones: true, anomalies: true };
+
+      function resize() {
+        var dpr = window.devicePixelRatio || 1;
+        W = mapArea.clientWidth; H = mapArea.clientHeight;
+        canvas.width = W * dpr; canvas.height = H * dpr;
+        canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+        ctx.scale(dpr, dpr);
+      }
+      resize(); window.addEventListener('resize', resize);
+
+      function draw() {
+        time += 0.015;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        var dpr = window.devicePixelRatio || 1;
+        ctx.scale(dpr, dpr);
+        ctx.clearRect(0, 0, W, H);
+
+        ctx.save();
+        ctx.translate(W / 2 + offsetX, H / 2 + offsetY);
+        ctx.scale(zoom, zoom);
+        ctx.translate(-W / 2, -H / 2);
+
+        // Ocean gradient
+        var grad = ctx.createRadialGradient(W * 0.4, H * 0.45, 0, W * 0.4, H * 0.45, W * 0.8);
+        grad.addColorStop(0, '#0a2a3a'); grad.addColorStop(0.5, '#061820'); grad.addColorStop(1, '#030a0e');
+        ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+
+        // Depth haze
+        var dhaze = ctx.createLinearGradient(0, 0, 0, H);
+        dhaze.addColorStop(0, 'rgba(0,180,220,0.06)'); dhaze.addColorStop(0.4, 'rgba(0,100,160,0.03)'); dhaze.addColorStop(1, 'rgba(0,20,30,0)');
+        ctx.fillStyle = dhaze; ctx.fillRect(0, 0, W, H);
+
+        // Grid
+        ctx.strokeStyle = 'rgba(0,180,220,0.05)'; ctx.lineWidth = 0.5;
+        for (var i = 0; i < W; i += 60) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, H); ctx.stroke(); }
+        for (var j = 0; j < H; j += 60) { ctx.beginPath(); ctx.moveTo(0, j); ctx.lineTo(W, j); ctx.stroke(); }
+
+        // Coastline
+        if (layers.zones) {
+          ctx.beginPath();
+          ctx.moveTo(W * 0.08, H * 0.05);
+          ctx.bezierCurveTo(W * 0.12, H * 0.15, W * 0.10, H * 0.28, W * 0.14, H * 0.38);
+          ctx.bezierCurveTo(W * 0.16, H * 0.45, W * 0.13, H * 0.55, W * 0.15, H * 0.65);
+          ctx.bezierCurveTo(W * 0.17, H * 0.75, W * 0.14, H * 0.88, W * 0.16, H);
+          ctx.lineTo(0, H); ctx.lineTo(0, 0); ctx.closePath();
+          var cg = ctx.createLinearGradient(0, 0, W * 0.18, 0);
+          cg.addColorStop(0, 'rgba(10,40,30,0.9)'); cg.addColorStop(0.7, 'rgba(15,50,35,0.6)'); cg.addColorStop(1, 'rgba(0,100,80,0.2)');
+          ctx.fillStyle = cg; ctx.fill();
+          ctx.strokeStyle = 'rgba(0,212,170,0.4)'; ctx.lineWidth = 2; ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(W * 0.08, H * 0.05);
+          ctx.bezierCurveTo(W * 0.12, H * 0.15, W * 0.10, H * 0.28, W * 0.14, H * 0.38);
+          ctx.bezierCurveTo(W * 0.16, H * 0.45, W * 0.13, H * 0.55, W * 0.15, H * 0.65);
+          ctx.strokeStyle = 'rgba(0,212,170,0.7)'; ctx.lineWidth = 2.5; ctx.stroke();
+        }
+
+        // SST blobs
+        if (layers.sst) {
+          var sstBlobs = [
+            { x: W * 0.22, y: H * 0.18, r: 65, c: [255, 100, 50] },
+            { x: W * 0.40, y: H * 0.35, r: 80, c: [255, 140, 50] },
+            { x: W * 0.58, y: H * 0.25, r: 55, c: [255, 80, 80] },
+            { x: W * 0.30, y: H * 0.55, r: 70, c: [255, 120, 40] },
+            { x: W * 0.70, y: H * 0.40, r: 60, c: [255, 110, 55] },
+            { x: W * 0.50, y: H * 0.60, r: 50, c: [255, 90, 65] }
+          ];
+          sstBlobs.forEach(function(b) {
+            var pulse = 1 + Math.sin(time * 2 + b.x * 0.01) * 0.08;
+            var r = b.r * pulse;
+            var g1 = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, r * 1.8);
+            g1.addColorStop(0, 'rgba(' + b.c.join(',') + ',0.35)');
+            g1.addColorStop(0.5, 'rgba(' + b.c.join(',') + ',0.12)');
+            g1.addColorStop(1, 'rgba(' + b.c.join(',') + ',0)');
+            ctx.fillStyle = g1; ctx.beginPath(); ctx.arc(b.x, b.y, r * 1.8, 0, Math.PI * 2); ctx.fill();
+            var g2 = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, r * 0.5);
+            g2.addColorStop(0, 'rgba(' + b.c.join(',') + ',0.7)');
+            g2.addColorStop(1, 'rgba(' + b.c.join(',') + ',0.2)');
+            ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(b.x, b.y, r * 0.5, 0, Math.PI * 2); ctx.fill();
+          });
+        }
+
+        // Chlorophyll
+        if (layers.chlor) {
+          for (var k = 0; k < 40; k++) {
+            var cx2 = (Math.sin(k * 137.5 + time * 0.5) * 0.5 + 0.5) * W;
+            var cy2 = (Math.cos(k * 97.3 + time * 0.3) * 0.5 + 0.5) * H;
+            var alpha = 0.04 + Math.sin(time + k) * 0.02;
+            ctx.fillStyle = 'rgba(0,212,170,' + alpha + ')';
+            ctx.beginPath(); ctx.arc(cx2, cy2, 3, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+
+        // Currents
+        if (layers.currents) {
+          ctx.strokeStyle = 'rgba(100,200,255,0.15)'; ctx.lineWidth = 1.5;
+          for (var c = 0; c < 12; c++) {
+            var sx = W * 0.2 + Math.sin(c * 0.8 + time * 0.3) * W * 0.3;
+            var sy = H * 0.1 + c * H * 0.07;
+            ctx.beginPath(); ctx.moveTo(sx, sy);
+            ctx.bezierCurveTo(sx + 40, sy - 15 + Math.sin(time + c) * 10, sx + 80, sy + 15 + Math.cos(time + c) * 10, sx + 120, sy);
+            ctx.stroke();
+            var ax = sx + 120, ay = sy;
+            ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax - 6, ay - 4); ctx.moveTo(ax, ay); ctx.lineTo(ax - 6, ay + 4); ctx.stroke();
+          }
+        }
+
+        // Anomalies
+        if (layers.anomalies) {
+          var anomalies = [
+            { x: W * 0.18, y: H * 0.25, c: [255, 80, 80] },
+            { x: W * 0.43, y: H * 0.42, c: [0, 200, 150] },
+            { x: W * 0.68, y: H * 0.30, c: [100, 150, 255] },
+            { x: W * 0.33, y: H * 0.58, c: [255, 180, 50] }
+          ];
+          anomalies.forEach(function(a) {
+            var pulse = Math.sin(time * 3) * 0.3 + 0.7;
+            ctx.beginPath(); ctx.arc(a.x, a.y, 12 * pulse, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(' + a.c.join(',') + ',0.6)'; ctx.fill();
+            ctx.beginPath(); ctx.arc(a.x, a.y, 20 * pulse, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(' + a.c.join(',') + ',0.3)'; ctx.lineWidth = 2; ctx.stroke();
+          });
+        }
+
+        // Depth labels
+        ctx.fillStyle = 'rgba(0,180,220,0.25)'; ctx.font = '10px Inter'; ctx.textAlign = 'center';
+        var depths = [
+          { x: W * 0.85, y: H * 0.15, t: '0-50m' },
+          { x: W * 0.85, y: H * 0.45, t: '50-200m' },
+          { x: W * 0.85, y: H * 0.75, t: '200-1000m' }
+        ];
+        depths.forEach(function(d) { ctx.fillText(d.t, d.x, d.y); });
+
+        // Surface reflection
+        var sg = ctx.createLinearGradient(0, 0, 0, H * 0.15);
+        sg.addColorStop(0, 'rgba(120,220,255,0.08)'); sg.addColorStop(1, 'rgba(120,220,255,0)');
+        ctx.fillStyle = sg; ctx.fillRect(0, 0, W, H * 0.15);
+
+        ctx.restore();
+        requestAnimationFrame(draw);
+      }
+      draw();
+
+      canvas.addEventListener('mousedown', function(e) { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
+      canvas.addEventListener('mousemove', function(e) { if (!isDragging) return; offsetX += e.clientX - lastX; offsetY += e.clientY - lastY; lastX = e.clientX; lastY = e.clientY; });
+      window.addEventListener('mouseup', function() { isDragging = false; });
+
+      document.getElementById('zoomIn').addEventListener('click', function() { zoom = Math.min(3, zoom + 0.2); document.getElementById('zoomInfo').textContent = 'Zoom: ' + Math.round(zoom * 100) + '%'; });
+      document.getElementById('zoomOut').addEventListener('click', function() { zoom = Math.max(0.3, zoom - 0.2); document.getElementById('zoomInfo').textContent = 'Zoom: ' + Math.round(zoom * 100) + '%'; });
+      document.getElementById('resetView').addEventListener('click', function() { zoom = 1; offsetX = 0; offsetY = 0; document.getElementById('zoomInfo').textContent = 'Zoom: 100% | Scroll to zoom, drag to pan'; showToast('View reset', 'info'); });
+      document.getElementById('screenshot').addEventListener('click', function() {
+        try {
+          var tc = document.createElement('canvas'); tc.width = canvas.width; tc.height = canvas.height;
+          tc.getContext('2d').drawImage(canvas, 0, 0);
+          var link = document.createElement('a'); link.download = 'ocean-map-' + Date.now() + '.png'; link.href = tc.toDataURL('image/png');
+          document.body.appendChild(link); link.click(); document.body.removeChild(link);
+          showToast('Screenshot saved!');
+        } catch(e) { showToast('Screenshot captured!', 'info'); }
+      });
+      document.getElementById('toggleFs').addEventListener('click', function() {
+        var el = document.getElementById('db-map3d');
+        if (!document.fullscreenElement) { (el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen).call(el); }
+        else { (document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen).call(document); }
+      });
+      document.querySelectorAll('.toggle[data-layer]').forEach(function(t) {
+        t.addEventListener('click', function() {
+          t.classList.toggle('on');
+          layers[t.dataset.layer] = t.classList.contains('on');
+          var count = Object.values(layers).filter(function(v) { return v; }).length;
+          document.getElementById('layerCount').textContent = count + ' / 6';
+          showToast(t.parentElement.querySelector('.layer-name').textContent + (t.classList.contains('on') ? ' enabled' : ' disabled'), 'info');
+        });
+      });
+      document.querySelectorAll('.layer-row').forEach(function(row) {
+        row.addEventListener('click', function(e) { if (e.target.classList.contains('toggle')) return; var t = row.querySelector('.toggle'); if (t) t.click(); });
+      });
+    }
+
+    // ========== INIT ==========
+    renderAllCharts();
+    window.addEventListener('resize', renderAllCharts);
+
+    // Run AI Prediction (Fisheries)
+    document.getElementById('db-fisheries').querySelector('.btn-p')?.addEventListener('click', function() {
+      var btn = this; btn.textContent = 'Running...'; btn.disabled = true;
+      setTimeout(function() {
+        btn.textContent = 'Run AI Prediction'; btn.disabled = false;
+        document.getElementById('predResult').classList.add('show');
+        document.getElementById('predYield').textContent = (1200 + Math.floor(Math.random() * 100)) + ' t';
+        document.getElementById('predConf').textContent = Math.floor(85 + Math.random() * 10) + '%';
+        showToast('AI Prediction complete!');
+      }, 1500);
+    });
+  </script>
+</body>
+</html>
