@@ -50,6 +50,19 @@ async def fetch_data_from_nasa():
     response = requests.get(url, headers=headers)
     return "Authorization/Login Needed; Work in Progress"
 
+@app.get("/copernicus")
+async def fetch_marine_data_from_copernicus(): 
+    subset(
+        dataset_id="cmems_mod_glo_phy_anfc_0.083deg_PT1H-m",
+        variables=["thetao"],
+        minimum_longitude=80,
+        maximum_longitude=81,
+        minimum_latitude=13,
+        maximum_latitude=14,
+    )
+
+    return "Work in Progress"
+
 @app.get("/GBIF")
 async def fetch_data_from_gbif(): 
     url = (
