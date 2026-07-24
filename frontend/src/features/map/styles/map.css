@@ -1,0 +1,160 @@
+:root {
+  --ocean-bg: #0a1420;
+  --ocean-panel: #101d2c;
+  --ocean-border: #1f3348;
+  --ocean-text: #d7e4ee;
+  --ocean-muted: #6f8ba3;
+  --ocean-accent: #2dd4bf;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+.map-root {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  background: var(--ocean-bg);
+  overflow: hidden;
+}
+
+.map-container {
+  position: absolute;
+  inset: 0;
+}
+
+.map-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ocean-muted);
+  font: 13px/1.4 'JetBrains Mono', ui-monospace, monospace;
+  letter-spacing: 0.02em;
+}
+
+.map-controls {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 5;
+  background: rgba(16, 29, 44, 0.92);
+  border: 1px solid var(--ocean-border);
+  border-radius: 10px;
+  padding: 14px;
+  width: 220px;
+  color: var(--ocean-text);
+  font: 13px/1.4 system-ui, sans-serif;
+  backdrop-filter: blur(6px);
+}
+
+.map-controls.collapsed {
+  width: auto;
+  padding: 8px;
+}
+
+.map-controls h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ocean-muted);
+  margin: 12px 0 6px;
+}
+
+.map-controls h3:first-of-type {
+  margin-top: 0;
+}
+
+.panel-toggle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--ocean-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.basemap-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.basemap-grid button {
+  background: var(--ocean-bg);
+  border: 1px solid var(--ocean-border);
+  color: var(--ocean-text);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.basemap-grid button.active {
+  border-color: var(--ocean-accent);
+  color: var(--ocean-accent);
+}
+
+.layer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.layer-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.layer-list li.disabled label {
+  color: var(--ocean-muted);
+  cursor: not-allowed;
+}
+
+.layer-list .badge {
+  font-size: 10px;
+  color: var(--ocean-muted);
+  border: 1px solid var(--ocean-border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.layer-list input[type='range'] {
+  width: 100%;
+  accent-color: var(--ocean-accent);
+  margin-top: 4px;
+}
+
+.coordinate-display {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  z-index: 5;
+  display: flex;
+  gap: 12px;
+  background: rgba(16, 29, 44, 0.92);
+  border: 1px solid var(--ocean-border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: var(--ocean-accent);
+  font: 12px/1.4 'JetBrains Mono', ui-monospace, monospace;
+  letter-spacing: 0.02em;
+}
+
+.coordinate-display .zoom {
+  color: var(--ocean-muted);
+}
