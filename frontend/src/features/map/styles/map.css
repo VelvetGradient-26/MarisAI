@@ -4,7 +4,10 @@
   --ocean-border: #1f3348;
   --ocean-text: #d7e4ee;
   --ocean-muted: #6f8ba3;
-  --ocean-accent: #2dd4bf;
+  --ocean-accent: #22d3ee;
+  --ocean-font-ui: 'Space Grotesk', system-ui, -apple-system, 'Helvetica Neue', Helvetica, Arial,
+    sans-serif;
+  --ocean-font-mono: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
 }
 
 html,
@@ -20,6 +23,7 @@ body,
   height: 100vh;
   background: var(--ocean-bg);
   overflow: hidden;
+  font-family: var(--ocean-font-ui);
 }
 
 .map-container {
@@ -34,7 +38,7 @@ body,
   align-items: center;
   justify-content: center;
   color: var(--ocean-muted);
-  font: 13px/1.4 'JetBrains Mono', ui-monospace, monospace;
+  font: 13px/1.4 var(--ocean-font-mono);
   letter-spacing: 0.02em;
 }
 
@@ -49,7 +53,8 @@ body,
   padding: 14px;
   width: 220px;
   color: var(--ocean-text);
-  font: 13px/1.4 system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
   backdrop-filter: blur(6px);
 }
 
@@ -151,7 +156,7 @@ body,
   border-radius: 8px;
   padding: 6px 12px;
   color: var(--ocean-accent);
-  font: 12px/1.4 'JetBrains Mono', ui-monospace, monospace;
+  font: 12px/1.4 var(--ocean-font-mono);
   letter-spacing: 0.02em;
 }
 

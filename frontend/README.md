@@ -62,6 +62,13 @@ category-based stacking order — `ocean < ai < reference`, basemap always benea
 seemed the most defensible for a data-visualization tool, but this is a real open question worth
 resolving with whoever wrote the original hierarchy diagram before Phase 4 adds more categories.
 
+**Typography follows Groq's actual stack.** Space Grotesk for UI/panel text (`--ocean-font-ui`),
+IBM Plex Mono for the coordinate readout and loading state (`--ocean-font-mono`) — both loaded via
+Google Fonts in `index.html`. Groq's own hero-heading treatment (very light weights, tight
+`-0.02em` to `-0.03em` letter-spacing, 64–96px sizes) is a landing-page pattern that doesn't map
+onto a functional control panel with no hero text, so it wasn't carried over — only the typeface
+choice itself was.
+
 **Map mutations wait for `load`.** MapLibre throws "Style is not done loading" if
 `addSource`/`addLayer` is called before the style has finished loading — true even for the empty
 placeholder style `MapManager` starts with. `register()` on `BasemapManager`/`LayerManager` only
