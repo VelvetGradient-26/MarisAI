@@ -76,7 +76,7 @@ export function useSelectedLocationMarker(manager: MapManager | null, ready: boo
         animationFrameRef.current = null;
       }
 
-      if (!map) return;
+      if (!map || manager?.getMap() !== map) return;
       if (map.getLayer(PIN_LAYER_ID)) map.removeLayer(PIN_LAYER_ID);
       if (map.getLayer(PULSE_LAYER_ID)) map.removeLayer(PULSE_LAYER_ID);
       if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);

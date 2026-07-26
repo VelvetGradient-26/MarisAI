@@ -23,6 +23,8 @@ export function useGeographicLabels(manager: MapManager | null, ready: boolean) 
     ensureOceanLayer(map);
 
     return () => {
+      // MapManager may already have removed the map during a route change.
+      if (manager?.getMap() !== map) return;
       if (map.getLayer(OCEAN_LAYER_ID)) map.removeLayer(OCEAN_LAYER_ID);
       if (map.getLayer(OCEAN_GLOW_LAYER_ID)) map.removeLayer(OCEAN_GLOW_LAYER_ID);
       if (map.getLayer(CONTINENT_LAYER_ID)) map.removeLayer(CONTINENT_LAYER_ID);
