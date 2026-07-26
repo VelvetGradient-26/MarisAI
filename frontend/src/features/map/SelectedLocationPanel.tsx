@@ -1,3 +1,4 @@
+import { Link } from '../../app/router';
 import { useMapStore } from '../../store/mapStore';
 import type { RealtimeOceanConditions, RealtimeOceanUnits } from './types';
 
@@ -79,6 +80,25 @@ export function SelectedLocationPanel() {
               </div>
             ))}
           </dl>
+
+          <Link
+            className="selected-location-panel__more-link"
+            to={`/dashboard?lat=${selectedLocation.lat.toFixed(6)}&lon=${selectedLocation.lng.toFixed(6)}`}
+          >
+            More info
+            <span aria-hidden="true">→</span>
+          </Link>
+
+          <div className="selected-location-panel__attribution">
+            Data by{' '}
+            <a href={data.attribution.url} target="_blank" rel="noreferrer">
+              {data.attribution.name}
+            </a>{' '}
+            /{' '}
+            <a href={data.attribution.provider_url} target="_blank" rel="noreferrer">
+              {data.attribution.provider_name}
+            </a>
+          </div>
         </>
       )}
     </aside>
