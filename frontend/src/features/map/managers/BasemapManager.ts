@@ -3,7 +3,7 @@ import { createEmitter } from '../../../lib/createEmitter';
 import type { BasemapDefinition, BasemapId } from '../types';
 
 const BASEMAP_SOURCE_ID = 'basemap-source';
-const BASEMAP_LAYER_ID = 'basemap-layer';
+export const BASEMAP_LAYER_ID = 'basemap-layer';
 
 /**
  * Basemaps are added/removed as a single raster source+layer rather than

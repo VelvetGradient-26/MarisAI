@@ -3,7 +3,7 @@ import type {
   RasterLayerSpecification,
 } from '@maplibre/maplibre-gl-style-spec';
 
-export type BasemapId = 'satellite' | 'blueMarble' | 'dark' | 'streets';
+export type BasemapId = 'satellite' | 'blueMarble';
 
 export interface BasemapDefinition {
   id: BasemapId;
@@ -79,6 +79,11 @@ export interface RealtimeOceanResolvedPoint {
   timezone_abbreviation: string | null;
 }
 
+export interface RealtimeOceanLocationContext {
+  ocean_name: string | null;
+  country_name: string | null;
+}
+
 export interface RealtimeOceanResponse {
   requested: {
     latitude: number;
@@ -88,6 +93,7 @@ export interface RealtimeOceanResponse {
     marine: RealtimeOceanResolvedPoint;
     weather: RealtimeOceanResolvedPoint;
   };
+  location_context: RealtimeOceanLocationContext;
   fetched_at: string;
   current: RealtimeOceanConditions;
   units: RealtimeOceanUnits;
