@@ -50,3 +50,45 @@ export interface CursorCoordinates {
   lng: number;
   lat: number;
 }
+
+export interface RealtimeOceanConditions {
+  time: string | null;
+  sea_surface_temperature: number | null;
+  wave_height: number | null;
+  wave_direction: number | null;
+  ocean_current_velocity: number | null;
+  ocean_current_direction: number | null;
+  wind_speed: number | null;
+  air_temperature: number | null;
+}
+
+export interface RealtimeOceanUnits {
+  sea_surface_temperature: string | null;
+  wave_height: string | null;
+  wave_direction: string | null;
+  ocean_current_velocity: string | null;
+  ocean_current_direction: string | null;
+  wind_speed: string | null;
+  air_temperature: string | null;
+}
+
+export interface RealtimeOceanResolvedPoint {
+  latitude: number | null;
+  longitude: number | null;
+  timezone: string | null;
+  timezone_abbreviation: string | null;
+}
+
+export interface RealtimeOceanResponse {
+  requested: {
+    latitude: number;
+    longitude: number;
+  };
+  resolved: {
+    marine: RealtimeOceanResolvedPoint;
+    weather: RealtimeOceanResolvedPoint;
+  };
+  fetched_at: string;
+  current: RealtimeOceanConditions;
+  units: RealtimeOceanUnits;
+}

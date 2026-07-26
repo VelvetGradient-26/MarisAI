@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { useMapManager } from './hooks/useMapManager';
 import { MapManagerContext } from './hooks/MapManagerContext';
+import { useSelectedLocationRealtimeData } from './hooks/useSelectedLocationRealtimeData';
+import { useSelectedLocationMarker } from './hooks/useSelectedLocationMarker';
 
 interface MapProps {
   children?: ReactNode;
@@ -13,6 +15,8 @@ interface MapProps {
  */
 export function Map({ children }: MapProps) {
   const { containerRef, manager, ready } = useMapManager('satellite');
+  useSelectedLocationRealtimeData();
+  useSelectedLocationMarker(manager, ready);
 
   return (
     <div className="map-root">
