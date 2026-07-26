@@ -21,12 +21,14 @@ export interface LayerState {
  */
 export class LayerManager {
   private map: MapLibreMap;
+  private getFallbackBeforeId: () => string | undefined;
   private registry = new Map<string, LayerDescriptor>();
   private state = new Map<string, LayerState>();
   private emitter = createEmitter<Map<string, LayerState>>();
 
-  constructor(map: MapLibreMap) {
+  constructor(map: MapLibreMap, getFallbackBeforeId: () => string | undefined = () => undefined) {
     this.map = map;
+    this.getFallbackBeforeId = getFallbackBeforeId;
   }
 
   register(descriptor: LayerDescriptor) {
@@ -170,7 +172,7 @@ export class LayerManager {
       const otherIndex = CATEGORY_ORDER.indexOf(s.descriptor.category);
       if (otherIndex >= startIndex) return this.layerId(id);
     }
-    return undefined;
+    return this.getFallbackBeforeId();
   }
 
   private sourceId(id: string) {

@@ -1,10 +1,11 @@
 import * as maplibregl from 'maplibre-gl';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { BasemapManager } from './BasemapManager';
+import { BASEMAP_LAYER_ID, BasemapManager } from './BasemapManager';
 import { ControlManager } from './ControlManager';
 import { LayerManager } from '../layers/LayerManager';
 import { basemaps } from '../basemaps';
 import { layerRegistry } from '../layers/layerRegistry';
+import { getFirstExistingAnnotationLayerId } from '../layers/annotationLayerIds';
 import type { BasemapId } from '../types';
 
 export interface MapManagerInitOptions {
@@ -47,8 +48,8 @@ export class MapManager {
       attributionControl: { compact: true },
     });
 
-    const layerManager = new LayerManager(map);
-    const basemapManager = new BasemapManager(map, () => layerManager.getBottomOverlayLayerId());
+    const layerManager = new LayerManager(map, () => getFirstExistingAnnotationLayerId(map));
+    const basemapManager = new BasemapManager(map, () => getBasemapInsertBeforeId(map));
     const controlManager = new ControlManager(map);
 
     // register() on both managers only writes in-memory metadata (basemap
@@ -104,4 +105,8 @@ export class MapManager {
     this.controlManager = null;
     this.layerManager = null;
   }
+}
+
+function getBasemapInsertBeforeId(map: MapLibreMap): string | undefined {
+  return map.getStyle().layers?.find((layer) => layer.id !== BASEMAP_LAYER_ID)?.id;
 }

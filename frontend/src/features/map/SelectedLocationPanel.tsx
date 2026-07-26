@@ -24,11 +24,15 @@ export function SelectedLocationPanel() {
     <aside className="selected-location-panel">
       <div className="selected-location-panel__header">
         <h3>Realtime Marine Conditions</h3>
-        <span>
-          {selectedLocation
-            ? `${selectedLocation.lat.toFixed(4)}°, ${selectedLocation.lng.toFixed(4)}°`
-            : 'No location selected'}
-        </span>
+        {selectedLocation && data ? (
+          <>
+            <span>{data.location_context.ocean_name ?? 'Ocean: Unknown'}</span>
+            <span>{data.location_context.country_name ?? 'Country: Unknown'}</span>
+            <span>{formatCoordinates(selectedLocation.lat, selectedLocation.lng)}</span>
+          </>
+        ) : (
+          <span>{selectedLocation ? formatCoordinates(selectedLocation.lat, selectedLocation.lng) : 'No location selected'}</span>
+        )}
       </div>
 
       {!selectedLocation && (
@@ -124,4 +128,8 @@ function formatTimestamp(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
+}
+
+function formatCoordinates(lat: number, lng: number): string {
+  return `Lat ${lat.toFixed(4)}°, Lon ${lng.toFixed(4)}°`;
 }

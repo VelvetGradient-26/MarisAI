@@ -3,6 +3,8 @@ import { useMapStore } from '../../store/mapStore';
 import { useUiStore } from '../../store/uiStore';
 import type { BasemapId } from './types';
 
+const HIDDEN_LAYER_CONTROL_IDS = new Set(['sst', 'currents', 'ai-hazard-prediction']);
+
 export function MapControls() {
   const manager = useMapManagerContext();
   const basemap = useMapStore((s) => s.basemap);
@@ -24,9 +26,9 @@ export function MapControls() {
       {panelOpen && (
         <>
           <section>
-            <h3>Basemap</h3>
-            <div className="basemap-grid">
-              {basemapManager.getAvailable().map((def) => (
+              <h3>Basemap</h3>
+              <div className="basemap-grid">
+                {basemapManager.getAvailable().map((def) => (
                 <button
                   key={def.id}
                   className={def.id === basemap ? 'active' : ''}
@@ -39,12 +41,12 @@ export function MapControls() {
           </section>
 
           <section>
-            <h3>Layers</h3>
-            <ul className="layer-list">
-              {layerManager.getRegistered().map((descriptor) => {
-                const state = layerState.get(descriptor.id);
-                const disabled = descriptor.implemented === false;
-                return (
+              <h3>Layers</h3>
+              <ul className="layer-list">
+                {layerManager.getRegistered().filter((descriptor) => !HIDDEN_LAYER_CONTROL_IDS.has(descriptor.id)).map((descriptor) => {
+                  const state = layerState.get(descriptor.id);
+                  const disabled = descriptor.implemented === false;
+                  return (
                   <li key={descriptor.id} className={disabled ? 'disabled' : ''}>
                     <label>
                       <input

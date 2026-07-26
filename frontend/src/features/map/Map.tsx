@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useMapManager } from './hooks/useMapManager';
 import { MapManagerContext } from './hooks/MapManagerContext';
+import { useGeographicLabels } from './hooks/useGeographicLabels';
 import { useSelectedLocationRealtimeData } from './hooks/useSelectedLocationRealtimeData';
 import { useSelectedLocationMarker } from './hooks/useSelectedLocationMarker';
 
@@ -15,6 +16,7 @@ interface MapProps {
  */
 export function Map({ children }: MapProps) {
   const { containerRef, manager, ready } = useMapManager('satellite');
+  useGeographicLabels(manager, ready);
   useSelectedLocationRealtimeData();
   useSelectedLocationMarker(manager, ready);
 
