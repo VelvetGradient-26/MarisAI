@@ -47,7 +47,13 @@ export const useMapStore = create<MapStore>((set) => ({
   layers: new Map(),
   setCamera: (camera) => set({ camera }),
   setCursor: (cursor) => set({ cursor }),
-  setSelectedLocation: (selectedLocation) => set({ selectedLocation }),
+  setSelectedLocation: (selectedLocation) =>
+    set({
+      selectedLocation,
+      selectedLocationData: null,
+      selectedLocationDataStatus: 'idle',
+      selectedLocationDataError: null,
+    }),
   setSelectedLocationDataLoading: () =>
     set({ selectedLocationDataStatus: 'loading', selectedLocationDataError: null }),
   setSelectedLocationDataSuccess: (selectedLocationData) =>

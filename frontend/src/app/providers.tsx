@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { AppRouter } from './router';
 
 /**
  * Wrap app-wide providers here as they're introduced (theme, query client,
@@ -6,5 +7,5 @@ import type { ReactNode } from 'react';
  * inline as the app picks up more cross-cutting concerns.
  */
 export function AppProviders({ children }: { children: ReactNode }) {
-  return <>{children}</>;
+  return <AppRouter>{children}</AppRouter>;
 }

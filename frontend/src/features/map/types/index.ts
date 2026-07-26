@@ -1,7 +1,7 @@
 import type {
   RasterSourceSpecification,
   RasterLayerSpecification,
-} from '@maplibre/maplibre-gl-style-spec';
+} from 'maplibre-gl';
 
 export type BasemapId = 'satellite' | 'blueMarble';
 
@@ -56,20 +56,36 @@ export interface RealtimeOceanConditions {
   sea_surface_temperature: number | null;
   wave_height: number | null;
   wave_direction: number | null;
+  wave_period: number | null;
   ocean_current_velocity: number | null;
   ocean_current_direction: number | null;
+  sea_level_height_msl: number | null;
   wind_speed: number | null;
+  wind_direction: number | null;
   air_temperature: number | null;
+  relative_humidity: number | null;
+  surface_pressure: number | null;
+  visibility: number | null;
+  cloud_cover: number | null;
+  precipitation: number | null;
 }
 
 export interface RealtimeOceanUnits {
   sea_surface_temperature: string | null;
   wave_height: string | null;
   wave_direction: string | null;
+  wave_period: string | null;
   ocean_current_velocity: string | null;
   ocean_current_direction: string | null;
+  sea_level_height_msl: string | null;
   wind_speed: string | null;
+  wind_direction: string | null;
   air_temperature: string | null;
+  relative_humidity: string | null;
+  surface_pressure: string | null;
+  visibility: string | null;
+  cloud_cover: string | null;
+  precipitation: string | null;
 }
 
 export interface RealtimeOceanResolvedPoint {
@@ -82,6 +98,8 @@ export interface RealtimeOceanResolvedPoint {
 export interface RealtimeOceanLocationContext {
   ocean_name: string | null;
   country_name: string | null;
+  locality: string | null;
+  continent: string | null;
 }
 export interface RealtimeOceanResponse {
   requested: {
@@ -96,4 +114,10 @@ export interface RealtimeOceanResponse {
   fetched_at: string;
   current: RealtimeOceanConditions;
   units: RealtimeOceanUnits;
+  attribution: {
+    name: string;
+    url: string;
+    provider_name: string;
+    provider_url: string;
+  };
 }
