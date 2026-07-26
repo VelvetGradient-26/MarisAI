@@ -29,7 +29,8 @@ export async function fetchRealtimeOceanData(
     throw new Error(detail || `Realtime ocean request failed with status ${response.status}`);
   }
 
-  return response.json() as Promise<RealtimeOceanResponse>;
+  const payload = (await response.json()) as Partial<RealtimeOceanResponse>;
+  return normalizeRealtimeOceanResponse(payload, location);
 }
 
 async function readErrorDetail(response: Response): Promise<string | null> {
@@ -39,4 +40,54 @@ async function readErrorDetail(response: Response): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+function normalizeRealtimeOceanResponse(
+  payload: Partial<RealtimeOceanResponse>,
+  location: CursorCoordinates
+): RealtimeOceanResponse {
+  return {
+    requested: payload.requested ?? {
+      latitude: location.lat,
+      longitude: location.lng,
+    },
+    resolved: payload.resolved ?? {
+      marine: {
+        latitude: null,
+        longitude: null,
+        timezone: null,
+        timezone_abbreviation: null,
+      },
+      weather: {
+        latitude: null,
+        longitude: null,
+        timezone: null,
+        timezone_abbreviation: null,
+      },
+    },
+    location_context: payload.location_context ?? {
+      ocean_name: null,
+      country_name: null,
+    },
+    fetched_at: payload.fetched_at ?? new Date().toISOString(),
+    current: {
+      time: payload.current?.time ?? null,
+      sea_surface_temperature: payload.current?.sea_surface_temperature ?? null,
+      wave_height: payload.current?.wave_height ?? null,
+      wave_direction: payload.current?.wave_direction ?? null,
+      ocean_current_velocity: payload.current?.ocean_current_velocity ?? null,
+      ocean_current_direction: payload.current?.ocean_current_direction ?? null,
+      wind_speed: payload.current?.wind_speed ?? null,
+      air_temperature: payload.current?.air_temperature ?? null,
+    },
+    units: {
+      sea_surface_temperature: payload.units?.sea_surface_temperature ?? null,
+      wave_height: payload.units?.wave_height ?? null,
+      wave_direction: payload.units?.wave_direction ?? null,
+      ocean_current_velocity: payload.units?.ocean_current_velocity ?? null,
+      ocean_current_direction: payload.units?.ocean_current_direction ?? null,
+      wind_speed: payload.units?.wind_speed ?? null,
+      air_temperature: payload.units?.air_temperature ?? null,
+    },
+  };
 }

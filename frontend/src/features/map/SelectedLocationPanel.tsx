@@ -24,7 +24,6 @@ export function SelectedLocationPanel() {
     <aside className="selected-location-panel">
       <div className="selected-location-panel__header">
         <h3>Realtime Marine Conditions</h3>
-<<<<<<< HEAD
         {selectedLocation && data ? (
           <>
             <span>{data.location_context.ocean_name ?? 'Ocean: Unknown'}</span>
@@ -32,15 +31,10 @@ export function SelectedLocationPanel() {
             <span>{formatCoordinates(selectedLocation.lat, selectedLocation.lng)}</span>
           </>
         ) : (
-          <span>{selectedLocation ? formatCoordinates(selectedLocation.lat, selectedLocation.lng) : 'No location selected'}</span>
+          <span>
+            {selectedLocation ? formatCoordinates(selectedLocation.lat, selectedLocation.lng) : 'No location selected'}
+          </span>
         )}
-=======
-        <span>
-          {selectedLocation
-            ? `${selectedLocation.lat.toFixed(4)}°, ${selectedLocation.lng.toFixed(4)}°`
-            : 'No location selected'}
-        </span>
->>>>>>> feature/map-label
       </div>
 
       {!selectedLocation && (
@@ -137,10 +131,7 @@ function formatTimestamp(value: string): string {
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
 }
-<<<<<<< HEAD
 
 function formatCoordinates(lat: number, lng: number): string {
   return `Lat ${lat.toFixed(4)}°, Lon ${lng.toFixed(4)}°`;
 }
-=======
->>>>>>> feature/map-label
