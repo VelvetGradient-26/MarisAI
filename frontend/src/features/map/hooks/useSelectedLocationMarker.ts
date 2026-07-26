@@ -2,9 +2,16 @@ import { useEffect, useRef } from 'react';
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
 import type { MapManager } from '../managers/MapManager';
 import { useMapStore } from '../../../store/mapStore';
+<<<<<<< HEAD
 import { PIN_LAYER_ID, PULSE_LAYER_ID } from '../layers/annotationLayerIdsShared';
 
 const SOURCE_ID = 'selected-location-source';
+=======
+
+const SOURCE_ID = 'selected-location-source';
+const PULSE_LAYER_ID = 'selected-location-pulse';
+const PIN_LAYER_ID = 'selected-location-pin';
+>>>>>>> feature/map-label
 const PIN_IMAGE_ID = 'selected-location-pin-image';
 
 export function useSelectedLocationMarker(manager: MapManager | null, ready: boolean) {
