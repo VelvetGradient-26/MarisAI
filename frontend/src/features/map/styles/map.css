@@ -58,6 +58,110 @@ body,
   backdrop-filter: blur(6px);
 }
 
+.selected-location-panel {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 5;
+  width: min(320px, calc(100vw - 32px));
+  background: rgba(16, 29, 44, 0.94);
+  border: 1px solid var(--ocean-border);
+  border-radius: 10px;
+  padding: 14px;
+  color: var(--ocean-text);
+  backdrop-filter: blur(6px);
+  box-sizing: border-box;
+}
+
+.selected-location-panel h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.selected-location-panel__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.selected-location-panel__header span,
+.selected-location-panel__meta,
+.selected-location-panel__state {
+  color: var(--ocean-muted);
+  font: 12px/1.5 var(--ocean-font-mono);
+}
+
+.selected-location-panel__state {
+  margin: 0;
+}
+
+.selected-location-panel__state--error {
+  color: #fca5a5;
+}
+
+.selected-location-panel__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+
+.selected-location-panel__metrics {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.selected-location-panel__metric {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid rgba(31, 51, 72, 0.85);
+  padding-top: 8px;
+}
+
+.selected-location-panel__metric:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.selected-location-panel__metric dt {
+  color: var(--ocean-muted);
+  font-size: 12px;
+}
+
+.selected-location-panel__metric dd {
+  margin: 0;
+  color: var(--ocean-accent);
+  font: 13px/1.4 var(--ocean-font-mono);
+  text-align: right;
+}
+
+.selected-location-panel__direction-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.selected-location-panel__direction-arrow {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  background: var(--ocean-accent);
+  clip-path: polygon(50% 0, 100% 100%, 50% 72%, 0 100%);
+  transform-origin: 50% 50%;
+}
+
+.selected-location-panel__direction-mode {
+  color: var(--ocean-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .map-controls.collapsed {
   width: auto;
   padding: 8px;
@@ -162,4 +266,10 @@ body,
 
 .coordinate-display .zoom {
   color: var(--ocean-muted);
+}
+
+@media (max-width: 720px) {
+  .selected-location-panel {
+    bottom: 56px;
+  }
 }

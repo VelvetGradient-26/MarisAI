@@ -18,6 +18,7 @@ export function useMapManager(defaultBasemap: BasemapId = 'satellite') {
 
   const setCamera = useMapStore((s) => s.setCamera);
   const setCursor = useMapStore((s) => s.setCursor);
+  const setSelectedLocation = useMapStore((s) => s.setSelectedLocation);
   const setBasemap = useMapStore((s) => s.setBasemap);
   const setLayerState = useMapStore((s) => s.setLayerState);
 
@@ -42,17 +43,23 @@ export function useMapManager(defaultBasemap: BasemapId = 'satellite') {
       setCursor({ lng: e.lngLat.lng, lat: e.lngLat.lat });
     });
 
+    const syncSelectedLocation = (e: MapMouseEvent) => {
+      setSelectedLocation({ lng: e.lngLat.lng, lat: e.lngLat.lat });
+    };
+
     map.on('load', () => {
       syncCamera();
       setReady(true);
     });
     map.on('move', syncCamera);
     map.on('mousemove', syncCursor);
+    map.on('click', syncSelectedLocation);
 
     const unsubBasemap = manager.getBasemapManager()!.subscribe(setBasemap);
     const unsubLayers = manager.getLayerManager()!.subscribe(setLayerState);
 
     return () => {
+      map.off('click', syncSelectedLocation);
       unsubBasemap();
       unsubLayers();
       manager.destroy();

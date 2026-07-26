@@ -1,14 +1,29 @@
 import { create } from 'zustand';
-import type { CameraState, CursorCoordinates, BasemapId } from '../features/map/types';
+import type {
+  CameraState,
+  CursorCoordinates,
+  BasemapId,
+  RealtimeOceanResponse,
+} from '../features/map/types';
 import type { LayerState } from '../features/map/layers/LayerManager';
+
+export type SelectedLocationDataStatus = 'idle' | 'loading' | 'success' | 'error';
 
 interface MapStore {
   camera: CameraState;
   cursor: CursorCoordinates | null;
+  selectedLocation: CursorCoordinates | null;
+  selectedLocationData: RealtimeOceanResponse | null;
+  selectedLocationDataStatus: SelectedLocationDataStatus;
+  selectedLocationDataError: string | null;
   basemap: BasemapId | null;
   layers: Map<string, LayerState>;
   setCamera: (camera: CameraState) => void;
   setCursor: (cursor: CursorCoordinates) => void;
+  setSelectedLocation: (location: CursorCoordinates | null) => void;
+  setSelectedLocationDataLoading: () => void;
+  setSelectedLocationDataSuccess: (data: RealtimeOceanResponse) => void;
+  setSelectedLocationDataError: (error: string) => void;
   setBasemap: (id: BasemapId) => void;
   setLayerState: (layers: Map<string, LayerState>) => void;
 }
@@ -24,10 +39,29 @@ interface MapStore {
 export const useMapStore = create<MapStore>((set) => ({
   camera: { center: [0, 20], zoom: 2.2, bearing: 0, pitch: 0 },
   cursor: null,
+  selectedLocation: null,
+  selectedLocationData: null,
+  selectedLocationDataStatus: 'idle',
+  selectedLocationDataError: null,
   basemap: null,
   layers: new Map(),
   setCamera: (camera) => set({ camera }),
   setCursor: (cursor) => set({ cursor }),
+  setSelectedLocation: (selectedLocation) => set({ selectedLocation }),
+  setSelectedLocationDataLoading: () =>
+    set({ selectedLocationDataStatus: 'loading', selectedLocationDataError: null }),
+  setSelectedLocationDataSuccess: (selectedLocationData) =>
+    set({
+      selectedLocationData,
+      selectedLocationDataStatus: 'success',
+      selectedLocationDataError: null,
+    }),
+  setSelectedLocationDataError: (selectedLocationDataError) =>
+    set({
+      selectedLocationData: null,
+      selectedLocationDataStatus: 'error',
+      selectedLocationDataError,
+    }),
   setBasemap: (basemap) => set({ basemap }),
   setLayerState: (layers) => set({ layers }),
 }));
