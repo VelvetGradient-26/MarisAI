@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -11,6 +12,7 @@ from urllib.request import urlopen
 
 MARINE_API_URL = "https://marine-api.open-meteo.com/v1/marine"
 FORECAST_API_URL = "https://api.open-meteo.com/v1/forecast"
+REVERSE_GEOCODE_URL = "https://api.bigdatacloud.net/data/reverse-geocode-client"
 
 MARINE_CURRENT_VARIABLES = [
     "sea_surface_temperature",
@@ -40,6 +42,7 @@ def get_realtime_ocean_conditions(latitude: float, longitude: float) -> dict[str
     coords = Coordinates(latitude=latitude, longitude=longitude)
     marine = _fetch_marine_current(coords)
     weather = _fetch_weather_current(coords)
+    location_context = _fetch_location_context(coords)
 
     marine_current = marine.get("current", {})
     weather_current = weather.get("current", {})
@@ -65,6 +68,7 @@ def get_realtime_ocean_conditions(latitude: float, longitude: float) -> dict[str
                 "timezone_abbreviation": weather.get("timezone_abbreviation"),
             },
         },
+        "location_context": location_context,
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "current": {
             "time": marine_current.get("time") or weather_current.get("time"),
@@ -112,6 +116,79 @@ def _fetch_weather_current(coords: Coordinates) -> dict[str, Any]:
             "cell_selection": "sea",
         },
     )
+
+
+def _fetch_location_context(coords: Coordinates) -> dict[str, str | None]:
+    try:
+        payload = _fetch_json(
+            REVERSE_GEOCODE_URL,
+            {
+                "latitude": coords.latitude,
+                "longitude": coords.longitude,
+                "localityLanguage": "en",
+            },
+        )
+    except OpenMeteoError:
+        return {
+            "ocean_name": None,
+            "country_name": None,
+        }
+
+    informative = payload.get("localityInfo", {}).get("informative", [])
+
+    return {
+        "ocean_name": _extract_ocean_name(payload, informative),
+        "country_name": _extract_country_name(payload, informative),
+    }
+
+
+def _extract_ocean_name(payload: dict[str, Any], informative: list[dict[str, Any]]) -> str | None:
+    for item in informative:
+        description = str(item.get("description", "")).lower()
+        name = item.get("name")
+        if description.startswith("ocean") or description.endswith("ocean"):
+            return str(name)
+
+    locality = payload.get("locality")
+    if isinstance(locality, str) and "ocean" in locality.lower():
+        return locality
+
+    return None
+
+
+def _extract_country_name(payload: dict[str, Any], informative: list[dict[str, Any]]) -> str | None:
+    country_name = payload.get("countryName")
+    if isinstance(country_name, str) and country_name.strip():
+        return country_name
+
+    locality = payload.get("locality")
+    if isinstance(locality, str):
+        parsed = _extract_country_from_boundary_name(locality)
+        if parsed:
+            return parsed
+
+    for item in informative:
+        if str(item.get("description", "")).lower() != "maritime boundary":
+            continue
+        parsed = _extract_country_from_boundary_name(str(item.get("name", "")))
+        if parsed:
+            return parsed
+
+    return None
+
+
+def _extract_country_from_boundary_name(value: str) -> str | None:
+    if not value:
+        return None
+
+    match = re.search(r"\bof\s+(.+)$", value)
+    if not match:
+        return None
+
+    country_name = match.group(1).strip()
+    if country_name.lower().startswith("the "):
+        country_name = country_name[4:]
+    return country_name or None
 
 
 def _fetch_json(base_url: str, params: dict[str, Any]) -> dict[str, Any]:
