@@ -79,11 +79,14 @@ export interface RealtimeOceanResolvedPoint {
   timezone_abbreviation: string | null;
 }
 
+<<<<<<< HEAD
 export interface RealtimeOceanLocationContext {
   ocean_name: string | null;
   country_name: string | null;
 }
 
+=======
+>>>>>>> feature/map-label
 export interface RealtimeOceanResponse {
   requested: {
     latitude: number;
@@ -93,7 +96,10 @@ export interface RealtimeOceanResponse {
     marine: RealtimeOceanResolvedPoint;
     weather: RealtimeOceanResolvedPoint;
   };
+<<<<<<< HEAD
   location_context: RealtimeOceanLocationContext;
+=======
+>>>>>>> feature/map-label
   fetched_at: string;
   current: RealtimeOceanConditions;
   units: RealtimeOceanUnits;
