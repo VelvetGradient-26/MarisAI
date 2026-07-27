@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import {
   Activity,
@@ -11,6 +11,7 @@ import {
   MapPin,
   Moon,
   Navigation2,
+  Sparkles,
   Sun,
   Thermometer,
   Waves,
@@ -23,7 +24,10 @@ import type {
   RealtimeOceanConditions,
   RealtimeOceanResponse,
 } from '../features/map/types';
+import { generateOceanInsights } from '../features/insights/api/generateInsights';
 import './dashboard.css';
+
+type InsightsStatus = 'idle' | 'loading' | 'success' | 'error';
 
 const DEFAULT_LOCATION = { lat: -24.8523, lng: 38.1256 };
 
@@ -41,6 +45,10 @@ export function DashboardPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
   const [now, setNow] = useState(() => new Date());
+  const [insightsStatus, setInsightsStatus] = useState<InsightsStatus>('idle');
+  const [insightsText, setInsightsText] = useState<string | null>(null);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
+  const insightsAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     document.title = 'Maris AI | Ocean Analytics';
@@ -76,6 +84,35 @@ export function DashboardPage() {
 
     return () => abortController.abort();
   }, [requestedLocation.lat, requestedLocation.lng, requestVersion]);
+
+  useEffect(() => {
+    insightsAbortRef.current?.abort();
+    setInsightsStatus('idle');
+    setInsightsText(null);
+    setInsightsError(null);
+  }, [requestedLocation.lat, requestedLocation.lng, requestVersion]);
+
+  const runInsights = () => {
+    if (!data || insightsStatus === 'loading') return;
+
+    insightsAbortRef.current?.abort();
+    const controller = new AbortController();
+    insightsAbortRef.current = controller;
+
+    setInsightsStatus('loading');
+    setInsightsError(null);
+
+    generateOceanInsights(data, controller.signal)
+      .then((response) => {
+        setInsightsText(response.insights);
+        setInsightsStatus('success');
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setInsightsStatus('error');
+        setInsightsError(error instanceof Error ? error.message : 'Failed to generate insights');
+      });
+  };
 
   const updateLocation = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -280,6 +317,27 @@ export function DashboardPage() {
           </DashboardCard>
         </div>
 
+        {insightsStatus !== 'idle' && (
+          <section className="dashboard-card dashboard-insights-card">
+            <CardHeader icon={<Sparkles size={17} />} title="AI Insights" />
+            <div className="dashboard-insights-body">
+              {insightsStatus === 'loading' && (
+                <p className="dashboard-insights-loading">Analyzing live conditions…</p>
+              )}
+              {insightsStatus === 'error' && (
+                <p className="dashboard-insights-error">{insightsError}</p>
+              )}
+              {insightsStatus === 'success' && insightsText && (
+                <ul className="dashboard-insights-list">
+                  {formatInsightLines(insightsText).map((line, index) => (
+                    <li key={index}>{line}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        )}
+
         <div className="dashboard-attribution">
           {data ? (
             <span>
@@ -299,10 +357,16 @@ export function DashboardPage() {
         </div>
       </main>
 
-      <div className="dashboard-neural-badge">
+      <button
+        className="dashboard-neural-badge"
+        type="button"
+        onClick={runInsights}
+        disabled={!data || insightsStatus === 'loading'}
+        aria-label="Generate AI insights from current conditions"
+      >
         <span><CircuitBoard size={14} /></span>
-        Neuralcore
-      </div>
+        {insightsStatus === 'loading' ? 'Analyzing…' : 'Neuralcore'}
+      </button>
     </div>
   );
 }
@@ -505,6 +569,13 @@ function formatTimezone(data: RealtimeOceanResponse | null) {
   const point = data?.resolved.marine;
   if (!point?.timezone) return '—';
   return point.timezone_abbreviation ? `${point.timezone_abbreviation} · ${point.timezone}` : point.timezone;
+}
+
+function formatInsightLines(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[\s*•-]+/, '').replace(/^\d+\.\s*/, '').trim())
+    .filter(Boolean);
 }
 
 function formatTimestamp(value: string) {

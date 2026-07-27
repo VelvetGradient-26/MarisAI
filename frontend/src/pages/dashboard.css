@@ -452,10 +452,20 @@
   background: var(--dash-card-solid);
   box-shadow: var(--dash-glow);
   color: var(--dash-muted);
+  font-family: inherit;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.2s ease, opacity 0.2s ease;
+}
+
+.dashboard-neural-badge:not(:disabled):hover { border-color: var(--dash-border-active); }
+
+.dashboard-neural-badge:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .dashboard-neural-badge span {
@@ -466,6 +476,50 @@
   border-radius: 50%;
   background: var(--dash-primary-container);
   color: var(--dash-on-primary);
+}
+
+.dashboard-insights-card { margin-top: 22px; }
+
+.dashboard-insights-body { padding: 20px 22px 24px; }
+
+.dashboard-insights-loading {
+  margin: 0;
+  color: var(--dash-muted);
+  font-size: 13px;
+}
+
+.dashboard-insights-error {
+  margin: 0;
+  color: #f87171;
+  font-size: 13px;
+}
+
+.dashboard-insights-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dashboard-insights-list li {
+  position: relative;
+  padding-left: 16px;
+  color: var(--dash-text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.dashboard-insights-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--dash-primary);
 }
 
 @keyframes dashboardRadarSpin { to { transform: rotate(360deg); } }
