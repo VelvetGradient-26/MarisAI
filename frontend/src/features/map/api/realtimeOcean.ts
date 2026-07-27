@@ -67,7 +67,7 @@ function normalizeRealtimeOceanResponse(
     },
     location_context: payload.location_context ?? {
       ocean_name: null,
-      country_name: null,
+      nearest_port: null,
       locality: null,
       continent: null,
     },

@@ -1,6 +1,6 @@
 import { Link } from '../../app/router';
 import { useMapStore } from '../../store/mapStore';
-import type { RealtimeOceanConditions, RealtimeOceanUnits } from './types';
+import type { NearestPort, RealtimeOceanConditions, RealtimeOceanUnits } from './types';
 
 const METRICS: Array<{
   key: keyof RealtimeOceanConditions & keyof RealtimeOceanUnits;
@@ -28,7 +28,7 @@ export function SelectedLocationPanel() {
         {selectedLocation && data ? (
           <>
             <span>{data.location_context.ocean_name ?? 'Ocean: Unknown'}</span>
-            <span>{data.location_context.country_name ?? 'Country: Unknown'}</span>
+            <span>{formatNearestPort(data.location_context.nearest_port)}</span>
             <span>{formatCoordinates(selectedLocation.lat, selectedLocation.lng)}</span>
           </>
         ) : (
@@ -150,6 +150,11 @@ function formatTimestamp(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
+}
+
+function formatNearestPort(port: NearestPort | null): string {
+  if (!port) return 'Nearest port: Unknown';
+  return `Nearest port: ${port.name}, ${port.country} · ${trimNumber(port.distance_km)} km`;
 }
 
 function formatCoordinates(lat: number, lng: number): string {
