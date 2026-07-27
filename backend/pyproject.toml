@@ -1,27 +1,83 @@
 [project]
-name = "backend"
+name = "marisai-backend"
 version = "0.1.0"
-description = "Add your description here"
+description = "OceanMind AI Backend - Marine Data Ingestion & API"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "alembic>=1.18.5",
-    "copernicusmarine>=2.4.1",
-    "email-validator>=2.3.0",
-    "fastapi>=0.139.2",
+    # Web framework
+    "fastapi>=0.139.0",
+    "uvicorn[standard]>=0.51.0",
+    # Database
+    "sqlalchemy>=2.0.0",
+    "psycopg2-binary>=2.9.0",
+    "asyncpg>=0.29.0",
+    "alembic>=1.12.0",
     "geoalchemy2>=0.20.0",
-    "h5netcdf>=1.8.1",
-    "httpx>=0.28.1",
-    "loguru>=0.7.3",
-    "netcdf4>=1.7.4",
-    "numpy>=2.4.6",
-    "pandas>=3.0.5",
-    "psycopg2-binary>=2.9.12",
-    "pydantic-settings>=2.14.2",
-    "pyproj>=3.7.2",
-    "python-dotenv>=1.2.2",
-    "shapely>=2.1.2",
-    "sqlalchemy>=2.0.51",
-    "uvicorn>=0.51.0",
-    "xarray>=2026.7.0",
+    # HTTP clients
+    "httpx>=0.27.0",
+    "aiohttp>=3.9.0",
+    # Configuration
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.3.0",
+    "python-dotenv>=1.0.0",
+    # Scheduling
+    "apscheduler>=3.10.0",
+    # Retry logic
+    "tenacity>=8.2.0",
+    # Data processing
+    "numpy>=1.26.0",
+    "pandas>=2.1.0",
+    "xarray>=2024.0.0",
+    "netcdf4>=1.6.0",
+    "h5netcdf>=1.3.0",
+    # GIS
+    "shapely>=2.0.0",
+    "pyproj>=3.6.0",
+    # Copernicus
+    "copernicusmarine>=2.4.0",
+    # Utilities
+    "email-validator>=2.1.0",
+    "python-dateutil>=2.8.0",
+    "loguru>=0.7.0",
+    # Testing
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "httpx>=0.27.0",
+    "greenlet>=3.5.4",
 ]
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*", "routers*", "alembic*", "services*"]
+exclude = ["others*", "tests*"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.4.0",
+    "mypy>=1.9.0",
+    "black>=24.0.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "TID"]
+ignore = ["E501", "SIM103", "TID252"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
