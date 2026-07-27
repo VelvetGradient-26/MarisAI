@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
 import httpx
 
+from services.ports import find_nearest_port
 
 MARINE_API_URL = "https://marine-api.open-meteo.com/v1/marine"
 FORECAST_API_URL = "https://api.open-meteo.com/v1/forecast"
@@ -158,7 +158,9 @@ async def _fetch_weather_current(client: httpx.AsyncClient, coords: Coordinates)
 
 async def _fetch_location_context(
     client: httpx.AsyncClient, coords: Coordinates
-) -> dict[str, str | None]:
+) -> dict[str, Any]:
+    nearest_port = find_nearest_port(coords.latitude, coords.longitude)
+
     try:
         payload = await _fetch_json(
             client,
@@ -173,7 +175,7 @@ async def _fetch_location_context(
     except OpenMeteoError:
         return {
             "ocean_name": None,
-            "country_name": None,
+            "nearest_port": nearest_port,
             "locality": None,
             "continent": None,
         }
@@ -182,7 +184,7 @@ async def _fetch_location_context(
 
     return {
         "ocean_name": _extract_ocean_name(payload, informative),
-        "country_name": _extract_country_name(payload, informative),
+        "nearest_port": nearest_port,
         "locality": _clean_string(payload.get("locality")),
         "continent": _clean_string(payload.get("continent")),
     }
@@ -202,41 +204,6 @@ def _extract_ocean_name(payload: dict[str, Any], informative: list[dict[str, Any
         return locality
 
     return None
-
-
-def _extract_country_name(payload: dict[str, Any], informative: list[dict[str, Any]]) -> str | None:
-    country_name = _clean_string(payload.get("countryName"))
-    if country_name:
-        return country_name
-
-    locality = payload.get("locality")
-    if isinstance(locality, str):
-        parsed = _extract_country_from_boundary_name(locality)
-        if parsed:
-            return parsed
-
-    for item in informative:
-        if str(item.get("description", "")).lower() != "maritime boundary":
-            continue
-        parsed = _extract_country_from_boundary_name(str(item.get("name", "")))
-        if parsed:
-            return parsed
-
-    return None
-
-
-def _extract_country_from_boundary_name(value: str) -> str | None:
-    if not value:
-        return None
-
-    match = re.search(r"\bof\s+(.+)$", value)
-    if not match:
-        return None
-
-    country_name = match.group(1).strip()
-    if country_name.lower().startswith("the "):
-        country_name = country_name[4:]
-    return country_name or None
 
 
 def _clean_string(value: Any) -> str | None:

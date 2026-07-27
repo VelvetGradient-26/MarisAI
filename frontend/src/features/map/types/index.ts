@@ -95,9 +95,15 @@ export interface RealtimeOceanResolvedPoint {
   timezone_abbreviation: string | null;
 }
 
+export interface NearestPort {
+  name: string;
+  country: string;
+  distance_km: number;
+}
+
 export interface RealtimeOceanLocationContext {
   ocean_name: string | null;
-  country_name: string | null;
+  nearest_port: NearestPort | null;
   locality: string | null;
   continent: string | null;
 }

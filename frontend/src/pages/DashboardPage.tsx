@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import {
   Activity,
+  Anchor,
   ArrowLeft,
   ChevronDown,
   CircuitBoard,
@@ -18,6 +19,7 @@ import { Link } from '../app/router';
 import { useAppRouter } from '../app/routerContext';
 import { fetchRealtimeOceanData } from '../features/map/api/realtimeOcean';
 import type {
+  NearestPort,
   RealtimeOceanConditions,
   RealtimeOceanResponse,
 } from '../features/map/types';
@@ -247,9 +249,13 @@ export function DashboardPage() {
                   data?.location_context.locality ??
                   'Open ocean'
                 }
-                description={
-                  data?.location_context.country_name ?? data?.location_context.continent ?? 'International waters'
-                }
+                description={data?.location_context.continent ?? 'International waters'}
+              />
+              <LocationDetail
+                icon={<Anchor size={18} />}
+                label="Nearest port"
+                value={data?.location_context.nearest_port?.name ?? '—'}
+                description={formatNearestPort(data?.location_context.nearest_port ?? null)}
               />
               <LocationDetail
                 icon={<Navigation2 size={18} />}
@@ -488,6 +494,11 @@ function formatResolvedPoint(data: RealtimeOceanResponse | null) {
     return 'Resolving nearest marine model cell';
   }
   return `Model cell ${point.latitude.toFixed(3)}°, ${point.longitude.toFixed(3)}°`;
+}
+
+function formatNearestPort(port: NearestPort | null) {
+  if (!port) return 'Resolving nearest port';
+  return `${trimNumber(port.distance_km)} km · ${port.country}`;
 }
 
 function formatTimezone(data: RealtimeOceanResponse | null) {
