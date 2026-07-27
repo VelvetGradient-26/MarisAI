@@ -16,12 +16,29 @@ const GIBS_DATE = recentGibsDate();
 /**
  * Every scientific/reference overlay the app knows about. This is the
  * single place Phase 4-6 datasets get added — a new entry here, not a new
- * component or manager method. Two entries below are real, verified GIBS
- * endpoints; two are honest placeholders (`implemented: false`) for data
- * that needs a different rendering approach than "raster tile," flagged
- * rather than faked.
+ * component or manager method. Three entries below are real, verified
+ * endpoints (the Esri reference overlay, and two GIBS layers); two are
+ * honest placeholders (`implemented: false`) for data that needs a
+ * different rendering approach than "raster tile," flagged rather than
+ * faked.
  */
 export const layerRegistry: LayerDescriptor[] = [
+  {
+    id: 'reference-labels',
+    name: 'Place Labels',
+    category: 'reference',
+    type: 'raster',
+    attribution: 'Esri, Garmin, USGS, NPS',
+    defaultVisible: true,
+    source: {
+      type: 'raster',
+      tiles: [
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Reference_Overlay/MapServer/tile/{z}/{y}/{x}',
+      ],
+      tileSize: 256,
+      maxzoom: 19,
+    },
+  },
   {
     id: 'sst',
     name: 'Sea Surface Temperature',
