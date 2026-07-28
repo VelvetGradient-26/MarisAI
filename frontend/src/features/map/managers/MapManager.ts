@@ -47,6 +47,7 @@ export class MapManager {
       renderWorldCopies: false,
       attributionControl: { compact: true },
     });
+    (window as unknown as { __debugMap?: unknown }).__debugMap = map;
 
     const layerManager = new LayerManager(map, () => getFirstExistingAnnotationLayerId(map));
     const basemapManager = new BasemapManager(map, () => getBasemapInsertBeforeId(map));
