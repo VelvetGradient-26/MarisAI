@@ -30,7 +30,7 @@ import numpy as np
 from loguru import logger
 from PIL import Image
 from scipy.interpolate import RegularGridInterpolator
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 
 from app.core.config import settings
 
@@ -112,7 +112,32 @@ def _wrap_longitude(longitude: float, lon_min: float) -> float:
     return lon_min + (longitude - lon_min) % 360.0
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=2, max=20))
+# This near-real-time L4 product reserves a time-index slot for the most
+# recent hour(s) before its gap-filling pipeline has actually populated them
+# — the timestep exists (copernicusmarine picks it fine, no error) but every
+# value in it is NaN, alongside a "currently being updated" warning from the
+# library. Confirmed live: at time of writing, the latest 24 straight hourly
+# timesteps were 0.0% valid, with real data only resuming at the 25th step
+# back — a sustained gap, not a one-off blip. Unconditionally taking time=-1
+# (the previous behavior) picks one of these empty placeholders whenever a
+# refresh happens to land inside that window — the fetch itself doesn't fail,
+# so nothing catches it, but the resulting grid is entirely no-data. Walking
+# backward to the newest timestep that actually has real data avoids that.
+_MAX_LOOKBACK_STEPS = 30
+_MIN_VALID_FRACTION = 0.1
+
+
+# retry_if_not_exception_type(CopernicusWindError): a real network/auth
+# failure on open_dataset()/.load() is worth 3 attempts with backoff, but
+# CopernicusWindError here means the lookback already scanned
+# _MAX_LOOKBACK_STEPS real timesteps and confirmed none had data — retrying
+# that verdict 3 more times would just triple a multi-minute scan for an
+# answer that isn't going to change within seconds.
+@retry(
+    retry=retry_if_not_exception_type(CopernicusWindError),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=2, max=20),
+)
 def _fetch_latest_grid() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, datetime]:
     import copernicusmarine
 
@@ -131,15 +156,28 @@ def _fetch_latest_grid() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray
         service="arco-geo-series",
     )
     past = ds.sel(time=slice(None, now.replace(tzinfo=None)))
-    u_da = past.eastward_wind.isel(time=-1).load()
-    v_da = past.northward_wind.isel(time=-1).load()
 
-    timestamp = datetime.fromisoformat(str(u_da.time.values)[:19]).replace(tzinfo=timezone.utc)
-    lat = u_da.latitude.values.astype(np.float64)
-    lon = u_da.longitude.values.astype(np.float64)
-    u = u_da.values.astype(np.float64)
-    v = v_da.values.astype(np.float64)
-    return lat, lon, u, v, timestamp
+    for i in range(1, _MAX_LOOKBACK_STEPS + 1):
+        u_da = past.eastward_wind.isel(time=-i).load()
+        valid_fraction = float(np.isfinite(u_da.values).mean())
+        if valid_fraction >= _MIN_VALID_FRACTION:
+            v_da = past.northward_wind.isel(time=-i).load()
+            timestamp = datetime.fromisoformat(str(u_da.time.values)[:19]).replace(tzinfo=timezone.utc)
+            lat = u_da.latitude.values.astype(np.float64)
+            lon = u_da.longitude.values.astype(np.float64)
+            u = u_da.values.astype(np.float64)
+            v = v_da.values.astype(np.float64)
+            return lat, lon, u, v, timestamp
+        logger.warning(
+            f"Wind timestep {str(u_da.time.values)[:19]} is only "
+            f"{valid_fraction:.1%} valid (likely still being backfilled upstream) "
+            "— trying an earlier timestep"
+        )
+
+    raise CopernicusWindError(
+        f"No usable wind timestep found in the last {_MAX_LOOKBACK_STEPS} hours "
+        "— all appear to still be backfilling upstream"
+    )
 
 
 def _block_mean_downsample(grid: np.ndarray, factor: int) -> np.ndarray:
@@ -177,15 +215,22 @@ def _encode_field_png(u: np.ndarray, v: np.ndarray) -> tuple[bytes, float, float
 async def refresh_wind_cache() -> None:
     global _cache
     async with _refresh_lock:
+        # Everything here — fetch, interpolator build, PNG encode — is inside
+        # one try/except. Previously only the fetch was guarded, so a failure
+        # in _build_interpolator/_encode_field_png (e.g. a grid shape that
+        # doesn't split evenly into the encoder's downsample blocks, or an
+        # all-NaN slice) escaped uncaught out of a fire-and-forget asyncio
+        # task/scheduler job: asyncio just logs "exception was never
+        # retrieved" and drops it, _cache stays None forever, and every wind
+        # endpoint 502s/503s permanently with nothing actionable in the logs.
         try:
             lat, lon, u, v, timestamp = await asyncio.to_thread(_fetch_latest_grid)
-        except Exception as exc:  # noqa: BLE001 - keep stale cache on any failure
-            logger.warning(f"Wind refresh failed, keeping previous cache if any: {exc}")
+            u_interp = _build_interpolator(lat, lon, u)
+            v_interp = _build_interpolator(lat, lon, v)
+            field_png, u_min, u_max, v_min, v_max = await asyncio.to_thread(_encode_field_png, u, v)
+        except Exception:  # noqa: BLE001 - keep stale cache on any failure
+            logger.opt(exception=True).warning("Wind refresh failed, keeping previous cache if any")
             return
-
-        u_interp = _build_interpolator(lat, lon, u)
-        v_interp = _build_interpolator(lat, lon, v)
-        field_png, u_min, u_max, v_min, v_max = await asyncio.to_thread(_encode_field_png, u, v)
 
         _cache = _WindCache(
             u_interp=u_interp,
