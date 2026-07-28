@@ -109,11 +109,11 @@ async def refresh_sst_cache() -> None:
     async with _refresh_lock:
         try:
             lat, lon, grid, timestamp = await asyncio.to_thread(_fetch_latest_grid)
-        except Exception as exc:  # noqa: BLE001 - keep stale cache on any failure
-            logger.warning(f"SST refresh failed, keeping previous cache if any: {exc}")
+            interpolator = _build_interpolator(lat, lon, grid)
+        except Exception:  # noqa: BLE001 - keep stale cache on any failure
+            logger.opt(exception=True).warning("SST refresh failed, keeping previous cache if any")
             return
 
-        interpolator = _build_interpolator(lat, lon, grid)
         _cache = _SstCache(interpolator=interpolator, timestamp=timestamp)
         render_tile.cache_clear()
         logger.info(f"SST cache refreshed: timestep {timestamp.isoformat()}")
