@@ -1,0 +1,105 @@
+.feedback-page {
+  --fb-bg: #0e1116;
+  --fb-card-bg: rgba(255, 255, 255, 0.03);
+  --fb-border: rgba(255, 255, 255, 0.1);
+  --fb-text: #e3e2e2;
+  --fb-muted: #9ba0af;
+  --fb-primary: #4fd1ff;
+  --fb-primary-on: #001b22;
+  --fb-error: #ff8a8a;
+  --fb-input-bg: rgba(255, 255, 255, 0.04);
+
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--navbar-h, 64px) + 24px) 24px 24px;
+  background: var(--fb-bg);
+  font-family: 'Space Grotesk', sans-serif;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+.feedback-page--light {
+  --fb-bg: #f4f7f8;
+  --fb-card-bg: #fff;
+  --fb-border: rgba(15, 30, 30, 0.09);
+  --fb-text: #12201f;
+  --fb-muted: #5c6b6c;
+  --fb-primary: #0f766e;
+  --fb-primary-on: #fff;
+  --fb-error: #dc2626;
+  --fb-input-bg: rgba(15, 30, 30, 0.04);
+}
+
+.feedback-card {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border: 1px solid var(--fb-border);
+  border-radius: 16px;
+  padding: 40px;
+  background: var(--fb-card-bg);
+  color: var(--fb-text);
+}
+
+.feedback-card h1 {
+  margin: 0;
+  font-size: 1.7rem;
+}
+
+.feedback-card > p {
+  margin: 0 0 8px;
+  color: var(--fb-muted);
+  line-height: 1.6;
+}
+
+.feedback-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--fb-muted);
+}
+
+.feedback-card input,
+.feedback-card textarea {
+  background: var(--fb-input-bg);
+  border: 1px solid var(--fb-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--fb-text);
+  font-family: inherit;
+  font-size: 0.95rem;
+  resize: vertical;
+}
+
+.feedback-error {
+  margin: 0;
+  color: var(--fb-error);
+  font-size: 0.85rem;
+}
+
+.feedback-success {
+  margin: 0;
+  color: var(--fb-primary);
+  font-size: 0.85rem;
+}
+
+.feedback-submit {
+  align-self: flex-start;
+  background: var(--fb-primary);
+  color: var(--fb-primary-on);
+  border: none;
+  border-radius: 999px;
+  padding: 0.7rem 1.8rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.feedback-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

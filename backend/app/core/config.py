@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     LLM_MODEL: str = ""
     LLM_BASE_URL: str = ""
 
+    # Feedback form email delivery (Gmail SMTP + app password)
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",
