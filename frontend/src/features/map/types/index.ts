@@ -1,9 +1,10 @@
 import type {
+  CustomLayerInterface,
   RasterSourceSpecification,
   RasterLayerSpecification,
 } from 'maplibre-gl';
 
-export type BasemapId = 'satellite' | 'blueMarble';
+export type BasemapId = 'satellite' | 'blueMarble' | 'darkMarine';
 
 export interface BasemapDefinition {
   id: BasemapId;
@@ -19,18 +20,62 @@ export interface BasemapDefinition {
  * See README.md "Layer z-order" section — the ADR's own layer hierarchy
  * diagram is ambiguous about stacking direction, so this is a documented
  * assumption, not a settled decision.
+ *
+ * 'flow' sits above 'ocean' (particle layers render on top of scalar color
+ * fields like SST) and beneath 'ai'/'reference' (labels/boundaries stay
+ * legible on top of particles).
  */
-export type LayerCategory = 'ocean' | 'ai' | 'reference';
+export type LayerCategory = 'ocean' | 'flow' | 'ai' | 'reference';
 
-export interface LayerDescriptor {
+/**
+ * How to explain a layer's colors/symbols to the user. Values here are
+ * sourced from the provider's own published colormap/legend (GIBS colormap
+ * XML, WMS GetLegendGraphic) — not invented — so a "Cold/Mild/Hot" bucket
+ * boundary is a real boundary in that provider's color scale, just labeled
+ * for quick reading instead of showing the raw continuous ramp.
+ */
+export type LayerLegend =
+  | {
+      type: 'categories';
+      unit: string;
+      categories: Array<{ label: string; range: string; color: string }>;
+    }
+  | {
+      /** Continuous color ramp — for real-valued scalar fields (SST,
+       * chlorophyll, etc.) rather than the discrete buckets `categories`
+       * implies. `stops` are CSS-gradient offsets (0-1) + hex color; `min`/
+       * `max` are the scale's real-world endpoints in `unit`. */
+      type: 'gradient';
+      unit: string;
+      min: number;
+      max: number;
+      stops: Array<{ offset: number; color: string }>;
+    }
+  | { type: 'image'; src: string; alt: string }
+  | { type: 'swatch'; color: string; label: string }
+  | { type: 'note'; text: string };
+
+/**
+ * A `CustomLayerInterface` implementation that also exposes an opacity knob —
+ * custom WebGL layers have no `raster-opacity` paint property, so
+ * `LayerManager` calls this directly instead. `setDensityTier`/
+ * `setSpeedMultiplier` are optional: only vector-field particle layers (wind,
+ * and later currents/waves) implement them, for the Task 13 sliders.
+ */
+export interface CustomVectorFieldLayer extends CustomLayerInterface {
+  id: string;
+  setOpacity(opacity: number): void;
+  setDensityTier?(tier: 'world' | 'regional' | 'local' | 'auto'): void;
+  setSpeedMultiplier?(multiplier: number): void;
+}
+
+interface LayerDescriptorBase {
   id: string;
   name: string;
   category: LayerCategory;
-  type: 'raster'; // extend with 'geojson' | 'vector' when Phase 4+ needs them
-  source: RasterSourceSpecification;
-  defaultOpacity?: number;
   defaultVisible?: boolean;
   attribution?: string;
+  legend?: LayerLegend;
   /**
    * False marks a registered placeholder with no real tile source wired up
    * yet (e.g. ocean currents, AI predictions). It shows up in the layer
@@ -38,6 +83,47 @@ export interface LayerDescriptor {
    */
   implemented?: boolean;
 }
+
+export interface RasterLayerDescriptor extends LayerDescriptorBase {
+  type: 'raster';
+  /**
+   * Usually one raster source. A few real-data layers (e.g. wind speed)
+   * genuinely need two — different satellite orbit passes that cover
+   * different swaths of the globe on a given day — stacked together under
+   * one toggle so the union of both passes' real coverage shows, instead of
+   * either pass's gaps alone. Not a rendering trick: every source here is a
+   * real, independently-fetched dataset.
+   */
+  sources: RasterSourceSpecification[];
+  defaultOpacity?: number;
+  /**
+   * Optional GPU-side raster paint tweaks (MapLibre `raster-*` paint
+   * properties), applied on top of `raster-opacity`. For layers whose tile
+   * colors read dimmer than intended once blended over a dark basemap —
+   * adjusts the display only, not the underlying data/colormap, so a
+   * layer's legend still reflects the real color scale.
+   */
+  rasterPaint?: {
+    /** MapLibre `raster-contrast`, range -1 to 1. */
+    contrast?: number;
+    /** MapLibre `raster-saturation`, range -1 to 1. */
+    saturation?: number;
+  };
+}
+
+/**
+ * A layer that owns its own WebGL rendering (particle systems, and any
+ * future custom-rendered layer) rather than a MapLibre raster/vector source.
+ * `createLayer` is called once by LayerManager.add() with the synthetic
+ * layer id it should register under.
+ */
+export interface CustomLayerDescriptor extends LayerDescriptorBase {
+  type: 'custom';
+  defaultOpacity?: number;
+  createLayer: (id: string) => CustomVectorFieldLayer;
+}
+
+export type LayerDescriptor = RasterLayerDescriptor | CustomLayerDescriptor;
 
 export interface CameraState {
   center: [number, number];

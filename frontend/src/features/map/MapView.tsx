@@ -5,6 +5,8 @@ import { Map } from './Map';
 import { MapControls } from './MapControls';
 import { CoordinateDisplay } from './CoordinateDisplay';
 import { SelectedLocationPanel } from './SelectedLocationPanel';
+import { SstLegend } from './SstLegend';
+import { WindLegend } from './WindLegend';
 import './styles/map.css';
 
 // Configure MapLibre only when the lazy map route is loaded. This must run
@@ -18,6 +20,10 @@ export function MapView() {
       <MapControls />
       <SelectedLocationPanel />
       <CoordinateDisplay />
+      <div className="legend-stack">
+        <SstLegend />
+        <WindLegend />
+      </div>
     </Map>
   );
 }

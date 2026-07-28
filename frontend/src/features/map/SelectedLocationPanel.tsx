@@ -1,5 +1,11 @@
+import { useEffect, useState } from 'react';
 import { Link } from '../../app/router';
 import { useMapStore } from '../../store/mapStore';
+import { useUiStore } from '../../store/uiStore';
+import { fetchSstPoint } from './api/sst';
+import type { SstPointResponse } from './api/sst';
+import { fetchWindPoint } from './api/wind';
+import type { WindPointResponse } from './api/wind';
 import type { NearestPort, RealtimeOceanConditions, RealtimeOceanUnits } from './types';
 
 const METRICS: Array<{
@@ -20,9 +26,72 @@ export function SelectedLocationPanel() {
   const data = useMapStore((s) => s.selectedLocationData);
   const status = useMapStore((s) => s.selectedLocationDataStatus);
   const error = useMapStore((s) => s.selectedLocationDataError);
+  const panelOpen = useUiStore((s) => s.selectedLocationPanelOpen);
+  const togglePanel = useUiStore((s) => s.toggleSelectedLocationPanel);
+
+  const sstLayerActive = useMapStore((s) => s.layers.get('sst')?.active ?? false);
+  const [sstPoint, setSstPoint] = useState<SstPointResponse | null>(null);
+  const [sstStatus, setSstStatus] = useState<'idle' | 'loading' | 'error' | 'success'>('idle');
+
+  useEffect(() => {
+    if (!sstLayerActive || !selectedLocation) {
+      setSstPoint(null);
+      setSstStatus('idle');
+      return;
+    }
+
+    const controller = new AbortController();
+    setSstStatus('loading');
+    fetchSstPoint(selectedLocation, controller.signal)
+      .then((response) => {
+        setSstPoint(response);
+        setSstStatus('success');
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setSstStatus('error');
+      });
+
+    return () => controller.abort();
+  }, [sstLayerActive, selectedLocation]);
+
+  const windLayerActive = useMapStore((s) => s.layers.get('wind')?.active ?? false);
+  const [windPoint, setWindPoint] = useState<WindPointResponse | null>(null);
+  const [windStatus, setWindStatus] = useState<'idle' | 'loading' | 'error' | 'success'>('idle');
+
+  useEffect(() => {
+    if (!windLayerActive || !selectedLocation) {
+      setWindPoint(null);
+      setWindStatus('idle');
+      return;
+    }
+
+    const controller = new AbortController();
+    setWindStatus('loading');
+    fetchWindPoint(selectedLocation, controller.signal)
+      .then((response) => {
+        setWindPoint(response);
+        setWindStatus('success');
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setWindStatus('error');
+      });
+
+    return () => controller.abort();
+  }, [windLayerActive, selectedLocation]);
 
   return (
-    <aside className="selected-location-panel">
+    <aside className={`selected-location-panel ${panelOpen ? 'open' : 'collapsed'}`}>
+      <button
+        className="panel-toggle"
+        onClick={togglePanel}
+        aria-label={panelOpen ? 'Collapse realtime marine conditions' : 'Expand realtime marine conditions'}
+        aria-expanded={panelOpen}
+      >
+        {panelOpen ? '✕' : '☰'}
+      </button>
+
       <div className="selected-location-panel__header">
         <h3>Realtime Marine Conditions</h3>
         {selectedLocation && data ? (
@@ -38,69 +107,117 @@ export function SelectedLocationPanel() {
         )}
       </div>
 
-      {!selectedLocation && (
-        <p className="selected-location-panel__state">
-          Click any ocean location on the map to load sea surface temperature, wave, current, wind,
-          and air temperature data.
-        </p>
-      )}
-
-      {selectedLocation && status === 'loading' && (
-        <p className="selected-location-panel__state">Loading latest marine and weather data…</p>
-      )}
-
-      {selectedLocation && status === 'error' && (
-        <p className="selected-location-panel__state selected-location-panel__state--error">
-          {error ?? 'Failed to load realtime marine conditions.'}
-        </p>
-      )}
-
-      {selectedLocation && data && status === 'success' && (
-        <>
-          <div className="selected-location-panel__meta">
-            <span>Data time: {data.current.time ?? '—'}</span>
-            <span>Fetched: {formatTimestamp(data.fetched_at)}</span>
+      <div className="selected-location-panel__body" aria-hidden={!panelOpen}>
+        {sstLayerActive && selectedLocation && (
+          <div className="selected-location-panel__sst-point">
+            <span className="selected-location-panel__sst-point-label">Copernicus SST (cursor)</span>
+            {sstStatus === 'loading' && <span>Loading…</span>}
+            {sstStatus === 'error' && (
+              <span className="selected-location-panel__state--error">SST data unavailable</span>
+            )}
+            {sstStatus === 'success' && sstPoint && (
+              <span className="selected-location-panel__sst-point-value">
+                {sstPoint.is_land_or_no_data || sstPoint.temperature_c === null
+                  ? 'No data (land or no coverage)'
+                  : `${sstPoint.temperature_c.toFixed(1)} °C`}
+              </span>
+            )}
           </div>
+        )}
 
-          <dl className="selected-location-panel__metrics">
-            {METRICS.map((metric) => (
-              <div key={metric.key} className="selected-location-panel__metric">
-                <dt>{metric.label}</dt>
-                <dd>
-                  {isDirectionMetric(metric.key) ? (
-                    <DirectionValue
-                      degrees={data.current[metric.key]}
-                      unit={data.units[metric.key]}
-                      mode={metric.key === 'wave_direction' ? 'from' : 'towards'}
-                    />
-                  ) : (
-                    formatValue(data.current[metric.key], data.units[metric.key])
-                  )}
-                </dd>
-              </div>
-            ))}
-          </dl>
-
-          <Link
-            className="selected-location-panel__more-link"
-            to={`/dashboard?lat=${selectedLocation.lat.toFixed(6)}&lon=${selectedLocation.lng.toFixed(6)}`}
-          >
-            More info
-            <span aria-hidden="true">→</span>
-          </Link>
-
-          <div className="selected-location-panel__attribution">
-            Data by{' '}
-            <a href={data.attribution.url} target="_blank" rel="noreferrer">
-              {data.attribution.name}
-            </a>{' '}
-            /{' '}
-            <a href={data.attribution.provider_url} target="_blank" rel="noreferrer">
-              {data.attribution.provider_name}
-            </a>
+        {windLayerActive && selectedLocation && (
+          <div className="selected-location-panel__wind-point">
+            <span className="selected-location-panel__wind-point-label">Copernicus Wind (cursor)</span>
+            {windStatus === 'loading' && <span>Loading…</span>}
+            {windStatus === 'error' && (
+              <span className="selected-location-panel__state--error">Wind data unavailable</span>
+            )}
+            {windStatus === 'success' && windPoint && (
+              <>
+                {windPoint.is_land_or_no_data || windPoint.speed_ms === null ? (
+                  <span className="selected-location-panel__wind-point-value">No data</span>
+                ) : (
+                  <>
+                    <span className="selected-location-panel__wind-point-value">
+                      {windPoint.speed_ms.toFixed(1)} m/s
+                    </span>
+                    <DirectionValue degrees={windPoint.direction_from_deg} unit="°" mode="from" />
+                    {windPoint.beaufort && (
+                      <span className="selected-location-panel__wind-point-beaufort">
+                        F{windPoint.beaufort.force} · {windPoint.beaufort.label}
+                      </span>
+                    )}
+                  </>
+                )}
+              </>
+            )}
           </div>
-        </>
-      )}
+        )}
+
+        {!selectedLocation && (
+          <p className="selected-location-panel__state">
+            Click any ocean location on the map to load sea surface temperature, wave, current, wind,
+            and air temperature data.
+          </p>
+        )}
+
+        {selectedLocation && status === 'loading' && (
+          <p className="selected-location-panel__state">Loading latest marine and weather data…</p>
+        )}
+
+        {selectedLocation && status === 'error' && (
+          <p className="selected-location-panel__state selected-location-panel__state--error">
+            {error ?? 'Failed to load realtime marine conditions.'}
+          </p>
+        )}
+
+        {selectedLocation && data && status === 'success' && (
+          <>
+            <div className="selected-location-panel__meta">
+              <span>Data time: {data.current.time ?? '—'}</span>
+              <span>Fetched: {formatTimestamp(data.fetched_at)}</span>
+            </div>
+
+            <dl className="selected-location-panel__metrics">
+              {METRICS.map((metric) => (
+                <div key={metric.key} className="selected-location-panel__metric">
+                  <dt>{metric.label}</dt>
+                  <dd>
+                    {isDirectionMetric(metric.key) ? (
+                      <DirectionValue
+                        degrees={data.current[metric.key]}
+                        unit={data.units[metric.key]}
+                        mode={metric.key === 'wave_direction' ? 'from' : 'towards'}
+                      />
+                    ) : (
+                      formatValue(data.current[metric.key], data.units[metric.key])
+                    )}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+
+            <Link
+              className="selected-location-panel__more-link"
+              to={`/dashboard?lat=${selectedLocation.lat.toFixed(6)}&lon=${selectedLocation.lng.toFixed(6)}`}
+            >
+              More info
+              <span aria-hidden="true">→</span>
+            </Link>
+
+            <div className="selected-location-panel__attribution">
+              Data by{' '}
+              <a href={data.attribution.url} target="_blank" rel="noreferrer">
+                {data.attribution.name}
+              </a>{' '}
+              /{' '}
+              <a href={data.attribution.provider_url} target="_blank" rel="noreferrer">
+                {data.attribution.provider_name}
+              </a>
+            </div>
+          </>
+        )}
+      </div>
     </aside>
   );
 }

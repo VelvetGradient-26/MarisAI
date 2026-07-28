@@ -50,12 +50,34 @@ body,
   background: rgba(16, 29, 44, 0.92);
   border: 1px solid var(--ocean-border);
   border-radius: 10px;
-  padding: 14px;
-  width: 220px;
+  width: 248px;
+  max-height: calc(100vh - 32px);
   color: var(--ocean-text);
   font-size: 13px;
   line-height: 1.4;
   backdrop-filter: blur(6px);
+  overflow: hidden;
+  transition: width 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.map-controls.collapsed {
+  width: 40px;
+}
+
+.map-controls__body {
+  width: 220px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 40px 14px 14px;
+  opacity: 1;
+  transition: opacity 0.2s ease 0.08s;
+}
+
+.map-controls.collapsed .map-controls__body {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
 }
 
 .selected-location-panel {
@@ -64,8 +86,6 @@ body,
   right: 16px;
   z-index: 5;
   width: min(320px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
-  overflow-y: auto;
   background: rgba(16, 29, 44, 0.94);
   border: 1px solid var(--ocean-border);
   border-radius: 10px;
@@ -77,7 +97,23 @@ body,
 
 .selected-location-panel h3 {
   margin: 0;
+  padding-right: 22px;
   font-size: 13px;
+}
+
+.selected-location-panel__body {
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  opacity: 1;
+  transition: max-height 0.32s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease 0.08s;
+}
+
+.selected-location-panel.collapsed .selected-location-panel__body {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.12s ease;
 }
 
 .selected-location-panel__header {
@@ -197,9 +233,50 @@ body,
   color: inherit;
 }
 
-.map-controls.collapsed {
-  width: auto;
-  padding: 8px;
+.selected-location-panel__sst-point {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--ocean-border);
+  font: 12px/1.4 var(--ocean-font-mono);
+}
+
+.selected-location-panel__sst-point-label {
+  color: var(--ocean-muted);
+}
+
+.selected-location-panel__sst-point-value {
+  margin-left: auto;
+  color: var(--ocean-accent);
+  font-weight: 600;
+}
+
+.selected-location-panel__wind-point {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--ocean-border);
+  font: 12px/1.4 var(--ocean-font-mono);
+}
+
+.selected-location-panel__wind-point-label {
+  color: var(--ocean-muted);
+  flex-basis: 100%;
+}
+
+.selected-location-panel__wind-point-value {
+  color: var(--ocean-accent);
+  font-weight: 600;
+}
+
+.selected-location-panel__wind-point-beaufort {
+  margin-left: auto;
+  color: var(--ocean-muted);
 }
 
 .map-controls h3 {
@@ -248,6 +325,46 @@ body,
   color: var(--ocean-accent);
 }
 
+.map-button-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.map-button-grid button {
+  position: relative;
+  background: var(--ocean-bg);
+  border: 1px solid var(--ocean-border);
+  color: var(--ocean-text);
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 12px;
+  text-align: left;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.map-button-grid button.active {
+  border-color: var(--ocean-accent);
+  color: var(--ocean-accent);
+  background: rgba(34, 211, 238, 0.08);
+}
+
+.map-button-grid button:disabled {
+  color: var(--ocean-muted);
+  cursor: not-allowed;
+}
+
+.map-button-grid .badge {
+  display: block;
+  margin-top: 3px;
+  font-size: 9px;
+  color: var(--ocean-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .layer-list {
   list-style: none;
   margin: 0;
@@ -283,6 +400,91 @@ body,
   margin-top: 4px;
 }
 
+.vector-field-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--ocean-border);
+}
+
+.vector-field-controls label {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--ocean-muted);
+  cursor: default;
+}
+
+.vector-field-controls select {
+  background: var(--ocean-bg);
+  border: 1px solid var(--ocean-border);
+  color: var(--ocean-text);
+  border-radius: 4px;
+  padding: 3px 4px;
+  font: inherit;
+}
+
+.vector-field-controls input[type='range'] {
+  width: 100%;
+  accent-color: var(--ocean-accent);
+}
+
+.layer-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 6px 0 0;
+  padding: 6px 0 0;
+  list-style: none;
+  border-top: 1px dashed var(--ocean-border);
+}
+
+.layer-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.layer-legend__swatch {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.layer-legend__label {
+  color: var(--ocean-text);
+}
+
+.layer-legend__range {
+  margin-left: auto;
+  color: var(--ocean-muted);
+}
+
+.layer-legend--inline {
+  flex-direction: row;
+  align-items: center;
+  font-size: 11px;
+}
+
+.layer-legend--image img {
+  display: block;
+  max-width: 100%;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.layer-legend--note {
+  font-size: 11px;
+  color: var(--ocean-muted);
+  line-height: 1.4;
+}
+
 .coordinate-display {
   position: absolute;
   bottom: 16px;
@@ -299,12 +501,119 @@ body,
   letter-spacing: 0.02em;
 }
 
-.coordinate-display .zoom {
+.coordinate-display .zoom,
+.coordinate-display .depth {
   color: var(--ocean-muted);
+  white-space: nowrap;
 }
 
 @media (max-width: 720px) {
   .selected-location-panel {
     bottom: 56px;
+  }
+}
+
+.gradient-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gradient-bar__ramp {
+  height: 10px;
+  border-radius: 4px;
+}
+
+.gradient-bar__ticks {
+  display: flex;
+  justify-content: space-between;
+  color: var(--ocean-muted);
+  font: 10px/1.2 var(--ocean-font-mono);
+}
+
+.layer-legend--gradient {
+  border-top: 1px dashed var(--ocean-border);
+  margin: 6px 0 0;
+  padding: 6px 0 0;
+}
+
+/* Wraps every floating gradient legend (SST, wind, ...) so they stack
+ * vertically instead of overlapping when more than one layer with a legend
+ * is active at once — the whole point of a Windy-style view is showing wind
+ * particles over the SST color field together. Positioned top-right rather
+ * than literally bottom-right (the spec's suggestion) because that corner
+ * is already owned by .selected-location-panel, whose height varies with
+ * its open/collapsed state and content. */
+.legend-stack {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.sst-legend,
+.wind-legend {
+  width: 220px;
+  background: rgba(16, 29, 44, 0.94);
+  border: 1px solid var(--ocean-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: var(--ocean-text);
+  backdrop-filter: blur(6px);
+  box-sizing: border-box;
+}
+
+.sst-legend__title,
+.wind-legend__title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ocean-muted);
+  margin-bottom: 8px;
+}
+
+.sst-legend__meta,
+.wind-legend__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+  color: var(--ocean-muted);
+  font: 10px/1.4 var(--ocean-font-mono);
+}
+
+.sst-legend__error,
+.wind-legend__error {
+  color: #f59e0b;
+}
+
+.sst-legend__source,
+.wind-legend__source {
+  opacity: 0.8;
+}
+
+.wind-legend__beaufort {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--ocean-border);
+  font: 10px/1.4 var(--ocean-font-mono);
+  color: var(--ocean-muted);
+}
+
+@media (max-width: 720px) {
+  .legend-stack {
+    align-items: stretch;
+  }
+
+  .sst-legend,
+  .wind-legend {
+    width: min(220px, calc(100vw - 32px));
   }
 }
