@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link } from '../../app/router';
 import { useMapStore } from '../../store/mapStore';
 import { useUiStore } from '../../store/uiStore';
+import { useTimezoneStore } from '../../store/timezoneStore';
+import { formatFullDateTime } from '../../utils/formatTime';
 import { fetchSstPoint } from './api/sst';
 import type { SstPointResponse } from './api/sst';
 import { fetchWindPoint } from './api/wind';
@@ -28,6 +30,7 @@ export function SelectedLocationPanel() {
   const error = useMapStore((s) => s.selectedLocationDataError);
   const panelOpen = useUiStore((s) => s.selectedLocationPanelOpen);
   const togglePanel = useUiStore((s) => s.toggleSelectedLocationPanel);
+  const timezone = useTimezoneStore((s) => s.timezone);
 
   const sstLayerActive = useMapStore((s) => s.layers.get('sst')?.active ?? false);
   const [sstPoint, setSstPoint] = useState<SstPointResponse | null>(null);
@@ -175,7 +178,7 @@ export function SelectedLocationPanel() {
           <>
             <div className="selected-location-panel__meta">
               <span>Data time: {data.current.time ?? '—'}</span>
-              <span>Fetched: {formatTimestamp(data.fetched_at)}</span>
+              <span>Fetched: {formatFullDateTime(data.fetched_at, timezone)}</span>
             </div>
 
             <dl className="selected-location-panel__metrics">
@@ -261,12 +264,6 @@ function formatValue(value: number | string | null, unit: string | null): string
 function trimNumber(value: number): string {
   if (Number.isInteger(value)) return String(value);
   return value.toFixed(2).replace(/\.0+$|0+$/g, '').replace(/\.$/, '');
-}
-
-function formatTimestamp(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
 }
 
 function formatNearestPort(port: NearestPort | null): string {

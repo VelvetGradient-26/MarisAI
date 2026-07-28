@@ -1,0 +1,171 @@
+:root {
+  --navbar-h: 64px;
+}
+
+.navbar {
+  --nav-bg: rgba(10, 12, 14, 0.82);
+  --nav-border: rgba(255, 255, 255, 0.1);
+  --nav-text: rgba(255, 255, 255, 0.65);
+  --nav-primary: #4fd1ff;
+  --nav-control-bg: rgba(255, 255, 255, 0.05);
+  --nav-control-bg-hover: rgba(255, 255, 255, 0.12);
+  --nav-control-border: rgba(255, 255, 255, 0.12);
+  --nav-control-text: rgba(255, 255, 255, 0.85);
+  --nav-mobile-bg: rgba(10, 12, 14, 0.96);
+
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  width: 100%;
+  height: var(--navbar-h);
+  border-bottom: 1px solid var(--nav-border);
+  background: var(--nav-bg);
+  backdrop-filter: blur(20px);
+  font-family: 'Space Grotesk', sans-serif;
+  transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+.navbar--light {
+  --nav-bg: rgba(255, 255, 255, 0.85);
+  --nav-border: rgba(15, 30, 30, 0.1);
+  --nav-text: rgba(15, 30, 30, 0.65);
+  --nav-primary: #0f766e;
+  --nav-control-bg: rgba(15, 30, 30, 0.04);
+  --nav-control-bg-hover: rgba(15, 30, 30, 0.1);
+  --nav-control-border: rgba(15, 30, 30, 0.14);
+  --nav-control-text: rgba(15, 30, 30, 0.8);
+  --nav-mobile-bg: rgba(255, 255, 255, 0.97);
+}
+
+/* Visually identical on the map page — "overlay" just documents intent
+   (the map beneath stays full-bleed; see map.css's --navbar-h offsets). */
+.navbar--overlay {
+  border-bottom: 1px solid var(--nav-border);
+}
+
+.navbar__inner {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.navbar__logo {
+  flex-shrink: 0;
+  color: var(--nav-primary);
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+
+.navbar__links {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+}
+
+.navbar__links a {
+  border-bottom: 1px solid transparent;
+  color: var(--nav-text);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  text-transform: uppercase;
+  transition: color 0.2s ease, border-color 0.2s ease;
+  white-space: nowrap;
+}
+
+.navbar__links a:hover,
+.navbar__links a.is-active {
+  border-color: var(--nav-primary);
+  color: var(--nav-primary);
+}
+
+.navbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.navbar__timezone {
+  max-width: 160px;
+  border: 1px solid var(--nav-control-border);
+  border-radius: 999px;
+  background: var(--nav-control-bg);
+  color: var(--nav-control-text);
+  font-size: 11px;
+  padding: 6px 10px;
+}
+
+.navbar__icon-button,
+.navbar__menu-button {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid var(--nav-control-border);
+  border-radius: 999px;
+  background: var(--nav-control-bg);
+  color: var(--nav-control-text);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.2s ease;
+}
+
+.navbar__icon-button:hover,
+.navbar__menu-button:hover {
+  background: var(--nav-control-bg-hover);
+}
+
+.navbar__menu-button {
+  display: none;
+}
+
+.navbar__links--mobile {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .navbar__links--desktop {
+    display: none;
+  }
+  .navbar__menu-button {
+    display: grid;
+  }
+  .navbar__links--mobile {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    border-top: 1px solid var(--nav-border);
+    padding: 18px 24px 22px;
+    background: var(--nav-mobile-bg);
+  }
+  .navbar__links--mobile a {
+    padding: 4px 0;
+  }
+  .navbar__timezone {
+    display: none;
+  }
+  .navbar__timezone-mobile {
+    padding-top: 4px;
+  }
+  .navbar__timezone-mobile .navbar__timezone {
+    display: block;
+    width: 100%;
+    max-width: none;
+  }
+}
+
+@media (min-width: 861px) {
+  .navbar__timezone-mobile {
+    display: none;
+  }
+}

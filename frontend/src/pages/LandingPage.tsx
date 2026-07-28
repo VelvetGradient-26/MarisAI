@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, BarChart3, Compass, Menu, Moon, Sun, X } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { Compass } from 'lucide-react';
 import { Link } from '../app/router';
+import { useThemeStore } from '../store/themeStore';
 import './landing.css';
 
 const VERTEX_SOURCE = `attribute vec2 a_position;
@@ -34,23 +35,16 @@ void main() {
   float noise = sin(uv.x * 3.0 + u_time * 0.5) * cos(uv.y * 2.0 - u_time * 0.3);
   noise += sin(uv.y * 5.0 + u_time * 0.2) * 0.5;
   vec3 black = vec3(0.05, 0.06, 0.06);
-  vec3 egyptianBlue = vec3(0.06, 0.20, 0.65);
-  vec3 deepNavy = vec3(0.02, 0.05, 0.15);
-  vec3 color = mix(black, deepNavy, uv.y + noise * 0.1);
-  color = mix(color, egyptianBlue, (1.0 - uv.y) * 0.5 + noise * 0.2);
+  vec3 deepCyan = vec3(0.0, 0.32, 0.42);
+  vec3 deepTealBlack = vec3(0.02, 0.08, 0.10);
+  vec3 color = mix(black, deepTealBlack, uv.y + noise * 0.1);
+  color = mix(color, deepCyan, (1.0 - uv.y) * 0.5 + noise * 0.2);
   color *= 1.0 - length(uv - 0.5) * 0.7;
   gl_FragColor = vec4(color, 1.0);
 }`;
 
-const NAV_LINKS = [
-  { label: 'Home', to: '/' },
-  { label: 'Map', to: '/map' },
-  { label: 'Analytics', to: '/dashboard' },
-];
-
 export function LandingPage() {
-  const [isDark, setIsDark] = useState(true);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const isDark = useThemeStore((s) => s.dark);
 
   useEffect(() => {
     document.title = 'Maris AI | Marine Intelligence';
@@ -60,51 +54,6 @@ export function LandingPage() {
     <div className={`landing-page ${isDark ? 'landing-page--dark' : 'landing-page--light'}`}>
       <ShaderBackground dark={isDark} />
       <div className="landing-page__overlay" aria-hidden="true" />
-
-      <header className="landing-header">
-        <div className="landing-header__inner">
-          <Link className="landing-logo" to="/" aria-label="Maris AI home">
-            Maris AI
-          </Link>
-
-          <nav className="landing-nav landing-nav--desktop" aria-label="Primary navigation">
-            {NAV_LINKS.map((link) => (
-              <Link key={link.to} className={link.to === '/' ? 'is-active' : ''} to={link.to}>
-                {link.label}
-              </Link>
-            ))}
-            <a href="http://127.0.0.1:8000/docs" target="_blank" rel="noreferrer">
-              API Docs
-            </a>
-          </nav>
-
-          <div className="landing-header__actions">
-            <ThemeButton dark={isDark} onToggle={() => setIsDark((value) => !value)} />
-            <button
-              className="landing-menu-button"
-              type="button"
-              onClick={() => setMenuOpen((value) => !value)}
-              aria-label="Toggle navigation"
-              aria-expanded={menuOpen}
-            >
-              {menuOpen ? <X size={24} /> : <Menu size={24} />}
-            </button>
-          </div>
-        </div>
-
-        {menuOpen && (
-          <nav className="landing-nav landing-nav--mobile" aria-label="Mobile navigation">
-            {NAV_LINKS.map((link) => (
-              <Link key={link.to} to={link.to} onClick={() => setMenuOpen(false)}>
-                {link.label}
-              </Link>
-            ))}
-            <a href="http://127.0.0.1:8000/docs" target="_blank" rel="noreferrer">
-              API Docs
-            </a>
-          </nav>
-        )}
-      </header>
 
       <main className="landing-hero">
         <div className="landing-hero__content">
@@ -123,11 +72,6 @@ export function LandingPage() {
           </p>
 
           <div className="landing-hero__actions landing-fade landing-fade--four">
-            <Link className="landing-action landing-action--secondary" to="/dashboard">
-              <BarChart3 size={17} />
-              View analytics
-              <ArrowRight size={16} />
-            </Link>
             <Link className="landing-action landing-action--primary" to="/map">
               Launch project
               <Compass size={17} />
@@ -142,24 +86,14 @@ export function LandingPage() {
           <span>© 2026 Maris AI. Subsurface precision analytics.</span>
         </div>
         <div className="landing-footer__links">
-          <Link to="/map">Ocean map</Link>
-          <Link to="/dashboard">Dashboard</Link>
+          <Link to="/contact">Contact</Link>
+          <Link to="/feedback">Feedback</Link>
+          <a href="http://127.0.0.1:8000/docs" target="_blank" rel="noreferrer">
+            API Docs
+          </a>
         </div>
       </footer>
     </div>
-  );
-}
-
-function ThemeButton({ dark, onToggle }: { dark: boolean; onToggle: () => void }) {
-  return (
-    <button
-      className="landing-theme-button"
-      type="button"
-      onClick={onToggle}
-      aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-    >
-      {dark ? <Sun size={18} /> : <Moon size={18} />}
-    </button>
   );
 }
 

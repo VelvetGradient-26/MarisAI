@@ -9,10 +9,8 @@ import {
   Compass,
   LocateFixed,
   MapPin,
-  Moon,
   Navigation2,
   Sparkles,
-  Sun,
   Thermometer,
   Waves,
 } from 'lucide-react';
@@ -25,6 +23,9 @@ import type {
   RealtimeOceanResponse,
 } from '../features/map/types';
 import { generateOceanInsights } from '../features/insights/api/generateInsights';
+import { useTimezoneStore } from '../store/timezoneStore';
+import { useThemeStore } from '../store/themeStore';
+import { formatClockDate, formatClockTime, formatShortTime } from '../utils/formatTime';
 import './dashboard.css';
 
 type InsightsStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -38,13 +39,14 @@ export function DashboardPage() {
   const requestedLocation = readCoordinates(searchParams) ?? DEFAULT_LOCATION;
   const [latitudeInput, setLatitudeInput] = useState(String(requestedLocation.lat));
   const [longitudeInput, setLongitudeInput] = useState(String(requestedLocation.lng));
-  const [isDark, setIsDark] = useState(true);
+  const isDark = useThemeStore((s) => s.dark);
   const [data, setData] = useState<RealtimeOceanResponse | null>(null);
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [requestError, setRequestError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
   const [now, setNow] = useState(() => new Date());
+  const timezone = useTimezoneStore((s) => s.timezone);
   const [insightsStatus, setInsightsStatus] = useState<InsightsStatus>('idle');
   const [insightsText, setInsightsText] = useState<string | null>(null);
   const [insightsError, setInsightsError] = useState<string | null>(null);
@@ -147,55 +149,24 @@ export function DashboardPage() {
     );
   };
 
-  const timeString = now.toLocaleTimeString('en-GB', {
-    timeZone: 'UTC',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-  const dateString = now
-    .toLocaleDateString('en-US', {
-      timeZone: 'UTC',
-      month: 'short',
-      day: '2-digit',
-      year: 'numeric',
-    })
-    .toUpperCase();
+  const timeString = formatClockTime(now, timezone);
+  const dateString = formatClockDate(now, timezone);
 
   return (
     <div className={`dashboard-shell ${isDark ? 'dashboard-shell--dark' : 'dashboard-shell--light'}`}>
-      <header className="dashboard-header">
-        <div className="dashboard-header__inner">
-          <Link className="dashboard-logo" to="/">
-            Maris AI
-          </Link>
-
-          <nav className="dashboard-nav" aria-label="Dashboard navigation">
-            <span className="is-active">Analytics</span>
-            <Link to="/map">Map</Link>
-          </nav>
-
-          <div className="dashboard-header__account">
-            <div className="dashboard-clock">
-              <strong>{timeString} UTC</strong>
-              <span>{dateString}</span>
-            </div>
-            <div className="dashboard-avatar" aria-label="Maris AI account">
-              MA
-            </div>
-            <button
-              className="dashboard-theme-button"
-              type="button"
-              onClick={() => setIsDark((value) => !value)}
-              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {isDark ? <Sun size={17} /> : <Moon size={17} />}
-            </button>
+      <main className="dashboard-main">
+        <div className="dashboard-toolbar">
+          <div className="dashboard-clock">
+            <strong>{timeString}</strong>
+            <span>
+              {dateString} · {timezone}
+            </span>
+          </div>
+          <div className="dashboard-avatar" aria-label="Maris AI account">
+            MA
           </div>
         </div>
-      </header>
 
-      <main className="dashboard-main">
         <div className="dashboard-title-row">
           <div>
             <Link to="/map" className="dashboard-back-link">
@@ -449,9 +420,10 @@ function StatBlock({
 }
 
 function CardFooter({ data }: { data: RealtimeOceanResponse | null }) {
+  const timezone = useTimezoneStore((s) => s.timezone);
   return (
     <div className="dashboard-card__footer">
-      {data ? `Fetched ${formatTimestamp(data.fetched_at)}` : 'Awaiting model data'}
+      {data ? `Fetched ${formatShortTime(data.fetched_at, timezone)}` : 'Awaiting model data'}
     </div>
   );
 }
@@ -578,8 +550,3 @@ function formatInsightLines(text: string): string[] {
     .filter(Boolean);
 }
 
-function formatTimestamp(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}

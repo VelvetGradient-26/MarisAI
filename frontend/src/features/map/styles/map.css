@@ -31,6 +31,15 @@ body,
   inset: 0;
 }
 
+/* The shared Navbar floats above the map as an overlay (map-root stays
+   100vh, full-bleed underneath) — MapLibre's own built-in top-corner
+   controls need the same offset the custom panels above get, or the
+   navbar covers them. */
+.maplibregl-ctrl-top-right,
+.maplibregl-ctrl-top-left {
+  top: var(--navbar-h, 64px);
+}
+
 .map-loading {
   position: absolute;
   inset: 0;
@@ -44,14 +53,14 @@ body,
 
 .map-controls {
   position: absolute;
-  top: 16px;
+  top: calc(var(--navbar-h, 64px) + 16px);
   left: 16px;
   z-index: 5;
   background: rgba(16, 29, 44, 0.92);
   border: 1px solid var(--ocean-border);
   border-radius: 10px;
   width: 248px;
-  max-height: calc(100vh - 32px);
+  max-height: calc(100vh - var(--navbar-h, 64px) - 32px);
   color: var(--ocean-text);
   font-size: 13px;
   line-height: 1.4;
@@ -66,7 +75,7 @@ body,
 
 .map-controls__body {
   width: 220px;
-  max-height: calc(100vh - 32px);
+  max-height: calc(100vh - var(--navbar-h, 64px) - 32px);
   overflow-y: auto;
   overflow-x: hidden;
   padding: 40px 14px 14px;
@@ -546,7 +555,7 @@ body,
  * its open/collapsed state and content. */
 .legend-stack {
   position: absolute;
-  top: 16px;
+  top: calc(var(--navbar-h, 64px) + 16px);
   right: 16px;
   z-index: 5;
   display: flex;
