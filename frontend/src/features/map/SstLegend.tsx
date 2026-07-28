@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMapStore } from '../../store/mapStore';
+import { useTimezoneStore } from '../../store/timezoneStore';
+import { formatCompactDateTime } from '../../utils/formatTime';
 import { GradientBar } from './GradientBar';
 import { fetchSstMeta } from './api/sst';
 import type { SstMetaResponse } from './api/sst';
@@ -17,6 +19,7 @@ const sstGradientLegend =
  * timestamp keeps itself current without user action. */
 export function SstLegend() {
   const active = useMapStore((s) => s.layers.get('sst')?.active ?? false);
+  const timezone = useTimezoneStore((s) => s.timezone);
   const [meta, setMeta] = useState<SstMetaResponse | null>(null);
   const [status, setStatus] = useState<'loading' | 'error' | 'success'>('loading');
 
@@ -60,17 +63,11 @@ export function SstLegend() {
         {status === 'error' && <span className="sst-legend__error">SST data temporarily unavailable</span>}
         {status === 'success' && meta && (
           <>
-            <span>Updated: {formatTimestamp(meta.timestamp)}</span>
+            <span>Updated: {formatCompactDateTime(meta.timestamp, timezone)}</span>
             <span className="sst-legend__source">{meta.source}</span>
           </>
         )}
       </div>
     </div>
   );
-}
-
-function formatTimestamp(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return `${date.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
 }

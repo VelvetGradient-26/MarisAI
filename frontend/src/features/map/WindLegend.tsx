@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMapStore } from '../../store/mapStore';
+import { useTimezoneStore } from '../../store/timezoneStore';
+import { formatCompactDateTime } from '../../utils/formatTime';
 import { GradientBar } from './GradientBar';
 import { fetchWindMeta } from './api/wind';
 import type { WindMetaResponse } from './api/wind';
@@ -28,6 +30,7 @@ const windGradientLegend =
  * both can be active at once. */
 export function WindLegend() {
   const active = useMapStore((s) => s.layers.get('wind')?.active ?? false);
+  const timezone = useTimezoneStore((s) => s.timezone);
   const [meta, setMeta] = useState<WindMetaResponse | null>(null);
   const [status, setStatus] = useState<'loading' | 'error' | 'success'>('loading');
 
@@ -80,17 +83,11 @@ export function WindLegend() {
         )}
         {status === 'success' && meta && (
           <>
-            <span>Updated: {formatTimestamp(meta.timestamp)}</span>
+            <span>Updated: {formatCompactDateTime(meta.timestamp, timezone)}</span>
             <span className="wind-legend__source">{meta.source}</span>
           </>
         )}
       </div>
     </div>
   );
-}
-
-function formatTimestamp(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return `${date.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
 }
