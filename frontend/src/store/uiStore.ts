@@ -3,6 +3,8 @@ import { create } from 'zustand';
 interface UiStore {
   controlPanelOpen: boolean;
   toggleControlPanel: () => void;
+  selectedLocationPanelOpen: boolean;
+  toggleSelectedLocationPanel: () => void;
 }
 
 /** UI chrome state that has nothing to do with the map itself, kept in its
@@ -11,4 +13,7 @@ interface UiStore {
 export const useUiStore = create<UiStore>((set) => ({
   controlPanelOpen: true,
   toggleControlPanel: () => set((s) => ({ controlPanelOpen: !s.controlPanelOpen })),
+  selectedLocationPanelOpen: true,
+  toggleSelectedLocationPanel: () =>
+    set((s) => ({ selectedLocationPanelOpen: !s.selectedLocationPanelOpen })),
 }));
