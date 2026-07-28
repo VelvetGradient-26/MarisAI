@@ -5,6 +5,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from routers.download import router as download_router
+from routers.feedback import router as feedback_router
 from routers.insights import router as insights_router
 from routers.marine import router as marine_router
 from routers.tiles import router as tiles_router
@@ -50,6 +52,8 @@ app.add_middleware(
 app.include_router(marine_router)
 app.include_router(insights_router)
 app.include_router(tiles_router)
+app.include_router(download_router)
+app.include_router(feedback_router)
 
 
 @app.get("/")
