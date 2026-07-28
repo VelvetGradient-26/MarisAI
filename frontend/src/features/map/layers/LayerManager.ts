@@ -1,10 +1,10 @@
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { createEmitter } from '../../../lib/createEmitter';
-import type { LayerDescriptor, LayerCategory } from '../types';
+import type { LayerDescriptor, LayerCategory, CustomVectorFieldLayer } from '../types';
 
 /** Rendering bands, bottom to top — see types/index.ts for the caveat about
  * the ADR's ambiguous hierarchy diagram. */
-const CATEGORY_ORDER: LayerCategory[] = ['ocean', 'ai', 'reference'];
+const CATEGORY_ORDER: LayerCategory[] = ['ocean', 'flow', 'ai', 'reference'];
 
 export interface LayerState {
   descriptor: LayerDescriptor;
@@ -18,12 +18,17 @@ export interface LayerState {
  * map.removeLayer() for a scientific or reference overlay — new datasets
  * (GIBS, NOAA, Copernicus, AI predictions) are new LayerDescriptor entries
  * in layerRegistry.ts, not new code paths.
+ *
+ * A descriptor may declare more than one source (see LayerDescriptor.sources)
+ * — every method here fans out across all of them so a multi-source layer
+ * still behaves as one toggle with one opacity.
  */
 export class LayerManager {
   private map: MapLibreMap;
   private getFallbackBeforeId: () => string | undefined;
   private registry = new Map<string, LayerDescriptor>();
   private state = new Map<string, LayerState>();
+  private customInstances = new Map<string, CustomVectorFieldLayer>();
   private emitter = createEmitter<Map<string, LayerState>>();
 
   constructor(map: MapLibreMap, getFallbackBeforeId: () => string | undefined = () => undefined) {
@@ -67,23 +72,43 @@ export class LayerManager {
       return;
     }
 
-    const sourceId = this.sourceId(id);
-    const layerId = this.layerId(id);
     const beforeId = this.beforeIdFor(descriptor.category);
 
-    if (!this.map.getSource(sourceId)) {
-      this.map.addSource(sourceId, descriptor.source);
-    }
-    if (!this.map.getLayer(layerId)) {
-      this.map.addLayer(
-        {
-          id: layerId,
-          type: 'raster',
-          source: sourceId,
-          paint: { 'raster-opacity': current.opacity },
-        },
-        beforeId
-      );
+    if (descriptor.type === 'custom') {
+      const layerId = this.layerId(id, 0);
+      if (!this.map.getLayer(layerId)) {
+        const instance = descriptor.createLayer(layerId);
+        instance.setOpacity(current.opacity);
+        this.customInstances.set(id, instance);
+        this.map.addLayer(instance, beforeId);
+      }
+    } else {
+      descriptor.sources.forEach((source, index) => {
+        const sourceId = this.sourceId(id, index);
+        const layerId = this.layerId(id, index);
+
+        if (!this.map.getSource(sourceId)) {
+          this.map.addSource(sourceId, source);
+        }
+        if (!this.map.getLayer(layerId)) {
+          const rasterPaint = descriptor.rasterPaint;
+          this.map.addLayer(
+            {
+              id: layerId,
+              type: 'raster',
+              source: sourceId,
+              paint: {
+                'raster-opacity': current.opacity,
+                ...(rasterPaint?.contrast !== undefined && { 'raster-contrast': rasterPaint.contrast }),
+                ...(rasterPaint?.saturation !== undefined && {
+                  'raster-saturation': rasterPaint.saturation,
+                }),
+              },
+            },
+            beforeId
+          );
+        }
+      });
     }
 
     this.state.set(id, { ...current, active: true });
@@ -94,10 +119,18 @@ export class LayerManager {
     const current = this.state.get(id);
     if (!current || !current.active) return;
 
-    const layerId = this.layerId(id);
-    const sourceId = this.sourceId(id);
-    if (this.map.getLayer(layerId)) this.map.removeLayer(layerId);
-    if (this.map.getSource(sourceId)) this.map.removeSource(sourceId);
+    if (current.descriptor.type === 'custom') {
+      const layerId = this.layerId(id, 0);
+      if (this.map.getLayer(layerId)) this.map.removeLayer(layerId);
+      this.customInstances.delete(id);
+    } else {
+      current.descriptor.sources.forEach((_source, index) => {
+        const layerId = this.layerId(id, index);
+        const sourceId = this.sourceId(id, index);
+        if (this.map.getLayer(layerId)) this.map.removeLayer(layerId);
+        if (this.map.getSource(sourceId)) this.map.removeSource(sourceId);
+      });
+    }
 
     this.state.set(id, { ...current, active: false });
     this.emit();
@@ -110,16 +143,53 @@ export class LayerManager {
     else this.add(id);
   }
 
+  /**
+   * Switches to `id` within its own category, deactivating any other
+   * active layer in that same category first — for groups presented as
+   * mutually-exclusive "maps" (e.g. Ocean & Atmosphere) rather than
+   * stackable overlays. Clicking the already-active one turns it off.
+   */
+  setExclusive(id: string) {
+    const target = this.registry.get(id);
+    const current = this.state.get(id);
+    if (!target || !current) return;
+
+    for (const [otherId, s] of this.state) {
+      if (otherId !== id && s.active && s.descriptor.category === target.category) {
+        this.remove(otherId);
+      }
+    }
+
+    if (current.active) this.remove(id);
+    else this.add(id);
+  }
+
   setOpacity(id: string, opacity: number) {
     const current = this.state.get(id);
     if (!current) return;
     const clamped = Math.min(1, Math.max(0, opacity));
 
-    if (current.active && this.map.getLayer(this.layerId(id))) {
-      this.map.setPaintProperty(this.layerId(id), 'raster-opacity', clamped);
+    if (current.active) {
+      if (current.descriptor.type === 'custom') {
+        this.customInstances.get(id)?.setOpacity(clamped);
+      } else {
+        current.descriptor.sources.forEach((_source, index) => {
+          const layerId = this.layerId(id, index);
+          if (this.map.getLayer(layerId)) {
+            this.map.setPaintProperty(layerId, 'raster-opacity', clamped);
+          }
+        });
+      }
     }
     this.state.set(id, { ...current, opacity: clamped });
     this.emit();
+  }
+
+  /** The live CustomVectorFieldLayer instance for an active custom layer, if
+   * any — lets UI controls (density/speed sliders) reach its setters without
+   * LayerManager needing to know what those setters mean. */
+  getCustomLayerInstance(id: string): CustomVectorFieldLayer | undefined {
+    return this.customInstances.get(id);
   }
 
   /**
@@ -141,7 +211,7 @@ export class LayerManager {
    * to keep the basemap layer beneath every overlay when it's swapped. */
   getBottomOverlayLayerId(): string | undefined {
     for (const [id, s] of this.state) {
-      if (s.active) return this.layerId(id);
+      if (s.active) return this.layerId(id, 0);
     }
     return undefined;
   }
@@ -170,17 +240,17 @@ export class LayerManager {
     for (const [id, s] of this.state) {
       if (!s.active) continue;
       const otherIndex = CATEGORY_ORDER.indexOf(s.descriptor.category);
-      if (otherIndex >= startIndex) return this.layerId(id);
+      if (otherIndex >= startIndex) return this.layerId(id, 0);
     }
     return this.getFallbackBeforeId();
   }
 
-  private sourceId(id: string) {
-    return `layer-src-${id}`;
+  private sourceId(id: string, index: number) {
+    return `layer-src-${id}-${index}`;
   }
 
-  private layerId(id: string) {
-    return `layer-${id}`;
+  private layerId(id: string, index: number) {
+    return `layer-${id}-${index}`;
   }
 
   private emit() {
