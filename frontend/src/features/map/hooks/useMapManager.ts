@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { MapMouseEvent } from 'maplibre-gl';
 import { MapManager } from '../managers/MapManager';
 import { useMapStore } from '../../../store/mapStore';
+import { useMapPreferencesStore } from '../../../store/mapPreferencesStore';
 import { rafThrottle } from '../../../utils/rafThrottle';
 import type { BasemapId } from '../types';
 
@@ -27,7 +28,24 @@ export function useMapManager(defaultBasemap: BasemapId = 'satellite') {
 
     const manager = new MapManager();
     managerRef.current = manager;
-    const map = manager.init({ container: containerRef.current, defaultBasemap });
+
+    // Read once, imperatively: this effect deliberately runs a single time
+    // per mount, so these are restore-time seeds, not reactive inputs. The
+    // camera is whatever the last-destroyed instance was showing (mapStore
+    // mirrors every `move`), which is what makes a round-trip to another
+    // route return to the same view instead of the world default.
+    const { camera } = useMapStore.getState();
+    const { projection } = useMapPreferencesStore.getState();
+
+    const map = manager.init({
+      container: containerRef.current,
+      defaultBasemap,
+      center: camera.center,
+      zoom: camera.zoom,
+      bearing: camera.bearing,
+      pitch: camera.pitch,
+      projection,
+    });
 
     const syncCamera = rafThrottle(() => {
       const center = map.getCenter();

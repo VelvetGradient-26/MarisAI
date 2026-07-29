@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMapManagerContext } from './hooks/MapManagerContext';
 import { useMapStore } from '../../store/mapStore';
+import { useMapPreferencesStore } from '../../store/mapPreferencesStore';
 import { useUiStore } from '../../store/uiStore';
 import { GradientBar } from './GradientBar';
 import type { MapManager } from './managers/MapManager';
@@ -88,9 +89,16 @@ const PROJECTIONS: Array<{ mode: ProjectionMode; label: string }> = [
   { mode: 'globe', label: '3D Globe' },
 ];
 
-/** Flattened web-mercator map vs. the 3D globe — see MapManager.setProjectionMode. */
+/**
+ * Flattened web-mercator map vs. the 3D globe — see
+ * MapManager.setProjectionMode. The selection lives in mapPreferencesStore,
+ * not local state: the MapManager is destroyed on every navigation away from
+ * /map, so a manager-held mode reverted to the globe default each time the
+ * user came back. useMapManager seeds the new instance from the same store.
+ */
 function ProjectionToggle({ manager }: { manager: MapManager }) {
-  const [mode, setMode] = useState<ProjectionMode>(() => manager.getProjectionMode());
+  const mode = useMapPreferencesStore((s) => s.projection);
+  const setProjection = useMapPreferencesStore((s) => s.setProjection);
 
   return (
     <section>
@@ -101,7 +109,7 @@ function ProjectionToggle({ manager }: { manager: MapManager }) {
             key={value}
             className={mode === value ? 'active' : ''}
             onClick={() => {
-              setMode(value);
+              setProjection(value);
               manager.setProjectionMode(value);
             }}
           >
