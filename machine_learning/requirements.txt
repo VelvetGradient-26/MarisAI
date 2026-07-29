@@ -1,38 +1,47 @@
-numpy 
-pandas
+# Maris AI — ML pipeline dependencies (Tier 1 + Tier 2).
+# Versions are the ones the pipelines here were built and verified against;
+# see README.md for the measured runs.
+#
+# Deliberately narrower than the original list. Dropped because nothing
+# imports them, and each was a real install cost or platform-wheel risk:
+#   tensorflow      — Tier 3 deep models are not implemented yet. Pinning a
+#                     framework the pipeline never imports is not free.
+#   geopandas,      — the one geospatial need (nearest-coast distance) is a
+#   rasterio,         scipy cKDTree query in marine_ml/features/geometry.py,
+#   pyproj            matching the repo's minimal-dependency convention.
+#   xgboost         — LightGBM covers the gradient-boosting tier.
+#   pyobis          — the OBIS client is ~40 lines of requests in
+#                     marine_ml/sources/obis.py, and needs custom cursor
+#                     paging that the wrapper does not expose.
+#   seaborn, plotly — matplotlib covers the reporting plots.
+# Add any of them back alongside the code that actually needs them.
 
-scikit-learn
-xgboost
-lightgbm
-joblib
+# --- numerics & data -------------------------------------------------------
+numpy==2.4.6
+pandas==3.0.5
+scipy==1.17.1
+pyarrow==25.0.0
 
-tensorflow
+# --- gridded ocean data ----------------------------------------------------
+xarray==2026.7.0
+netCDF4==1.7.4
+h5netcdf==1.8.1
+zarr==3.1.6
+dask==2026.7.1
+copernicusmarine==2.4.1
 
-matplotlib
-seaborn
-plotly
+# --- modelling & explainability -------------------------------------------
+scikit-learn==1.9.0
+lightgbm==4.7.0
+shap==0.51.0
+joblib==1.5.3
 
+# --- plotting & notebooks --------------------------------------------------
+matplotlib==3.11.1
 jupyter
-notebook
 ipykernel
 
-xarray
-netCDF4
-h5netcdf
-copernicusmarine
-pyobis
-
-geopandas
-shapely 
-pyproj
-rasterio
-
-python-dotenv
-tqdm
-requests
-pyyaml
-
-shap
-
-pyarrow 
-dask
+# --- utilities -------------------------------------------------------------
+requests==2.34.2
+python-dotenv==1.2.2
+tqdm==4.70.0
