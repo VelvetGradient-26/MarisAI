@@ -9,16 +9,40 @@ real login password — https://myaccount.google.com/apppasswords).
 from __future__ import annotations
 
 import asyncio
+import json
 import smtplib
+from datetime import datetime, timezone
 from email.mime.text import MIMEText
+from pathlib import Path
+
+from loguru import logger
 
 from app.core.config import settings
 
 FEEDBACK_RECIPIENT = "nycteakryfos@gmail.com"
 
+# One JSON object per line — a durable local record of every submission,
+# independent of whether the email send below succeeds. Gitignored (real
+# user emails/messages, not something to commit).
+FEEDBACK_LOG_PATH = Path(__file__).resolve().parent.parent / "feedback_log.jsonl"
+
 
 class FeedbackError(RuntimeError):
     pass
+
+
+def _log_submission(name: str, email: str, message: str) -> None:
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "name": name,
+        "email": email,
+        "message": message,
+    }
+    try:
+        with FEEDBACK_LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+    except OSError as exc:  # noqa: BLE001 - logging failure shouldn't block the email
+        logger.warning(f"Failed to write feedback log entry: {exc}")
 
 
 def _send_sync(name: str, email: str, message: str) -> None:
@@ -36,6 +60,8 @@ def _send_sync(name: str, email: str, message: str) -> None:
 
 
 async def send_feedback_email(name: str, email: str, message: str) -> None:
+    await asyncio.to_thread(_log_submission, name, email, message)
+
     if not settings.SMTP_USERNAME or not settings.SMTP_PASSWORD:
         raise FeedbackError(
             "Feedback email is not configured on this server (missing SMTP credentials)."
