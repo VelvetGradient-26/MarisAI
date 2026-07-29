@@ -73,3 +73,18 @@ log/
 *.tmp
 *.temp
 *.bak
+
+# ML pipeline outputs — regenerate with scripts/fetch_raw.py + the pipelines.
+# data/ reaches ~840 MB of cached NetCDF for the default fetch profiles.
+data/
+models/
+
+# Contents ignored, directory kept: `reports/` excluded outright would make
+# the negation below unreachable, since git never descends into an excluded
+# directory to reconsider files inside it.
+reports/*
+!reports/.gitkeep
+
+# Precomputed prediction grids served by the backend — regenerate with
+# scripts/export_predictions.py. The manifest is small but derived too.
+exports/

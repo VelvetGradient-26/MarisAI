@@ -1,0 +1,263 @@
+"""Train and validate the fish habitat / PFZ model (approach doc 4.6, 4.7).
+
+Validation is **spatial block cross-validation**, not random K-fold. This is
+the single most consequential choice in the file. Occurrence records are
+strongly spatially autocorrelated; a random split puts points from the same
+survey transect in both training and test, and the model scores near-perfectly
+by recognising its neighbours. The same model under block CV — where whole
+3-degree blocks are held out — reports what it would actually do on water it
+has never seen. Expect the block number to be substantially lower. That gap is
+information, not a defect: it is the difference between a model that has
+learned ecology and one that has memorised a map.
+
+Reported metrics follow the SDM literature rather than generic classification:
+AUC, the True Skill Statistic, and the continuous Boyce index (which needs no
+true absences — the only honest option for presence-only data).
+"""
+
+from __future__ import annotations
+
+import json
+import time
+from dataclasses import dataclass
+
+import joblib
+import numpy as np
+import pandas as pd
+
+from marine_ml import config
+from marine_ml.validation import metrics, splits
+
+from . import features as feature_lib
+from . import models as model_lib
+
+
+@dataclass
+class TrainingResult:
+    """Everything one training run produced."""
+
+    fold_scores: pd.DataFrame
+    model_scores: dict[str, float]
+    ensemble_weights: model_lib.EnsembleWeights
+    holdout: pd.DataFrame
+    fitted: dict
+    feature_columns: list[str]
+    importances: pd.DataFrame
+
+
+def cross_validate(
+    frame: pd.DataFrame,
+    columns: list[str],
+    n_splits: int = 5,
+    block_degrees: float = 3.0,
+    seed: int = config.RANDOM_SEED,
+) -> tuple[pd.DataFrame, dict[str, float]]:
+    """Spatial block CV across all three model tiers.
+
+    The thermal niche is refitted inside every fold, on that fold's training
+    presences only. Fitting it once outside the loop would leak held-out
+    temperatures into a training feature and quietly inflate every fold.
+    """
+    rows: list[dict] = []
+
+    for split in splits.spatial_block_splits(
+        frame["latitude"], frame["longitude"],
+        n_splits=n_splits, block_degrees=block_degrees, seed=seed,
+    ):
+        train_frame = frame.iloc[split.train]
+        test_frame = frame.iloc[split.test]
+
+        if train_frame["presence"].nunique() < 2 or test_frame["presence"].nunique() < 2:
+            # A block containing only background (or only presences) cannot
+            # produce a meaningful score; skipping is honest, scoring it is not.
+            continue
+
+        niche = feature_lib.fit_thermal_niche(train_frame)
+        train_fold = feature_lib.apply_thermal_niche(train_frame, niche)
+        test_fold = feature_lib.apply_thermal_niche(test_frame, niche)
+
+        for name, builder in model_lib.MODEL_BUILDERS.items():
+            model = builder(train_fold, columns, seed)
+            model.fit(train_fold[columns], train_fold["presence"])
+            scores = model.predict_proba(test_fold[columns])[:, 1]
+
+            report = metrics.evaluate_classification(
+                test_fold["presence"].to_numpy(), scores,
+                name=split.name, compute_boyce=True,
+            )
+            row = report.as_row()
+            row["model"] = name
+            rows.append(row)
+
+    fold_scores = pd.DataFrame(rows)
+    if fold_scores.empty:
+        raise RuntimeError("no usable spatial folds — try fewer splits or smaller blocks")
+
+    model_scores = (
+        fold_scores.groupby("model")["tss"].mean(numeric_only=True).to_dict()
+    )
+    return fold_scores, model_scores
+
+
+def fit_final(
+    train_frame: pd.DataFrame,
+    test_frame: pd.DataFrame,
+    columns: list[str],
+    model_scores: dict[str, float],
+    seed: int = config.RANDOM_SEED,
+) -> tuple[dict, pd.DataFrame, model_lib.EnsembleWeights]:
+    """Refit each tier on the full training set and score the held-out block."""
+    niche = feature_lib.fit_thermal_niche(train_frame)
+    train_fold = feature_lib.apply_thermal_niche(train_frame, niche)
+    test_fold = feature_lib.apply_thermal_niche(test_frame, niche)
+
+    fitted: dict = {"_thermal_niche": niche}
+    predictions: dict[str, np.ndarray] = {}
+    rows: list[dict] = []
+
+    for name, builder in model_lib.MODEL_BUILDERS.items():
+        model = builder(train_fold, columns, seed)
+        model.fit(train_fold[columns], train_fold["presence"])
+        fitted[name] = model
+
+        scores = model.predict_proba(test_fold[columns])[:, 1]
+        predictions[name] = scores
+        report = metrics.evaluate_classification(
+            test_fold["presence"].to_numpy(), scores, name=name, compute_boyce=True
+        )
+        rows.append(report.as_row() | {"model": name})
+
+    # TSS is 0 at chance, so it is its own floor.
+    weights = model_lib.EnsembleWeights.from_scores(model_scores, floor=0.0)
+    ensemble_scores = weights.combine(predictions)
+    ensemble_report = metrics.evaluate_classification(
+        test_fold["presence"].to_numpy(), ensemble_scores,
+        name="ensemble", compute_boyce=True,
+    )
+    rows.append(ensemble_report.as_row() | {"model": "ensemble"})
+
+    # Extrapolation check: how much of the held-out block sits outside the
+    # environmental envelope the model was fitted on.
+    numeric = [c for c in columns if pd.api.types.is_numeric_dtype(train_fold[c])]
+    similarity = metrics.mess(train_fold[numeric], test_fold[numeric])
+    holdout = pd.DataFrame(rows)
+    holdout["mess_median"] = float(np.nanmedian(similarity))
+    holdout["mess_extrapolating_fraction"] = float(np.mean(similarity < 0))
+
+    return fitted, holdout, weights
+
+
+def explain(
+    model,
+    frame: pd.DataFrame,
+    columns: list[str],
+    max_samples: int = 500,
+) -> pd.DataFrame:
+    """Mean absolute SHAP value per input feature.
+
+    This is what feeds the product's Explainable AI Assistant: a per-prediction
+    reason list ("high suitability due to a strong thermal front and elevated
+    chlorophyll two weeks prior") rather than a bare score.
+
+    Names come back in post-preprocessing space (one-hot categories appear
+    separately), which is the space SHAP actually attributes in — mapping them
+    back to source columns would merge signals the model treats separately.
+    """
+    import shap
+
+    sample = frame.sample(min(max_samples, len(frame)), random_state=config.RANDOM_SEED)
+    prep = model.named_steps["prep"]
+    transformed = prep.transform(sample[columns])
+    names = list(prep.get_feature_names_out())
+
+    estimator = model.named_steps["model"]
+    explainer = shap.TreeExplainer(estimator)
+    values = explainer.shap_values(transformed)
+    # Binary classifiers return either a list per class or a 3-D array.
+    if isinstance(values, list):
+        values = values[1]
+    elif values.ndim == 3:
+        values = values[:, :, 1]
+
+    importance = np.abs(values).mean(axis=0)
+    return (
+        pd.DataFrame({"feature": names, "mean_abs_shap": importance})
+        .sort_values("mean_abs_shap", ascending=False)
+        .reset_index(drop=True)
+    )
+
+
+def run(
+    frame: pd.DataFrame,
+    n_splits: int = 5,
+    block_degrees: float = 3.0,
+    seed: int = config.RANDOM_SEED,
+) -> TrainingResult:
+    """Full train/validate cycle over a feature-built, labelled frame."""
+    columns = feature_lib.feature_columns(frame)
+    frame = feature_lib.drop_unusable_rows(frame, columns)
+
+    print(f"  {len(frame)} rows, {len(columns)} features, "
+          f"{int(frame['presence'].sum())} presences", flush=True)
+
+    started = time.time()
+    fold_scores, model_scores = cross_validate(
+        frame, columns, n_splits=n_splits, block_degrees=block_degrees, seed=seed
+    )
+    print(f"  spatial block CV done in {time.time()-started:.1f}s", flush=True)
+
+    # Final held-out block: one spatial fold never used for model selection.
+    final_split = next(
+        iter(splits.spatial_block_splits(
+            frame["latitude"], frame["longitude"],
+            n_splits=n_splits, block_degrees=block_degrees, seed=seed + 1,
+        ))
+    )
+    train_frame = frame.iloc[final_split.train]
+    test_frame = frame.iloc[final_split.test]
+
+    fitted, holdout, weights = fit_final(
+        train_frame, test_frame, columns, model_scores, seed
+    )
+
+    niche = fitted["_thermal_niche"]
+    importances = explain(
+        fitted["lightgbm"], feature_lib.apply_thermal_niche(train_frame, niche), columns
+    )
+
+    return TrainingResult(
+        fold_scores=fold_scores,
+        model_scores=model_scores,
+        ensemble_weights=weights,
+        holdout=holdout,
+        fitted=fitted,
+        feature_columns=columns,
+        importances=importances,
+    )
+
+
+def save(result: TrainingResult, name: str = "fish_habitat") -> None:
+    """Persist models, weights and reports."""
+    config.ensure_directories()
+
+    joblib.dump(
+        {
+            "models": {k: v for k, v in result.fitted.items() if not k.startswith("_")},
+            "thermal_niche": result.fitted["_thermal_niche"],
+            "ensemble_weights": result.ensemble_weights.weights,
+            "feature_columns": result.feature_columns,
+        },
+        config.MODELS_DIR / f"{name}.joblib",
+    )
+
+    result.fold_scores.to_csv(config.REPORTS_DIR / f"{name}_fold_scores.csv", index=False)
+    result.holdout.to_csv(config.REPORTS_DIR / f"{name}_holdout.csv", index=False)
+    result.importances.to_csv(config.REPORTS_DIR / f"{name}_shap.csv", index=False)
+
+    summary = {
+        "cv_tss_by_model": result.model_scores,
+        "ensemble_weights": result.ensemble_weights.weights,
+        "n_features": len(result.feature_columns),
+        "top_features": result.importances.head(15).to_dict("records"),
+    }
+    (config.REPORTS_DIR / f"{name}_summary.json").write_text(json.dumps(summary, indent=2))
