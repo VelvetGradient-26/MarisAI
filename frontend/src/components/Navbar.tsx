@@ -10,6 +10,7 @@ const NAV_LINKS = [
   { label: 'Home', to: '/' },
   { label: 'Map', to: '/map' },
   { label: 'Analytics', to: '/dashboard' },
+  { label: 'Model Insights', to: '/predictions' },
   { label: 'Download', to: '/download' },
 ];
 
