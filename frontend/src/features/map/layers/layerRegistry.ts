@@ -129,6 +129,134 @@ function gibsComposite(
  * Rows with no free public raster source at all stay honest `implemented:
  * false` placeholders naming a real candidate source, rather than faked data.
  */
+
+/**
+ * Species exposed as habitat layers, and the label shown in the panel.
+ * Hand-listed rather than fetched from the manifest because `layerRegistry`
+ * is a static module-level array the map builds from at startup — making it
+ * async would push a network dependency into map initialisation for a list
+ * that changes only when the model is retrained. The Model Insights page
+ * reads the manifest and is the source of truth for what actually exists;
+ * a species removed there simply renders transparent tiles here.
+ */
+const HABITAT_SPECIES: Array<{ key: string; label: string }> = [
+  { key: 'yellowfin_tuna', label: 'Yellowfin Tuna' },
+  { key: 'skipjack_tuna', label: 'Skipjack Tuna' },
+  { key: 'bigeye_tuna', label: 'Bigeye Tuna' },
+  { key: 'indian_mackerel', label: 'Indian Mackerel' },
+  { key: 'oil_sardine', label: 'Oil Sardine' },
+];
+
+/**
+ * The seasonal slice to show. The model is monthly and its export is one
+ * full seasonal cycle, so the current calendar month is the most meaningful
+ * default — it makes the map track the season rather than freezing on an
+ * arbitrary month. It is a climatology, not a forecast for *this* year, and
+ * every layer's attribution says so.
+ */
+function currentMonth(): number {
+  return new Date().getUTCMonth() + 1;
+}
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/**
+ * Sequential single-hue ramp, matching SUITABILITY_STOPS in
+ * backend/services/predictions.py. Kept in sync by hand — RGB tuples there
+ * for numpy interpolation, CSS hex here for the legend bar; two
+ * representations of the same five control points, same arrangement as SST.
+ */
+const SUITABILITY_STOPS = [
+  { offset: 0, color: '#CDE2FB' },
+  { offset: 0.25, color: '#86B6EF' },
+  { offset: 0.5, color: '#3987E5' },
+  { offset: 0.75, color: '#256ABF' },
+  { offset: 1, color: '#0D366B' },
+];
+
+/** Cool-to-hot semantic heat ramp; matches BLOOM_RISK_STOPS in the backend. */
+const BLOOM_RISK_STOPS = [
+  { offset: 0, color: '#DEEBF7' },
+  { offset: 0.25, color: '#A1D99B' },
+  { offset: 0.5, color: '#FED976' },
+  { offset: 0.75, color: '#FD8D3C' },
+  { offset: 1, color: '#BD0026' },
+];
+
+function habitatLayers(): RasterLayerDescriptor[] {
+  const month = currentMonth();
+  return HABITAT_SPECIES.map(({ key, label }) => ({
+    id: `habitat-${key.replace(/_/g, '-')}`,
+    name: `Habitat: ${label}`,
+    category: 'ai' as const,
+    type: 'raster' as const,
+    attribution:
+      `Maris AI habitat-suitability model (MaxEnt + Random Forest + LightGBM ensemble), ` +
+      `${MONTH_NAMES[month - 1]} climatology. Trained on OBIS occurrence records 2000-2013 ` +
+      `with Copernicus Marine environmental covariates, validated by spatial block ` +
+      `cross-validation. MODEL OUTPUT, not observation: values are relative habitat ` +
+      `suitability, not probability of catch, and the model is presence-only (no verified ` +
+      `absences exist). Northern Indian Ocean only — elsewhere renders transparent.`,
+    defaultOpacity: 0.75,
+    defaultVisible: false,
+    sources: [
+      {
+        type: 'raster' as const,
+        tiles: [`${API_BASE_URL}/api/predictions/habitat/${key}/${month}/{z}/{x}/{y}.png`],
+        tileSize: 256,
+        // The model grid is 0.25 degrees; past this the GPU is just
+        // upsampling, and a crisper-looking tile would imply precision the
+        // model does not have.
+        maxzoom: 7,
+      },
+    ],
+    legend: {
+      type: 'gradient' as const,
+      unit: 'suitability',
+      min: 0,
+      max: 1,
+      stops: SUITABILITY_STOPS,
+    },
+  }));
+}
+
+function bloomRiskLayers(): RasterLayerDescriptor[] {
+  return [3, 5, 7].map((horizon) => ({
+    id: `bloom-risk-t${horizon}`,
+    name: `Bloom Risk (+${horizon}d)`,
+    category: 'ai' as const,
+    type: 'raster' as const,
+    attribution:
+      `Maris AI harmful-algal-bloom early warning, ${horizon}-day lead. LightGBM with ` +
+      `isotonic calibration, so values read as probabilities. Validated by rolling-origin ` +
+      `cross-validation with an embargo gap; beats a persistence baseline at every lead. ` +
+      `WEAK LABEL: a "bloom" is model chlorophyll above the local seasonal 90th percentile ` +
+      `— a proxy, not a verified bloom, and it says nothing about toxicity. Skill falls with ` +
+      `lead time (at 80% recall the false-alarm rate is 0.55 at +3d but 0.80 at +7d). ` +
+      `Arabian Sea only — elsewhere renders transparent.`,
+    defaultOpacity: 0.75,
+    defaultVisible: false,
+    sources: [
+      {
+        type: 'raster' as const,
+        tiles: [`${API_BASE_URL}/api/predictions/hab/${horizon}/{z}/{x}/{y}.png`],
+        tileSize: 256,
+        maxzoom: 7,
+      },
+    ],
+    legend: {
+      type: 'gradient' as const,
+      unit: 'P(bloom)',
+      min: 0,
+      max: 1,
+      stops: BLOOM_RISK_STOPS,
+    },
+  }));
+}
+
 export const layerRegistry: LayerDescriptor[] = [
   {
     id: 'reference-labels',
@@ -400,4 +528,25 @@ export const layerRegistry: LayerDescriptor[] = [
       label: 'AIS vessel presence',
     },
   },
+  // ------------------------------------------------------------------
+  // AI predictions
+  //
+  // These differ from every other layer above in an important way: they are
+  // MODEL OUTPUT, not observation. Nothing here was measured — it is what a
+  // model trained on historical data infers. Three honesty constraints
+  // follow, and each is implemented rather than just stated:
+  //
+  //  * Coverage is REGIONAL, not global. Habitat covers the northern Indian
+  //    Ocean, bloom risk a smaller Arabian Sea box. Outside those, the tile
+  //    endpoint returns transparent — the map shows nothing rather than
+  //    extrapolating a model into water it never saw.
+  //  * The suitability layers are a CLIMATOLOGICAL month from a 2000-2013
+  //    model, not a live forecast, and the attribution says so.
+  //  * Bloom risk is a WEAK label — chlorophyll above a local seasonal
+  //    percentile is a proxy for a bloom, not a verified or toxic one.
+  //
+  // Full skill numbers, drivers and limitations live on the Model Insights
+  // page (/predictions); the attribution strings here are the short version.
+  ...habitatLayers(),
+  ...bloomRiskLayers(),
 ];
