@@ -24,7 +24,7 @@ import type {
 import { generateOceanInsights } from '../features/insights/api/generateInsights';
 import { useTimezoneStore } from '../store/timezoneStore';
 import { useThemeStore } from '../store/themeStore';
-import { useDashboardLocationStore } from '../store/dashboardLocationStore';
+import { useMapStore } from '../store/mapStore';
 import { formatClockDate, formatClockTime, formatShortTime } from '../utils/formatTime';
 import './dashboard.css';
 
@@ -36,10 +36,13 @@ type MetricKey = Exclude<keyof RealtimeOceanConditions, 'time'>;
 
 export function DashboardPage() {
   const { searchParams, navigate } = useAppRouter();
-  const lastViewedLocation = useDashboardLocationStore((s) => s.location);
-  const setLastViewedLocation = useDashboardLocationStore((s) => s.setLocation);
-  const requestedLocation =
-    readCoordinates(searchParams) ?? lastViewedLocation ?? DEFAULT_LOCATION;
+  // The map's selected point doubles as "last viewed location" here: it's one
+  // shared point of interest, so arriving with no ?lat=&lon= (the navbar's
+  // plain "Analytics" link) picks up whatever was last chosen on either page.
+  const sharedLocation = useMapStore((s) => s.selectedLocation);
+  const focusSelectedLocation = useMapStore((s) => s.focusSelectedLocation);
+  const urlLocation = readCoordinates(searchParams);
+  const requestedLocation = urlLocation ?? sharedLocation ?? DEFAULT_LOCATION;
   const [latitudeInput, setLatitudeInput] = useState(String(requestedLocation.lat));
   const [longitudeInput, setLongitudeInput] = useState(String(requestedLocation.lng));
   const isDark = useThemeStore((s) => s.dark);
@@ -62,10 +65,21 @@ export function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    setLatitudeInput(String(requestedLocation.lat));
-    setLongitudeInput(String(requestedLocation.lng));
-    setLastViewedLocation({ lat: requestedLocation.lat, lng: requestedLocation.lng });
-  }, [requestedLocation.lat, requestedLocation.lng, setLastViewedLocation]);
+    setLatitudeInput(formatCoordinateInput(requestedLocation.lat));
+    setLongitudeInput(formatCoordinateInput(requestedLocation.lng));
+  }, [requestedLocation.lat, requestedLocation.lng]);
+
+  // Every explicitly chosen coordinate reaches this page through the URL —
+  // the form and the geolocation button both navigate() rather than setting
+  // state directly — so this is the one place that publishes a choice to the
+  // shared map state. The DEFAULT_LOCATION fallback deliberately doesn't
+  // publish: nobody picked it, so it shouldn't drop a pin on the map.
+  const urlLat = urlLocation?.lat ?? null;
+  const urlLng = urlLocation?.lng ?? null;
+  useEffect(() => {
+    if (urlLat === null || urlLng === null) return;
+    focusSelectedLocation({ lat: urlLat, lng: urlLng });
+  }, [urlLat, urlLng, focusSelectedLocation]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -460,6 +474,14 @@ function readCoordinates(searchParams: URLSearchParams) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
   return { lat, lng };
+}
+
+/** A map click arrives at full float precision (`23.193346783178256`), which
+ * is unreadable in a coordinate field and finer than any model grid cell.
+ * Six decimals is ~10cm and matches what the map's "More info" link writes
+ * into the URL. */
+function formatCoordinateInput(value: number) {
+  return String(Number(value.toFixed(6)));
 }
 
 function dashboardUrl(lat: number, lng: number) {
