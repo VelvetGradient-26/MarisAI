@@ -81,11 +81,37 @@ export function useSelectedLocationMarker(manager: MapManager | null, ready: boo
       if (map.getLayer(PULSE_LAYER_ID)) map.removeLayer(PULSE_LAYER_ID);
       if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
       if (map.hasImage(PIN_IMAGE_ID)) map.removeImage(PIN_IMAGE_ID);
+      // Everything the cached promise stood for has just been torn off this
+      // map, so drop it rather than leave a resolved entry claiming the
+      // layers still exist.
+      markerInfrastructure.delete(map);
     };
   }, [manager]);
 }
 
-async function ensureMarkerInfrastructure(map: MapLibreMap) {
+/**
+ * In-flight (or completed) setup, one entry per MapLibre instance.
+ *
+ * Both effects above need the source/layers/image to exist before they can
+ * touch them, and both run in the same commit. Without a shared promise each
+ * call passed the `hasImage`/`getLayer` checks before the other's `await`
+ * resolved, and the loser threw "An image named … already exists" — which,
+ * being a rejection inside `void …then()`, silently killed whichever effect
+ * lost the race (in practice the pulse animation loop).
+ *
+ * Keyed by map instance rather than module-global because the image and
+ * layers belong to one specific MapLibre instance, and useMapManager builds
+ * a fresh one on every mount of the map route.
+ */
+const markerInfrastructure = new WeakMap<MapLibreMap, Promise<void>>();
+
+function ensureMarkerInfrastructure(map: MapLibreMap): Promise<void> {
+  const pending = markerInfrastructure.get(map) ?? buildMarkerInfrastructure(map);
+  markerInfrastructure.set(map, pending);
+  return pending;
+}
+
+async function buildMarkerInfrastructure(map: MapLibreMap) {
   if (!map.hasImage(PIN_IMAGE_ID)) {
     map.addImage(PIN_IMAGE_ID, await createPinImage());
   }
