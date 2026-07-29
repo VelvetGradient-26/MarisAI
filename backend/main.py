@@ -9,6 +9,7 @@ from routers.download import router as download_router
 from routers.feedback import router as feedback_router
 from routers.insights import router as insights_router
 from routers.marine import router as marine_router
+from routers.predictions import router as predictions_router
 from routers.tiles import router as tiles_router
 from services.copernicus_sst import refresh_sst_cache
 from services.copernicus_wind import refresh_wind_cache
@@ -54,6 +55,7 @@ app.include_router(insights_router)
 app.include_router(tiles_router)
 app.include_router(download_router)
 app.include_router(feedback_router)
+app.include_router(predictions_router)
 
 
 @app.get("/")

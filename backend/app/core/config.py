@@ -1,5 +1,7 @@
 """Application configuration."""
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,6 +29,13 @@ class Settings(BaseSettings):
     SMTP_PORT: int = 587
     SMTP_USERNAME: str = ""
     SMTP_PASSWORD: str = ""
+
+    # Where the offline ML pipelines write their precomputed prediction grids.
+    # The backend reads these files; it never imports `machine_learning` or
+    # loads a model. Regenerate with `scripts/export_predictions.py` there.
+    PREDICTIONS_DIR: str = str(
+        Path(__file__).resolve().parents[3] / "machine_learning" / "exports"
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
