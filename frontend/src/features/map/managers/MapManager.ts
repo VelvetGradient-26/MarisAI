@@ -12,7 +12,13 @@ export interface MapManagerInitOptions {
   container: HTMLElement;
   center?: [number, number];
   zoom?: number;
+  bearing?: number;
+  pitch?: number;
   defaultBasemap?: BasemapId;
+  /** Applied on `load` instead of DEFAULT_PROJECTION. Passed in at init
+   * (rather than toggled afterwards) so a restored 2D preference never
+   * flashes the globe and animates out of it on every mount. */
+  projection?: ProjectionMode;
 }
 
 const DEFAULT_PROJECTION: ProjectionMode = 'globe';
@@ -31,7 +37,17 @@ export class MapManager {
   private projectionMode: ProjectionMode = DEFAULT_PROJECTION;
 
   init(options: MapManagerInitOptions): MapLibreMap {
-    const { container, center = [0, 20], zoom = 2.2, defaultBasemap = 'satellite' } = options;
+    const {
+      container,
+      center = [0, 20],
+      zoom = 2.2,
+      bearing = 0,
+      pitch = 0,
+      defaultBasemap = 'satellite',
+      projection = DEFAULT_PROJECTION,
+    } = options;
+
+    this.projectionMode = projection;
 
     // Empty style: MapManager/BasemapManager/LayerManager own every source
     // and layer explicitly, rather than inheriting an opaque preset style.
@@ -47,6 +63,8 @@ export class MapManager {
       },
       center,
       zoom,
+      bearing,
+      pitch,
       renderWorldCopies: false,
       attributionControl: { compact: true },
     });
@@ -71,7 +89,7 @@ export class MapManager {
     // overlays, not style mutations, so they're unaffected and stay
     // synchronous above.)
     map.once('load', () => {
-      map.setProjection({ type: DEFAULT_PROJECTION });
+      map.setProjection({ type: projection });
       basemapManager.init(defaultBasemap);
       layerManager.applyDefaults();
     });
