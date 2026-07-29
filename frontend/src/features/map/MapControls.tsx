@@ -3,8 +3,15 @@ import { useMapManagerContext } from './hooks/MapManagerContext';
 import { useMapStore } from '../../store/mapStore';
 import { useUiStore } from '../../store/uiStore';
 import { GradientBar } from './GradientBar';
+import type { MapManager } from './managers/MapManager';
 import type { LayerManager, LayerState } from './layers/LayerManager';
-import type { BasemapId, LayerCategory, LayerDescriptor, LayerLegend } from './types';
+import type {
+  BasemapId,
+  LayerCategory,
+  LayerDescriptor,
+  LayerLegend,
+  ProjectionMode,
+} from './types';
 
 const CATEGORY_GROUPS: Array<{ category: LayerCategory; label: string; exclusive: boolean }> = [
   { category: 'ocean', label: 'Ocean & Atmosphere', exclusive: true },
@@ -39,6 +46,8 @@ export function MapControls() {
       </button>
 
       <div className="map-controls__body" aria-hidden={!panelOpen}>
+        <ProjectionToggle manager={manager} />
+
         <section>
           <h3>Basemap</h3>
           <div className="basemap-grid">
@@ -74,11 +83,43 @@ export function MapControls() {
   );
 }
 
+const PROJECTIONS: Array<{ mode: ProjectionMode; label: string }> = [
+  { mode: 'mercator', label: '2D Map' },
+  { mode: 'globe', label: '3D Globe' },
+];
+
+/** Flattened web-mercator map vs. the 3D globe — see MapManager.setProjectionMode. */
+function ProjectionToggle({ manager }: { manager: MapManager }) {
+  const [mode, setMode] = useState<ProjectionMode>(() => manager.getProjectionMode());
+
+  return (
+    <section>
+      <h3>View</h3>
+      <div className="basemap-grid">
+        {PROJECTIONS.map(({ mode: value, label }) => (
+          <button
+            key={value}
+            className={mode === value ? 'active' : ''}
+            onClick={() => {
+              setMode(value);
+              manager.setProjectionMode(value);
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 /**
  * A "pick one" group of complete maps rather than stackable overlays —
  * every entry here renders full-coverage color data, so letting two be
- * active together just produces visual noise. Selecting one switches the
- * others off; selecting the active one turns it off entirely.
+ * active together just produces visual noise. A single dropdown (not a
+ * button per option) makes that "exactly one, or none" constraint obvious
+ * without a grid of nitpicky-looking buttons. Selecting "None" turns the
+ * currently active one off; selecting another switches to it.
  */
 function MapButtonGroup({
   descriptors,
@@ -93,24 +134,26 @@ function MapButtonGroup({
 
   return (
     <>
-      <div className="map-button-grid">
-        {descriptors.map((descriptor) => {
-          const disabled = descriptor.implemented === false;
-          const isActive = layerState.get(descriptor.id)?.active ?? false;
-          return (
-            <button
-              key={descriptor.id}
-              className={isActive ? 'active' : ''}
-              disabled={disabled}
-              title={descriptor.attribution}
-              onClick={() => layerManager.setExclusive(descriptor.id)}
-            >
-              {descriptor.name}
-              {disabled && <span className="badge">not wired yet</span>}
-            </button>
-          );
-        })}
-      </div>
+      <select
+        className="map-exclusive-select"
+        value={active?.id ?? ''}
+        onChange={(e) => {
+          const id = e.target.value;
+          layerManager.setExclusive(id || (active?.id ?? ''));
+        }}
+      >
+        <option value="">None</option>
+        {descriptors.map((descriptor) => (
+          <option
+            key={descriptor.id}
+            value={descriptor.id}
+            disabled={descriptor.implemented === false}
+          >
+            {descriptor.name}
+            {descriptor.implemented === false ? ' (coming soon)' : ''}
+          </option>
+        ))}
+      </select>
       {active?.legend && <Legend legend={active.legend} />}
     </>
   );
@@ -144,14 +187,16 @@ function LayerList({
             </label>
             {state?.active && (
               <>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={state.opacity}
-                  onChange={(e) => layerManager.setOpacity(descriptor.id, Number(e.target.value))}
-                />
+                {!descriptor.hideOpacitySlider && (
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={state.opacity}
+                    onChange={(e) => layerManager.setOpacity(descriptor.id, Number(e.target.value))}
+                  />
+                )}
                 {descriptor.type === 'custom' && (
                   <VectorFieldControls descriptorId={descriptor.id} layerManager={layerManager} />
                 )}

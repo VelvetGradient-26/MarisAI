@@ -3,14 +3,27 @@ import type { CustomVectorFieldLayer } from '../types';
 import {
   UPDATE_VERTEX_SHADER,
   UPDATE_FRAGMENT_SHADER,
-  DRAW_VERTEX_SHADER,
+  DRAW_VERTEX_SHADER_BODY,
   DRAW_FRAGMENT_SHADER,
   COMPOSITE_VERTEX_SHADER,
   COMPOSITE_FRAGMENT_SHADER,
 } from './shaders';
 import { buildColorRampTexture, type ColorStop } from './colorRamp';
 
-type ProjectionMatrix = CustomRenderMethodInput['modelViewProjectionMatrix'];
+const DRAW_VERTEX_HEADER = `#version 300 es
+precision highp float;
+`;
+
+// Minimal stand-in for MapLibre's mercator prelude, used only to get the
+// draw program to compile once in onAdd (rebuildParticles needs a linked
+// program to read attribute locations from). The real prelude — which is
+// what actually makes the globe work — is only available on a
+// CustomRenderMethodInput, so it's injected per-frame in render() instead,
+// and this initial program is thrown away on the very first frame.
+const INITIAL_DRAW_PRELUDE = `const float PI = 3.141592653589793;
+uniform mat4 u_projection_matrix;
+vec4 projectTile(vec2 p) { return u_projection_matrix * vec4(p, 0.0, 1.0); }
+`;
 
 export interface VectorFieldMeta {
   u_min: number;
@@ -106,6 +119,7 @@ export class VectorFieldParticleLayer implements CustomVectorFieldLayer {
   private elapsedSeconds = 0;
   private destroyed = false;
   private animationFrameId = 0;
+  private lastDrawVertexSource: string | null = null;
 
   constructor(id: string, config: VectorFieldConfig, initialOpacity = 1) {
     this.id = id;
@@ -133,7 +147,11 @@ export class VectorFieldParticleLayer implements CustomVectorFieldLayer {
       'v_lonlat',
       'v_age',
     ]);
-    this.drawProgram = createProgram(gl, DRAW_VERTEX_SHADER, DRAW_FRAGMENT_SHADER);
+    this.drawProgram = createProgram(
+      gl,
+      `${DRAW_VERTEX_HEADER}${INITIAL_DRAW_PRELUDE}${DRAW_VERTEX_SHADER_BODY}`,
+      DRAW_FRAGMENT_SHADER
+    );
     this.compositeProgram = createProgram(gl, COMPOSITE_VERTEX_SHADER, COMPOSITE_FRAGMENT_SHADER);
 
     this.colorRampTexture = buildColorRampTexture(gl, this.config.colorStops);
@@ -264,11 +282,44 @@ export class VectorFieldParticleLayer implements CustomVectorFieldLayer {
       const previousFBO = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
       const worldSize = 512 * Math.pow(2, map.getZoom());
 
+      this.ensureDrawProgram(gl, options);
       this.runUpdatePass(gl, dt, boundsArray, worldSize);
-      this.runDrawPass(gl, width, height, options.modelViewProjectionMatrix, worldSize, dt);
+      this.runDrawPass(gl, width, height, options, dt);
       this.runCompositePass(gl, previousFBO, width, height);
     } catch (err) {
       console.error(`[VectorFieldParticleLayer:${this.id}] render failed`, err);
+    }
+  }
+
+  /**
+   * The draw program is compiled against MapLibre's *current* projection.
+   * `shaderData.vertexShaderPrelude` supplies `projectTile()`, which is a
+   * plain matrix multiply under flat mercator but a full lon/lat -> sphere
+   * -> screen projection (with horizon clipping) under globe — so switching
+   * projections means recompiling, or particles keep being projected as if
+   * the map were still flat and end up nowhere on screen. `variantName` is
+   * documented to change whenever the prelude/define do, but comparing the
+   * assembled source is both cheaper to reason about and self-evidently
+   * exact.
+   */
+  private ensureDrawProgram(gl: WebGL2RenderingContext, options: CustomRenderMethodInput) {
+    const { vertexShaderPrelude, define } = options.shaderData;
+    const source = `${DRAW_VERTEX_HEADER}${vertexShaderPrelude}\n${define}\n${DRAW_VERTEX_SHADER_BODY}`;
+    if (source === this.lastDrawVertexSource) return;
+
+    this.lastDrawVertexSource = source;
+    if (this.drawProgram) gl.deleteProgram(this.drawProgram);
+    this.drawProgram = createProgram(gl, source, DRAW_FRAGMENT_SHADER);
+
+    // A VAO stores the attribute *indices* the program was linked with, and
+    // those can shift when the shader source changes — the old VAOs would
+    // silently feed the new program from the wrong buffers.
+    if (this.drawVAOs && this.particleBuffers) {
+      for (const vao of this.drawVAOs) gl.deleteVertexArray(vao);
+      this.drawVAOs = [
+        createDrawVAO(gl, this.drawProgram, this.particleBuffers[0]),
+        createDrawVAO(gl, this.drawProgram, this.particleBuffers[1]),
+      ];
     }
   }
 
@@ -344,8 +395,7 @@ export class VectorFieldParticleLayer implements CustomVectorFieldLayer {
     gl: WebGL2RenderingContext,
     width: number,
     height: number,
-    matrix: ProjectionMatrix,
-    worldSize: number,
+    options: CustomRenderMethodInput,
     dt: number
   ) {
     if (
@@ -379,7 +429,35 @@ export class VectorFieldParticleLayer implements CustomVectorFieldLayer {
 
     const program = this.drawProgram;
     gl.useProgram(program);
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'u_matrix'), false, matrix);
+
+    // The projection uniforms MapLibre's prelude declares. Only
+    // u_projection_matrix exists in every variant — the other four are
+    // globe-only, and gl.uniform* against the resulting -1 location is a
+    // documented silent no-op, so there's no need to branch on projection.
+    const projection = options.defaultProjectionData;
+    gl.uniformMatrix4fv(
+      gl.getUniformLocation(program, 'u_projection_matrix'),
+      false,
+      asFloat32(projection.mainMatrix)
+    );
+    gl.uniform4fv(
+      gl.getUniformLocation(program, 'u_projection_tile_mercator_coords'),
+      projection.tileMercatorCoords
+    );
+    gl.uniform4fv(
+      gl.getUniformLocation(program, 'u_projection_clipping_plane'),
+      projection.clippingPlane
+    );
+    gl.uniform1f(
+      gl.getUniformLocation(program, 'u_projection_transition'),
+      projection.projectionTransition
+    );
+    gl.uniformMatrix4fv(
+      gl.getUniformLocation(program, 'u_projection_fallback_matrix'),
+      false,
+      asFloat32(projection.fallbackMatrix)
+    );
+
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.windTexture);
     gl.uniform1i(gl.getUniformLocation(program, 'u_wind'), 0);
@@ -397,7 +475,6 @@ export class VectorFieldParticleLayer implements CustomVectorFieldLayer {
     gl.uniform1f(gl.getUniformLocation(program, 'u_pointSize'), POINT_SIZE_PX);
     gl.uniform1f(gl.getUniformLocation(program, 'u_speedMax'), this.meta.speed_max_legend);
     gl.uniform1f(gl.getUniformLocation(program, 'u_opacity'), this.opacity);
-    gl.uniform1f(gl.getUniformLocation(program, 'u_worldSize'), worldSize);
 
     gl.bindVertexArray(this.drawVAOs[this.current]);
     gl.drawArrays(gl.POINTS, 0, this.particleCount);
@@ -640,6 +717,11 @@ function createProgram(
   gl.deleteShader(vs);
   gl.deleteShader(fs);
   return program;
+}
+
+/** MapLibre hands out some matrices as Float64Array; uniformMatrix4fv needs f32. */
+function asFloat32(m: Float32Array | Float64Array | number[]): Float32Array {
+  return m instanceof Float32Array ? m : new Float32Array(m);
 }
 
 async function loadTexture(gl: WebGL2RenderingContext, url: string): Promise<WebGLTexture> {
