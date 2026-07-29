@@ -15,7 +15,7 @@ import {
 } from '../features/map/api/download';
 import './download.css';
 
-type AreaMode = 'point' | 'bbox' | 'draw';
+type AreaMode = 'point' | 'draw';
 
 interface BboxFields {
   west: string;
@@ -188,17 +188,10 @@ export function DownloadPage() {
             </button>
             <button
               type="button"
-              className={areaMode === 'bbox' ? 'active' : ''}
-              onClick={() => setAreaMode('bbox')}
-            >
-              Bounding Box
-            </button>
-            <button
-              type="button"
               className={areaMode === 'draw' ? 'active' : ''}
               onClick={() => setAreaMode('draw')}
             >
-              Draw Rectangle
+              Bounding Box
             </button>
             <button type="button" disabled title="Coming soon — not yet available">
               Upload GeoJSON
