@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { FormEvent, ReactNode } from 'react';
+import type { ReactNode, SubmitEvent } from 'react';
 import {
   Activity,
   Anchor,
@@ -120,7 +120,7 @@ export function DashboardPage() {
       });
   };
 
-  const updateLocation = (event: FormEvent<HTMLFormElement>) => {
+  const updateLocation = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const nextLocation = validateCoordinates(latitudeInput, longitudeInput);
     if (!nextLocation) {

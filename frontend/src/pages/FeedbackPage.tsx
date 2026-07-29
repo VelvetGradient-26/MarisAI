@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { FormEvent } from 'react';
+import type { SubmitEvent } from 'react';
 import { sendFeedback } from '../features/map/api/feedback';
 import { useThemeStore } from '../store/themeStore';
 import './feedback.css';
@@ -18,7 +18,7 @@ export function FeedbackPage() {
     document.title = 'Maris AI | Feedback';
   }, []);
 
-  async function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setStatus('loading');
