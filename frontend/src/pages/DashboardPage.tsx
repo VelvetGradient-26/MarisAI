@@ -4,7 +4,6 @@ import {
   Activity,
   Anchor,
   ArrowLeft,
-  ChevronDown,
   CircuitBoard,
   Compass,
   LocateFixed,
@@ -25,6 +24,7 @@ import type {
 import { generateOceanInsights } from '../features/insights/api/generateInsights';
 import { useTimezoneStore } from '../store/timezoneStore';
 import { useThemeStore } from '../store/themeStore';
+import { useDashboardLocationStore } from '../store/dashboardLocationStore';
 import { formatClockDate, formatClockTime, formatShortTime } from '../utils/formatTime';
 import './dashboard.css';
 
@@ -36,7 +36,10 @@ type MetricKey = Exclude<keyof RealtimeOceanConditions, 'time'>;
 
 export function DashboardPage() {
   const { searchParams, navigate } = useAppRouter();
-  const requestedLocation = readCoordinates(searchParams) ?? DEFAULT_LOCATION;
+  const lastViewedLocation = useDashboardLocationStore((s) => s.location);
+  const setLastViewedLocation = useDashboardLocationStore((s) => s.setLocation);
+  const requestedLocation =
+    readCoordinates(searchParams) ?? lastViewedLocation ?? DEFAULT_LOCATION;
   const [latitudeInput, setLatitudeInput] = useState(String(requestedLocation.lat));
   const [longitudeInput, setLongitudeInput] = useState(String(requestedLocation.lng));
   const isDark = useThemeStore((s) => s.dark);
@@ -61,7 +64,8 @@ export function DashboardPage() {
   useEffect(() => {
     setLatitudeInput(String(requestedLocation.lat));
     setLongitudeInput(String(requestedLocation.lng));
-  }, [requestedLocation.lat, requestedLocation.lng]);
+    setLastViewedLocation({ lat: requestedLocation.lat, lng: requestedLocation.lng });
+  }, [requestedLocation.lat, requestedLocation.lng, setLastViewedLocation]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -213,7 +217,7 @@ export function DashboardPage() {
         {requestError && <div className="dashboard-request-error">{requestError}</div>}
 
         <div className="dashboard-grid" aria-busy={status === 'loading'}>
-          <DashboardCard active>
+          <DashboardCard>
             <CardHeader icon={<Waves size={17} />} title="Ocean metrics" />
             <div className="dashboard-metric-list">
               <MetricRow label="Sea Surface Temp" metric="sea_surface_temperature" data={data} />
@@ -246,7 +250,7 @@ export function DashboardPage() {
             </div>
           </DashboardCard>
 
-          <DashboardCard active>
+          <DashboardCard>
             <CardHeader icon={<Compass size={17} />} title="Geo-location" />
             <div className="dashboard-location-content">
               <LocationDetail
@@ -283,7 +287,6 @@ export function DashboardPage() {
                   </strong>
                 </div>
               </div>
-              <Radar />
             </div>
           </DashboardCard>
         </div>
@@ -366,15 +369,14 @@ function CoordinateInput({
   );
 }
 
-function DashboardCard({ children, active = false }: { children: ReactNode; active?: boolean }) {
-  return <section className={`dashboard-card ${active ? 'dashboard-card--active' : ''}`}>{children}</section>;
+function DashboardCard({ children }: { children: ReactNode }) {
+  return <section className="dashboard-card">{children}</section>;
 }
 
 function CardHeader({ icon, title }: { icon: ReactNode; title: string }) {
   return (
     <div className="dashboard-card__header">
       <div>{icon}<span>{title}</span></div>
-      <ChevronDown size={16} />
     </div>
   );
 }
@@ -447,32 +449,6 @@ function LocationDetail({
         <strong>{value}</strong>
         <p>{description}</p>
       </div>
-    </div>
-  );
-}
-
-function Radar() {
-  const dots = [
-    [62, 40], [120, 55], [90, 90], [140, 100], [50, 100], [100, 30], [70, 120],
-  ];
-
-  return (
-    <div className="dashboard-radar" aria-hidden="true">
-      <svg viewBox="0 0 200 150" width="100%" height="100%">
-        <g fill="none" strokeWidth="1">
-          <circle cx="100" cy="75" r="60" />
-          <circle cx="100" cy="75" r="40" />
-          <circle cx="100" cy="75" r="20" />
-          <line x1="20" y1="75" x2="180" y2="75" />
-          <line x1="100" y1="5" x2="100" y2="145" />
-        </g>
-        {dots.map(([x, y]) => <circle key={`${x}-${y}`} cx={x} cy={y} r="2" />)}
-        <text x="100" y="16" textAnchor="middle">N</text>
-        <text x="100" y="140" textAnchor="middle">S</text>
-        <text x="12" y="78">W</text>
-        <text x="184" y="78">E</text>
-      </svg>
-      <div className="dashboard-radar__sweep" />
     </div>
   );
 }
