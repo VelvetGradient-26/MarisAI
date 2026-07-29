@@ -48,16 +48,17 @@ uniform float u_speedMultiplier;
 uniform float u_maxAge;    // seconds — a particle's lifetime, NOT a frame count
 uniform float u_time;
 uniform vec4 u_bounds;     // minLon, minLat, maxLon, maxLat (current viewport)
-// Same "world size" (tileSize(512) * 2^zoom) used to scale the draw pass's
-// mercator projection — see that shader's comment. Used here, inversely, to
-// keep apparent on-screen particle speed in a lively, Windy-like range at
-// ANY zoom level. Real wind speed (a few m/s) is physically imperceptible
-// against an entire-planet-wide view: at world-view zoom a realistic 8 m/s
-// wind covers roughly 4e-4 screen pixels per second — literal physical
-// accuracy would look completely static for tens of minutes. Dividing by
-// worldSize (rather than Earth's real circumference) cancels the draw
-// pass's zoom-dependent projection scaling, so apparent speed stays
-// consistent regardless of zoom, exactly like Windy's own particles.
+// MapLibre's own "world size" (tileSize(512) * 2^zoom), the zoom-dependent
+// scale baked into the projection matrix the draw pass renders through.
+// Used here, inversely, to keep apparent on-screen particle speed in a
+// lively, Windy-like range at ANY zoom level. Real wind speed (a few m/s)
+// is physically imperceptible against an entire-planet-wide view: at
+// world-view zoom a realistic 8 m/s wind covers roughly 4e-4 screen pixels
+// per second — literal physical accuracy would look completely static for
+// tens of minutes. Dividing by worldSize (rather than Earth's real
+// circumference) cancels that zoom-dependent projection scaling, so
+// apparent speed stays consistent regardless of zoom, exactly like Windy's
+// own particles.
 uniform float u_worldSize;
 
 const float DEG2RAD = 3.14159265358979 / 180.0;
@@ -124,37 +125,40 @@ void main() {
 }
 `;
 
-export const DRAW_VERTEX_SHADER = `#version 300 es
-precision highp float;
-
+/**
+ * Body only — no `#version`/`precision` line and no projection code of its
+ * own. VectorFieldParticleLayer prepends MapLibre's own
+ * `shaderData.vertexShaderPrelude` + `shaderData.define` for the *current*
+ * projection and recompiles whenever that changes, so the same body draws
+ * correctly under both flat mercator and the 3D globe. That prelude already
+ * declares `const float PI`, `uniform mat4 u_projection_matrix` and the
+ * globe-only projection uniforms — redeclaring any of them here is a
+ * compile error, hence the conspicuous absence below.
+ */
+export const DRAW_VERTEX_SHADER_BODY = `
 in vec2 a_lonlat;
 in float a_age;
 
-uniform mat4 u_matrix;
 uniform sampler2D u_wind;
 uniform vec4 u_uv_range;
 uniform float u_maxAge;    // seconds — must match the value used in the update pass
 uniform float u_pointSize;
-// MapLibre's modelViewProjectionMatrix expects mercator coordinates scaled by
-// its internal "world size" (tileSize(512) * 2^zoom), not the plain [0,1]
-// normalized mercator range — verified empirically: unscaled coordinates for
-// the current map center projected to ndc (-1.37, 2.33), miles outside clip
-// space, while worldSize-scaled coordinates for the same point landed
-// exactly at (0, 0). Recomputed every frame since it depends on zoom.
-uniform float u_worldSize;
 
 out float v_speed;
 out float v_alpha;
 
-const float PI = 3.14159265358979;
-
 ${WIND_UV_GLSL}
 
+// Plain [0,1] normalized web mercator (0,0 = top-left of the mercator
+// world), which is exactly what MapLibre's projectTile() expects when it's
+// fed the uniforms from defaultProjectionData — no world-size scaling of
+// our own. Under globe projection projectTile() maps this onto the sphere
+// and sets a clip-space z that culls particles on the far side for us.
 vec2 lonLatToMercator(vec2 lonlat) {
   float x = (lonlat.x + 180.0) / 360.0;
   float latRad = lonlat.y * PI / 180.0;
   float y = 0.5 - log(tan(PI / 4.0 + latRad / 2.0)) / (2.0 * PI);
-  return vec2(x, y) * u_worldSize;
+  return vec2(x, y);
 }
 
 void main() {
@@ -170,8 +174,7 @@ void main() {
   float fadeOut = 1.0 - smoothstep(u_maxAge * 0.75, u_maxAge, a_age);
   v_alpha = fadeIn * fadeOut * step(0.5, windSample.a);
 
-  vec2 merc = lonLatToMercator(a_lonlat);
-  gl_Position = u_matrix * vec4(merc, 0.0, 1.0);
+  gl_Position = projectTile(lonLatToMercator(a_lonlat));
   gl_PointSize = u_pointSize;
 }
 `;

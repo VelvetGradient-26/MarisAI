@@ -137,6 +137,8 @@ export const layerRegistry: LayerDescriptor[] = [
     type: 'raster',
     attribution: 'Esri, Garmin, USGS, NPS',
     defaultVisible: true,
+    defaultOpacity: 0.75,
+    hideOpacitySlider: true,
     sources: [
       {
         type: 'raster',

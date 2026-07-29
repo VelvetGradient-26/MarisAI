@@ -6,7 +6,7 @@ import { LayerManager } from '../layers/LayerManager';
 import { basemaps } from '../basemaps';
 import { layerRegistry } from '../layers/layerRegistry';
 import { getFirstExistingAnnotationLayerId } from '../layers/annotationLayerIds';
-import type { BasemapId } from '../types';
+import type { BasemapId, ProjectionMode } from '../types';
 
 export interface MapManagerInitOptions {
   container: HTMLElement;
@@ -14,6 +14,8 @@ export interface MapManagerInitOptions {
   zoom?: number;
   defaultBasemap?: BasemapId;
 }
+
+const DEFAULT_PROJECTION: ProjectionMode = 'globe';
 
 /**
  * Owns the MapLibre instance and its lifecycle. Everything else — basemaps,
@@ -26,6 +28,7 @@ export class MapManager {
   private basemapManager: BasemapManager | null = null;
   private controlManager: ControlManager | null = null;
   private layerManager: LayerManager | null = null;
+  private projectionMode: ProjectionMode = DEFAULT_PROJECTION;
 
   init(options: MapManagerInitOptions): MapLibreMap {
     const { container, center = [0, 20], zoom = 2.2, defaultBasemap = 'satellite' } = options;
@@ -68,6 +71,7 @@ export class MapManager {
     // overlays, not style mutations, so they're unaffected and stay
     // synchronous above.)
     map.once('load', () => {
+      map.setProjection({ type: DEFAULT_PROJECTION });
       basemapManager.init(defaultBasemap);
       layerManager.applyDefaults();
     });
@@ -94,6 +98,24 @@ export class MapManager {
 
   getLayerManager(): LayerManager | null {
     return this.layerManager;
+  }
+
+  getProjectionMode(): ProjectionMode {
+    return this.projectionMode;
+  }
+
+  /**
+   * Switches between a flattened web-mercator map and the 3D globe.
+   * MapLibre animates the transition itself, so there's nothing to ease
+   * here. Note 'globe' is the adaptive projection — it renders as a real
+   * sphere when zoomed out and eases back into mercator as you zoom in,
+   * which is what makes it usable for close-up work rather than a novelty.
+   */
+  setProjectionMode(mode: ProjectionMode) {
+    const map = this.map;
+    if (!map || mode === this.projectionMode) return;
+    this.projectionMode = mode;
+    map.setProjection({ type: mode });
   }
 
   destroy() {

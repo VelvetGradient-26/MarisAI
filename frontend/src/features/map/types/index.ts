@@ -6,6 +6,13 @@ import type {
 
 export type BasemapId = 'satellite' | 'blueMarble' | 'darkMarine';
 
+/**
+ * The two shapes the world can be drawn in. Both are MapLibre's own
+ * `setProjection` type names, so they're passed straight through — see
+ * `MapManager.setProjectionMode`.
+ */
+export type ProjectionMode = 'mercator' | 'globe';
+
 export interface BasemapDefinition {
   id: BasemapId;
   name: string;
@@ -82,6 +89,12 @@ interface LayerDescriptorBase {
    * panel as disabled rather than silently failing to load tiles.
    */
   implemented?: boolean;
+  /**
+   * Hides the per-layer opacity slider in the control panel — for layers
+   * whose opacity is a fixed design choice (e.g. reference labels tuned to
+   * stay legible over any basemap) rather than a user-facing knob.
+   */
+  hideOpacitySlider?: boolean;
 }
 
 export interface RasterLayerDescriptor extends LayerDescriptorBase {
