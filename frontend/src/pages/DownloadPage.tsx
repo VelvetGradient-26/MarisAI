@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
+import type { SubmitEvent } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Link } from '../app/router';
 import { DrawableAreaMap } from '../features/map/DrawableAreaMap';
@@ -103,7 +103,7 @@ export function DownloadPage() {
     });
   }
 
-  async function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitError(null);
 
