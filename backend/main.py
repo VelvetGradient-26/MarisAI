@@ -11,6 +11,8 @@ from routers.insights import router as insights_router
 from routers.marine import router as marine_router
 from routers.predictions import router as predictions_router
 from routers.tiles import router as tiles_router
+from routers.vessels import router as vessels_router
+from services import ais
 from services.copernicus_sst import refresh_sst_cache
 from services.copernicus_wind import refresh_wind_cache
 
@@ -35,9 +37,14 @@ async def lifespan(_app: FastAPI):
     scheduler.add_job(refresh_wind_cache, "interval", hours=WIND_REFRESH_INTERVAL_HOURS)
     scheduler.start()
 
+    # Long-lived websocket to aisstream.io. Self-supervising and a no-op
+    # without an API key, so it never blocks or breaks startup.
+    ais.start()
+
     yield
 
     scheduler.shutdown(wait=False)
+    await ais.stop()
 
 
 app = FastAPI(title="MarisAI Backend", lifespan=lifespan)
@@ -56,6 +63,7 @@ app.include_router(tiles_router)
 app.include_router(download_router)
 app.include_router(feedback_router)
 app.include_router(predictions_router)
+app.include_router(vessels_router)
 
 
 @app.get("/")

@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     # Global Fishing Watch
     GFW_TOKEN: str = ""
 
+    # aisstream.io live AIS websocket feed. Without this the vessel layer
+    # serves an empty collection rather than failing — the rest of the map
+    # must not depend on a live socket being up.
+    AISSTREAM_API_KEY: str = ""
+
     # LLM insights provider (swap providers without touching code)
     LLM_PROVIDER: str = "gemini"
     LLM_API_KEY: str = ""
