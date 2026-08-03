@@ -5,10 +5,13 @@ since both operate on the same in-memory object with no intermediate format.
 
 from __future__ import annotations
 
+from datetime import date
+
 import numpy as np
 import pandas as pd
 import xarray as xr
 
+from services.download.catalog import ProviderSpec
 from services.download.models import Resolution
 from services.download.registry import VariableInfo
 
@@ -20,38 +23,44 @@ _RESAMPLE_RULE: dict[Resolution, str | None] = {
 }
 
 
-def _merge_provider_datasets(
-    physics_ds: xr.Dataset | None,
-    wind_ds: xr.Dataset | None,
-    waves_ds: xr.Dataset | None = None,
-) -> xr.Dataset:
+def _choose_base(fetched: dict[str, tuple[ProviderSpec, xr.Dataset]]) -> str:
+    """Pick the provider whose grid every other provider is resampled onto.
+
+    The finest time-varying grid wins. Nearest-matching a coarse field onto a
+    fine grid repeats values, which is lossless; doing it the other way
+    discards cells outright. Bathymetry is excluded unless it is all there is,
+    since it has no time axis to anchor the merge.
+    """
+    time_varying = {k: v for k, v in fetched.items() if v[0].time_varying}
+    candidates = time_varying or fetched
+    return min(candidates, key=lambda k: (candidates[k][0].grid_spacing_deg, k))
+
+
+def _merge_provider_datasets(fetched: dict[str, tuple[ProviderSpec, xr.Dataset]]) -> xr.Dataset:
     """Combine whichever providers were fetched onto one shared grid and time
-    axis, with the first present one (physics, when requested) canonical.
+    axis.
 
     The `join="inner"` on time means a request mixing providers of different
-    cadence lands on their shared timestamps: waves are 3-hourly, so pairing
-    a wave variable with an hourly physics one yields 3-hourly rows rather
-    than hourly rows two-thirds full of gaps. That is the existing
-    physics/wind behaviour, now with a third provider under it.
+    cadence lands on their shared timestamps: waves are 3-hourly and
+    biogeochemistry daily, so pairing either with an hourly physics variable
+    yields 3-hourly or daily rows rather than hourly rows mostly full of gaps.
     """
-    present = [ds for ds in (physics_ds, wind_ds, waves_ds) if ds is not None]
-    assert present, "at least one provider dataset is required"
+    assert fetched, "at least one provider dataset is required"
 
-    base, *others = present
+    base_key = _choose_base(fetched)
+    base = fetched[base_key][1]
+    others = [ds for key, (_, ds) in fetched.items() if key != base_key]
     if not others:
         return base
 
     if "latitude" in base.dims:
         # Bbox mode: each grid is a full lat/lon raster, but at differing
-        # native resolutions (physics and waves 0.083deg, wind 0.125deg) —
-        # they won't share exact grid points. Resample the others onto the
-        # base grid via nearest-neighbor, consistent with Phase 1's
-        # "Interpolation: Nearest" default, so every row has one shared
-        # lat/lon.
+        # native resolutions (0.083deg through 0.25deg) — they won't share
+        # exact grid points. Resample the others onto the base grid via
+        # nearest-neighbor, consistent with Phase 1's "Interpolation: Nearest"
+        # default, so every row has one shared lat/lon.
         aligned = [
-            ds.reindex(
-                latitude=base["latitude"], longitude=base["longitude"], method="nearest"
-            )
+            ds.reindex(latitude=base["latitude"], longitude=base["longitude"], method="nearest")
             for ds in others
         ]
     else:
@@ -62,6 +71,10 @@ def _merge_provider_datasets(
         # align. Keep the base's resolved point as canonical, merge on time.
         aligned = [ds.drop_vars(["latitude", "longitude"], errors="ignore") for ds in others]
 
+    # A time-invariant provider (bathymetry) has no time dim, so the inner
+    # join has nothing to intersect for it — xarray broadcasts it across the
+    # merged time axis, which is exactly the wanted "same depth at every
+    # timestamp" behaviour.
     return xr.merge([base, *aligned], join="inner")
 
 
@@ -80,30 +93,50 @@ def _derive_direction_to(ds: xr.Dataset, u_field: str, v_field: str) -> xr.DataA
     return np.degrees(np.arctan2(ds[v_field], ds[u_field])) % 360
 
 
+# Poole & Atkins' relation between Secchi disc depth and the diffuse
+# attenuation coefficient. The constant is an empirical average — clarity
+# reported this way is an estimate derived from Kd, not an independent
+# measurement, which is why `diffuse_attenuation` stays available raw.
+_SECCHI_COEFFICIENT = 1.7
+
+
+def _derive_secchi_depth(ds: xr.Dataset, kd_field: str) -> xr.DataArray:
+    kd = ds[kd_field]
+    # Kd is strictly positive in the model output; guard anyway so a zero or
+    # fill-value cell becomes NaN rather than an infinite clarity.
+    return xr.where(kd > 0, _SECCHI_COEFFICIENT / kd, np.nan)
+
+
 _DERIVATIONS = {
     "speed": _derive_speed,
     "direction_from": _derive_direction_from,
     "direction_to": _derive_direction_to,
+    "secchi_depth": _derive_secchi_depth,
 }
 
 
 def build_dataframe(
     *,
-    physics_ds: xr.Dataset | None,
-    wind_ds: xr.Dataset | None,
-    waves_ds: xr.Dataset | None = None,
+    fetched: dict[str, tuple[ProviderSpec, xr.Dataset]],
     variables: dict[str, VariableInfo],
     resolution: Resolution,
+    start_date: date,
 ) -> pd.DataFrame:
-    merged = _merge_provider_datasets(physics_ds, wind_ds, waves_ds)
+    merged = _merge_provider_datasets(fetched)
 
     output = xr.Dataset(coords=merged.coords)
     for code, info in variables.items():
         if info.source_field is not None:
             output[code] = merged[info.source_field]
         elif info.derived_from is not None and info.derivation is not None:
-            u_field, v_field = info.derived_from
-            output[code] = _DERIVATIONS[info.derivation](merged, u_field, v_field)
+            output[code] = _DERIVATIONS[info.derivation](merged, *info.derived_from)
+
+    # Bathymetry on its own has no time axis anywhere in the merge. Rather
+    # than emit a frame whose shape differs from every other request's, give
+    # it the requested start date: the value is time-invariant, so one
+    # timestamp represents the whole range exactly.
+    if "time" not in output.coords:
+        output = output.expand_dims(time=[pd.Timestamp(start_date)])
 
     df = output.to_dataframe().reset_index()
     df = df.drop(columns=["depth"], errors="ignore")

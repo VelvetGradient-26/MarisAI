@@ -4,20 +4,33 @@ rather than the (real, migrated, but currently unused) `app/models/core`
 DB schema. Matches how `copernicus_sst.py`/`copernicus_wind.py` are already
 built: no DB session needed to serve this feature.
 
-Adding a real provider for a currently-`available=False` variable later is
-purely: implement a new adapter under `providers/`, then flip that entry's
-`available`/`provider`/`source_field` here — the frontend contract and
-`service.py`'s orchestration are untouched.
+This module owns *variables*; `catalog.py` owns the providers they name.
+Adding a real provider for a currently-`available=False` variable is still
+purely a backend change: implement the adapter under `providers/`, add its
+row to `catalog.PROVIDERS`, then flip that entry's `available`/`provider`/
+`source_field` here. The frontend renders whatever this file says.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-# Provider identifiers used by service.py to group variables before fetching.
-PROVIDER_COPERNICUS_PHYSICS = "copernicus_physics"
-PROVIDER_COPERNICUS_WIND = "copernicus_wind"
-PROVIDER_COPERNICUS_WAVES = "copernicus_waves"
+from services.download.catalog import (
+    PROVIDER_COPERNICUS_BGC_BIO,
+    PROVIDER_COPERNICUS_BGC_CAR,
+    PROVIDER_COPERNICUS_BGC_NUT,
+    PROVIDER_COPERNICUS_BGC_OPTICS,
+    PROVIDER_COPERNICUS_BGC_PFT,
+    PROVIDER_COPERNICUS_PHYSICS,
+    PROVIDER_COPERNICUS_PHYSICS_DAILY,
+    PROVIDER_COPERNICUS_SEALEVEL,
+    PROVIDER_COPERNICUS_SO_DEPTH,
+    PROVIDER_COPERNICUS_THETAO_DEPTH,
+    PROVIDER_COPERNICUS_WAVES,
+    PROVIDER_COPERNICUS_WIND,
+    PROVIDER_GEBCO,
+    PROVIDER_OPENMETEO,
+)
 
 
 @dataclass(frozen=True)
@@ -31,11 +44,15 @@ class VariableInfo:
     # Name of the variable inside the provider's xarray Dataset, for variables
     # fetched directly (not derived).
     source_field: str | None = None
-    # (u_field, v_field) inside the provider's Dataset, for variables computed
-    # from a vector pair rather than fetched directly.
-    derived_from: tuple[str, str] | None = None
-    # "speed" or "direction", paired with derived_from.
+    # Source fields inside the provider's Dataset, for variables computed
+    # rather than fetched directly. Two for the vector pairs (currents, wind),
+    # one for the single-field conversions (water clarity from attenuation).
+    derived_from: tuple[str, ...] | None = None
+    # Key into cleaning.py's _DERIVATIONS, paired with derived_from.
     derivation: str | None = None
+    # True when the value depends on the request's `depth_m`. The frontend
+    # shows its depth control only while one of these is selected.
+    depth_resolved: bool = False
 
 
 # Ordered to match the spec's own category grouping, so the frontend can
@@ -51,10 +68,23 @@ VARIABLE_REGISTRY: dict[str, VariableInfo] = {
         source_field="thetao",
     ),
     "bottom_temperature": VariableInfo(
-        label="Bottom Temperature", category="Temperature", unit="degC", available=False
+        label="Bottom Temperature",
+        category="Temperature",
+        unit="degC",
+        available=True,
+        # Only the *daily* physics dataset carries the bottom fields; the
+        # hourly one this product family also publishes does not.
+        provider=PROVIDER_COPERNICUS_PHYSICS_DAILY,
+        source_field="tob",
     ),
     "water_temperature": VariableInfo(
-        label="Water Temperature", category="Temperature", unit="degC", available=False
+        label="Water Temperature",
+        category="Temperature",
+        unit="degC",
+        available=True,
+        provider=PROVIDER_COPERNICUS_THETAO_DEPTH,
+        source_field="thetao",
+        depth_resolved=True,
     ),
     # --- Salinity ---
     "sea_surface_salinity": VariableInfo(
@@ -66,10 +96,21 @@ VARIABLE_REGISTRY: dict[str, VariableInfo] = {
         source_field="so",
     ),
     "bottom_salinity": VariableInfo(
-        label="Bottom Salinity", category="Salinity", unit="PSU", available=False
+        label="Bottom Salinity",
+        category="Salinity",
+        unit="PSU",
+        available=True,
+        provider=PROVIDER_COPERNICUS_PHYSICS_DAILY,
+        source_field="sob",
     ),
     "water_salinity": VariableInfo(
-        label="Water Salinity", category="Salinity", unit="PSU", available=False
+        label="Water Salinity",
+        category="Salinity",
+        unit="PSU",
+        available=True,
+        provider=PROVIDER_COPERNICUS_SO_DEPTH,
+        source_field="so",
+        depth_resolved=True,
     ),
     # --- Ocean Currents ---
     "current_u": VariableInfo(
@@ -166,7 +207,14 @@ VARIABLE_REGISTRY: dict[str, VariableInfo] = {
         source_field="zos",
     ),
     "sea_level_anomaly": VariableInfo(
-        label="Sea Level Anomaly", category="Sea Level", unit="m", available=False
+        label="Sea Level Anomaly",
+        category="Sea Level",
+        unit="m",
+        available=True,
+        # Altimetry (DUACS L4), not the model — the anomaly is defined
+        # against a 20-year altimetric mean, so it only exists here.
+        provider=PROVIDER_COPERNICUS_SEALEVEL,
+        source_field="sla",
     ),
     "tidal_height": VariableInfo(
         label="Tidal Height", category="Sea Level", unit="m", available=False
@@ -192,57 +240,146 @@ VARIABLE_REGISTRY: dict[str, VariableInfo] = {
         # copernicus_wind.get_point's existing formula for the live map).
         derivation="direction_from",
     ),
-    "wind_gust": VariableInfo(label="Wind Gust", category="Wind", unit="m/s", available=False),
-    # --- Ocean Colour (no provider wired yet) ---
+    "wind_gust": VariableInfo(
+        label="Wind Gust",
+        category="Wind",
+        unit="m/s",
+        available=True,
+        # The Copernicus L4 wind product carries mean wind only, no gusts, so
+        # this comes from the meteorology provider alongside the other
+        # atmospheric variables rather than from the wind provider above.
+        provider=PROVIDER_OPENMETEO,
+        source_field="wind_gusts_10m",
+    ),
+    # --- Ocean Colour ---
     "chlorophyll_a": VariableInfo(
-        label="Chlorophyll-a", category="Ocean Colour", unit="mg/m3", available=False
+        label="Chlorophyll-a",
+        category="Ocean Colour",
+        unit="mg/m3",
+        available=True,
+        provider=PROVIDER_COPERNICUS_BGC_PFT,
+        source_field="chl",
     ),
     "diffuse_attenuation": VariableInfo(
-        label="Diffuse Attenuation", category="Ocean Colour", unit="1/m", available=False
+        label="Diffuse Attenuation",
+        category="Ocean Colour",
+        unit="1/m",
+        available=True,
+        provider=PROVIDER_COPERNICUS_BGC_OPTICS,
+        source_field="kd",
     ),
     "water_clarity": VariableInfo(
-        label="Water Clarity", category="Ocean Colour", unit="m", available=False
+        label="Water Clarity",
+        category="Ocean Colour",
+        unit="m",
+        available=True,
+        provider=PROVIDER_COPERNICUS_BGC_OPTICS,
+        # Secchi depth, converted from the same attenuation coefficient
+        # `diffuse_attenuation` exposes raw — there is no separate clarity
+        # field to fetch. See cleaning.py's _derive_secchi_depth.
+        derived_from=("kd",),
+        derivation="secchi_depth",
     ),
-    # --- Biogeochemistry (no provider wired yet) ---
+    # --- Biogeochemistry ---
     "dissolved_oxygen": VariableInfo(
-        label="Dissolved Oxygen", category="Biogeochemistry", unit="mmol/m3", available=False
+        label="Dissolved Oxygen",
+        category="Biogeochemistry",
+        unit="mmol/m3",
+        available=True,
+        provider=PROVIDER_COPERNICUS_BGC_BIO,
+        source_field="o2",
     ),
-    "ph": VariableInfo(label="pH", category="Biogeochemistry", unit="pH", available=False),
+    "ph": VariableInfo(
+        label="pH",
+        category="Biogeochemistry",
+        unit="pH",
+        available=True,
+        provider=PROVIDER_COPERNICUS_BGC_CAR,
+        source_field="ph",
+    ),
     "nitrate": VariableInfo(
-        label="Nitrate", category="Biogeochemistry", unit="mmol/m3", available=False
+        label="Nitrate",
+        category="Biogeochemistry",
+        unit="mmol/m3",
+        available=True,
+        provider=PROVIDER_COPERNICUS_BGC_NUT,
+        source_field="no3",
     ),
     "phosphate": VariableInfo(
-        label="Phosphate", category="Biogeochemistry", unit="mmol/m3", available=False
+        label="Phosphate",
+        category="Biogeochemistry",
+        unit="mmol/m3",
+        available=True,
+        provider=PROVIDER_COPERNICUS_BGC_NUT,
+        source_field="po4",
     ),
     "silicate": VariableInfo(
-        label="Silicate", category="Biogeochemistry", unit="mmol/m3", available=False
+        label="Silicate",
+        category="Biogeochemistry",
+        unit="mmol/m3",
+        available=True,
+        provider=PROVIDER_COPERNICUS_BGC_NUT,
+        source_field="si",
     ),
+    # The one biogeochemical variable with no global source: the Copernicus
+    # global BGC suite models nitrate, phosphate, silicate and iron, but not
+    # ammonium (it is a regional-product field only).
     "ammonium": VariableInfo(
         label="Ammonium", category="Biogeochemistry", unit="mmol/m3", available=False
     ),
     "primary_productivity": VariableInfo(
         label="Primary Productivity",
         category="Biogeochemistry",
-        unit="mg C/m2/day",
-        available=False,
+        # The dataset's own unit is per unit *volume*, not the per-area
+        # figure the label might suggest.
+        unit="mg/m3/day",
+        available=True,
+        provider=PROVIDER_COPERNICUS_BGC_BIO,
+        source_field="nppv",
     ),
-    # --- Bathymetry (point-only lookup exists in services/bathymetry.py, but
-    # doesn't fit this feature's gridded/time-series row shape yet) ---
+    # --- Bathymetry ---
     "ocean_depth": VariableInfo(
-        label="Ocean Depth", category="Bathymetry", unit="m", available=False
+        label="Ocean Depth",
+        category="Bathymetry",
+        unit="m",
+        available=True,
+        # Time-invariant: the same value repeats for every timestamp in the
+        # range. See providers/gebco.py.
+        provider=PROVIDER_GEBCO,
+        source_field="ocean_depth",
     ),
-    # --- Meteorology (no provider wired yet) ---
+    # --- Meteorology ---
     "air_temperature": VariableInfo(
-        label="Air Temperature", category="Meteorology", unit="degC", available=False
+        label="Air Temperature",
+        category="Meteorology",
+        unit="degC",
+        available=True,
+        provider=PROVIDER_OPENMETEO,
+        source_field="temperature_2m",
     ),
     "humidity": VariableInfo(
-        label="Humidity", category="Meteorology", unit="%", available=False
+        label="Humidity",
+        category="Meteorology",
+        unit="%",
+        available=True,
+        provider=PROVIDER_OPENMETEO,
+        source_field="relative_humidity_2m",
     ),
     "pressure": VariableInfo(
-        label="Pressure", category="Meteorology", unit="hPa", available=False
+        label="Pressure",
+        category="Meteorology",
+        unit="hPa",
+        available=True,
+        provider=PROVIDER_OPENMETEO,
+        source_field="surface_pressure",
     ),
     "rainfall": VariableInfo(
-        label="Rainfall", category="Meteorology", unit="mm", available=False
+        label="Rainfall",
+        category="Meteorology",
+        unit="mm",
+        available=True,
+        provider=PROVIDER_OPENMETEO,
+        source_field="precipitation",
     ),
 }
 
@@ -285,6 +422,12 @@ def grouped_for_frontend() -> list[dict[str, object]]:
     categories: dict[str, list[dict[str, object]]] = {}
     for code, info in VARIABLE_REGISTRY.items():
         categories.setdefault(info.category, []).append(
-            {"code": code, "label": info.label, "unit": info.unit, "available": info.available}
+            {
+                "code": code,
+                "label": info.label,
+                "unit": info.unit,
+                "available": info.available,
+                "depth_resolved": info.depth_resolved,
+            }
         )
     return [{"category": category, "variables": items} for category, items in categories.items()]

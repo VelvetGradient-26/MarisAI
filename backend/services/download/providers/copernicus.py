@@ -154,11 +154,19 @@ def _resolve_depth(subset: xr.Dataset, depth_mode: str, depth_m: float | None) -
     if "depth" not in subset.dims and "depth" not in subset.coords:
         return subset
     if depth_mode == DEPTH_SELECT and depth_m is not None:
+        # The scalar `depth` coord is kept here — service.py reports the level
+        # actually chosen, which is not the level asked for.
         return subset.sel(depth=depth_m, method="nearest")
     # Surface: the server-side bound already narrowed this to one level, so
     # index 0 is the surface. Kept as isel rather than a second sel so a
     # singleton depth dim (the hourly physics dataset) behaves identically.
-    return subset.isel(depth=0) if "depth" in subset.dims else subset
+    surface = subset.isel(depth=0) if "depth" in subset.dims else subset
+    # Then drop the leftover scalar coord. Nominally the same surface level
+    # everywhere, it is stored at slightly different precision per product
+    # (0.494025 vs 0.49402538), and xr.merge treats a coord that disagrees in
+    # the last decimal as a conflict — which made any physics + BGC request
+    # fail outright. Nothing downstream wants a surface depth column anyway.
+    return surface.drop_vars("depth", errors="ignore")
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=2, max=20))

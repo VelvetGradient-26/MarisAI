@@ -217,6 +217,14 @@
   color: var(--dl-muted);
 }
 
+/* Depth is the one advanced setting that becomes live, and only while a
+   depth-resolved variable is selected. Dim it the rest of the time so it
+   reads like the other placeholder controls beside it. */
+.download-advanced label.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .download-advanced__note {
   flex-basis: 100%;
   font-size: 0.75rem;
@@ -258,4 +266,10 @@
 .download-submit:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Same pill as the submit button, but an <a> — it leaves the SPA for Google. */
+.download-submit--signin {
+  display: inline-block;
+  text-decoration: none;
 }

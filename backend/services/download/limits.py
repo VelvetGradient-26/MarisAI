@@ -1,66 +1,69 @@
 """Size guardrail for the download service — reject requests that would take
-too long or use too much memory, before ever calling Copernicus.
+too long or use too much memory, before ever calling a provider.
 
 Cap derived from live benchmarks taken while planning this feature: a ~5x5
 degree bbox over one month of native hourly data (~2.7M cells) fetched in
 ~8-10s; a basin-scale bbox over a full year (~1.8B cells) took over 270s.
 Starting at 3,000,000 cells per provider fetch keeps requests in roughly the
 same ballpark as the fast case.
+
+Grid spacing and native cadence are *not* duplicated here — they are columns
+on the provider's `catalog.ProviderSpec`, so a new provider cannot be added
+with a working fetch but a silently missing guardrail entry.
 """
 
 from __future__ import annotations
 
 from datetime import date
 
+from services.download.catalog import ProviderSpec
 from services.download.models import AreaTooLargeError, BboxArea, PointArea
 
 MAX_CELLS_PER_PROVIDER = 3_000_000
 
-# Native grid spacing of each provider's dataset — used only to *estimate*
-# request size for this guardrail. The actual fetch always uses the
-# dataset's real native grid, this is just a fast pre-flight check.
-GRID_SPACING_DEG = {
-    "copernicus_physics": 0.083,
-    "copernicus_wind": 0.125,
-    "copernicus_waves": 0.083,
-}
 
-# Native timesteps per day, per provider. The wave product is 3-hourly, so
-# assuming hourly for it would overstate a request's cost by 3x and reject
-# areas that actually fetch fine.
-STEPS_PER_DAY = {
-    "copernicus_physics": 24,
-    "copernicus_wind": 24,
-    "copernicus_waves": 8,
-}
+def grid_points(area: PointArea | BboxArea, spacing_deg: float) -> int:
+    """How many grid cells of this size the area covers."""
+    if isinstance(area, PointArea):
+        return 1
+    lat_points = max(1, round((area.north - area.south) / spacing_deg))
+    lon_points = max(1, round((area.east - area.west) / spacing_deg))
+    return lat_points * lon_points
 
 
 def estimate_cells(
-    area: PointArea | BboxArea, start_date: date, end_date: date, provider: str
+    area: PointArea | BboxArea, start_date: date, end_date: date, provider: ProviderSpec
 ) -> int:
-    spacing = GRID_SPACING_DEG[provider]
-    if isinstance(area, PointArea):
-        lat_points = lon_points = 1
-    else:
-        lat_points = max(1, round((area.north - area.south) / spacing))
-        lon_points = max(1, round((area.east - area.west) / spacing))
-
     # Fetch always pulls the dataset's native cadence regardless of the
     # requested output resolution — resampling to daily/weekly/monthly
     # happens after fetch, in cleaning.py, so the guardrail must account for
     # the fetch cost, not the (potentially much smaller) requested output.
-    steps_per_day = STEPS_PER_DAY[provider]
-    steps = ((end_date - start_date).days + 1) * steps_per_day
-    return lat_points * lon_points * steps
+    # A time-invariant provider fetches its grid once, whatever the range.
+    days = (end_date - start_date).days + 1
+    steps = max(1, round(days * provider.steps_per_day)) if provider.time_varying else 1
+    return grid_points(area, provider.grid_spacing_deg) * steps
 
 
 def check_limits(
-    area: PointArea | BboxArea, start_date: date, end_date: date, provider: str
+    area: PointArea | BboxArea, start_date: date, end_date: date, provider: ProviderSpec
 ) -> None:
     cells = estimate_cells(area, start_date, end_date, provider)
     if cells > MAX_CELLS_PER_PROVIDER:
         raise AreaTooLargeError(
-            f"~{cells:,} cells requested (area x days x 24h) for one of the "
+            f"~{cells:,} cells requested (area x days x cadence) for one of the "
             f"requested variables, limit is {MAX_CELLS_PER_PROVIDER:,} — try "
             "a smaller area or a shorter date range."
         )
+
+    # A point API charges per coordinate and needs one HTTP round trip per
+    # batch of them, so a box that is cheap by cell count can still be far too
+    # many requests. Checked separately rather than folded into the cell cap
+    # because the two limits are about genuinely different costs.
+    if provider.max_points is not None:
+        points = grid_points(area, provider.grid_spacing_deg)
+        if points > provider.max_points:
+            raise AreaTooLargeError(
+                f"~{points:,} grid points requested for one of the requested "
+                f"variables, whose source is queried point-by-point and is "
+                f"limited to {provider.max_points:,} — try a smaller area."
+            )
