@@ -22,6 +22,16 @@ MAX_CELLS_PER_PROVIDER = 3_000_000
 GRID_SPACING_DEG = {
     "copernicus_physics": 0.083,
     "copernicus_wind": 0.125,
+    "copernicus_waves": 0.083,
+}
+
+# Native timesteps per day, per provider. The wave product is 3-hourly, so
+# assuming hourly for it would overstate a request's cost by 3x and reject
+# areas that actually fetch fine.
+STEPS_PER_DAY = {
+    "copernicus_physics": 24,
+    "copernicus_wind": 24,
+    "copernicus_waves": 8,
 }
 
 
@@ -35,12 +45,13 @@ def estimate_cells(
         lat_points = max(1, round((area.north - area.south) / spacing))
         lon_points = max(1, round((area.east - area.west) / spacing))
 
-    # Fetch always pulls native hourly data regardless of the requested
-    # output resolution — resampling to daily/weekly/monthly happens after
-    # fetch, in cleaning.py, so the guardrail must account for the fetch
-    # cost, not the (potentially much smaller) requested output size.
-    hours = (end_date - start_date).days * 24 + 24
-    return lat_points * lon_points * hours
+    # Fetch always pulls the dataset's native cadence regardless of the
+    # requested output resolution — resampling to daily/weekly/monthly
+    # happens after fetch, in cleaning.py, so the guardrail must account for
+    # the fetch cost, not the (potentially much smaller) requested output.
+    steps_per_day = STEPS_PER_DAY[provider]
+    steps = ((end_date - start_date).days + 1) * steps_per_day
+    return lat_points * lon_points * steps
 
 
 def check_limits(

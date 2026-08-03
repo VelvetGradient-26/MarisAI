@@ -27,6 +27,7 @@ from services.download.models import (
 from services.download.providers import copernicus
 from services.download.registry import (
     PROVIDER_COPERNICUS_PHYSICS,
+    PROVIDER_COPERNICUS_WAVES,
     PROVIDER_COPERNICUS_WIND,
     VariableInfo,
     resolve_variables,
@@ -59,10 +60,10 @@ def _area_to_bbox(area: PointArea | BboxArea) -> tuple[float, float, float, floa
     return area.west, area.south, area.east, area.north
 
 
-def _needed_physics_fields(variables: dict[str, VariableInfo]) -> list[str]:
+def _needed_fields(variables: dict[str, VariableInfo], provider: str) -> list[str]:
     fields: set[str] = set()
     for info in variables.values():
-        if info.provider != PROVIDER_COPERNICUS_PHYSICS:
+        if info.provider != provider:
             continue
         if info.source_field:
             fields.add(info.source_field)
@@ -88,6 +89,14 @@ def _check_coverage(request: DownloadRequest, providers_needed: set[str | None])
             f"Requested start date {request.start_date} is before the wind "
             f"dataset's coverage begins ({copernicus.WIND_COVERAGE_START})."
         )
+    if (
+        PROVIDER_COPERNICUS_WAVES in providers_needed
+        and request.start_date < copernicus.WAVES_COVERAGE_START
+    ):
+        raise NoDataFoundError(
+            f"Requested start date {request.start_date} is before the wave "
+            f"dataset's coverage begins ({copernicus.WAVES_COVERAGE_START})."
+        )
 
 
 async def run_download(request: DownloadRequest) -> DownloadResult:
@@ -107,13 +116,18 @@ async def run_download(request: DownloadRequest) -> DownloadResult:
 
     fetch_tasks: dict[str, Any] = {}
     if PROVIDER_COPERNICUS_PHYSICS in providers_needed:
-        physics_fields = _needed_physics_fields(variables)
+        physics_fields = _needed_fields(variables, PROVIDER_COPERNICUS_PHYSICS)
         fetch_tasks["physics"] = copernicus.fetch_physics(
             west, south, east, north, request.start_date, request.end_date, physics_fields
         )
     if PROVIDER_COPERNICUS_WIND in providers_needed:
         fetch_tasks["wind"] = copernicus.fetch_wind(
             west, south, east, north, request.start_date, request.end_date
+        )
+    if PROVIDER_COPERNICUS_WAVES in providers_needed:
+        waves_fields = _needed_fields(variables, PROVIDER_COPERNICUS_WAVES)
+        fetch_tasks["waves"] = copernicus.fetch_waves(
+            west, south, east, north, request.start_date, request.end_date, waves_fields
         )
 
     try:
@@ -124,19 +138,23 @@ async def run_download(request: DownloadRequest) -> DownloadResult:
     fetched = dict(zip(fetch_tasks.keys(), results, strict=True))
     physics_ds = fetched.get("physics")
     wind_ds = fetched.get("wind")
+    waves_ds = fetched.get("waves")
 
     if isinstance(request.area, PointArea):
-        if physics_ds is not None:
-            physics_ds = physics_ds.sel(
+        for key, ds in list(fetched.items()):
+            fetched[key] = ds.sel(
                 latitude=request.area.lat, longitude=request.area.lon, method="nearest"
             )
-        if wind_ds is not None:
-            wind_ds = wind_ds.sel(
-                latitude=request.area.lat, longitude=request.area.lon, method="nearest"
-            )
+        physics_ds = fetched.get("physics")
+        wind_ds = fetched.get("wind")
+        waves_ds = fetched.get("waves")
 
     df = build_dataframe(
-        physics_ds=physics_ds, wind_ds=wind_ds, variables=variables, resolution=request.resolution
+        physics_ds=physics_ds,
+        wind_ds=wind_ds,
+        waves_ds=waves_ds,
+        variables=variables,
+        resolution=request.resolution,
     )
 
     if df.empty:
@@ -165,14 +183,18 @@ async def run_download(request: DownloadRequest) -> DownloadResult:
     )
 
 
+# Cited in every export's metadata. A dict rather than the previous
+# two-way conditional so a fourth provider is one line, not a nested else.
+_PROVIDER_SOURCE_LABEL = {
+    PROVIDER_COPERNICUS_PHYSICS: "Copernicus Marine Service (GLOBAL_ANALYSISFORECAST_PHY_001_024)",
+    PROVIDER_COPERNICUS_WIND: "Copernicus Marine Service (WIND_GLO_PHY_L4_NRT_012_004)",
+    PROVIDER_COPERNICUS_WAVES: "Copernicus Marine Service (GLOBAL_ANALYSISFORECAST_WAV_001_027)",
+}
+
+
 def _build_metadata(request: DownloadRequest, variables: dict[str, VariableInfo]) -> dict[str, Any]:
     sources = sorted(
-        {
-            "Copernicus Marine Service (GLOBAL_ANALYSISFORECAST_PHY_001_024)"
-            if info.provider == PROVIDER_COPERNICUS_PHYSICS
-            else "Copernicus Marine Service (WIND_GLO_PHY_L4_NRT_012_004)"
-            for info in variables.values()
-        }
+        {_PROVIDER_SOURCE_LABEL[info.provider] for info in variables.values()}
     )
     return {
         "area": request.area.model_dump(),

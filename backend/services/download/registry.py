@@ -17,6 +17,7 @@ from dataclasses import dataclass
 # Provider identifiers used by service.py to group variables before fetching.
 PROVIDER_COPERNICUS_PHYSICS = "copernicus_physics"
 PROVIDER_COPERNICUS_WIND = "copernicus_wind"
+PROVIDER_COPERNICUS_WAVES = "copernicus_waves"
 
 
 @dataclass(frozen=True)
@@ -108,21 +109,52 @@ VARIABLE_REGISTRY: dict[str, VariableInfo] = {
         # convention) — see cleaning.py's derive_direction for the formulas.
         derivation="direction_to",
     ),
-    # --- Waves (no provider wired yet) ---
+    # --- Waves ---
     "significant_wave_height": VariableInfo(
-        label="Significant Wave Height", category="Waves", unit="m", available=False
+        label="Significant Wave Height",
+        category="Waves",
+        unit="m",
+        available=True,
+        provider=PROVIDER_COPERNICUS_WAVES,
+        source_field="VHM0",
     ),
     "maximum_wave_height": VariableInfo(
-        label="Maximum Wave Height", category="Waves", unit="m", available=False
+        label="Maximum Wave Height",
+        category="Waves",
+        unit="m",
+        available=True,
+        provider=PROVIDER_COPERNICUS_WAVES,
+        # Crest-to-trough maximum, not the dataset's similarly-named VMXL
+        # (highest crest only, roughly half the wave).
+        source_field="VCMX",
     ),
     "mean_wave_period": VariableInfo(
-        label="Mean Wave Period", category="Waves", unit="s", available=False
+        label="Mean Wave Period",
+        category="Waves",
+        unit="s",
+        available=True,
+        provider=PROVIDER_COPERNICUS_WAVES,
+        # Tm02, the spectral moments (0,2) period.
+        source_field="VTM02",
     ),
     "peak_wave_period": VariableInfo(
-        label="Peak Wave Period", category="Waves", unit="s", available=False
+        label="Peak Wave Period",
+        category="Waves",
+        unit="s",
+        available=True,
+        provider=PROVIDER_COPERNICUS_WAVES,
+        source_field="VTPK",
     ),
     "wave_direction": VariableInfo(
-        label="Wave Direction", category="Waves", unit="deg", available=False
+        label="Wave Direction",
+        category="Waves",
+        unit="deg",
+        available=True,
+        provider=PROVIDER_COPERNICUS_WAVES,
+        # Already a "from" direction in the dataset, so it is fetched
+        # directly rather than derived — same convention as wind_direction,
+        # opposite to the currents' "toward".
+        source_field="VMDR",
     ),
     # --- Sea Level ---
     "sea_surface_height": VariableInfo(
