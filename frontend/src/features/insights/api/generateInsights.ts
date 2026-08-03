@@ -17,6 +17,8 @@ export async function generateOceanInsights(
     response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      // Sends the session cookie: this endpoint requires sign-in.
+      credentials: 'include',
       signal,
       body: JSON.stringify({
         current: data.current,

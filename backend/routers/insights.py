@@ -1,6 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from dependencies.auth import current_user
 from services.insights import InsightsError, generate_ocean_insights
 from services.llm import LLMError
 
@@ -32,8 +35,13 @@ class GenerateInsightsRequest(BaseModel):
     requested: RequestedPoint | None = None
 
 
+# Sign-in required: every call spends real LLM quota, and an open endpoint
+# burned through a Gemini free tier once already.
 @router.post("/generate")
-async def post_generate_insights(payload: GenerateInsightsRequest):
+async def post_generate_insights(
+    payload: GenerateInsightsRequest,
+    _user: dict[str, Any] = Depends(current_user),
+):
     try:
         return await generate_ocean_insights(
             current=payload.current,
