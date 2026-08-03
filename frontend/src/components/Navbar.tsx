@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Menu, Moon, Sun, X } from 'lucide-react';
 import { Link } from '../app/router';
 import { useAppRouter } from '../app/routerContext';
 import { useTimezoneStore } from '../store/timezoneStore';
 import { useThemeStore } from '../store/themeStore';
+import { useAuthStore } from '../store/authStore';
+import { loginUrl } from '../features/map/api/auth';
 import './navbar.css';
 
 const NAV_LINKS = [
@@ -29,12 +31,14 @@ export interface NavbarProps {
  * (fixed vs. sticky positioning, hamburger vs. flex-wrap mobile handling,
  * active-link logic that didn't actually check the route, etc.).
  *
- * Deliberately does not carry per-page widgets (live clock, account avatar)
- * — those are page-local concerns rendered by the pages themselves. The
- * dark/light theme toggle DOES live here, though: it's a single shared
- * preference (store/themeStore.ts), not a page-local one, so one control in
- * the shared nav is correct even though only Landing/Dashboard currently
- * render differently per theme.
+ * Deliberately does not carry per-page widgets (a live clock, say) — those are
+ * page-local concerns rendered by the pages themselves. What does live here is
+ * anything that is a single shared, app-wide concern: the dark/light theme
+ * toggle (store/themeStore.ts), the timezone picker (store/timezoneStore.ts),
+ * and the account control (store/authStore.ts). Sign-in state qualifies on the
+ * same grounds as the theme — it's one piece of state every page reads, so one
+ * control in the shared nav is correct, and it replaces the fake hardcoded
+ * avatar the dashboard used to render on its own.
  */
 export function Navbar({ overlay = false }: NavbarProps) {
   const { pathname } = useAppRouter();
@@ -65,6 +69,7 @@ export function Navbar({ overlay = false }: NavbarProps) {
         <div className="navbar__actions">
           <TimezonePicker />
           <ThemeButton />
+          <AccountControl />
           <a
             className="navbar__icon-button"
             href={GITHUB_URL}
@@ -102,10 +107,121 @@ export function Navbar({ overlay = false }: NavbarProps) {
           <div className="navbar__timezone-mobile">
             <TimezonePicker />
           </div>
+          <div className="navbar__account-mobile">
+            <AccountControl onNavigate={() => setMenuOpen(false)} />
+          </div>
         </nav>
       )}
     </header>
   );
+}
+
+const ACCOUNT_LINKS = [
+  { label: 'Saved locations', to: '/account' },
+  { label: 'Download history', to: '/account?tab=history' },
+];
+
+/**
+ * Sign-in entry point and account menu. Renders nothing while the boot-time
+ * /auth/me call is still in flight, so the bar doesn't flash "Sign in" at
+ * someone who is in fact already signed in.
+ */
+function AccountControl({ onNavigate }: { onNavigate?: () => void }) {
+  const status = useAuthStore((s) => s.status);
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(event: MouseEvent) {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  if (status === 'loading') return null;
+
+  if (status === 'anonymous' || !user) {
+    // A real navigation, not a Link: the OAuth flow is a redirect chain
+    // through Google that the hand-rolled router can't take part in.
+    return (
+      <a className="navbar__signin" href={loginUrl()}>
+        Sign in
+      </a>
+    );
+  }
+
+  return (
+    <div className="navbar__account" ref={containerRef}>
+      <button
+        className="navbar__avatar"
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-label={`Account menu for ${user.name}`}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        title={user.email}
+      >
+        {user.picture ? (
+          <img src={user.picture} alt="" referrerPolicy="no-referrer" />
+        ) : (
+          <span>{initialsOf(user.name || user.email)}</span>
+        )}
+      </button>
+
+      {open && (
+        <div className="navbar__account-menu" role="menu">
+          <div className="navbar__account-identity">
+            <strong>{user.name}</strong>
+            <span>{user.email}</span>
+          </div>
+          {ACCOUNT_LINKS.map((link) => (
+            <Link
+              key={link.to}
+              to={link.to}
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onNavigate?.();
+              }}
+            >
+              {link.label}
+            </Link>
+          ))}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onNavigate?.();
+              void logout();
+            }}
+          >
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** "Deepak Krishna" -> "DK"; falls back to the first character for one-word
+ * names and email addresses. */
+function initialsOf(value: string): string {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 function ThemeButton() {

@@ -14,6 +14,15 @@ dependencies = [
     "asyncpg>=0.29.0",
     "alembic>=1.12.0",
     "geoalchemy2>=0.20.0",
+    # MongoDB Atlas — the only database the app actually connects to (users,
+    # saved locations, download history). PyMongo's own AsyncMongoClient, not
+    # Motor, which is deprecated and reached end-of-life in May 2026. No [srv]
+    # extra: as of 4.x, dnspython (which the mongodb+srv:// scheme needs to
+    # resolve the seedlist) is an unconditional pymongo dependency.
+    "pymongo>=4.9",
+    # Google OAuth authorization-code flow + session-token signing
+    # (authlib.jose), so no separate pyjwt/python-jose is needed.
+    "authlib>=1.3",
     # HTTP clients
     "httpx>=0.27.0",
     "aiohttp>=3.9.0",
@@ -77,6 +86,18 @@ line-length = 100
 target-version = "py311"
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "TID"]
 ignore = ["E501", "SIM103", "TID252"]
+
+[tool.ruff.flake8-bugbear]
+# `x: T = Depends(...)` in a parameter default is FastAPI's dependency-injection
+# idiom, not the mutable-default bug B008 is meant to catch.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+    "fastapi.Cookie",
+]
 
 [tool.mypy]
 python_version = "3.11"
