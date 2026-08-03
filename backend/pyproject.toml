@@ -17,6 +17,9 @@ dependencies = [
     # HTTP clients
     "httpx>=0.27.0",
     "aiohttp>=3.9.0",
+    # Live AIS websocket feed (services/ais.py). Already present via
+    # uvicorn[standard], but declared directly since we import it ourselves.
+    "websockets>=13.0",
     # Configuration
     "pydantic>=2.7.0",
     "pydantic-settings>=2.3.0",
