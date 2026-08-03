@@ -249,13 +249,14 @@ def _tile_lonlat(z: int, x: int, y: int) -> tuple[np.ndarray, np.ndarray]:
 def _render(field: xr.DataArray, colormap, z: int, x: int, y: int) -> bytes:
     lon, lat = _tile_lonlat(z, x, y)
 
-    # Nearest-neighbour rather than interpolation: these are model outputs on
-    # a 0.25° grid, and smoothing them across cells would imply a spatial
-    # precision the model does not have. Blocky is honest here.
+    # Bilinear rather than nearest-neighbour, matching copernicus_sst's
+    # RegularGridInterpolator approach: smooths across the 0.25° grid so the
+    # overlay reads the same way the SST layer does, at the cost of implying
+    # slightly more spatial precision than the model actually carries.
     values = field.interp(
         latitude=xr.DataArray(lat, dims="y"),
         longitude=xr.DataArray(lon, dims="x"),
-        method="nearest",
+        method="linear",
         kwargs={"bounds_error": False, "fill_value": np.nan},
     ).values
 
