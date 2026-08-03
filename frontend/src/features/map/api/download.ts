@@ -26,6 +26,8 @@ export interface DownloadRequest {
   resolution: Resolution;
   variables: string[];
   format: OutputFormat;
+  /** Target depth in metres for depth-resolved variables; ignored by all others. */
+  depth_m?: number;
 }
 
 export interface VariableOption {
@@ -33,6 +35,8 @@ export interface VariableOption {
   label: string;
   unit: string;
   available: boolean;
+  /** True when this variable's value depends on the request's depth_m. */
+  depth_resolved: boolean;
 }
 
 export interface VariableCategory {
@@ -43,6 +47,24 @@ export interface VariableCategory {
 export interface DownloadFile {
   blob: Blob;
   filename: string;
+}
+
+/** One past request. Metadata only — the exported file itself is never stored
+ * server-side (see backend/services/download_history.py). */
+export interface DownloadHistoryEntry {
+  id: string;
+  requestedAt: string;
+  status: 'succeeded' | 'failed';
+  area: Area;
+  startDate: string;
+  endDate: string;
+  resolution: Resolution;
+  variables: string[];
+  format: OutputFormat;
+  depthM: number;
+  filename: string | null;
+  sizeBytes: number | null;
+  errorMessage: string | null;
 }
 
 function url(path: string): URL {
@@ -90,6 +112,8 @@ export async function downloadOceanData(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
+    // Sends the session cookie: this endpoint requires sign-in.
+    credentials: 'include',
     signal,
   });
 
@@ -100,4 +124,18 @@ export async function downloadOceanData(
   const blob = await response.blob();
   const filename = filenameFromContentDisposition(response.headers.get('Content-Disposition'));
   return { blob, filename };
+}
+
+export async function fetchDownloadHistory(
+  signal?: AbortSignal
+): Promise<DownloadHistoryEntry[]> {
+  const response = await fetch(url('/api/v1/download-history'), {
+    credentials: 'include',
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(await extractErrorMessage(response));
+  }
+  const payload = (await response.json()) as { downloads: DownloadHistoryEntry[] };
+  return payload.downloads;
 }
