@@ -301,6 +301,78 @@ body,
   color: var(--ocean-muted);
 }
 
+.selected-location-panel__predictions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--ocean-border);
+  font: 12px/1.4 var(--ocean-font-mono);
+}
+
+.selected-location-panel__predictions-label {
+  color: var(--ocean-muted);
+}
+
+.selected-location-panel__predictions-note {
+  margin-top: 2px;
+  color: var(--ocean-muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+/* Two lines per row: name (with its date) above, value right-aligned below.
+   Both the species names and the model's unit strings are long enough that a
+   single line clipped them, so this follows the wind block's flex-basis:100%
+   label convention instead of truncating. */
+.selected-location-panel__prediction {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+
+.selected-location-panel__prediction-name {
+  display: flex;
+  flex-basis: 100%;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.selected-location-panel__prediction-date {
+  color: var(--ocean-muted);
+  font-size: 10px;
+}
+
+.selected-location-panel__prediction-value {
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  color: var(--ocean-accent);
+  font-weight: 600;
+}
+
+/* The model's own unit description ("probability of bloom") — long, and
+   secondary to the number it qualifies, so it stays muted and unemphasised. */
+.selected-location-panel__prediction-unit {
+  color: var(--ocean-muted);
+  font-weight: 400;
+  font-size: 10px;
+}
+
+.selected-location-panel__prediction-nodata {
+  color: var(--ocean-muted);
+  font-weight: 400;
+}
+
+/* Right-aligned on the second line, same as the value it stands in for. */
+.selected-location-panel__prediction-status {
+  margin-left: auto;
+  color: var(--ocean-muted);
+}
+
 .map-controls h3 {
   font-size: 11px;
   text-transform: uppercase;

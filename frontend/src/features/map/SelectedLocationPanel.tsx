@@ -8,6 +8,8 @@ import { fetchSstPoint } from './api/sst';
 import type { SstPointResponse } from './api/sst';
 import { fetchWindPoint } from './api/wind';
 import type { WindPointResponse } from './api/wind';
+import { useSelectedLocationPredictions } from './hooks/useSelectedLocationPredictions';
+import type { PredictionPointResult } from './hooks/useSelectedLocationPredictions';
 import type { NearestPort, RealtimeOceanConditions, RealtimeOceanUnits } from './types';
 
 const METRICS: Array<{
@@ -84,6 +86,8 @@ export function SelectedLocationPanel() {
     return () => controller.abort();
   }, [windLayerActive, selectedLocation]);
 
+  const predictions = useSelectedLocationPredictions(selectedLocation);
+
   return (
     <aside className={`selected-location-panel ${panelOpen ? 'open' : 'collapsed'}`}>
       <button
@@ -157,6 +161,21 @@ export function SelectedLocationPanel() {
           </div>
         )}
 
+        {predictions.length > 0 && selectedLocation && (
+          <div className="selected-location-panel__predictions">
+            <span className="selected-location-panel__predictions-label">
+              Maris AI model output (cursor)
+            </span>
+            {predictions.map((prediction) => (
+              <PredictionRow key={prediction.layerId} prediction={prediction} />
+            ))}
+            <span className="selected-location-panel__predictions-note">
+              Model estimates, not observations. See each layer's attribution for how it was
+              trained and where it applies.
+            </span>
+          </div>
+        )}
+
         {!selectedLocation && (
           <p className="selected-location-panel__state">
             Click any ocean location on the map to load sea surface temperature, wave, current, wind,
@@ -222,6 +241,48 @@ export function SelectedLocationPanel() {
         )}
       </div>
     </aside>
+  );
+}
+
+function PredictionRow({ prediction }: { prediction: PredictionPointResult }) {
+  const name =
+    prediction.source.kind === 'habitat'
+      ? `${prediction.source.label} habitat`
+      : prediction.source.label;
+
+  return (
+    <div className="selected-location-panel__prediction">
+      <span className="selected-location-panel__prediction-name">
+        {name}
+        {prediction.date && (
+          <span className="selected-location-panel__prediction-date">{prediction.date}</span>
+        )}
+      </span>
+      {prediction.status === 'loading' && (
+        <span className="selected-location-panel__prediction-status">Loading…</span>
+      )}
+      {prediction.status === 'error' && (
+        <span className="selected-location-panel__prediction-status selected-location-panel__state--error">
+          Unavailable
+        </span>
+      )}
+      {prediction.status === 'success' && (
+        <span className="selected-location-panel__prediction-value">
+          {prediction.value !== null ? (
+            <>
+              {prediction.value.toFixed(2)}
+              <span className="selected-location-panel__prediction-unit">
+                {prediction.valueLabel}
+              </span>
+            </>
+          ) : (
+            <span className="selected-location-panel__prediction-nodata">
+              {prediction.outsideCoverage ? 'Outside model region' : 'No data (land or no coverage)'}
+            </span>
+          )}
+        </span>
+      )}
+    </div>
   );
 }
 

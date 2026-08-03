@@ -147,6 +147,17 @@ const HABITAT_SPECIES: Array<{ key: string; label: string }> = [
   { key: 'oil_sardine', label: 'Oil Sardine' },
 ];
 
+/** Forecast leads the HAB export covers, in days. */
+const HAB_HORIZONS = [3, 5, 7];
+
+function habitatLayerId(speciesKey: string): string {
+  return `habitat-${speciesKey.replace(/_/g, '-')}`;
+}
+
+function bloomRiskLayerId(horizon: number): string {
+  return `bloom-risk-t${horizon}`;
+}
+
 /**
  * The seasonal slice to show. The model is monthly and its export is one
  * full seasonal cycle, so the current calendar month is the most meaningful
@@ -189,7 +200,7 @@ const BLOOM_RISK_STOPS = [
 function habitatLayers(): RasterLayerDescriptor[] {
   const month = currentMonth();
   return HABITAT_SPECIES.map(({ key, label }) => ({
-    id: `habitat-${key.replace(/_/g, '-')}`,
+    id: habitatLayerId(key),
     name: `Habitat: ${label}`,
     category: 'ai' as const,
     type: 'raster' as const,
@@ -224,8 +235,8 @@ function habitatLayers(): RasterLayerDescriptor[] {
 }
 
 function bloomRiskLayers(): RasterLayerDescriptor[] {
-  return [3, 5, 7].map((horizon) => ({
-    id: `bloom-risk-t${horizon}`,
+  return HAB_HORIZONS.map((horizon) => ({
+    id: bloomRiskLayerId(horizon),
     name: `Bloom Risk (+${horizon}d)`,
     category: 'ai' as const,
     type: 'raster' as const,
@@ -256,6 +267,37 @@ function bloomRiskLayers(): RasterLayerDescriptor[] {
     },
   }));
 }
+
+/**
+ * What a point lookup needs, per prediction layer id.
+ *
+ * Both prediction families ship as pre-coloured rasters, so a click on the
+ * map has no value to read back out of the tile — the panel re-queries the
+ * model at the clicked coordinate instead, and this says which model and
+ * which slice to ask for. Built from the same arrays and id helpers as the
+ * layers themselves so the two can't drift apart.
+ */
+export type PredictionPointSource =
+  | { kind: 'habitat'; species: string; month: number; label: string }
+  | { kind: 'hab'; horizon: number; label: string };
+
+export const predictionPointSources: ReadonlyMap<string, PredictionPointSource> = new Map<
+  string,
+  PredictionPointSource
+>([
+  ...HABITAT_SPECIES.map(
+    ({ key, label }): [string, PredictionPointSource] => [
+      habitatLayerId(key),
+      { kind: 'habitat', species: key, month: currentMonth(), label },
+    ]
+  ),
+  ...HAB_HORIZONS.map(
+    (horizon): [string, PredictionPointSource] => [
+      bloomRiskLayerId(horizon),
+      { kind: 'hab', horizon, label: `Bloom Risk (+${horizon}d)` },
+    ]
+  ),
+]);
 
 export const layerRegistry: LayerDescriptor[] = [
   {
