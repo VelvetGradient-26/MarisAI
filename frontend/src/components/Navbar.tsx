@@ -14,6 +14,7 @@ const NAV_LINKS = [
   { label: 'Analytics', to: '/dashboard' },
   { label: 'Model Insights', to: '/predictions' },
   { label: 'Download', to: '/download' },
+  { label: 'Docs', to: '/docs' },
 ];
 
 const GITHUB_URL = 'https://github.com/VelvetGradient-26/MarisAI';

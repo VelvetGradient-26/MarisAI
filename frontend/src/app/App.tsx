@@ -22,6 +22,9 @@ const PredictionsPage = lazy(() =>
 const AccountPage = lazy(() =>
   import('../pages/AccountPage').then((module) => ({ default: module.AccountPage }))
 );
+const DocsPage = lazy(() =>
+  import('../pages/docs/DocsPage').then((module) => ({ default: module.DocsPage }))
+);
 
 export function App() {
   const { pathname } = useAppRouter();
@@ -53,6 +56,13 @@ function renderPage(pathname: string) {
     return (
       <Suspense fallback={<div className="app-route-loading">Loading model insights…</div>}>
         <PredictionsPage />
+      </Suspense>
+    );
+  }
+  if (pathname === '/docs') {
+    return (
+      <Suspense fallback={<div className="app-route-loading">Loading docs…</div>}>
+        <DocsPage />
       </Suspense>
     );
   }
