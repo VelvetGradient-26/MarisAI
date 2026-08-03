@@ -5,6 +5,8 @@ import { Link } from '../app/router';
 import { DrawableAreaMap } from '../features/map/DrawableAreaMap';
 import type { DrawnBbox } from '../features/map/DrawableAreaMap';
 import { useThemeStore } from '../store/themeStore';
+import { useAuthStore } from '../store/authStore';
+import { loginUrl } from '../features/map/api/auth';
 import {
   downloadOceanData,
   fetchVariableCategories,
@@ -45,6 +47,7 @@ function parseNumber(value: string): number | null {
 
 export function DownloadPage() {
   const isDark = useThemeStore((s) => s.dark);
+  const authStatus = useAuthStore((s) => s.status);
   const [areaMode, setAreaMode] = useState<AreaMode>('draw');
   const [lat, setLat] = useState('10.0');
   const [lon, setLon] = useState('75.0');
@@ -61,6 +64,7 @@ export function DownloadPage() {
     () => new Set(['sea_surface_temperature'])
   );
 
+  const [depth, setDepth] = useState('0');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -84,6 +88,24 @@ export function DownloadPage() {
     if (west === null || south === null || east === null || north === null) return null;
     return { west, south, east, north };
   }, [bbox]);
+
+  // Which of the selected variables actually read the depth setting. Depth is
+  // meaningless for the other 30-odd, so the control only comes alive here.
+  const depthVariables = useMemo(
+    () =>
+      categories
+        .flatMap((cat) => cat.variables)
+        .filter((v) => v.depth_resolved && selectedVariables.has(v.code)),
+    [categories, selectedVariables]
+  );
+  const needsDepth = depthVariables.length > 0;
+
+  // Depth lives under Advanced Options, which starts collapsed — so selecting
+  // a depth-resolved variable would otherwise silently use the default with
+  // the one control that matters hidden. Reveal it instead.
+  useEffect(() => {
+    if (needsDepth) setAdvancedOpen(true);
+  }, [needsDepth]);
 
   function toggleVariable(code: string) {
     setSelectedVariables((prev) => {
@@ -145,6 +167,12 @@ export function DownloadPage() {
       return;
     }
 
+    const parsedDepth = parseNumber(depth);
+    if (needsDepth && (parsedDepth === null || parsedDepth < 0 || parsedDepth > 6000)) {
+      setSubmitError('Enter a depth between 0 and 6000 metres.');
+      return;
+    }
+
     setSubmitStatus('loading');
     try {
       const { blob, filename } = await downloadOceanData({
@@ -154,6 +182,7 @@ export function DownloadPage() {
         resolution,
         variables: Array.from(selectedVariables),
         format,
+        depth_m: needsDepth ? (parsedDepth ?? 0) : 0,
       });
       saveBlob(blob, filename);
       setSubmitStatus('idle');
@@ -333,11 +362,22 @@ export function DownloadPage() {
           </button>
           {advancedOpen && (
             <div className="download-advanced">
-              <label>
-                Depth
-                <select disabled defaultValue="surface">
-                  <option value="surface">Surface</option>
-                </select>
+              <label className={needsDepth ? '' : 'disabled'}>
+                Depth (m)
+                <input
+                  type="number"
+                  step="any"
+                  min={0}
+                  max={6000}
+                  value={needsDepth ? depth : '0'}
+                  disabled={!needsDepth}
+                  onChange={(e) => setDepth(e.target.value)}
+                  title={
+                    needsDepth
+                      ? 'Snapped to the nearest of the model’s 50 levels'
+                      : 'Only used by Water Temperature and Water Salinity'
+                  }
+                />
               </label>
               <label>
                 Interpolation
@@ -364,8 +404,13 @@ export function DownloadPage() {
                 </select>
               </label>
               <p className="download-advanced__note">
-                Phase 1 supports one option per setting — more unlock as new providers and features
-                land.
+                {needsDepth
+                  ? `Depth applies to ${depthVariables
+                      .map((v) => v.label)
+                      .join(' and ')}; it is snapped to the nearest of the model’s 50 levels, and
+                      the level actually used is recorded in the export’s metadata. The remaining
+                      settings support one option each — more unlock as new providers land.`
+                  : 'These settings support one option each — more unlock as new providers land.'}
               </p>
             </div>
           )}
@@ -409,9 +454,18 @@ export function DownloadPage() {
 
         {submitError && <p className="download-error">{submitError}</p>}
 
-        <button type="submit" className="download-submit" disabled={submitStatus === 'loading'}>
-          {submitStatus === 'loading' ? 'Preparing download…' : 'Download Dataset'}
-        </button>
+        {/* Downloads pull real provider data and require sign-in. The form
+            above stays usable signed-out (/api/v1/variables is public) so the
+            selection isn't lost across the round trip to Google. */}
+        {authStatus === 'anonymous' ? (
+          <a className="download-submit download-submit--signin" href={loginUrl()}>
+            Sign in to download
+          </a>
+        ) : (
+          <button type="submit" className="download-submit" disabled={submitStatus === 'loading'}>
+            {submitStatus === 'loading' ? 'Preparing download…' : 'Download Dataset'}
+          </button>
+        )}
       </form>
     </div>
   );
