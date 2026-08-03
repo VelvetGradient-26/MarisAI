@@ -61,6 +61,12 @@ class DownloadRequest(BaseModel):
     resolution: Resolution
     variables: list[str] = Field(..., min_length=1)
     format: OutputFormat
+    # Target depth for the depth-resolved variables (water temperature and
+    # salinity); ignored by every other variable, which is why it defaults
+    # rather than being required. The value is snapped to the nearest of the
+    # model's 50 levels, and the level actually used is reported back in the
+    # export's metadata. The deepest level is ~5728m.
+    depth_m: float = Field(0.0, ge=0, le=6000)
 
     @model_validator(mode="after")
     def _check_dates(self) -> "DownloadRequest":
