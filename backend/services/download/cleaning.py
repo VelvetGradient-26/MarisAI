@@ -21,32 +21,48 @@ _RESAMPLE_RULE: dict[Resolution, str | None] = {
 
 
 def _merge_provider_datasets(
-    physics_ds: xr.Dataset | None, wind_ds: xr.Dataset | None
+    physics_ds: xr.Dataset | None,
+    wind_ds: xr.Dataset | None,
+    waves_ds: xr.Dataset | None = None,
 ) -> xr.Dataset:
-    if physics_ds is None:
-        assert wind_ds is not None
-        return wind_ds
-    if wind_ds is None:
-        return physics_ds
+    """Combine whichever providers were fetched onto one shared grid and time
+    axis, with the first present one (physics, when requested) canonical.
 
-    if "latitude" in physics_ds.dims:
-        # Bbox mode: both grids are full lat/lon rasters, but at different
-        # native resolutions (physics 0.083deg, wind 0.125deg) — they won't
-        # share exact grid points. Resample wind onto the physics grid via
-        # nearest-neighbor, consistent with Phase 1's "Interpolation:
-        # Nearest" default, so every row has one shared lat/lon.
-        wind_aligned = wind_ds.reindex(
-            latitude=physics_ds["latitude"], longitude=physics_ds["longitude"], method="nearest"
-        )
-        return xr.merge([physics_ds, wind_aligned], join="inner")
+    The `join="inner"` on time means a request mixing providers of different
+    cadence lands on their shared timestamps: waves are 3-hourly, so pairing
+    a wave variable with an hourly physics one yields 3-hourly rows rather
+    than hourly rows two-thirds full of gaps. That is the existing
+    physics/wind behaviour, now with a third provider under it.
+    """
+    present = [ds for ds in (physics_ds, wind_ds, waves_ds) if ds is not None]
+    assert present, "at least one provider dataset is required"
 
-    # Point mode: latitude/longitude are already scalar coords (each
-    # provider's own nearest grid cell to the requested point, resolved
-    # before this function is called) — the two providers' nearest cells can
-    # differ slightly since their grids differ, so there's nothing to align.
-    # Keep physics's resolved point as canonical and merge on time only.
-    wind_no_coords = wind_ds.drop_vars(["latitude", "longitude"], errors="ignore")
-    return xr.merge([physics_ds, wind_no_coords], join="inner")
+    base, *others = present
+    if not others:
+        return base
+
+    if "latitude" in base.dims:
+        # Bbox mode: each grid is a full lat/lon raster, but at differing
+        # native resolutions (physics and waves 0.083deg, wind 0.125deg) —
+        # they won't share exact grid points. Resample the others onto the
+        # base grid via nearest-neighbor, consistent with Phase 1's
+        # "Interpolation: Nearest" default, so every row has one shared
+        # lat/lon.
+        aligned = [
+            ds.reindex(
+                latitude=base["latitude"], longitude=base["longitude"], method="nearest"
+            )
+            for ds in others
+        ]
+    else:
+        # Point mode: latitude/longitude are already scalar coords (each
+        # provider's own nearest grid cell to the requested point, resolved
+        # before this function is called) — providers' nearest cells can
+        # differ slightly since their grids differ, so there's nothing to
+        # align. Keep the base's resolved point as canonical, merge on time.
+        aligned = [ds.drop_vars(["latitude", "longitude"], errors="ignore") for ds in others]
+
+    return xr.merge([base, *aligned], join="inner")
 
 
 def _derive_speed(ds: xr.Dataset, u_field: str, v_field: str) -> xr.DataArray:
@@ -75,10 +91,11 @@ def build_dataframe(
     *,
     physics_ds: xr.Dataset | None,
     wind_ds: xr.Dataset | None,
+    waves_ds: xr.Dataset | None = None,
     variables: dict[str, VariableInfo],
     resolution: Resolution,
 ) -> pd.DataFrame:
-    merged = _merge_provider_datasets(physics_ds, wind_ds)
+    merged = _merge_provider_datasets(physics_ds, wind_ds, waves_ds)
 
     output = xr.Dataset(coords=merged.coords)
     for code, info in variables.items():
