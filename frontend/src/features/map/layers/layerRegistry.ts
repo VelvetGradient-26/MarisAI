@@ -1,4 +1,8 @@
-import type { LayerDescriptor, RasterLayerDescriptor } from '../types';
+import type {
+  GeoJsonLayerDescriptor,
+  LayerDescriptor,
+  RasterLayerDescriptor,
+} from '../types';
 import { createWindParticleLayer } from '../vectorField/windLayer';
 
 type LayerSource = RasterLayerDescriptor['sources'][number];
@@ -269,6 +273,121 @@ function bloomRiskLayers(): RasterLayerDescriptor[] {
 }
 
 /**
+ * Vessel colour by ship type, so a glance separates a tanker from a trawler.
+ * `ship_type` arrives only with AIS static data (~6 min behind a vessel's
+ * first position), so the fallback is not a rare case — it is every vessel
+ * for its first few minutes, and reads as neutral grey rather than being
+ * lumped in with a real category.
+ */
+const VESSEL_TYPE_COLORS: Array<[string, string]> = [
+  ['Cargo', '#38bdf8'],
+  ['Tanker', '#fb7185'],
+  ['Passenger', '#4ade80'],
+  ['Fishing', '#fbbf24'],
+  ['Tug', '#c084fc'],
+  ['Pilot vessel', '#c084fc'],
+  ['High-speed craft', '#2dd4bf'],
+  ['Sailing', '#a3e635'],
+  ['Pleasure craft', '#a3e635'],
+  ['Search and rescue', '#f472b6'],
+];
+const VESSEL_COLOR_FALLBACK = '#94a3b8';
+
+const VESSEL_COLOR = [
+  'match',
+  ['coalesce', ['get', 'ship_type'], ''],
+  ...VESSEL_TYPE_COLORS.flat(),
+  VESSEL_COLOR_FALLBACK,
+];
+
+/**
+ * Radius grows with zoom so vessels stay findable on a world view without
+ * becoming blobs when you zoom into a harbour.
+ */
+const vesselRadius = (scale: number) => [
+  'interpolate',
+  ['linear'],
+  ['zoom'],
+  2, 1.6 * scale,
+  5, 2.4 * scale,
+  8, 3.6 * scale,
+  12, 5.5 * scale,
+];
+
+/**
+ * Live AIS vessels: three stacked circle layers rather than one.
+ *
+ * The glow is real overdraw, not a styling trick — a wide, heavily blurred,
+ * low-opacity halo, a tighter mid halo, then a small crisp core with a dark
+ * outline so the vessel still reads as a distinct point against its own
+ * glow. One circle with `circle-blur` alone gives either a sharp dot or a
+ * vague smudge, never both.
+ *
+ * Only the core is hit-tested (`interactiveLayerIndices`); hovering the
+ * outer halo would trigger a popup from well outside the vessel.
+ */
+function liveVesselLayer(): GeoJsonLayerDescriptor {
+  return {
+    id: 'live-vessels',
+    name: 'Live Vessels (AIS)',
+    category: 'reference',
+    type: 'geojson',
+    attribution:
+      'Live AIS broadcasts via aisstream.io. Real vessel self-reports, received in near real ' +
+      'time — position, speed and course update within seconds; identity, destination and ' +
+      'dimensions arrive on a slower ~6-minute cycle, so a vessel can be on the map for some ' +
+      'time before its name or type is known. AIS is self-reported and not universal: small ' +
+      'craft may carry no transponder, and coverage away from shore depends on satellite ' +
+      'reception. Absence of a vessel here is not evidence there is none.',
+    defaultOpacity: 1,
+    defaultVisible: false,
+    hideOpacitySlider: false,
+    interactiveLayerIndices: [2],
+    paintLayers: (opacity: number) => [
+      {
+        type: 'circle',
+        paint: {
+          'circle-color': VESSEL_COLOR,
+          'circle-radius': vesselRadius(3.4),
+          'circle-blur': 1,
+          'circle-opacity': 0.28 * opacity,
+        },
+      },
+      {
+        type: 'circle',
+        paint: {
+          'circle-color': VESSEL_COLOR,
+          'circle-radius': vesselRadius(1.9),
+          'circle-blur': 0.7,
+          'circle-opacity': 0.45 * opacity,
+        },
+      },
+      {
+        type: 'circle',
+        paint: {
+          'circle-color': VESSEL_COLOR,
+          'circle-radius': vesselRadius(1),
+          'circle-opacity': opacity,
+          'circle-stroke-width': 0.6,
+          'circle-stroke-color': 'rgba(2,12,27,0.85)',
+          'circle-stroke-opacity': opacity,
+        },
+      },
+    ],
+    legend: {
+      type: 'categories',
+      unit: 'vessel type',
+      categories: [
+        ...VESSEL_TYPE_COLORS.filter(([label]) =>
+          ['Cargo', 'Tanker', 'Passenger', 'Fishing', 'Tug'].includes(label)
+        ).map(([label, color]) => ({ label, range: '', color })),
+        { label: 'Other / not yet reported', range: '', color: VESSEL_COLOR_FALLBACK },
+      ],
+    },
+  };
+}
+
+/**
  * What a point lookup needs, per prediction layer id.
  *
  * Both prediction families ship as pre-coloured rasters, so a click on the
@@ -505,71 +624,18 @@ export const layerRegistry: LayerDescriptor[] = [
     },
   },
 
-  // --- Vessel traffic (Global Fishing Watch 4Wings API, proxied through our
-  // backend so the GFW bearer token never reaches the browser — see
-  // backend/services/gfw.py and backend/routers/tiles.py). Both are real
-  // AIS/SAR-derived vessel density, not live per-ship markers: GFW's tile
-  // API returns rendered heatmap PNGs, not point positions, so "AIS Ships"
-  // here means AIS-reported vessel presence density, honestly labeled below
-  // rather than presented as a live ship tracker it isn't.
-  //
-  // The color ramp is rescaled per zoom level server-side (services/gfw.py,
-  // `_scaled_ramp`) — 4Wings sums presence into whatever area one tile pixel
-  // covers, which shrinks ~4x per zoom level, so a ramp tuned for one zoom
-  // saturates solid at every lower zoom without rescaling. Verified: at z=2
-  // with an unscaled ramp, open mid-Pacific ocean hit 52% pixel coverage at
-  // near-max alpha, visually identical to the Singapore Strait. defaultOpacity
-  // is capped at 0.4 so the basemap stays legible underneath either layer.
-  {
-    id: 'shipping-routes',
-    name: 'Shipping Routes',
-    category: 'reference',
-    type: 'raster',
-    attribution:
-      'Global Fishing Watch / Sentinel-1 SAR vessel detections, 30-day window (~60-day publication ' +
-      'lag). Traces well-traveled corridors via radar-detected vessels, including ones not ' +
-      'broadcasting AIS.',
-    defaultOpacity: 0.4,
-    defaultVisible: false,
-    sources: [
-      {
-        type: 'raster',
-        tiles: [`${API_BASE_URL}/api/tiles/gfw/sar-presence/{z}/{x}/{y}.png`],
-        tileSize: 256,
-        maxzoom: 8,
-      },
-    ],
-    legend: {
-      type: 'swatch',
-      color: 'rgb(255,196,0)',
-      label: 'SAR-detected vessel activity',
-    },
-  },
-  {
-    id: 'ais-ships',
-    name: 'AIS Ships',
-    category: 'reference',
-    type: 'raster',
-    attribution:
-      'Global Fishing Watch / AIS vessel presence, 30-day window (~2-day publication lag). A ' +
-      'density heatmap of AIS-broadcasting vessels, not live per-ship positions — GFW’s free tile ' +
-      'API renders aggregate presence, not individual tracks.',
-    defaultOpacity: 0.4,
-    defaultVisible: false,
-    sources: [
-      {
-        type: 'raster',
-        tiles: [`${API_BASE_URL}/api/tiles/gfw/ais-presence/{z}/{x}/{y}.png`],
-        tileSize: 256,
-        maxzoom: 8,
-      },
-    ],
-    legend: {
-      type: 'swatch',
-      color: 'rgb(34,211,238)',
-      label: 'AIS vessel presence',
-    },
-  },
+  // --- Live vessel traffic ------------------------------------------
+  // Replaces the two Global Fishing Watch 4Wings heatmap layers that used
+  // to sit here (`shipping-routes` SAR presence and `ais-ships` AIS
+  // presence). Those rendered aggregate 30-day density as PNGs, which by
+  // construction has no per-vessel features to identify or hover — the
+  // layer could show where ships generally go, but never which ship.
+  // `live-vessels` below is individually-resolved AIS, so each point is a
+  // named vessel you can interrogate. backend/services/gfw.py and its
+  // /api/tiles/gfw route are left in place and now unused, so the density
+  // view can be restored as its own layer if the wide-area context is
+  // wanted back.
+
   // ------------------------------------------------------------------
   // AI predictions
   //
@@ -591,4 +657,5 @@ export const layerRegistry: LayerDescriptor[] = [
   // page (/predictions); the attribution strings here are the short version.
   ...habitatLayers(),
   ...bloomRiskLayers(),
+  liveVesselLayer(),
 ];
