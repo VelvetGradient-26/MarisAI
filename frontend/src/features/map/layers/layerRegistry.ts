@@ -207,9 +207,9 @@ function habitatLayers(): RasterLayerDescriptor[] {
         type: 'raster' as const,
         tiles: [`${API_BASE_URL}/api/predictions/habitat/${key}/${month}/{z}/{x}/{y}.png`],
         tileSize: 256,
-        // The model grid is 0.25 degrees; past this the GPU is just
-        // upsampling, and a crisper-looking tile would imply precision the
-        // model does not have.
+        // The model grid is 0.25 degrees; the backend already bilinearly
+        // smooths each tile (matching the SST layer), so past this zoom the
+        // GPU's own upsampling is the only thing adding further softness.
         maxzoom: 7,
       },
     ],
