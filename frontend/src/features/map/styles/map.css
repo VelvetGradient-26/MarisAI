@@ -245,6 +245,48 @@ body,
   border-color: var(--ocean-accent);
 }
 
+/* "More info" carries the emphasis; Save sits beside it at its natural width
+   (and is absent entirely when signed out). */
+.selected-location-panel__actions {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.selected-location-panel__actions .selected-location-panel__more-link {
+  flex: 1;
+}
+
+.selected-location-panel__save {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  border: 1px solid var(--ocean-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--ocean-muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.selected-location-panel__save:hover:not(:disabled) {
+  border-color: var(--ocean-accent);
+  color: var(--ocean-accent);
+}
+
+.selected-location-panel__save:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
 .selected-location-panel__attribution {
   margin-top: 8px;
   color: var(--ocean-muted);
