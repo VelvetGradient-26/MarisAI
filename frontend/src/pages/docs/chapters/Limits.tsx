@@ -182,11 +182,9 @@ export function Limits() {
       <h2 id="elsewhere">Where to go next in the app</h2>
       <ul>
         <li>
-          <Link to="/predictions">Model Insights</Link> — the live version of these results, read
-          from the exported manifest, with the prediction rasters themselves.
-        </li>
-        <li>
-          <Link to="/map">The map</Link> — model outputs as layers over live ocean data.
+          <Link to="/map">The map</Link> — model outputs as layers over live ocean data. Clicking a
+          location reads the habitat and bloom-risk values at that point straight from the exported
+          rasters, and says when a point falls outside a model's region.
         </li>
         <li>
           <Link to="/download">The downloader</Link> — 34 ocean variables across 14 providers, if

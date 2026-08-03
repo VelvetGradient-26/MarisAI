@@ -158,9 +158,10 @@ export PYTHONPATH=.
       />
       <p>
         Predictions themselves are exported as NetCDF rasters plus a manifest, and served by the
-        API — batch inference, not live inference, so what the map shows is exactly the artifact
-        that was cross-validated. The <Link to="/predictions">Model Insights</Link> page reads
-        that manifest directly.
+        API — batch inference, not live inference, so what the <Link to="/map">map</Link> shows is
+        exactly the artifact that was cross-validated. The numbers on this page are the ones that
+        run produced; re-running the pipelines rewrites <code>reports/</code>, and this chapter is
+        updated by hand from it.
       </p>
     </>
   );

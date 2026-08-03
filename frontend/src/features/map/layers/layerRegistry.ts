@@ -139,9 +139,10 @@ function gibsComposite(
  * Hand-listed rather than fetched from the manifest because `layerRegistry`
  * is a static module-level array the map builds from at startup — making it
  * async would push a network dependency into map initialisation for a list
- * that changes only when the model is retrained. The Model Insights page
- * reads the manifest and is the source of truth for what actually exists;
- * a species removed there simply renders transparent tiles here.
+ * that changes only when the model is retrained. The export manifest
+ * (`/api/predictions/manifest`) remains the source of truth for what
+ * actually exists; a species dropped from the export simply renders
+ * transparent tiles here rather than failing.
  */
 const HABITAT_SPECIES: Array<{ key: string; label: string }> = [
   { key: 'yellowfin_tuna', label: 'Yellowfin Tuna' },
@@ -653,8 +654,9 @@ export const layerRegistry: LayerDescriptor[] = [
   //  * Bloom risk is a WEAK label — chlorophyll above a local seasonal
   //    percentile is a proxy for a bloom, not a verified or toxic one.
   //
-  // Full skill numbers, drivers and limitations live on the Model Insights
-  // page (/predictions); the attribution strings here are the short version.
+  // Full skill numbers, drivers and limitations live in the docs (/docs —
+  // see the Results, Metrics and Limitations chapters); the attribution
+  // strings here are the short version.
   ...habitatLayers(),
   ...bloomRiskLayers(),
   liveVesselLayer(),
