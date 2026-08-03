@@ -1,4 +1,4 @@
-import type { Map as MapLibreMap } from 'maplibre-gl';
+import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
 import { createEmitter } from '../../../lib/createEmitter';
 import type { LayerDescriptor, LayerCategory, CustomVectorFieldLayer } from '../types';
 
@@ -82,6 +82,24 @@ export class LayerManager {
         this.customInstances.set(id, instance);
         this.map.addLayer(instance, beforeId);
       }
+    } else if (descriptor.type === 'geojson') {
+      const sourceId = this.sourceId(id, 0);
+      if (!this.map.getSource(sourceId)) {
+        // Starts empty: whoever owns the data (a hook watching the
+        // viewport) calls setGeoJsonData once it has some. Adding the
+        // source up front means that call never has to care whether the
+        // layer finished mounting.
+        this.map.addSource(sourceId, {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        });
+      }
+      descriptor.paintLayers(current.opacity).forEach((spec, index) => {
+        const layerId = this.layerId(id, index);
+        if (!this.map.getLayer(layerId)) {
+          this.map.addLayer({ ...spec, id: layerId, source: sourceId } as never, beforeId);
+        }
+      });
     } else {
       descriptor.sources.forEach((source, index) => {
         const sourceId = this.sourceId(id, index);
@@ -123,6 +141,14 @@ export class LayerManager {
       const layerId = this.layerId(id, 0);
       if (this.map.getLayer(layerId)) this.map.removeLayer(layerId);
       this.customInstances.delete(id);
+    } else if (current.descriptor.type === 'geojson') {
+      // Every painted layer must go before the source they all share.
+      current.descriptor.paintLayers(current.opacity).forEach((_spec, index) => {
+        const layerId = this.layerId(id, index);
+        if (this.map.getLayer(layerId)) this.map.removeLayer(layerId);
+      });
+      const sourceId = this.sourceId(id, 0);
+      if (this.map.getSource(sourceId)) this.map.removeSource(sourceId);
     } else {
       current.descriptor.sources.forEach((_source, index) => {
         const layerId = this.layerId(id, index);
@@ -172,6 +198,24 @@ export class LayerManager {
     if (current.active) {
       if (current.descriptor.type === 'custom') {
         this.customInstances.get(id)?.setOpacity(clamped);
+      } else if (current.descriptor.type === 'geojson') {
+        // Each spec re-derives its own paint from the new opacity, so a
+        // halo keeps whatever fraction of the core's opacity it chose.
+        current.descriptor.paintLayers(clamped).forEach((spec, index) => {
+          const layerId = this.layerId(id, index);
+          if (!this.map.getLayer(layerId)) return;
+          const paint = (spec.paint ?? {}) as Record<string, unknown>;
+          for (const [property, value] of Object.entries(paint)) {
+            // The property names come from the descriptor's own paint spec,
+            // so they're valid by construction — but only at runtime, since
+            // paintLayers is typed loosely enough to build any layer type.
+            (this.map.setPaintProperty as (l: string, p: string, v: unknown) => void)(
+              layerId,
+              property,
+              value
+            );
+          }
+        });
       } else {
         current.descriptor.sources.forEach((_source, index) => {
           const layerId = this.layerId(id, index);
@@ -190,6 +234,32 @@ export class LayerManager {
    * LayerManager needing to know what those setters mean. */
   getCustomLayerInstance(id: string): CustomVectorFieldLayer | undefined {
     return this.customInstances.get(id);
+  }
+
+  /**
+   * Replaces a geojson layer's features. Safe to call when the layer is
+   * inactive or the source hasn't mounted — it no-ops rather than throwing,
+   * so a data hook doesn't have to race the layer's lifecycle.
+   */
+  setGeoJsonData(id: string, data: GeoJSON.FeatureCollection): void {
+    const state = this.state.get(id);
+    if (!state || state.descriptor.type !== 'geojson' || !state.active) return;
+    const source = this.map.getSource(this.sourceId(id, 0));
+    if (source && 'setData' in source) {
+      (source as GeoJSONSource).setData(data);
+    }
+  }
+
+  /** MapLibre layer ids that should be hit-tested for hover on a geojson
+   * layer — the crisp core, not the soft glow, which would otherwise
+   * register hits well outside the vessel itself. */
+  getInteractiveLayerIds(id: string): string[] {
+    const state = this.state.get(id);
+    if (!state || state.descriptor.type !== 'geojson' || !state.active) return [];
+    const { interactiveLayerIndices, paintLayers } = state.descriptor;
+    const indices =
+      interactiveLayerIndices ?? paintLayers(state.opacity).map((_spec, index) => index);
+    return indices.map((index) => this.layerId(id, index)).filter((l) => this.map.getLayer(l));
   }
 
   /**

@@ -701,3 +701,138 @@ body,
     width: min(220px, calc(100vw - 32px));
   }
 }
+
+/* --- Live AIS vessels -------------------------------------------------- */
+
+/* Hover tooltip. Positioned in JS from the pointer's screen coords (see
+   VesselTooltip's edge-flip), so left/top are set inline and only the
+   appearance lives here. pointer-events:none matters — the tooltip sits
+   under the cursor, and without it the mouseleave fires the instant the
+   tooltip appears, which flickers it on and off. */
+.vessel-tooltip {
+  position: absolute;
+  z-index: 7;
+  pointer-events: none;
+  background: rgba(16, 29, 44, 0.96);
+  border: 1px solid var(--ocean-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--ocean-text);
+  font: 12px/1.45 var(--ocean-font-mono);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.vessel-tooltip__header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px dashed var(--ocean-border);
+}
+
+.vessel-tooltip__name {
+  color: var(--ocean-accent);
+  font-weight: 600;
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.vessel-tooltip__type {
+  color: var(--ocean-muted);
+  font-size: 11px;
+}
+
+.vessel-tooltip__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+}
+
+.vessel-tooltip__row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.vessel-tooltip__row dt {
+  color: var(--ocean-muted);
+  flex-shrink: 0;
+}
+
+.vessel-tooltip__row dd {
+  margin: 0 0 0 auto;
+  text-align: right;
+  word-break: break-word;
+}
+
+.vessel-tooltip__pending,
+.vessel-tooltip__footer {
+  margin: 7px 0 0;
+  color: var(--ocean-muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.vessel-tooltip__pending {
+  padding-top: 6px;
+  border-top: 1px dashed var(--ocean-border);
+}
+
+/* Bottom-centre: the only corner-free strip left. All three other corners
+   are taken by tall, variable-height panels — controls (top-left, scrolls
+   to full height), legends (top-right), selected location (bottom-right) —
+   and the coordinate display already holds the bottom-left. */
+.vessel-feed-status {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(16, 29, 44, 0.92);
+  border: 1px solid var(--ocean-border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: var(--ocean-text);
+  font: 12px/1.4 var(--ocean-font-mono);
+}
+
+.vessel-feed-status--offline {
+  color: var(--ocean-muted);
+}
+
+.vessel-feed-status__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ocean-muted);
+  flex-shrink: 0;
+}
+
+.vessel-feed-status__dot--live {
+  background: #4ade80;
+  box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6);
+  animation: vessel-feed-pulse 2.4s ease-out infinite;
+}
+
+.vessel-feed-status__note {
+  color: var(--ocean-muted);
+  font-size: 10px;
+}
+
+@keyframes vessel-feed-pulse {
+  70% { box-shadow: 0 0 0 7px rgba(74, 222, 128, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+}
+
+/* A live feed's pulsing dot is decoration, not information — the text
+   beside it already says the same thing. */
+@media (prefers-reduced-motion: reduce) {
+  .vessel-feed-status__dot--live {
+    animation: none;
+  }
+}

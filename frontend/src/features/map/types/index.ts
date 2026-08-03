@@ -136,7 +136,36 @@ export interface CustomLayerDescriptor extends LayerDescriptorBase {
   createLayer: (id: string) => CustomVectorFieldLayer;
 }
 
-export type LayerDescriptor = RasterLayerDescriptor | CustomLayerDescriptor;
+/**
+ * A layer backed by a GeoJSON source this app owns and refreshes itself,
+ * rather than by tiles fetched from a URL template.
+ *
+ * The distinction matters because the data is *live* and *interactive*: the
+ * live-vessel layer refetches on viewport change and its individual features
+ * are hoverable, neither of which a raster tile can do (a PNG has no
+ * features to hit-test). `paintLayers` is a list because one logical layer
+ * is often several stacked MapLibre layers — a glow needs a blurred halo
+ * beneath a bright core, and they must add and remove as one unit.
+ */
+export interface GeoJsonLayerDescriptor extends LayerDescriptorBase {
+  type: 'geojson';
+  defaultOpacity?: number;
+  /**
+   * MapLibre layer specs (minus `id`/`source`, which LayerManager assigns),
+   * painted bottom-first. The `opacity` argument is the layer's current
+   * opacity, so each spec decides how to apply it — a halo may want a
+   * fraction of the core's.
+   */
+  paintLayers: (opacity: number) => Array<Record<string, unknown>>;
+  /** Ids of `paintLayers` entries, by index, that should be hit-tested for
+   * hover. Usually just the crisp core, not the soft glow around it. */
+  interactiveLayerIndices?: number[];
+}
+
+export type LayerDescriptor =
+  | RasterLayerDescriptor
+  | CustomLayerDescriptor
+  | GeoJsonLayerDescriptor;
 
 export interface CameraState {
   center: [number, number];
