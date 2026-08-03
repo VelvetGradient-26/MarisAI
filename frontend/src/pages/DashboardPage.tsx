@@ -22,8 +22,10 @@ import type {
   RealtimeOceanResponse,
 } from '../features/map/types';
 import { generateOceanInsights } from '../features/insights/api/generateInsights';
+import { loginUrl } from '../features/map/api/auth';
 import { useTimezoneStore } from '../store/timezoneStore';
 import { useThemeStore } from '../store/themeStore';
+import { useAuthStore } from '../store/authStore';
 import { useMapStore } from '../store/mapStore';
 import { formatClockDate, formatClockTime, formatShortTime } from '../utils/formatTime';
 import './dashboard.css';
@@ -46,6 +48,7 @@ export function DashboardPage() {
   const [latitudeInput, setLatitudeInput] = useState(String(requestedLocation.lat));
   const [longitudeInput, setLongitudeInput] = useState(String(requestedLocation.lng));
   const isDark = useThemeStore((s) => s.dark);
+  const authStatus = useAuthStore((s) => s.status);
   const [data, setData] = useState<RealtimeOceanResponse | null>(null);
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [requestError, setRequestError] = useState<string | null>(null);
@@ -113,6 +116,12 @@ export function DashboardPage() {
   }, [requestedLocation.lat, requestedLocation.lng, requestVersion]);
 
   const runInsights = () => {
+    // Insights cost LLM quota and the endpoint requires sign-in, so send the
+    // user to Google rather than firing a request that can only 401.
+    if (authStatus === 'anonymous') {
+      window.location.href = loginUrl();
+      return;
+    }
     if (!data || insightsStatus === 'loading') return;
 
     insightsAbortRef.current?.abort();
@@ -179,9 +188,6 @@ export function DashboardPage() {
             <span>
               {dateString} · {timezone}
             </span>
-          </div>
-          <div className="dashboard-avatar" aria-label="Maris AI account">
-            MA
           </div>
         </div>
 
@@ -349,11 +355,19 @@ export function DashboardPage() {
         className="dashboard-neural-badge"
         type="button"
         onClick={runInsights}
-        disabled={!data || insightsStatus === 'loading'}
-        aria-label="Generate AI insights from current conditions"
+        disabled={authStatus !== 'anonymous' && (!data || insightsStatus === 'loading')}
+        aria-label={
+          authStatus === 'anonymous'
+            ? 'Sign in to generate AI insights'
+            : 'Generate AI insights from current conditions'
+        }
       >
         <span><CircuitBoard size={14} /></span>
-        {insightsStatus === 'loading' ? 'Analyzing…' : 'Neuralcore'}
+        {authStatus === 'anonymous'
+          ? 'Sign in for insights'
+          : insightsStatus === 'loading'
+            ? 'Analyzing…'
+            : 'Neuralcore'}
       </button>
     </div>
   );
