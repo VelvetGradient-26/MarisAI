@@ -211,32 +211,44 @@ export function SalmonSchool({ opacity }: { opacity: number }) {
         };
 
         const clock = new THREE.Clock();
+        // Tracks the last visibility decision so the fade-out teardown runs
+        // once on the transition rather than every frame.
+        let wasVisible: boolean | null = null;
+
+        // One loop for both motion preferences. Reduced motion freezes time
+        // and delta at zero instead of skipping the loop, because the school
+        // must still redraw when its scroll-driven opacity changes — drawing
+        // a single frame at mount would render it at opacity 0 (the page
+        // starts at the surface) and it would never appear at all.
         const tick = () => {
           if (disposed) return;
           frame = requestAnimationFrame(tick);
-          const delta = clock.getDelta();
-          const time = clock.getElapsedTime();
+
+          const delta = reducedMotion ? 0 : clock.getDelta();
+          const time = reducedMotion ? 0 : clock.getElapsedTime();
+          const visible = opacityRef.current > 0.01;
+
+          if (visible !== wasVisible) {
+            // Skipping render() is not enough to make the school disappear:
+            // the canvas keeps compositing whatever was last drawn, so the
+            // faded fish stayed frozen on screen after scrolling back up to
+            // the surface. Clear the buffer once on the way out, and hide
+            // the element so nothing is composited while faded.
+            renderer.domElement.style.visibility = visible ? '' : 'hidden';
+            if (!visible) renderer.clear();
+            wasVisible = visible;
+          }
+
+          if (!visible) return;
 
           applyTransforms(time, delta);
           for (const { mesh } of instanced) {
             (mesh.material as THREE.Material).opacity = opacityRef.current;
           }
-          // Nothing to show at all when the layer has faded out — skip the
-          // draw rather than rendering a fully transparent frame.
-          if (opacityRef.current > 0.01) renderer.render(scene, camera);
+          renderer.render(scene, camera);
         };
 
-        if (reducedMotion) {
-          // Still place the school and draw one frame, so the scene is
-          // populated rather than empty; it simply never animates.
-          applyTransforms(0, 0);
-          for (const { mesh } of instanced) {
-            (mesh.material as THREE.Material).opacity = opacityRef.current;
-          }
-          renderer.render(scene, camera);
-        } else {
-          tick();
-        }
+        tick();
       },
       undefined,
       () => {
