@@ -60,6 +60,69 @@ class TestRateLimiter:
         assert retry_after is not None and 0 < retry_after <= 60
 
 
+class TestInsightsPromptBounds:
+    """Every field here is pasted into an LLM prompt and paid for per token,
+    so an unbounded string is both an injection surface and an open bill."""
+
+    def test_rejects_oversized_metric_value(self):
+        from routers.insights import GenerateInsightsRequest
+
+        with pytest.raises(ValidationError):
+            GenerateInsightsRequest(current={"sea_surface_temperature": "x" * 5000})
+
+    def test_rejects_too_many_metrics(self):
+        from routers.insights import GenerateInsightsRequest
+
+        with pytest.raises(ValidationError):
+            GenerateInsightsRequest(current={f"k{i}": 1.0 for i in range(500)})
+
+    def test_rejects_oversized_location_text(self):
+        from routers.insights import GenerateInsightsRequest, LocationContext
+
+        with pytest.raises(ValidationError):
+            GenerateInsightsRequest(
+                current={"sea_surface_temperature": 21.5},
+                location_context=LocationContext(ocean_name="y" * 5000),
+            )
+
+    def test_rejects_out_of_range_coordinates(self):
+        from routers.insights import RequestedPoint
+
+        with pytest.raises(ValidationError):
+            RequestedPoint(latitude=91.0, longitude=0.0)
+
+    def test_accepts_a_realistic_payload(self):
+        from routers.insights import GenerateInsightsRequest, LocationContext, RequestedPoint
+
+        request = GenerateInsightsRequest(
+            current={"sea_surface_temperature": 28.9, "wind_speed": 23.5},
+            units={"sea_surface_temperature": "°C"},
+            location_context=LocationContext(ocean_name="Arabian Sea"),
+            requested=RequestedPoint(latitude=14.3, longitude=70.7),
+        )
+        assert request.location_context is not None
+        assert request.location_context.ocean_name == "Arabian Sea"
+
+
+class TestProviderErrorsAreNotForwarded:
+    def test_provider_body_is_withheld_from_the_message(self):
+        """Gemini takes the API key as a URL query parameter, so a provider
+        error body is exactly the wrong thing to hand to a browser."""
+        import httpx
+
+        from services.llm import _provider_failure
+
+        response = httpx.Response(
+            401,
+            text='{"error":{"message":"API key not valid: AIzaSyLEAKED_KEY_VALUE"}}',
+            request=httpx.Request("POST", "https://example.invalid/v1/models/x:generateContent"),
+        )
+        error = _provider_failure("Gemini", response)
+
+        assert "AIzaSyLEAKED_KEY_VALUE" not in str(error)
+        assert "401" in str(error)
+
+
 class TestCookieSecurity:
     def test_https_frontend_marks_cookies_secure_by_default(self):
         """The failure this prevents is silent: an HTTPS deployment that never

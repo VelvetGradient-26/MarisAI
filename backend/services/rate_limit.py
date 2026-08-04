@@ -86,8 +86,13 @@ def client_key(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def enforce(limiter: RateLimiter, request: Request, message: str) -> None:
-    retry_after = limiter.check(client_key(request))
+def enforce(
+    limiter: RateLimiter, request: Request, message: str, key: str | None = None
+) -> None:
+    """Applies `limiter` to this request. Pass `key` to limit by something
+    stronger than the caller's address — a user id, for an authenticated
+    endpoint, cannot be rotated by changing networks the way an IP can."""
+    retry_after = limiter.check(key or client_key(request))
     if retry_after is None:
         return
     raise HTTPException(

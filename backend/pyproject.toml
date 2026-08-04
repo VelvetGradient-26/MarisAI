@@ -71,7 +71,11 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["app*", "routers*", "alembic*", "services*"]
+# `dependencies*` is the FastAPI dependency package (dependencies/auth.py),
+# not the project's requirements — it must be listed here or the built
+# distribution omits it and every router that guards a route dies at import
+# with "No module named 'dependencies'".
+include = ["app*", "routers*", "alembic*", "services*", "dependencies*"]
 exclude = ["others*", "tests*"]
 
 [dependency-groups]

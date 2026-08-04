@@ -8,15 +8,29 @@ specific vendor's client library.
 
 from __future__ import annotations
 
+import logging
 from typing import Protocol
 
 import httpx
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 
 class LLMError(RuntimeError):
     pass
+
+
+def _provider_failure(name: str, response: httpx.Response) -> LLMError:
+    """Never forward a provider's response body to the caller.
+
+    It is uninteresting on a good day and dangerous on a bad one: Gemini takes
+    the API key as a URL query parameter, and provider error payloads
+    routinely echo request context. The body is logged for whoever is
+    debugging; the browser gets the status and nothing else."""
+    logger.error(f"{name} request failed ({response.status_code}): {response.text[:2000]}")
+    return LLMError(f"The AI provider returned an error ({response.status_code}).")
 
 
 class LLMProvider(Protocol):
@@ -44,7 +58,7 @@ class GeminiProvider:
             )
 
         if response.is_error:
-            raise LLMError(f"Gemini request failed ({response.status_code}): {response.text}")
+            raise _provider_failure("Gemini", response)
 
         payload = response.json()
         try:
@@ -77,7 +91,7 @@ class OpenAIProvider:
             )
 
         if response.is_error:
-            raise LLMError(f"OpenAI request failed ({response.status_code}): {response.text}")
+            raise _provider_failure("OpenAI", response)
 
         payload = response.json()
         try:
@@ -112,7 +126,7 @@ class OllamaProvider:
             )
 
         if response.is_error:
-            raise LLMError(f"Ollama request failed ({response.status_code}): {response.text}")
+            raise _provider_failure("Ollama", response)
 
         payload = response.json()
         try:
