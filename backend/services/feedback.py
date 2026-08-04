@@ -71,4 +71,10 @@ async def send_feedback_email(name: str, email: str, message: str) -> None:
     except FeedbackError:
         raise
     except Exception as exc:  # noqa: BLE001 - never leak raw SMTP exceptions
-        raise FeedbackError(f"Failed to send feedback email: {exc}") from exc
+        # The upstream text is logged, not returned: SMTP failures name the
+        # mail host and port and can quote parts of the authentication
+        # exchange, none of which a browser needs to see.
+        logger.error(f"Feedback email send failed: {exc}")
+        raise FeedbackError(
+            "Could not send your feedback right now. It has been recorded — please try again later."
+        ) from exc

@@ -11,6 +11,7 @@ raw error page.
 
 from __future__ import annotations
 
+import secrets
 from typing import Any
 from urllib.parse import urlencode
 
@@ -47,7 +48,7 @@ def _set_session_cookie(response: Response, token: str) -> None:
         # Lax, not None: it is the only CSRF defence here, and it works
         # because every mutating endpoint is a POST. See services/auth.py.
         samesite="lax",
-        secure=settings.COOKIE_SECURE,
+        secure=settings.cookie_secure,
         path="/",
     )
 
@@ -77,7 +78,7 @@ async def login() -> RedirectResponse:
         max_age=STATE_MAX_AGE_SECONDS,
         httponly=True,
         samesite="lax",
-        secure=settings.COOKIE_SECURE,
+        secure=settings.cookie_secure,
         path="/",
     )
     return response
@@ -96,7 +97,15 @@ async def callback(
         return _frontend_redirect("Sign-in was cancelled.")
 
     expected_state = request.cookies.get(STATE_COOKIE_NAME)
-    if not code or not state or not expected_state or state != expected_state:
+    # compare_digest rather than ==: the comparison is against a value the
+    # caller supplies, and a short-circuiting compare leaks how much of the
+    # state it guessed correctly.
+    if (
+        not code
+        or not state
+        or not expected_state
+        or not secrets.compare_digest(state, expected_state)
+    ):
         return _frontend_redirect("Sign-in could not be verified. Please try again.")
 
     try:

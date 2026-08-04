@@ -22,6 +22,7 @@ Authlib >= 1.6 and joserfc is already in the tree as an Authlib dependency.
 
 from __future__ import annotations
 
+import logging
 import secrets
 import time
 from datetime import datetime, timezone
@@ -43,8 +44,17 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs"
 GOOGLE_ISSUERS = ("https://accounts.google.com", "accounts.google.com")
 
+logger = logging.getLogger(__name__)
+
 SESSION_COOKIE_NAME = "marisai_session"
 SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
+
+# HS256 session tokens are only as strong as this key. A short one is
+# brute-forceable offline from a single captured cookie, and forging a token
+# means picking any user id — full account takeover, with no way to notice.
+# 32 characters is the floor for the 256-bit output `openssl rand -hex 32`
+# produces, which is what the config comment tells you to generate.
+MIN_SESSION_SECRET_LENGTH = 32
 
 # Google rotates its signing keys infrequently; refetching the JWKS on every
 # sign-in would add a round trip for no benefit.
@@ -83,6 +93,12 @@ def _session_key() -> OctKey:
     if not settings.SESSION_SECRET:
         raise AuthNotConfiguredError(
             "Sign-in is not configured on this server (missing: SESSION_SECRET)."
+        )
+    if len(settings.SESSION_SECRET) < MIN_SESSION_SECRET_LENGTH:
+        # Refusing to sign is the safe failure: sign-in breaks loudly instead
+        # of appearing to work while issuing forgeable tokens.
+        raise AuthNotConfiguredError(
+            "Sign-in is misconfigured on this server (SESSION_SECRET is too short)."
         )
     return OctKey.import_key(settings.SESSION_SECRET)
 
@@ -152,7 +168,10 @@ async def exchange_code(code: str) -> dict[str, Any]:
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
     except httpx.HTTPError as exc:
-        raise AuthError(f"Could not reach Google to complete sign-in: {exc}") from exc
+        # These messages are rendered into a redirect URL the user sees, so
+        # the upstream text is logged rather than echoed.
+        logger.warning(f"Google token exchange failed: {exc}")
+        raise AuthError("Could not reach Google to complete sign-in.") from exc
 
     if response.status_code != 200:
         raise AuthError("Google rejected the sign-in attempt.")
@@ -164,7 +183,8 @@ async def exchange_code(code: str) -> dict[str, Any]:
     try:
         key_set = await _fetch_jwks()
     except httpx.HTTPError as exc:
-        raise AuthError(f"Could not fetch Google's signing keys: {exc}") from exc
+        logger.warning(f"Could not fetch Google JWKS: {exc}")
+        raise AuthError("Could not verify the sign-in with Google.") from exc
 
     try:
         # Algorithm pinned: accepting whatever the token's own header asks for
@@ -178,7 +198,8 @@ async def exchange_code(code: str) -> dict[str, Any]:
         )
         claims_registry.validate(token.claims)
     except JoseError as exc:
-        raise AuthError(f"Google's ID token failed verification: {exc}") from exc
+        logger.warning(f"Google ID token failed verification: {exc}")
+        raise AuthError("Google's sign-in response could not be verified.") from exc
 
     claims = token.claims
     if not claims.get("email"):

@@ -42,8 +42,12 @@ class Settings(BaseSettings):
     # allow_credentials=True, which would silently break the session cookie.
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 
-    # Set True wherever the app is served over HTTPS.
-    COOKIE_SECURE: bool = False
+    # Whether to mark session cookies Secure. Leave unset to derive it from
+    # FRONTEND_BASE_URL's scheme (see `cookie_secure`) — defaulting to a bare
+    # False meant an HTTPS deployment that forgot this setting silently
+    # shipped its session cookie over plaintext-eligible requests. Set it
+    # explicitly only to override that inference.
+    COOKIE_SECURE: bool | None = None
 
     # Copernicus Marine
     COPERNICUS_USERNAME: str = ""
@@ -87,6 +91,19 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def cookie_secure(self) -> bool:
+        """Secure flag for session cookies.
+
+        Inferred from the frontend's scheme when COOKIE_SECURE is unset, so
+        the safe value is the one you get by doing nothing: an https frontend
+        marks cookies Secure automatically, and a plain-http dev setup does
+        not (where marking them Secure would stop the browser storing them at
+        all, breaking local sign-in)."""
+        if self.COOKIE_SECURE is not None:
+            return self.COOKIE_SECURE
+        return self.FRONTEND_BASE_URL.strip().lower().startswith("https://")
 
 
 settings = Settings()
