@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { SalmonSchool } from './SalmonSchool';
 import type { CSSProperties } from 'react';
 import { rafThrottle } from '../../utils/rafThrottle';
 
@@ -13,6 +12,7 @@ import { rafThrottle } from '../../utils/rafThrottle';
  * template becomes plain `.map()`/`&&`.
  */
 
+const FISH_COUNT = 50;
 const CREATURE_SPEED = 1.1;
 const CLOUD_SPEED = 1;
 const SUN_INTENSITY = 1.6;
@@ -41,6 +41,18 @@ interface BirdItem {
   flap: number;
   anim: SwimAnim;
   color: string;
+}
+
+interface FishItem {
+  key: string;
+  top: number;
+  dur: number;
+  delay: number;
+  scale: number;
+  wag: number;
+  anim: SwimAnim;
+  fill: string;
+  fin: string;
 }
 
 interface BubbleItem {
@@ -181,6 +193,37 @@ function zoneFor(d: number): string {
   return 'Abyssal zone';
 }
 
+function buildFish(count: number, speed: number): FishItem[] {
+  const skins = [
+    { fill: 'rgba(150,204,222,0.82)', fin: 'rgba(120,180,205,0.6)' },
+    { fill: 'rgba(122,186,208,0.78)', fin: 'rgba(96,158,186,0.58)' },
+    { fill: 'rgba(196,222,230,0.8)', fin: 'rgba(160,198,212,0.55)' },
+    { fill: 'rgba(108,166,196,0.72)', fin: 'rgba(84,140,172,0.55)' },
+    { fill: 'rgba(214,196,152,0.6)', fin: 'rgba(184,164,122,0.5)' },
+  ];
+  const out: FishItem[] = [];
+  for (let i = 0; i < count; i++) {
+    const a = rnd(i, 1);
+    const b = rnd(i, 2);
+    const c = rnd(i, 3);
+    const d = rnd(i, 4);
+    const right = i % 2 === 0;
+    const skin = skins[i % skins.length];
+    out.push({
+      key: `f${i}`,
+      top: 6 + a * 80,
+      dur: (17 + b * 26) / speed,
+      delay: -d * 40,
+      scale: 0.3 + c * 0.85,
+      wag: 1.1 + b * 1.1,
+      anim: right ? 'swimR' : 'swimL',
+      fill: skin.fill,
+      fin: skin.fin,
+    });
+  }
+  return out;
+}
+
 function buildBubbles(speed: number): BubbleItem[] {
   const out: BubbleItem[] = [];
   for (let i = 0; i < 16; i++) {
@@ -319,6 +362,8 @@ export function OceanDiveScene({ dark }: { dark: boolean }) {
     onScroll();
     return () => window.removeEventListener('scroll', onScroll);
   }, [reducedMotion]);
+
+  const fish = useMemo(() => buildFish(FISH_COUNT, CREATURE_SPEED), []);
   const bubbles = useMemo(() => buildBubbles(CREATURE_SPEED), []);
   const clouds = useMemo(() => buildClouds(CLOUD_SPEED), []);
   const birds = useMemo(() => buildBirds(CLOUD_SPEED), []);
@@ -459,11 +504,24 @@ export function OceanDiveScene({ dark }: { dark: boolean }) {
         </div>
       )}
 
-      {/* The school is a real 3D model (see SalmonSchool) rather than the
-          flat SVG fish that used to sit here, so it owns its own WebGL
-          canvas and takes the same depth-banded opacity the layer had. */}
-      <div className="dive-layer" style={{ zIndex: 1 }}>
-        <SalmonSchool opacity={fishOpacity} />
+      <div className="dive-layer" style={{ zIndex: 1, opacity: fishOpacity }}>
+        {fish.map((f) => (
+          <div key={f.key} className="dive-fish-lane" style={{ top: `${f.top}%` }}>
+            <div
+              style={{
+                animationName: f.anim,
+                animationDuration: `${f.dur}s`,
+                animationTimingFunction: 'linear',
+                animationIterationCount: 'infinite',
+                animationDelay: `${f.delay}s`,
+              }}
+            >
+              <div style={{ transform: `scale(${f.scale})`, transformOrigin: 'center' }}>
+                <FishSvg fill={f.fill} fin={f.fin} wag={f.wag} />
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="dive-layer" style={{ zIndex: 1, opacity: whaleOpacity }}>
@@ -553,6 +611,52 @@ export function OceanDiveScene({ dark }: { dark: boolean }) {
         </div>
       </div>
     </>
+  );
+}
+
+function FishSvg({ fill, fin, wag }: { fill: string; fin: string; wag: number }) {
+  return (
+    <svg
+      width="130"
+      height="62"
+      viewBox="0 0 130 62"
+      style={{
+        display: 'block',
+        overflow: 'visible',
+        animation: `tailWag ${wag}s ease-in-out infinite`,
+        transformOrigin: '80% 50%',
+      }}
+    >
+      <path d="M28,31 C18,21 10,12 3,3 C10,15 14,24 17,31 C14,38 10,47 3,59 C10,50 18,41 28,31 Z" fill={fin} />
+      <path d="M99,14 C89,3 74,-2 57,1 C69,5 80,9 89,15 Z" fill={fin} />
+      <path d="M86,50 C78,58 67,62 55,60 C65,57 73,54 79,49 Z" fill={fin} />
+      <path
+        d="M28,31 C40,16 60,8 82,8 C104,8 120,17 126,31 C120,45 104,54 82,54 C60,54 40,46 28,31 Z"
+        fill={fill}
+      />
+      <path
+        d="M28,31 C40,20 60,13 82,13 C104,13 120,20 126,31 C112,26 104,22 82,22 C60,22 40,26 28,31 Z"
+        fill="rgba(255,255,255,0.15)"
+      />
+      <path d="M101,37 C95,47 85,53 74,53 C84,47 92,42 96,36 Z" fill={fin} />
+      <path
+        d="M44,32 C64,29 88,29 108,31"
+        fill="none"
+        stroke="rgba(255,255,255,0.26)"
+        strokeWidth="1.2"
+        strokeDasharray="5 6"
+      />
+      <path d="M107,16 C101,23 101,39 107,46" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1.3" />
+      <path
+        d="M126,31 C123,33.5 121,34.5 118,34.5"
+        fill="none"
+        stroke="rgba(10,25,35,0.55)"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      <circle cx="114" cy="25" r="3.1" fill="rgba(8,20,30,0.85)" />
+      <circle cx="115.2" cy="23.8" r="1.05" fill="rgba(255,255,255,0.85)" />
+    </svg>
   );
 }
 

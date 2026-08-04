@@ -143,14 +143,6 @@
   left: 0;
 }
 
-/* WebGL canvas host for the 3D salmon school. Fills its dive-layer; the
-   school's own opacity is driven per-frame in the renderer rather than
-   here, so scrolling never triggers a React re-render of the scene. */
-.dive-salmon-canvas {
-  position: absolute;
-  inset: 0;
-}
-
 .dive-angler {
   position: absolute;
   top: 58%;
