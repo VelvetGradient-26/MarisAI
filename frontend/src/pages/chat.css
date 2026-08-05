@@ -305,8 +305,107 @@
   border-bottom-left-radius: 4px;
 }
 
-.chat-answer {
-  white-space: pre-wrap;
+/* Markdown output. `white-space: pre-wrap` is gone deliberately — the renderer
+ * now produces real block elements, and pre-wrap would have re-added every
+ * source newline on top of their margins. Only fenced code keeps it. */
+.chat-answer > :first-child {
+  margin-top: 0;
+}
+
+.chat-answer > :last-child {
+  margin-bottom: 0;
+}
+
+.md-p {
+  margin: 0 0 0.7em;
+}
+
+.md-h {
+  margin: 1.1em 0 0.5em;
+  font-size: 0.98rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.md-list {
+  margin: 0 0 0.7em;
+  padding-left: 1.35em;
+}
+
+.md-list li {
+  margin: 0.2em 0;
+}
+
+.md-list li::marker {
+  color: var(--chat-faint);
+}
+
+.chat-answer strong {
+  font-weight: 600;
+  color: var(--chat-text);
+}
+
+.chat-answer a {
+  color: var(--chat-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md-code {
+  padding: 0.1em 0.36em;
+  border-radius: 5px;
+  background: var(--chat-code-bg);
+  font-size: 0.86em;
+  /* Break long identifiers rather than widening the bubble past the column. */
+  overflow-wrap: anywhere;
+}
+
+.md-pre {
+  margin: 0 0 0.7em;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: var(--chat-code-bg);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.md-pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+.md-quote {
+  margin: 0 0 0.7em;
+  padding-left: 0.85em;
+  border-left: 2px solid var(--chat-border);
+  color: var(--chat-muted);
+}
+
+/* Tables scroll inside their own box; the bubble must never widen the page. */
+.md-table-wrap {
+  margin: 0 0 0.7em;
+  overflow-x: auto;
+}
+
+.md-table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.md-table th,
+.md-table td {
+  padding: 6px 11px;
+  border: 1px solid var(--chat-border-soft);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.md-table th {
+  background: var(--chat-hover-bg);
+  font-weight: 600;
 }
 
 /* --- Thinking ----------------------------------------------------------- */

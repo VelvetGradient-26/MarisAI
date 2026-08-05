@@ -12,6 +12,7 @@ import type {
   ChatSessionSummary,
   ChatTurn,
 } from '../features/map/api/chat';
+import { Markdown } from '../components/Markdown';
 import { useThemeStore } from '../store/themeStore';
 import './chat.css';
 
@@ -314,7 +315,9 @@ function AssistantTurn({ message }: { message: Message }) {
   return (
     <div className="chat-turn chat-turn--assistant">
       <div className="chat-bubble chat-bubble--assistant">
-        <div className="chat-answer">{message.content}</div>
+        <div className="chat-answer">
+          <Markdown text={message.content} />
+        </div>
 
         {reply && !reply.grounded ? (
           <p className="chat-flag">
