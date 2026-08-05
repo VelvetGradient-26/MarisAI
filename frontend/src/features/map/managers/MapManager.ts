@@ -4,6 +4,7 @@ import { BASEMAP_LAYER_ID, BasemapManager } from './BasemapManager';
 import { ControlManager } from './ControlManager';
 import { LayerManager } from '../layers/LayerManager';
 import { basemaps } from '../basemaps';
+import { OPENFREEMAP_GLYPHS } from '../basemaps/vectorSource';
 import { layerRegistry } from '../layers/layerRegistry';
 import { getFirstExistingAnnotationLayerId } from '../layers/annotationLayerIds';
 import type { BasemapId, ProjectionMode } from '../types';
@@ -33,6 +34,7 @@ export class MapManager {
   private map: MapLibreMap | null = null;
   private basemapManager: BasemapManager | null = null;
   private controlManager: ControlManager | null = null;
+  private resizeObserver: ResizeObserver | null = null;
   private layerManager: LayerManager | null = null;
   private projectionMode: ProjectionMode = DEFAULT_PROJECTION;
 
@@ -43,7 +45,7 @@ export class MapManager {
       zoom = 2.2,
       bearing = 0,
       pitch = 0,
-      defaultBasemap = 'satellite',
+      defaultBasemap = 'abyss',
       projection = DEFAULT_PROJECTION,
     } = options;
 
@@ -59,7 +61,13 @@ export class MapManager {
         version: 8,
         sources: {},
         layers: [],
-        glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+        // Set once, at construction. Doing it per-basemap via setGlyphs()
+        // was a race: setGlyphs triggers an asynchronous style reload, and
+        // the sources/layers added immediately afterwards were intermittently
+        // lost — the globe came up as an empty disc with no coastlines and no
+        // marker. Both vector basemaps use this same endpoint, so there is
+        // nothing to switch at runtime.
+        glyphs: OPENFREEMAP_GLYPHS,
       },
       center,
       zoom,
@@ -93,6 +101,22 @@ export class MapManager {
       basemapManager.init(defaultBasemap);
       layerManager.applyDefaults();
     });
+
+    /**
+     * Re-measure whenever the *container* changes size.
+     *
+     * MapLibre's `trackResize` only listens to `window` resize events, so a
+     * map whose container changes size on its own is never told. That is
+     * exactly the dashboard's embedded panel: it is lazy-loaded into a flex
+     * column whose height settles after the map is constructed (KPI cards
+     * and charts mount above it), so the canvas kept a stale size and the
+     * panel rendered blank until something forced a resize. The full-page
+     * /map view never hit this because it is sized correctly from the start.
+     */
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(() => map.resize());
+      this.resizeObserver.observe(container);
+    }
 
     this.map = map;
     this.layerManager = layerManager;
@@ -137,6 +161,8 @@ export class MapManager {
   }
 
   destroy() {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
     this.controlManager?.destroy();
     this.layerManager?.destroy();
     this.basemapManager?.destroy();

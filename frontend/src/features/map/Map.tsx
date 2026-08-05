@@ -18,7 +18,7 @@ interface MapProps {
  * instance via MapManagerContext — they never create their own.
  */
 export function Map({ children }: MapProps) {
-  const { containerRef, manager, ready } = useMapManager('satellite');
+  const { containerRef, manager, ready } = useMapManager('abyss');
   useSelectedLocationRealtimeData();
   useSelectedLocationMarker(manager, ready);
   useSelectedLocationFocus(manager, ready);

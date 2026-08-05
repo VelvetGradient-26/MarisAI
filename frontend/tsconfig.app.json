@@ -9,6 +9,11 @@
     "skipLibCheck": true,
 
     /* Bundler mode */
+    /* No baseUrl: it is deprecated in TypeScript 6, and `paths` resolves
+       relative to this file without it. Mirrors the alias in vite.config.ts. */
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,

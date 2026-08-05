@@ -51,7 +51,17 @@ class CopernicusSstError(RuntimeError):
 @dataclass
 class _SstCache:
     interpolator: RegularGridInterpolator
+    # The timestep the data describes, distinct from when it was fetched:
+    # this product publishes hours behind real time, so provider health has
+    # to be judged on `fetched_at` or a working feed reports as down.
     timestamp: datetime
+    fetched_at: datetime
+    # The raw grid is kept alongside the interpolator so global statistics
+    # (see `global_stats`) come from the array already in memory rather than
+    # from a second fetch of the same timestep.
+    latitudes: np.ndarray
+    longitudes: np.ndarray
+    grid: np.ndarray
 
 
 _cache: _SstCache | None = None
@@ -114,7 +124,14 @@ async def refresh_sst_cache() -> None:
             logger.opt(exception=True).warning("SST refresh failed, keeping previous cache if any")
             return
 
-        _cache = _SstCache(interpolator=interpolator, timestamp=timestamp)
+        _cache = _SstCache(
+            interpolator=interpolator,
+            timestamp=timestamp,
+            fetched_at=datetime.now(timezone.utc),
+            latitudes=lat,
+            longitudes=lon,
+            grid=grid,
+        )
         render_tile.cache_clear()
         logger.info(f"SST cache refreshed: timestep {timestamp.isoformat()}")
 
@@ -125,15 +142,61 @@ def _require_cache() -> _SstCache:
     return _cache
 
 
+def is_refreshing() -> bool:
+    """Whether a refresh is in flight right now.
+
+    Reuses the existing refresh lock rather than tracking a second flag: the
+    lock is held for exactly the duration of a fetch, so it already is the
+    answer. Lets the dashboard tell "still warming up" apart from "failed",
+    which are very different things to show a user.
+    """
+    return _refresh_lock.locked()
+
+
 def get_meta() -> dict[str, Any]:
     cache = _require_cache()
     return {
         "timestamp": cache.timestamp.isoformat(),
+        "fetched_at": cache.fetched_at.isoformat(),
         "source": SOURCE_LABEL,
         "depth_m": DEPTH_M,
         "unit": "°C",
         "min": _MIN_C,
         "max": _MAX_C,
+    }
+
+
+def is_available() -> bool:
+    return _cache is not None
+
+
+def global_stats() -> dict[str, Any]:
+    """Area-weighted global mean SST over the cached timestep.
+
+    cos(latitude) weighting is not optional here: this is an equal-*angle*
+    grid, so a naive mean counts a 0.083deg cell near the pole as heavily as
+    one at the equator, which is roughly eleven times its true area, and
+    biases the global mean cold by more than a degree.
+    """
+    cache = _require_cache()
+    valid = np.isfinite(cache.grid)
+    if not valid.any():
+        raise CopernicusSstError("Cached SST grid holds no valid cells")
+
+    weights = np.broadcast_to(
+        np.cos(np.radians(cache.latitudes))[:, None], cache.grid.shape
+    )
+    values = cache.grid[valid]
+    mean = float(np.average(values, weights=weights[valid]))
+
+    return {
+        "mean_c": round(mean, 3),
+        "min_c": round(float(values.min()), 2),
+        "max_c": round(float(values.max()), 2),
+        "valid_cells": int(valid.sum()),
+        "timestamp": cache.timestamp.isoformat(),
+        "source": SOURCE_LABEL,
+        "depth_m": DEPTH_M,
     }
 
 

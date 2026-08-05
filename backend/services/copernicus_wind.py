@@ -82,7 +82,11 @@ class _WindCache:
     v_min: float
     v_max: float
     field_png: bytes
+    # The timestep the data describes. Distinct from `fetched_at`: this
+    # product routinely publishes a step many hours behind real time, so
+    # judging provider health on it reports a working feed as down.
     timestamp: datetime
+    fetched_at: datetime
 
 
 _cache: _WindCache | None = None
@@ -242,6 +246,7 @@ async def refresh_wind_cache() -> None:
             v_max=v_max,
             field_png=field_png,
             timestamp=timestamp,
+            fetched_at=datetime.now(timezone.utc),
         )
         logger.info(f"Wind cache refreshed: timestep {timestamp.isoformat()}")
 
@@ -252,10 +257,26 @@ def _require_cache() -> _WindCache:
     return _cache
 
 
+def is_refreshing() -> bool:
+    """Whether a refresh is in flight right now.
+
+    Reuses the existing refresh lock rather than tracking a second flag: the
+    lock is held for exactly the duration of a fetch, so it already is the
+    answer. Lets the dashboard tell "still warming up" apart from "failed",
+    which are very different things to show a user.
+    """
+    return _refresh_lock.locked()
+
+
+def is_available() -> bool:
+    return _cache is not None
+
+
 def get_meta() -> dict[str, Any]:
     cache = _require_cache()
     return {
         "timestamp": cache.timestamp.isoformat(),
+        "fetched_at": cache.fetched_at.isoformat(),
         "source": SOURCE_LABEL,
         "unit": UNIT,
         "speed_max_legend": SPEED_MAX_LEGEND,

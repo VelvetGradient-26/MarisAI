@@ -1,10 +1,17 @@
 import type {
   CustomLayerInterface,
+  LayerSpecification,
   RasterSourceSpecification,
   RasterLayerSpecification,
+  SourceSpecification,
 } from 'maplibre-gl';
 
-export type BasemapId = 'satellite' | 'blueMarble' | 'darkMarine';
+export type BasemapId =
+  | 'satellite'
+  | 'blueMarble'
+  | 'darkMarine'
+  | 'abyss'
+  | 'bathymetry';
 
 /**
  * The two shapes the world can be drawn in. Both are MapLibre's own
@@ -13,14 +20,46 @@ export type BasemapId = 'satellite' | 'blueMarble' | 'darkMarine';
  */
 export type ProjectionMode = 'mercator' | 'globe';
 
-export interface BasemapDefinition {
+interface BasemapCommon {
   id: BasemapId;
   name: string;
   attribution: string;
+  /** One-line description shown under the name in the basemap picker. */
+  blurb?: string;
+}
+
+/**
+ * A photographic basemap: one raster source, one raster layer.
+ *
+ * Inherently tiled. Zoom scales the current bitmap until the next zoom
+ * level's tiles arrive, so there is a blur-then-pop no amount of tuning
+ * removes — imagery is pixels, and pixels only exist at discrete zooms.
+ */
+export interface RasterBasemapDefinition extends BasemapCommon {
+  kind: 'raster';
   source: RasterSourceSpecification;
   /** Optional paint/layout overrides beyond the default raster layer. */
   layerOptions?: Pick<RasterLayerSpecification, 'paint' | 'layout' | 'minzoom' | 'maxzoom'>;
 }
+
+/**
+ * A vector basemap: several sources and an ordered list of style layers.
+ *
+ * This is what makes zoom continuous. Vector tiles carry geometry rather
+ * than pictures, so MapLibre re-renders the whole scene on the GPU every
+ * frame at exactly the current scale — no intermediate blur, no pop, and
+ * labels grow and fade smoothly instead of snapping between tile sets.
+ *
+ * `layers` is ordered bottom-to-top and inserted as a block beneath the
+ * data overlays, so the existing z-ordering contract is unchanged.
+ */
+export interface VectorBasemapDefinition extends BasemapCommon {
+  kind: 'vector';
+  sources: Record<string, SourceSpecification>;
+  layers: LayerSpecification[];
+}
+
+export type BasemapDefinition = RasterBasemapDefinition | VectorBasemapDefinition;
 
 /**
  * Rendering bands, bottom to top. Basemap always sits beneath all of these.

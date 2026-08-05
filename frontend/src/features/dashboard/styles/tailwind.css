@@ -1,0 +1,314 @@
+/* Tailwind for the ocean intelligence dashboard.
+ *
+ * Deliberately imported WITHOUT preflight. Tailwind's base reset is global
+ * and would restyle every element on the six hand-CSS pages that predate it
+ * (download.css, contact.css, feedback.css, dashboard.css, landing.css,
+ * account.css) — headings would lose their sizes and buttons their borders.
+ * Pulling in only `theme` and `utilities` gives the dashboard the full
+ * utility set while leaving the rest of the app exactly as it was.
+ *
+ * Consequence to remember: element defaults are NOT normalised here, so this
+ * feature sets its own resets explicitly on the dashboard root below rather
+ * than assuming a reset has run.
+ */
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/* Scan only this feature — the utility classes exist nowhere else. */
+@source '../../../features/dashboard';
+
+@theme {
+  /* --- Ocean palette -----------------------------------------------------
+   * Deep navy through aqua, with warm hues reserved exclusively for alert
+   * states. Nothing outside the alert ramp is allowed to be bright: the
+   * point is that an orange pixel on this page always means something.
+   */
+  --color-abyss-950: #04080f;
+  --color-abyss-900: #07101c;
+  --color-abyss-850: #0a1626;
+  --color-abyss-800: #0d1c30;
+  --color-abyss-700: #12263f;
+  --color-abyss-600: #1a3552;
+  --color-abyss-500: #24466a;
+
+  --color-cyan-glow: #4fd1ff;
+  --color-aqua-400: #38e0d0;
+  --color-teal-500: #14b8a6;
+  --color-teal-600: #0f766e;
+  --color-emerald-400: #34d399;
+
+  /* Alert ramp — the only warm colours in the design. */
+  --color-alert-advisory: #38bdf8;
+  --color-alert-warning: #f59e0b;
+  --color-alert-critical: #ef4444;
+
+  /* Surfaces. Glass panels are a translucent navy over the page gradient
+   * rather than a flat fill, so the map and gradients read through them. */
+  --color-glass: color-mix(in oklab, #0d1c30 78%, transparent);
+  --color-glass-strong: color-mix(in oklab, #0a1626 88%, transparent);
+  --color-hairline: color-mix(in oklab, #4fd1ff 14%, transparent);
+
+  --font-display: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+
+  /* Numerals in KPI cards and tables must not jitter as values tick. */
+  --default-font-feature-settings: 'tnum' 1;
+
+  --radius-panel: 16px;
+
+  --shadow-panel: 0 1px 0 0 color-mix(in oklab, #4fd1ff 8%, transparent) inset,
+    0 18px 48px -24px rgb(0 0 0 / 0.85);
+  --shadow-raised: 0 1px 0 0 color-mix(in oklab, #4fd1ff 12%, transparent) inset,
+    0 28px 64px -28px rgb(0 0 0 / 0.9);
+
+  --animate-shimmer: shimmer 1.8s ease-in-out infinite;
+  --animate-pulse-ring: pulse-ring 2.4s ease-out infinite;
+}
+
+@keyframes shimmer {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 45%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 10px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* --- Feature-scoped resets ------------------------------------------------
+ * Standing in for the preflight this file deliberately omits. Scoped to the
+ * dashboard root so nothing here can leak into the other pages.
+ *
+ * These MUST live in the `base` layer. Every rule here is class+element
+ * (`.oid-root button`), which outranks a Tailwind utility's single class —
+ * unlayered, `.oid-root button { font: inherit }` silently beat every
+ * `text-[11px]` on a button and rendered them all at the browser default.
+ * Inside `base`, layer order decides instead of specificity, and `utilities`
+ * always wins.
+ */
+/* --- Semantic theme tokens -------------------------------------------------
+ * Every component reads these rather than a literal colour, which is what
+ * makes light mode a stylesheet change instead of a rewrite. The dark values
+ * are the defaults; `.oid-root--light` overrides them.
+ *
+ * Follows the per-page theming convention the other pages use (see
+ * download.css, dashboard.css): a `--xx-*` block on the root class plus a
+ * light override, driven by `useThemeStore`. Accent is cyan in dark and teal
+ * in light, matching the rest of the app.
+ *
+ * The alert ramp deliberately does NOT invert — orange still means warning
+ * and red still means critical in both themes. Only their tints are darkened
+ * for light mode so they stay legible on white.
+ */
+@layer base {
+  .oid-root {
+    --oid-accent: #4fd1ff;
+    --oid-accent-soft: #38e0d0;
+    --oid-accent-contrast: #04080f;
+    --oid-accent-wash: color-mix(in oklab, #4fd1ff 16%, transparent);
+    --oid-accent-wash-strong: color-mix(in oklab, #4fd1ff 26%, transparent);
+
+    --oid-panel: color-mix(in oklab, #0d1c30 78%, transparent);
+    --oid-panel-strong: color-mix(in oklab, #0a1626 88%, transparent);
+    --oid-elevated: #0a1626;
+    --oid-hover: #12263f;
+    --oid-border: color-mix(in oklab, #4fd1ff 14%, transparent);
+    --oid-border-hover: color-mix(in oklab, #4fd1ff 28%, transparent);
+    --oid-track: #12263f;
+    --oid-grid: #1a3552;
+
+    --oid-text: #e2f1ff;
+    --oid-text-strong: #f8fbff;
+    --oid-text-muted: #94a3b8;
+    --oid-text-faint: #64748b;
+    --oid-text-ghost: #475569;
+
+    --oid-shadow: 0 1px 0 0 color-mix(in oklab, #4fd1ff 8%, transparent) inset,
+      0 18px 48px -24px rgb(0 0 0 / 0.85);
+    --oid-shadow-raised: 0 1px 0 0 color-mix(in oklab, #4fd1ff 12%, transparent) inset,
+      0 28px 64px -28px rgb(0 0 0 / 0.9);
+
+    /* The page wash behind the glass panels. */
+    --oid-page: radial-gradient(1200px 600px at 15% -10%, #12263f 0%, transparent 60%),
+      radial-gradient(900px 500px at 85% 0%, #0f3b4d 0%, transparent 55%),
+      linear-gradient(180deg, #07101c 0%, #04080f 100%);
+    --oid-canvas: #04080f;
+  }
+
+  .oid-root--light {
+    --oid-accent: #0f766e;
+    --oid-accent-soft: #14b8a6;
+    --oid-accent-contrast: #ffffff;
+    --oid-accent-wash: color-mix(in oklab, #0f766e 12%, transparent);
+    --oid-accent-wash-strong: color-mix(in oklab, #0f766e 20%, transparent);
+
+    --oid-panel: color-mix(in oklab, #ffffff 86%, transparent);
+    --oid-panel-strong: color-mix(in oklab, #ffffff 94%, transparent);
+    --oid-elevated: #f6fafc;
+    --oid-hover: #eef4f8;
+    --oid-border: color-mix(in oklab, #0f766e 18%, transparent);
+    --oid-border-hover: color-mix(in oklab, #0f766e 34%, transparent);
+    --oid-track: #dce7ee;
+    --oid-grid: #cfdde6;
+
+    --oid-text: #0f2231;
+    --oid-text-strong: #061420;
+    --oid-text-muted: #47616f;
+    --oid-text-faint: #64798a;
+    --oid-text-ghost: #90a2ae;
+
+    --oid-shadow: 0 1px 0 0 rgb(255 255 255 / 0.9) inset,
+      0 14px 36px -26px rgb(15 34 49 / 0.35);
+    --oid-shadow-raised: 0 1px 0 0 rgb(255 255 255 / 0.95) inset,
+      0 22px 48px -28px rgb(15 34 49 / 0.42);
+
+    --oid-page: radial-gradient(1100px 560px at 12% -12%, #dbeef5 0%, transparent 62%),
+      radial-gradient(900px 480px at 88% -4%, #d7f0ea 0%, transparent 58%),
+      linear-gradient(180deg, #f2f7fa 0%, #e8eff4 100%);
+    --oid-canvas: #eef4f8;
+
+    /* Alert hues darkened so they keep contrast against white panels. */
+    --color-alert-warning: #b45309;
+    --color-alert-critical: #b91c1c;
+    --color-alert-advisory: #0369a1;
+    --color-emerald-400: #047857;
+  }
+}
+
+@layer base {
+  /* The app's global reset sets `html, body, #root { height: 100% }`, which
+   * suits the full-bleed map page but leaves the document canvas exactly one
+   * viewport tall. This page is several viewports tall, so everything the
+   * canvas paints rather than `.oid-root` — the scrollbar gutter, and the
+   * overscroll area — came out white behind a dark dashboard.
+   *
+   * `:has()` scopes both fixes to the dashboard being mounted, so the other
+   * six pages keep the light canvas they were designed against.
+   * `color-scheme` is what makes the scrollbar itself dark; the background
+   * colour covers the overscroll.
+   */
+  :root:has(.oid-root) {
+    color-scheme: dark;
+    background-color: #04080f;
+  }
+
+  /* Light mode has to flip the canvas too, or the scrollbar and overscroll
+     stay dark against a light page. */
+  :root:has(.oid-root--light) {
+    color-scheme: light;
+    background-color: #eef4f8;
+  }
+
+  .oid-root {
+    color: var(--oid-text);
+    font-family: var(--font-display);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .oid-root *,
+  .oid-root *::before,
+  .oid-root *::after {
+    box-sizing: border-box;
+  }
+
+  .oid-root h1,
+  .oid-root h2,
+  .oid-root h3,
+  .oid-root h4,
+  .oid-root p,
+  .oid-root figure {
+    margin: 0;
+  }
+
+  .oid-root ul,
+  .oid-root ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .oid-root button {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  .oid-root input {
+    font: inherit;
+    color: inherit;
+  }
+
+  .oid-root table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  /* Visually hidden but available to screen readers — used for the
+     coordinate inputs' labels. */
+  .oid-root .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+}
+
+/* Respect the OS setting rather than animating regardless — the dashboard
+ * animates a lot and this page is meant to be readable, not a demo. */
+@media (prefers-reduced-motion: reduce) {
+  .oid-root *,
+  .oid-root *::before,
+  .oid-root *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Keyboard focus must stay visible everywhere on this page. */
+.oid-root :focus-visible {
+  outline: 2px solid var(--oid-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Scrollbars inside glass panels. */
+.oid-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--oid-border-hover) transparent;
+}
+
+.oid-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.oid-scroll::-webkit-scrollbar-thumb {
+  background: var(--oid-border-hover);
+  border-radius: 999px;
+}
+
+.oid-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}

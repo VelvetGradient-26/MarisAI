@@ -1,0 +1,39 @@
+/* Embeds the existing map feature inside a dashboard panel.
+ *
+ * The map was built as a full-page view: `.map-root` is `height: 100vh` and
+ * its overlay panels offset themselves by the fixed navbar's height. Both
+ * assumptions are wrong inside a panel, so they are overridden here rather
+ * than by touching map.css — the /map route still needs the original values.
+ *
+ * Everything the map overlays (controls, legends, coordinate readout) is
+ * already `position: absolute` against `.map-root`, so constraining that one
+ * element is enough to contain the whole stack.
+ */
+
+.oid-map-embed .map-root {
+  height: 100%;
+  min-height: 0;
+}
+
+/* Inside the panel there is no navbar to clear, so the offset collapses to a
+   plain inset. `--navbar-h` is scoped to this subtree only. */
+.oid-map-embed {
+  --navbar-h: 0px;
+}
+
+/* The map's own panels are sized for a full viewport; in a ~520px panel they
+   need to stay within it. */
+.oid-map-embed .map-controls {
+  max-height: calc(100% - 32px);
+}
+
+.oid-map-embed .map-controls__body {
+  max-height: 320px;
+}
+
+/* MapLibre's attribution and controls sit tight against the panel's rounded
+   corner otherwise. */
+.oid-map-embed .maplibregl-ctrl-bottom-left,
+.oid-map-embed .maplibregl-ctrl-bottom-right {
+  margin-bottom: 2px;
+}

@@ -1,4 +1,4 @@
-import type { BasemapDefinition } from '../types';
+import type { RasterBasemapDefinition } from '../types';
 
 /**
  * Carto Dark Matter, no-labels variant — free, no API key, same "legacy
@@ -15,7 +15,8 @@ import type { BasemapDefinition } from '../types';
  * to the existing `reference-labels` Esri overlay (layerRegistry.ts),
  * already registered and on by default.
  */
-export const darkMarine: BasemapDefinition = {
+export const darkMarine: RasterBasemapDefinition = {
+  kind: 'raster',
   id: 'darkMarine',
   name: 'Dark Marine',
   attribution: '© OpenStreetMap contributors, © CARTO',

@@ -57,6 +57,7 @@ export function MapControls() {
                 key={def.id}
                 className={def.id === basemap ? 'active' : ''}
                 onClick={() => basemapManager.switchTo(def.id as BasemapId)}
+                title={def.blurb ?? def.name}
               >
                 {def.name}
               </button>

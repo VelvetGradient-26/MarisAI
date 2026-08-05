@@ -12,7 +12,7 @@ import type { BasemapId } from '../types';
  * other map component reads from context/Zustand, it never calls this hook
  * itself, or you'd end up with multiple MapLibre instances.
  */
-export function useMapManager(defaultBasemap: BasemapId = 'satellite') {
+export function useMapManager(defaultBasemap: BasemapId = 'abyss') {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const managerRef = useRef<MapManager | null>(null);
   const [ready, setReady] = useState(false);

@@ -1,5 +1,10 @@
 import type { ComponentType } from 'react';
 
+import { DashboardAlerts } from './DashboardAlerts';
+import { DashboardCharts } from './DashboardCharts';
+import { DashboardMetrics } from './DashboardMetrics';
+import { DashboardOverview } from './DashboardOverview';
+import { DashboardSources } from './DashboardSources';
 import { Data } from './Data';
 import { Features } from './Features';
 import { Fusion } from './Fusion';
@@ -34,6 +39,41 @@ export interface Chapter {
  * that is going to keep growing, not a one-off page.
  */
 export const CHAPTERS: Chapter[] = [
+  {
+    id: 'dash-overview',
+    label: 'Overview',
+    title: 'What the dashboard shows',
+    group: 'Ocean intelligence dashboard',
+    Component: DashboardOverview,
+  },
+  {
+    id: 'dash-metrics',
+    label: 'The six indicators',
+    title: 'The six indicators, explained',
+    group: 'Ocean intelligence dashboard',
+    Component: DashboardMetrics,
+  },
+  {
+    id: 'dash-sources',
+    label: 'Sources & satellites',
+    title: 'Sources, satellites & instruments',
+    group: 'Ocean intelligence dashboard',
+    Component: DashboardSources,
+  },
+  {
+    id: 'dash-charts',
+    label: 'Charts & coverage',
+    title: 'Charts & historical coverage',
+    group: 'Ocean intelligence dashboard',
+    Component: DashboardCharts,
+  },
+  {
+    id: 'dash-alerts',
+    label: 'Alerts & thresholds',
+    title: 'Alerts & thresholds',
+    group: 'Ocean intelligence dashboard',
+    Component: DashboardAlerts,
+  },
   {
     id: 'overview',
     label: 'Overview',
