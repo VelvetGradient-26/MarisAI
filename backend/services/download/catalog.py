@@ -106,7 +106,7 @@ _OPENMETEO_LICENCE = (
     "reanalysis and forecast data."
 )
 _GEBCO_LICENCE = (
-    "GEBCO Compilation Group, GEBCO_2020 Grid, served via NOAA CoastWatch ERDDAP. "
+    "GEBCO Compilation Group, GEBCO_2021 Grid, served via Ifremer ERDDAP. "
     "GEBCO data are placed in the public domain (https://www.gebco.net/data-products/)."
 )
 
@@ -247,7 +247,7 @@ PROVIDERS: dict[str, ProviderSpec] = {
         ),
         ProviderSpec(
             key=PROVIDER_GEBCO,
-            source_label="GEBCO_2020 Grid via NOAA CoastWatch ERDDAP",
+            source_label="GEBCO_2021 Grid via Ifremer ERDDAP",
             licence=_GEBCO_LICENCE,
             grid_spacing_deg=gebco.GRID_SPACING_DEG,
             # Time-invariant: one value per cell for any date range.
