@@ -34,6 +34,10 @@
   --chat-flag-text: #fbbf24;
   --chat-code-bg: rgba(0, 0, 0, 0.32);
   --chat-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  --chat-sidebar-bg: rgba(255, 255, 255, 0.02);
+  --chat-active-bg: rgba(79, 209, 255, 0.14);
+  --chat-hover-bg: rgba(255, 255, 255, 0.05);
+  --chat-focus-ring: rgba(79, 209, 255, 0.18);
 
   min-height: 100vh;
   padding: calc(var(--navbar-h, 64px) + 24px) 20px 28px;
@@ -63,17 +67,143 @@
   --chat-flag-text: #b45309;
   --chat-code-bg: rgba(15, 30, 30, 0.05);
   --chat-shadow: 0 14px 32px rgba(15, 30, 30, 0.08);
+  --chat-sidebar-bg: #fbfdfd;
+  --chat-active-bg: rgba(15, 118, 110, 0.12);
+  --chat-hover-bg: rgba(15, 30, 30, 0.04);
+  --chat-focus-ring: rgba(15, 118, 110, 0.15);
 }
 
 .chat-shell {
-  max-width: 860px;
+  max-width: 1500px;
   margin: 0 auto;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 20px;
   /* The log scrolls, the composer stays put. Sizing the shell to the viewport
    * minus the navbar is what makes the inner overflow work — without a bounded
-   * height the log grows and the whole page scrolls instead. */
+   * height the log grows and the whole page scrolls instead. `minmax(0, 1fr)`
+   * rather than `1fr` because a grid item's default `min-width: auto` refuses
+   * to shrink below its content, which let a wide tool result push the whole
+   * column past the viewport. */
   height: calc(100vh - var(--navbar-h, 64px) - 52px);
+}
+
+.chat-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* same reason: let the log scroll rather than the page */
+}
+
+/* --- Sidebar ------------------------------------------------------------ */
+
+.chat-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 16px;
+  border: 1px solid var(--chat-border);
+  border-radius: 16px;
+  background: var(--chat-sidebar-bg);
+}
+
+.chat-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 14px;
+  border: 1px solid var(--chat-user-border);
+  border-radius: 10px;
+  background: var(--chat-user-bg);
+  color: var(--chat-primary);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.chat-new:hover {
+  background: var(--chat-active-bg);
+}
+
+.chat-sidebar__label {
+  margin: 4px 0 0;
+  color: var(--chat-faint);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.chat-sidebar__empty {
+  margin: 0;
+  color: var(--chat-faint);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.chat-sessions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  scrollbar-color: var(--chat-border) transparent;
+}
+
+.chat-session {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--chat-muted);
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chat-session:hover {
+  background: var(--chat-hover-bg);
+  color: var(--chat-text);
+}
+
+.chat-session.is-active {
+  background: var(--chat-active-bg);
+  color: var(--chat-primary);
+}
+
+.chat-session__title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-session__delete {
+  display: inline-flex;
+  flex-shrink: 0;
+  opacity: 0;
+  color: var(--chat-faint);
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.chat-session:hover .chat-session__delete,
+.chat-session__delete:focus-visible {
+  opacity: 1;
+}
+
+.chat-session__delete:hover {
+  color: var(--chat-error);
 }
 
 .chat-header h1 {
@@ -339,29 +469,81 @@
   margin-top: 14px;
 }
 
-.chat-input {
+/* The wrapper carries the border and focus ring so the textarea itself can be
+ * borderless — a border on an auto-growing textarea visibly jumps by a pixel
+ * each time the height is recomputed. */
+.chat-input-wrap {
   flex: 1;
-  min-height: 46px;
-  max-height: 160px;
-  padding: 13px 15px;
+  min-width: 0;
   border: 1px solid var(--chat-border);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--chat-input-bg);
-  color: var(--chat-text);
-  font: inherit;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  resize: vertical;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
-.chat-input::placeholder {
-  color: var(--chat-faint);
+.chat-input-wrap:focus-within {
+  border-color: var(--chat-primary);
+  box-shadow: 0 0 0 4px var(--chat-focus-ring);
+}
+
+.chat-input {
+  display: block;
+  width: 100%;
+  /* Roughly three lines before it needs to grow, rather than one. */
+  min-height: 76px;
+  max-height: 260px;
+  padding: 15px 17px;
+  border: none;
+  border-radius: 14px;
+  background: none;
+  color: var(--chat-text);
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  /* Height is driven from JS to match content; a manual resize handle would
+   * fight that on the next keystroke. */
+  resize: none;
+  overflow-y: auto;
+
+  /* The caret. `caret-color` is an animatable colour, and animating it
+   * overrides the browser's own hard on/off blink — with ease-in-out that
+   * reads as a fade rather than a flicker. Firefox does not animate
+   * caret-color; there the caret falls back to a normal blink in the accent
+   * colour, which is why the colour is set outside the animation too. */
+  caret-color: var(--chat-primary);
+  transition: caret-color 0.2s ease;
 }
 
 .chat-input:focus {
   outline: none;
-  border-color: var(--chat-primary);
+  animation: chat-caret 1.15s ease-in-out infinite;
+}
+
+@keyframes chat-caret {
+  0%,
+  100% {
+    caret-color: var(--chat-primary);
+  }
+  50% {
+    caret-color: transparent;
+  }
+}
+
+/* While actively typing, a blinking caret is a distraction — hold it steady
+ * and let it resume once the field is merely focused. */
+.chat-input-wrap.is-filled .chat-input:focus {
+  animation-duration: 1.6s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-input:focus {
+    animation: none;
+    caret-color: var(--chat-primary);
+  }
+}
+
+.chat-input::placeholder {
+  color: var(--chat-faint);
 }
 
 .chat-input:disabled {
@@ -372,8 +554,8 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  height: 46px;
-  padding: 0 18px;
+  height: 76px;
+  padding: 0 22px;
   border: none;
   border-radius: 12px;
   background: var(--chat-primary);
@@ -401,6 +583,18 @@
   text-align: center;
 }
 
+/* The sidebar is the first thing to go on a narrow screen — the conversation
+ * is the point, and session switching is reachable again on a wider one. */
+@media (max-width: 900px) {
+  .chat-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chat-sidebar {
+    display: none;
+  }
+}
+
 @media (max-width: 640px) {
   .chat-page {
     padding-left: 12px;
@@ -409,6 +603,14 @@
 
   .chat-bubble {
     max-width: 92%;
+  }
+
+  .chat-send {
+    height: 64px;
+  }
+
+  .chat-input {
+    min-height: 64px;
   }
 
   .chat-send span {

@@ -1,14 +1,24 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, CornerDownLeft, TriangleAlert } from 'lucide-react';
-import { sendChat } from '../features/map/api/chat';
-import type { ChatObservation, ChatReply, ChatTurn } from '../features/map/api/chat';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, CornerDownLeft, MessageSquarePlus, Trash2, TriangleAlert } from 'lucide-react';
+import {
+  deleteSession,
+  listSessions,
+  loadSession,
+  sendChat,
+} from '../features/map/api/chat';
+import type {
+  ChatObservation,
+  ChatReply,
+  ChatSessionSummary,
+  ChatTurn,
+} from '../features/map/api/chat';
 import { useThemeStore } from '../store/themeStore';
 import './chat.css';
 
 interface Message extends ChatTurn {
   id: string;
   /** Present on assistant turns only — the provenance behind the text. */
-  reply?: ChatReply;
+  reply?: Pick<ChatReply, 'grounded' | 'unsupported_numbers' | 'observations' | 'sources'>;
 }
 
 const SUGGESTIONS = [
@@ -25,6 +35,10 @@ export function ChatPage() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
+  const [persistence, setPersistence] = useState(true);
+
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -32,12 +46,34 @@ export function ChatPage() {
     document.title = 'Maris AI | Assistant';
   }, []);
 
-  // Pin to the newest message. Depends on `pending` too so the thinking
-  // indicator is scrolled into view, not just finished answers.
+  const refreshSessions = useCallback(async () => {
+    try {
+      const payload = await listSessions();
+      setSessions(payload.sessions);
+      setPersistence(payload.persistence);
+    } catch {
+      // A failed listing must not break the chat itself — the sidebar simply
+      // stays as it was.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshSessions();
+  }, [refreshSessions]);
+
   useEffect(() => {
     const node = listRef.current;
     if (node) node.scrollTop = node.scrollHeight;
   }, [messages, pending]);
+
+  // Grow the box with its content instead of scrolling a two-line window.
+  // Reset to `auto` first or scrollHeight only ever ratchets upward.
+  useEffect(() => {
+    const node = inputRef.current;
+    if (!node) return;
+    node.style.height = 'auto';
+    node.style.height = `${Math.min(node.scrollHeight, 260)}px`;
+  }, [draft]);
 
   const history = useMemo(
     () => messages.map(({ role, content }) => ({ role, content })),
@@ -51,16 +87,21 @@ export function ChatPage() {
     setError(null);
     setDraft('');
     setPending(true);
-
-    const asked: Message = { id: `u${Date.now()}`, role: 'user', content: question };
-    setMessages((prior) => [...prior, asked]);
+    setMessages((prior) => [
+      ...prior,
+      { id: `u${Date.now()}`, role: 'user', content: question },
+    ]);
 
     try {
-      const reply = await sendChat(question, history);
+      const reply = await sendChat(question, history, sessionId);
       setMessages((prior) => [
         ...prior,
         { id: `a${Date.now()}`, role: 'assistant', content: reply.answer, reply },
       ]);
+      if (reply.session_id && reply.session_id !== sessionId) {
+        setSessionId(reply.session_id);
+      }
+      void refreshSessions();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'The assistant is unavailable.');
     } finally {
@@ -69,102 +110,198 @@ export function ChatPage() {
     }
   }
 
+  function startNew() {
+    setSessionId(null);
+    setMessages([]);
+    setError(null);
+    inputRef.current?.focus();
+  }
+
+  async function open(id: string) {
+    if (id === sessionId) return;
+    setError(null);
+    try {
+      const stored = await loadSession(id);
+      setSessionId(id);
+      setMessages(
+        stored.map((message, index) => ({
+          id: `s${id}-${index}`,
+          role: message.role,
+          content: message.content,
+          reply:
+            message.role === 'assistant'
+              ? {
+                  grounded: message.grounded,
+                  unsupported_numbers: message.unsupported_numbers,
+                  observations: message.observations,
+                  sources: message.sources,
+                }
+              : undefined,
+        }))
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not open that chat.');
+    }
+  }
+
+  async function remove(id: string, event: React.MouseEvent) {
+    event.stopPropagation();
+    try {
+      await deleteSession(id);
+      if (id === sessionId) startNew();
+      void refreshSessions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete that chat.');
+    }
+  }
+
   return (
     <div className={`chat-page${isDark ? '' : ' chat-page--light'}`}>
       <div className="chat-shell">
-        <header className="chat-header">
-          <h1>Ocean Assistant</h1>
-          <p>
-            Answers come from live MarisAI data — forecasts, observations, bathymetry and
-            model output. Every figure is traced back to the call that produced it.
-          </p>
-        </header>
-
-        <div className="chat-log" ref={listRef} role="log" aria-live="polite">
-          {messages.length === 0 && !pending ? (
-            <div className="chat-empty">
-              <p className="chat-empty__lead">Ask about conditions anywhere in the ocean.</p>
-              <div className="chat-suggestions">
-                {SUGGESTIONS.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    className="chat-suggestion"
-                    onClick={() => submit(suggestion)}
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {messages.map((message) =>
-            message.role === 'user' ? (
-              <div key={message.id} className="chat-turn chat-turn--user">
-                <div className="chat-bubble chat-bubble--user">{message.content}</div>
-              </div>
-            ) : (
-              <AssistantTurn key={message.id} message={message} />
-            )
-          )}
-
-          {pending ? (
-            <div className="chat-turn chat-turn--assistant">
-              <div className="chat-bubble chat-bubble--assistant chat-thinking">
-                <span className="chat-dot" />
-                <span className="chat-dot" />
-                <span className="chat-dot" />
-                <span className="chat-thinking__label">Querying ocean data…</span>
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        {error ? (
-          <p className="chat-error" role="alert">
-            <TriangleAlert size={15} aria-hidden />
-            {error}
-          </p>
-        ) : null}
-
-        <form
-          className="chat-composer"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submit(draft);
-          }}
-        >
-          <textarea
-            ref={inputRef}
-            className="chat-input"
-            value={draft}
-            rows={1}
-            placeholder="Ask about ocean conditions, forecasts or alerts…"
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              // Enter sends, Shift+Enter breaks the line — the convention for
-              // a chat box, where multi-line input is the exception.
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                void submit(draft);
-              }
-            }}
-            disabled={pending}
-          />
-          <button
-            type="submit"
-            className="chat-send"
-            disabled={pending || draft.trim().length === 0}
-          >
-            <CornerDownLeft size={16} aria-hidden />
-            <span>Send</span>
+        <aside className="chat-sidebar">
+          <button type="button" className="chat-new" onClick={startNew}>
+            <MessageSquarePlus size={16} aria-hidden />
+            <span>New chat</span>
           </button>
-        </form>
-        <p className="chat-disclaimer">
-          Alerts shown here are threshold rules computed over real fields, not issued
-          marine warnings.
-        </p>
+
+          <p className="chat-sidebar__label">
+            {persistence ? 'Previous chats' : 'History unavailable'}
+          </p>
+
+          {!persistence ? (
+            <p className="chat-sidebar__empty">
+              No database is configured, so chats are not saved between visits.
+            </p>
+          ) : sessions.length === 0 ? (
+            <p className="chat-sidebar__empty">Your conversations will appear here.</p>
+          ) : (
+            <ul className="chat-sessions">
+              {sessions.map((entry) => (
+                <li key={entry.id}>
+                  <button
+                    type="button"
+                    className={`chat-session${entry.id === sessionId ? ' is-active' : ''}`}
+                    onClick={() => void open(entry.id)}
+                  >
+                    <span className="chat-session__title">{entry.title}</span>
+                    <span
+                      className="chat-session__delete"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Delete chat: ${entry.title}`}
+                      onClick={(event) => void remove(entry.id, event)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          void deleteSession(entry.id).then(refreshSessions);
+                        }
+                      }}
+                    >
+                      <Trash2 size={13} aria-hidden />
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </aside>
+
+        <main className="chat-main">
+          <header className="chat-header">
+            <h1>Ocean Assistant</h1>
+            <p>
+              Answers come from live MarisAI data — forecasts, observations, bathymetry and
+              model output. Every figure is traced back to the call that produced it.
+            </p>
+          </header>
+
+          <div className="chat-log" ref={listRef} role="log" aria-live="polite">
+            {messages.length === 0 && !pending ? (
+              <div className="chat-empty">
+                <p className="chat-empty__lead">Ask about conditions anywhere in the ocean.</p>
+                <div className="chat-suggestions">
+                  {SUGGESTIONS.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      className="chat-suggestion"
+                      onClick={() => void submit(suggestion)}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {messages.map((message) =>
+              message.role === 'user' ? (
+                <div key={message.id} className="chat-turn chat-turn--user">
+                  <div className="chat-bubble chat-bubble--user">{message.content}</div>
+                </div>
+              ) : (
+                <AssistantTurn key={message.id} message={message} />
+              )
+            )}
+
+            {pending ? (
+              <div className="chat-turn chat-turn--assistant">
+                <div className="chat-bubble chat-bubble--assistant chat-thinking">
+                  <span className="chat-dot" />
+                  <span className="chat-dot" />
+                  <span className="chat-dot" />
+                  <span className="chat-thinking__label">Querying ocean data…</span>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {error ? (
+            <p className="chat-error" role="alert">
+              <TriangleAlert size={15} aria-hidden />
+              {error}
+            </p>
+          ) : null}
+
+          <form
+            className="chat-composer"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit(draft);
+            }}
+          >
+            <div className={`chat-input-wrap${draft.length > 0 ? ' is-filled' : ''}`}>
+              <textarea
+                ref={inputRef}
+                className="chat-input"
+                value={draft}
+                rows={1}
+                placeholder="Ask about ocean conditions, forecasts or alerts…"
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    void submit(draft);
+                  }
+                }}
+                disabled={pending}
+              />
+            </div>
+            <button
+              type="submit"
+              className="chat-send"
+              disabled={pending || draft.trim().length === 0}
+            >
+              <CornerDownLeft size={16} aria-hidden />
+              <span>Send</span>
+            </button>
+          </form>
+          <p className="chat-disclaimer">
+            Alerts shown here are threshold rules computed over real fields, not issued
+            marine warnings.
+          </p>
+        </main>
       </div>
     </div>
   );
