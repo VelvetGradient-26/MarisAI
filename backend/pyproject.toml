@@ -67,6 +67,17 @@ dependencies = [
     "pyyaml>=6.0",
     # On-disk history cache format (see forecasting/history.py).
     "pyarrow>=15.0.0",
+    # Conversational agent (services/chat/). `langchain-core` alone carries the
+    # tool/message abstractions and the `bind_tools` contract; the heavyweight
+    # `langchain` meta-package is deliberately not pulled in, since the agent
+    # loop here is explicit (see services/chat/agent.py for why).
+    #
+    # Provider adapters are imported lazily so an install only needs the one
+    # matching LLM_PROVIDER. `langchain-openai` covers Ollama too, via its
+    # OpenAI-compatible endpoint, which is why there is no separate adapter.
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langchain-google-genai>=2.0.0",
     # PDF report export (download service)
     "matplotlib>=3.8.0",
     "reportlab>=4.0.0",

@@ -15,6 +15,7 @@ from routers.marine import router as marine_router
 from routers.metrics import router as metrics_router
 from routers.predictions import router as predictions_router
 from routers.tiles import router as tiles_router
+from routers.chat import router as chat_router
 from routers.forecast_tiles import router as forecast_tiles_router
 from routers.vessels import router as vessels_router
 from services import ais, crw, forecast_tiles, gibs, ndbc, ocean_state
@@ -106,6 +107,7 @@ app.include_router(download_router)
 app.include_router(feedback_router)
 app.include_router(predictions_router)
 app.include_router(forecast_tiles_router)
+app.include_router(chat_router)
 app.include_router(vessels_router)
 app.include_router(dashboard_router)
 # Serves precomputed models from `models/forecasting/`. Nothing is trained at
