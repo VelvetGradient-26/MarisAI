@@ -160,6 +160,37 @@ async def test_numbers_from_earlier_turns_are_not_flagged(patched):
 
 
 @pytest.mark.asyncio
+async def test_numbers_from_tool_descriptions_are_not_flagged(patched):
+    """Describing its own capabilities is not reporting a measurement.
+
+    Found live: "ranges of 24 h, 7 d, 30 d" flagged 30, which appears verbatim
+    in a tool's own argument description. Same lesson as `story._verify` — the
+    permitted set has to come from what was actually put in front of the model.
+    """
+    patched(ScriptedModel([AIMessage(content="I can serve ranges like 7 d and 30 d.")]))
+
+    result = await agent.answer("what ranges do you support?")
+
+    assert result["grounded"] is True, result["unsupported_numbers"]
+
+
+@pytest.mark.asyncio
+async def test_schema_bounds_do_not_launder_a_fabricated_reading(patched):
+    """The allowance stops at prose — validation bounds must stay out.
+
+    Latitude is bounded at 90 and horizons at 365. Admitting the raw JSON
+    schema would let "the water is 90 °C" pass as though a provider had
+    reported it, which is the exact failure this check exists to catch.
+    """
+    patched(ScriptedModel([AIMessage(content="The water is 90 degrees and rising.")]))
+
+    result = await agent.answer("how warm is it?")
+
+    assert result["grounded"] is False
+    assert "90" in result["unsupported_numbers"]
+
+
+@pytest.mark.asyncio
 async def test_the_loop_is_bounded(patched, depth):
     """A model that keeps requesting tools must not run forever.
 

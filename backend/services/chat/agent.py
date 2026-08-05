@@ -165,11 +165,22 @@ def _ungrounded_numbers(text: str, ledger: Ledger, said: str = "") -> list[str]:
     where a maintained list kept rejecting faithful sentences for quoting
     numbers that appeared in the block's own labels.
 
-    `said` carries the conversation's own text — the current question and the
-    prior turns — and is permitted too. Repeating a number back to the person
-    who supplied it is not a fabrication, and flagging it was actively harmful:
-    asking about "10N 72E" made the answer "You just gave me 10°N, 72°E" light
-    up as unverifiable. A checker that cries wolf on the user's own
+    `said` carries everything the model was legitimately shown — the current
+    question, the prior turns, the system prompt and the tool descriptions —
+    and all of it is permitted. Two false positives forced this, both found by
+    running real questions rather than by reading the code:
+
+    - Asking about "10N 72E" made "You just gave me 10°N, 72°E" light up as
+      unverifiable. Repeating a number back to the person who supplied it is
+      not a fabrication.
+    - Describing its own capabilities ("ranges of 24 h, 7 d, 30 d") flagged
+      "30", a figure that appears verbatim in the tool descriptions the model
+      was handed.
+
+    This is the same lesson `story._verify` records: the permitted set has to
+    be derived from what was actually put in front of the model, because a
+    hand-maintained list keeps rejecting faithful sentences for quoting
+    numbers out of its own labels. A checker that cries wolf on the user's own
     coordinates teaches people to ignore the banner that matters.
 
     Matching is done at several roundings because the model is asked to report
@@ -196,6 +207,26 @@ def _ungrounded_numbers(text: str, ledger: Ledger, said: str = "") -> list[str]:
         if not candidates & allowed and match not in unsupported:
             unsupported.append(match)
     return unsupported
+
+
+def _schema_prose(tool: Any) -> str:
+    """The `description` strings from a tool's argument schema, and nothing else.
+
+    Deliberately not the whole JSON schema. That carries the validation bounds
+    — -90, 90, -180, 180, 365 — and admitting those would let a fabricated
+    "the water is 90 °C" pass the grounding check as though a provider had
+    reported it. Descriptions are prose the model reads and may quote back;
+    bounds are machinery it should never be quoting at all.
+    """
+    try:
+        properties = tool.args_schema.model_json_schema().get("properties", {})
+    except Exception:  # noqa: BLE001 - a schema-less tool must not break the check
+        return ""
+    return " ".join(
+        str(field["description"])
+        for field in properties.values()
+        if isinstance(field, dict) and "description" in field
+    )
 
 
 def _history_messages(history: list[dict[str, str]]) -> list[BaseMessage]:
@@ -287,8 +318,19 @@ async def answer(
             "Try narrowing the question to one variable and one location."
         )
 
-    said = "\n".join([question, *(turn.get("content", "") for turn in prior)])
-    unsupported = _ungrounded_numbers(text, ledger, said)
+    # Everything the model was shown, not merely everything it was told by the
+    # user: the tool descriptions carry horizons and ranges it will quote back
+    # when asked what it can do.
+    shown = "\n".join(
+        [
+            question,
+            *(turn.get("content", "") for turn in prior),
+            _SYSTEM_PROMPT,
+            *(tool.description for tool in tools),
+            *(_schema_prose(tool) for tool in tools),
+        ]
+    )
+    unsupported = _ungrounded_numbers(text, ledger, shown)
     if unsupported:
         logger.warning(f"chat answer carried ungrounded numbers: {unsupported}")
 
