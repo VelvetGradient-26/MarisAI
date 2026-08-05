@@ -320,7 +320,7 @@ export function DownloadPage() {
           </select>
         </section>
 
-        <section className="download-section download-section--wide">
+        <section className="download-section">
           <h2>Variables</h2>
           {categoriesError && <p className="download-error">{categoriesError}</p>}
           <div className="download-variable-groups">
@@ -348,7 +348,7 @@ export function DownloadPage() {
           </div>
         </section>
 
-        <section className="download-section download-section--wide">
+        <section className="download-section">
           <button
             type="button"
             className="download-advanced-toggle"

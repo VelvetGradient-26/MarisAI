@@ -31,20 +31,9 @@
   --dl-badge-bg: rgba(15, 30, 30, 0.06);
 }
 
-/* Console layout: the page fills the viewport rather than sitting in a 720px
- * column. The cap is generous rather than absent — past ~1800px a single row
- * of form fields stretches into unreadable line lengths, which is the reason
- * the narrow column existed in the first place. The grid below solves that
- * properly, by adding columns instead of widening one. */
-.download-header,
-.download-form {
-  max-width: 1800px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
 .download-header {
-  margin-bottom: 2rem;
+  max-width: 720px;
+  margin: 0 auto 2rem;
 }
 
 .download-back-link {
@@ -72,23 +61,11 @@
 }
 
 .download-form {
-  display: grid;
-  /* auto-fit + minmax is what makes this responsive without breakpoints: the
-   * browser fits as many 380px columns as the viewport allows and collapses to
-   * one on a phone. `align-items: start` stops a short card from stretching to
-   * match the tallest in its row, which is what made an earlier grid attempt
-   * look like a table of empty boxes. */
-  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
-  align-items: start;
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
   gap: 1.5rem;
-}
-
-/* Variables and Advanced carry far more content than the field cards and are
- * unreadable squeezed into one column. */
-.download-section--wide,
-.download-error,
-.download-submit {
-  grid-column: 1 / -1;
 }
 
 .download-section {
