@@ -56,12 +56,24 @@ class _SstCache:
     # to be judged on `fetched_at` or a working feed reports as down.
     timestamp: datetime
     fetched_at: datetime
-    # The raw grid is kept alongside the interpolator so global statistics
-    # (see `global_stats`) come from the array already in memory rather than
-    # from a second fetch of the same timestep.
     latitudes: np.ndarray
     longitudes: np.ndarray
-    grid: np.ndarray
+
+    @property
+    def grid(self) -> np.ndarray:
+        """The raw global field, read back out of the interpolator.
+
+        Deliberately *not* a second stored array. `_build_interpolator` already
+        holds a wrapped copy of this grid for the lifetime of the cache, and a
+        global 0.083deg field is ~35MB — keeping an own copy alongside it
+        doubled the resident cost of the cache to serve `global_stats`, which
+        needs the same numbers.
+
+        The trailing column is the antimeridian duplicate the wrap appends, so
+        slicing it off recovers the source grid exactly rather than
+        double-counting one column of the ocean in every statistic.
+        """
+        return self.interpolator.values[:, :-1]
 
 
 _cache: _SstCache | None = None
@@ -108,9 +120,14 @@ def _fetch_latest_grid() -> tuple[np.ndarray, np.ndarray, np.ndarray, datetime]:
     da = past.thetao.isel(time=-1, depth=0).load()
 
     timestamp = datetime.fromisoformat(str(da.time.values)[:19]).replace(tzinfo=timezone.utc)
+    # float32 for the field, float64 for the axes. The field is a temperature
+    # in degrees C carrying ~0.01 of real precision, so float64 stores nothing
+    # the product actually measured and doubles ~35MB of resident cache. The
+    # lat/lon axes stay float64: they are a few thousand values (tens of KB,
+    # not worth halving) and they set the interpolator's coordinate precision.
     lat = da.latitude.values.astype(np.float64)
     lon = da.longitude.values.astype(np.float64)
-    grid = da.values.astype(np.float64)
+    grid = da.values.astype(np.float32)
     return lat, lon, grid, timestamp
 
 
@@ -130,7 +147,6 @@ async def refresh_sst_cache() -> None:
             fetched_at=datetime.now(timezone.utc),
             latitudes=lat,
             longitudes=lon,
-            grid=grid,
         )
         render_tile.cache_clear()
         logger.info(f"SST cache refreshed: timestep {timestamp.isoformat()}")
