@@ -130,6 +130,68 @@ def _wrap_longitude(longitude: float, lon_min: float) -> float:
 _MAX_LOOKBACK_STEPS = 30
 _MIN_VALID_FRACTION = 0.1
 
+# Small open-ocean boxes used to *screen* timesteps before paying for a global
+# load. Two, in different basins, so a partially-written timestep is not
+# discarded because one region happened to be empty. They must be open ocean:
+# this is an ocean-surface wind product, so a box over land is NaN in every
+# timestep and would screen everything out.
+_PROBE_BOXES = (
+    (-5.0, 5.0, -150.0, -140.0),  # equatorial Pacific
+    (30.0, 40.0, -40.0, -30.0),  # North Atlantic
+)
+
+
+def _candidate_times(now: datetime) -> list[Any]:
+    """Newest-first timestamps that plausibly carry data.
+
+    **Why this exists.** The walk-back below used to call `.load()` on a full
+    global grid at every step purely to compute a validity fraction — ~15s of
+    transfer for a field that is 100% NaN and thrown away. Against the 24-hour
+    empty window this product routinely publishes, that was ~2.5 minutes before
+    the first usable timestep and ~10 minutes before giving up, during which
+    the wind layer and every wind-dependent panel read as unavailable.
+
+    **Why the service differs from the one below.** Striding `arco-geo-series`
+    does not help and was measured: a 20x-decimated read of one timestep took
+    16.0s against 14.8s for the full field, because geo-series stores one huge
+    lat/lon chunk per timestep and the whole chunk must be fetched to
+    decompress. `arco-time-series` has the opposite chunking — fine spatially,
+    huge in time — so a small box across many timesteps is one cheap read:
+    measured at 3.8s for 30 timesteps, versus 15s per timestep.
+
+    This is a screen, not the criterion. `_fetch_latest_grid` still verifies
+    the real global validity fraction on the full field before accepting a
+    timestep, so a wrong guess here can only cost an extra load, never admit an
+    empty grid.
+    """
+    import copernicusmarine
+
+    seen: dict[Any, float] = {}
+    for min_lat, max_lat, min_lon, max_lon in _PROBE_BOXES:
+        probe = copernicusmarine.open_dataset(
+            dataset_id=DATASET_ID,
+            variables=["eastward_wind"],
+            minimum_latitude=min_lat,
+            maximum_latitude=max_lat,
+            minimum_longitude=min_lon,
+            maximum_longitude=max_lon,
+            username=settings.COPERNICUS_USERNAME,
+            password=settings.COPERNICUS_PASSWORD,
+            service="arco-time-series",
+        )
+        window = probe.eastward_wind.sel(time=slice(None, now.replace(tzinfo=None))).isel(
+            time=slice(-_MAX_LOOKBACK_STEPS, None)
+        )
+        block = window.load()
+        fractions = np.isfinite(block.values).reshape(block.shape[0], -1).mean(axis=1)
+        for stamp, fraction in zip(block.time.values, fractions, strict=True):
+            # Best score across boxes: valid in *either* basin is a candidate.
+            seen[stamp] = max(seen.get(stamp, 0.0), float(fraction))
+
+    candidates = [stamp for stamp, fraction in seen.items() if fraction > 0.0]
+    candidates.sort(reverse=True)
+    return candidates
+
 
 # retry_if_not_exception_type(CopernicusWindError): a real network/auth
 # failure on open_dataset()/.load() is worth 3 attempts with backoff, but
@@ -161,11 +223,20 @@ def _fetch_latest_grid() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray
     )
     past = ds.sel(time=slice(None, now.replace(tzinfo=None)))
 
-    for i in range(1, _MAX_LOOKBACK_STEPS + 1):
-        u_da = past.eastward_wind.isel(time=-i).load()
+    candidates = _candidate_times(now)
+    if not candidates:
+        raise CopernicusWindError(
+            f"No usable wind timestep found in the last {_MAX_LOOKBACK_STEPS} hours "
+            "— all appear to still be backfilling upstream"
+        )
+
+    for stamp in candidates:
+        u_da = past.eastward_wind.sel(time=stamp).load()
+        # The screen only says "some data somewhere". This is the real
+        # criterion, on the actual field being cached.
         valid_fraction = float(np.isfinite(u_da.values).mean())
         if valid_fraction >= _MIN_VALID_FRACTION:
-            v_da = past.northward_wind.isel(time=-i).load()
+            v_da = past.northward_wind.sel(time=stamp).load()
             timestamp = datetime.fromisoformat(str(u_da.time.values)[:19]).replace(tzinfo=timezone.utc)
             lat = u_da.latitude.values.astype(np.float64)
             lon = u_da.longitude.values.astype(np.float64)
@@ -173,9 +244,8 @@ def _fetch_latest_grid() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray
             v = v_da.values.astype(np.float64)
             return lat, lon, u, v, timestamp
         logger.warning(
-            f"Wind timestep {str(u_da.time.values)[:19]} is only "
-            f"{valid_fraction:.1%} valid (likely still being backfilled upstream) "
-            "— trying an earlier timestep"
+            f"Wind timestep {str(u_da.time.values)[:19]} passed the probe but is "
+            f"only {valid_fraction:.1%} valid globally — trying an earlier timestep"
         )
 
     raise CopernicusWindError(
