@@ -314,14 +314,23 @@ _RETRY_BACKOFF_SECONDS = (2.0, 6.0)
 _FETCH_TIMEOUT_SECONDS = 300.0
 
 
-def is_retryable(exc: BaseException) -> bool:
+def is_retryable(exc: BaseException, attempt: int = 0) -> bool:
     """Whether another attempt could plausibly succeed.
 
     Retrying a *permanent* failure is not merely wasteful, it is the dominant
-    cost: a provider answering 404 for a retired dataset took three attempts
-    and 8s of backoff on **every** request, which turned a warm 6s forecast
-    into 14.5s and made the page look broken. The dataset was not going to
-    appear between attempt one and attempt three.
+    cost: a provider answering 404 took three attempts and 8s of backoff on
+    **every** request, which turned a warm 6s forecast into 14.5s and made the
+    page look broken.
+
+    404 is nonetheless allowed *one* retry, because on ERDDAP it is not
+    reliably permanent. ERDDAP unloads a dataset while reloading it and answers
+    404 "Currently unknown datasetID=..." in the meantime — the same code and
+    the same message a genuinely removed dataset gives, so the two cannot be
+    told apart from the response. Measured on NOAA CoastWatch: `NOAA_DHW` and
+    `GEBCO_2020` each 404'd for ~100s and then returned to 200, and the server
+    had been fully 503 shortly before. One retry recovers a request that lands
+    in a reload window; capping it at one keeps a truly dead dataset to a
+    single 2s backoff instead of the 8s that motivated this rule.
 
     Classification walks the exception's cause chain for an `httpx` status
     rather than matching on message text, because the provider modules wrap
@@ -336,6 +345,8 @@ def is_retryable(exc: BaseException) -> bool:
         seen.add(id(current))
         if isinstance(current, httpx.HTTPStatusError):
             status = current.response.status_code
+            if status == 404:
+                return attempt == 0
             # 408 request timeout, 425 too early and 429 rate limited are the
             # 4xx codes that clear on their own; every other 4xx says the
             # request itself is wrong and will stay wrong.
@@ -386,7 +397,7 @@ async def _fetch_with_retry(
             continue
         except Exception as exc:  # noqa: BLE001 - provider libraries raise widely
             last = exc
-            if not is_retryable(exc):
+            if not is_retryable(exc, attempt):
                 logger.warning(
                     f"provider {key} failed permanently, not retrying: {str(exc)[:160]}"
                 )

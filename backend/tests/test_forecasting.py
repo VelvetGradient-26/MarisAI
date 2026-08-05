@@ -870,18 +870,43 @@ def _wrapped(status: int) -> Exception:
         return exc
 
 
-@pytest.mark.parametrize("status", [400, 403, 404, 410, 422])
+@pytest.mark.parametrize("status", [400, 403, 410, 422])
 def test_permanent_client_errors_are_not_retried(status):
     """The bug this classification exists to prevent.
 
-    A retired upstream dataset answered 404 on every request. Retrying it
-    three times with backoff added ~8s to *every* forecast — turning a warm
-    6s response into 14.5s — for a dataset that was never going to reappear
-    between attempt one and attempt three.
+    An upstream dataset answering 404 on every request was retried three times
+    with backoff, adding ~8s to *every* forecast — turning a warm 6s response
+    into 14.5s — for a dataset that was not going to reappear between attempt
+    one and attempt three.
     """
     from forecasting.history import is_retryable
 
     assert not is_retryable(_wrapped(status))
+
+
+def test_a_404_is_retried_exactly_once():
+    """404 is the one ambiguous code, and the budget is what keeps it cheap.
+
+    ERDDAP answers 404 "Currently unknown datasetID" while *reloading* a
+    dataset, indistinguishably from one that was removed — both NOAA_DHW and
+    GEBCO_2020 were observed 404ing for ~100s before returning to 200. So the
+    first attempt retries, and every later one does not: a reload window
+    recovers, while a genuinely dead dataset costs one 2s backoff rather than
+    the 8s that the rule above exists to prevent.
+    """
+    from forecasting.history import is_retryable
+
+    assert is_retryable(_wrapped(404), 0)
+    assert not is_retryable(_wrapped(404), 1)
+    assert not is_retryable(_wrapped(404), 2)
+
+
+@pytest.mark.parametrize("status", [400, 403, 410, 422])
+def test_the_404_budget_does_not_leak_into_other_client_errors(status):
+    """A 400 stays permanent on attempt zero — only 404 is ambiguous."""
+    from forecasting.history import is_retryable
+
+    assert not is_retryable(_wrapped(status), 0)
 
 
 @pytest.mark.parametrize("status", [408, 425, 429, 500, 502, 503, 504])
