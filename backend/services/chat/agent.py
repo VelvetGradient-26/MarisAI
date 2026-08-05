@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import re
+import uuid
 from typing import Any
 
 from langchain_core.messages import (
@@ -36,6 +37,7 @@ from langchain_core.messages import (
 )
 
 from app.core.config import settings
+from services.chat import store
 from services.chat.tools import Ledger, build_tools
 
 logger = logging.getLogger(__name__)
@@ -47,26 +49,41 @@ logger = logging.getLogger(__name__)
 MAX_ITERATIONS = 6
 
 _SYSTEM_PROMPT = """\
-You are MarisAI's ocean intelligence assistant. You answer questions about \
-ocean and atmospheric conditions using the tools provided.
+You are Maris, the ocean intelligence assistant for MarisAI. You are warm, \
+curious and genuinely enthusiastic about the ocean — you enjoy this. Talk like \
+a knowledgeable friend who happens to have live ocean data at hand, not like a \
+database that learned English.
 
-Rules you must follow:
+How to be good company:
+
+- Be conversational and natural. Contractions are fine. A little personality is \
+welcome, especially when the data is interesting — a marine heatwave or a \
+strange wind field is worth sounding interested about.
+- Remember what the person already told you and build on it. If they gave you a \
+location earlier, do not make them repeat it.
+- If a question is vague, make a sensible assumption, say what you assumed, and \
+answer. Only ask a clarifying question when you genuinely cannot proceed.
+- Offer a natural next step when there is an obvious one, but do not badger.
+- If a question is not about the ocean, answer it briefly and warmly, then \
+steer back to what you are good at.
+
+Where the friendliness stops — these are absolute, and being agreeable never \
+overrides them:
 
 1. Never state a number you did not get from a tool. You have no ocean data of \
-your own. If a tool fails or returns nothing, say the data is unavailable and \
-say why — never estimate, interpolate, or fall back on general knowledge for a \
-measurement.
-2. Call tools rather than guessing. If you do not know a variable's key, call \
+your own. If a tool fails or returns nothing, say so plainly and say why. Never \
+estimate, interpolate, or reach for general knowledge to fill a gap — a warm \
+guess about a real ocean measurement is worse than an honest "I could not get \
+that", because someone may act on it.
+2. Call tools rather than guessing. If you are unsure of a variable's key, call \
 list_available_variables first.
-3. A forecast is not an observation. Say which one you are reporting, and give \
+3. A forecast is not an observation. Say which one you are giving, and include \
 the uncertainty interval when you have one.
-4. Alerts are threshold rules computed over real fields, not issued marine \
+4. Alerts here are threshold rules computed over real fields, not issued marine \
 warnings. Never imply an official warning exists.
-5. Coverage is real and uneven. Habitat models cover the North Indian Ocean and \
-bloom models the Arabian Sea; outside those, say so rather than extrapolating.
-6. Be concise. Two or three sentences unless asked for more. Name the units.
-
-If a question is not about ocean data, answer briefly and steer back."""
+5. Coverage is genuinely uneven. Habitat models cover the North Indian Ocean and \
+bloom models the Arabian Sea. Outside those, say so rather than extrapolating.
+6. Keep it tight — a few sentences unless more is asked for. Always name units."""
 
 
 class ChatError(RuntimeError):
@@ -140,7 +157,7 @@ def _renderings(value: float) -> set[str]:
     }
 
 
-def _ungrounded_numbers(text: str, ledger: Ledger) -> list[str]:
+def _ungrounded_numbers(text: str, ledger: Ledger, said: str = "") -> list[str]:
     """Figures in the answer that appear in no tool result.
 
     The permitted set is derived from the recorded results themselves rather
@@ -148,11 +165,18 @@ def _ungrounded_numbers(text: str, ledger: Ledger) -> list[str]:
     where a maintained list kept rejecting faithful sentences for quoting
     numbers that appeared in the block's own labels.
 
+    `said` carries the conversation's own text — the current question and the
+    prior turns — and is permitted too. Repeating a number back to the person
+    who supplied it is not a fabrication, and flagging it was actively harmful:
+    asking about "10N 72E" made the answer "You just gave me 10°N, 72°E" light
+    up as unverifiable. A checker that cries wolf on the user's own
+    coordinates teaches people to ignore the banner that matters.
+
     Matching is done at several roundings because the model is asked to report
     these values in prose, and "18.7" for 18.7043 is a rendering, not an
     invention.
     """
-    block = ledger.as_text()
+    block = ledger.as_text() + "\n" + said
     allowed: set[str] = set(_IGNORED)
     for match in _NUMBER.findall(block):
         allowed.add(match)
@@ -188,15 +212,33 @@ def _history_messages(history: list[dict[str, str]]) -> list[BaseMessage]:
     return messages
 
 
-async def answer(question: str, history: list[dict[str, str]] | None = None) -> dict[str, Any]:
+async def answer(
+    question: str,
+    history: list[dict[str, str]] | None = None,
+    *,
+    session_id: str | None = None,
+    client_id: str | None = None,
+) -> dict[str, Any]:
     """Run one conversation turn to completion.
 
     Returns the text alongside the tool calls that produced it, so the caller
     can show provenance rather than asking the user to trust the paragraph.
+
+    When persistence is configured, **the stored transcript is the authority**
+    on what was said, not the `history` argument. That is the fix for the chat
+    forgetting itself: the browser's copy is lost on reload, and trusting it
+    also let a client silently rewrite what the model believed it had said.
+    `history` remains the fallback for a deployment with no database.
     """
     question = (question or "").strip()
     if not question:
         raise ChatError("Ask a question about ocean conditions.")
+
+    resolved: uuid.UUID | None = None
+    if client_id and store.enabled():
+        resolved = await store.ensure_session(session_id, client_id, question)
+
+    prior = await store.history(resolved) if resolved else (history or [])
 
     ledger = Ledger()
     tools = build_tools(ledger)
@@ -204,7 +246,7 @@ async def answer(question: str, history: list[dict[str, str]] | None = None) -> 
     by_name = {tool.name: tool for tool in tools}
 
     messages: list[BaseMessage] = [SystemMessage(content=_SYSTEM_PROMPT)]
-    messages.extend(_history_messages(history or []))
+    messages.extend(_history_messages(prior))
     messages.append(HumanMessage(content=question))
 
     truncated = False
@@ -245,15 +287,24 @@ async def answer(question: str, history: list[dict[str, str]] | None = None) -> 
             "Try narrowing the question to one variable and one location."
         )
 
-    unsupported = _ungrounded_numbers(text, ledger)
+    said = "\n".join([question, *(turn.get("content", "") for turn in prior)])
+    unsupported = _ungrounded_numbers(text, ledger, said)
     if unsupported:
         logger.warning(f"chat answer carried ungrounded numbers: {unsupported}")
 
-    return {
+    reply = {
         "answer": text,
         "grounded": not unsupported,
         "unsupported_numbers": unsupported,
         "observations": ledger.observations,
         "sources": ledger.sources(),
         "truncated": truncated,
+        "session_id": str(resolved) if resolved else None,
     }
+
+    # After the answer is assembled, never before: a failed write must cost the
+    # transcript, not the reply the user is waiting on.
+    if resolved:
+        await store.record(resolved, question, reply)
+
+    return reply

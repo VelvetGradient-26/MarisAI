@@ -129,6 +129,37 @@ async def test_an_invented_number_is_reported_not_hidden(patched, depth):
 
 
 @pytest.mark.asyncio
+async def test_the_users_own_numbers_are_not_flagged(patched):
+    """Repeating a number back to the person who supplied it is not a
+    fabrication, and treating it as one is worse than useless.
+
+    Found live: asking about "10N 72E" produced "You just gave me 10°N, 72°E",
+    which lit up as unverifiable because no tool had returned 72. A banner that
+    fires on the user's own coordinates trains people to ignore the one that
+    means something.
+    """
+    patched(ScriptedModel([AIMessage(content="You just gave me 10 N and 72 E.")]))
+
+    result = await agent.answer("My spot is 10N 72E, remember it")
+
+    assert result["grounded"] is True, result["unsupported_numbers"]
+
+
+@pytest.mark.asyncio
+async def test_numbers_from_earlier_turns_are_not_flagged(patched):
+    """The allowance has to cover the whole conversation, not just this turn —
+    a coordinate given three messages ago is still the user's own."""
+    patched(ScriptedModel([AIMessage(content="Back at 10 N, 72 E as you asked.")]))
+
+    result = await agent.answer(
+        "and there?",
+        [{"role": "user", "content": "look at 10N 72E"}],
+    )
+
+    assert result["grounded"] is True, result["unsupported_numbers"]
+
+
+@pytest.mark.asyncio
 async def test_the_loop_is_bounded(patched, depth):
     """A model that keeps requesting tools must not run forever.
 
