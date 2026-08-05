@@ -250,3 +250,10 @@ Artifacts/
 
 # Feedback submissions (real user emails/messages, not for version control)
 backend/feedback_log.jsonl
+
+# Forecasting engine artifacts (backend/forecasting/, backend/models/).
+# Trained models are regenerated with `scripts/train_forecasting.py` and are
+# a few hundred KB each across 32 variables x 4 horizons — reproducible from
+# config, so they are built rather than committed.
+backend/models/forecasting/
+backend/forecasting/.cache/
