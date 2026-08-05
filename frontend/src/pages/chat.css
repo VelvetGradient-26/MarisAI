@@ -1,0 +1,421 @@
+/* Ocean Assistant.
+ *
+ * Same per-page theming contract as download.css/feedback.css: every colour is
+ * a `--chat-*` token defined on the dark root, with `.chat-page--light`
+ * overriding the same names. Nothing below hardcodes a colour, which is what
+ * keeps the two themes from drifting as the page grows — a literal added in
+ * one block is invisible until someone toggles the theme.
+ *
+ * Two tokens intentionally do NOT simply invert:
+ *   --chat-flag-*  the ungrounded-figure warning stays amber-on-warm in both
+ *                  themes, because it means the same thing in both and an
+ *                  inverted warning reads as decoration.
+ *   --chat-code-*  the provenance JSON keeps a raised surface in light mode
+ *                  rather than going white-on-white with the bubble.
+ */
+
+.chat-page {
+  --chat-bg: #0e1116;
+  --chat-panel: rgba(255, 255, 255, 0.03);
+  --chat-border: rgba(255, 255, 255, 0.1);
+  --chat-border-soft: rgba(255, 255, 255, 0.06);
+  --chat-text: #e3e2e2;
+  --chat-muted: #9ba0af;
+  --chat-faint: #6b7280;
+  --chat-primary: #4fd1ff;
+  --chat-primary-on: #001b22;
+  --chat-user-bg: rgba(79, 209, 255, 0.12);
+  --chat-user-border: rgba(79, 209, 255, 0.3);
+  --chat-assistant-bg: rgba(255, 255, 255, 0.04);
+  --chat-input-bg: rgba(255, 255, 255, 0.04);
+  --chat-error: #ff8a8a;
+  --chat-flag-bg: rgba(245, 158, 11, 0.12);
+  --chat-flag-border: rgba(245, 158, 11, 0.35);
+  --chat-flag-text: #fbbf24;
+  --chat-code-bg: rgba(0, 0, 0, 0.32);
+  --chat-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+
+  min-height: 100vh;
+  padding: calc(var(--navbar-h, 64px) + 24px) 20px 28px;
+  background: var(--chat-bg);
+  color: var(--chat-text);
+  font-family: 'Space Grotesk', sans-serif;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+.chat-page--light {
+  --chat-bg: #f4f7f8;
+  --chat-panel: #fff;
+  --chat-border: rgba(15, 30, 30, 0.12);
+  --chat-border-soft: rgba(15, 30, 30, 0.07);
+  --chat-text: #12201f;
+  --chat-muted: #5c6b6c;
+  --chat-faint: #7c8a8b;
+  --chat-primary: #0f766e;
+  --chat-primary-on: #fff;
+  --chat-user-bg: rgba(15, 118, 110, 0.1);
+  --chat-user-border: rgba(15, 118, 110, 0.26);
+  --chat-assistant-bg: #fff;
+  --chat-input-bg: #fff;
+  --chat-error: #dc2626;
+  --chat-flag-bg: rgba(180, 83, 9, 0.1);
+  --chat-flag-border: rgba(180, 83, 9, 0.28);
+  --chat-flag-text: #b45309;
+  --chat-code-bg: rgba(15, 30, 30, 0.05);
+  --chat-shadow: 0 14px 32px rgba(15, 30, 30, 0.08);
+}
+
+.chat-shell {
+  max-width: 860px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  /* The log scrolls, the composer stays put. Sizing the shell to the viewport
+   * minus the navbar is what makes the inner overflow work — without a bounded
+   * height the log grows and the whole page scrolls instead. */
+  height: calc(100vh - var(--navbar-h, 64px) - 52px);
+}
+
+.chat-header h1 {
+  margin: 0 0 6px;
+  font-size: 1.6rem;
+  letter-spacing: -0.01em;
+}
+
+.chat-header p {
+  margin: 0 0 18px;
+  max-width: 62ch;
+  color: var(--chat-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+/* --- Log ---------------------------------------------------------------- */
+
+.chat-log {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--chat-border);
+  border-radius: 16px;
+  background: var(--chat-panel);
+  box-shadow: var(--chat-shadow);
+  scrollbar-color: var(--chat-border) transparent;
+}
+
+.chat-empty {
+  margin: auto 0;
+  text-align: center;
+}
+
+.chat-empty__lead {
+  margin: 0 0 16px;
+  color: var(--chat-muted);
+  font-size: 0.95rem;
+}
+
+.chat-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.chat-suggestion {
+  padding: 9px 14px;
+  border: 1px solid var(--chat-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--chat-muted);
+  font: inherit;
+  font-size: 0.83rem;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+
+.chat-suggestion:hover {
+  border-color: var(--chat-primary);
+  color: var(--chat-primary);
+  background: var(--chat-user-bg);
+}
+
+.chat-turn {
+  display: flex;
+}
+
+.chat-turn--user {
+  justify-content: flex-end;
+}
+
+.chat-turn--assistant {
+  justify-content: flex-start;
+}
+
+.chat-bubble {
+  max-width: 84%;
+  padding: 12px 15px;
+  border-radius: 14px;
+  font-size: 0.92rem;
+  line-height: 1.62;
+}
+
+.chat-bubble--user {
+  border: 1px solid var(--chat-user-border);
+  background: var(--chat-user-bg);
+  border-bottom-right-radius: 4px;
+  white-space: pre-wrap;
+}
+
+.chat-bubble--assistant {
+  border: 1px solid var(--chat-border-soft);
+  background: var(--chat-assistant-bg);
+  border-bottom-left-radius: 4px;
+}
+
+.chat-answer {
+  white-space: pre-wrap;
+}
+
+/* --- Thinking ----------------------------------------------------------- */
+
+.chat-thinking {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.chat-thinking__label {
+  margin-left: 6px;
+  color: var(--chat-muted);
+  font-size: 0.84rem;
+}
+
+.chat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--chat-primary);
+  animation: chat-pulse 1.3s ease-in-out infinite;
+}
+
+.chat-dot:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.chat-dot:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes chat-pulse {
+  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-dot {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+/* --- Grounding flag ----------------------------------------------------- */
+
+.chat-flag {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 12px 0 0;
+  padding: 8px 11px;
+  border: 1px solid var(--chat-flag-border);
+  border-radius: 9px;
+  background: var(--chat-flag-bg);
+  color: var(--chat-flag-text);
+  font-size: 0.79rem;
+  line-height: 1.5;
+}
+
+.chat-flag svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* --- Provenance --------------------------------------------------------- */
+
+.chat-provenance {
+  margin-top: 12px;
+}
+
+.chat-provenance__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--chat-muted);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.chat-provenance__toggle:hover {
+  color: var(--chat-primary);
+}
+
+.chat-provenance__toggle svg {
+  transition: transform 0.2s ease;
+}
+
+.chat-provenance__toggle.is-open svg {
+  transform: rotate(180deg);
+}
+
+.chat-calls {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chat-call {
+  border-left: 2px solid var(--chat-border);
+  padding-left: 10px;
+}
+
+.chat-call__name {
+  color: var(--chat-primary);
+  font-size: 0.76rem;
+}
+
+.chat-call__args {
+  margin-left: 7px;
+  color: var(--chat-faint);
+  font-size: 0.74rem;
+}
+
+.chat-call__result {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  /* Long JSON scrolls inside its own box; the page must never scroll
+   * sideways because a provider returned a wide result. */
+  max-height: 200px;
+  overflow: auto;
+  border-radius: 7px;
+  background: var(--chat-code-bg);
+  color: var(--chat-muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.chat-sources {
+  margin: 10px 0 0;
+  color: var(--chat-faint);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+/* --- Composer ----------------------------------------------------------- */
+
+.chat-error {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 12px 0 0;
+  color: var(--chat-error);
+  font-size: 0.84rem;
+}
+
+.chat-composer {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  margin-top: 14px;
+}
+
+.chat-input {
+  flex: 1;
+  min-height: 46px;
+  max-height: 160px;
+  padding: 13px 15px;
+  border: 1px solid var(--chat-border);
+  border-radius: 12px;
+  background: var(--chat-input-bg);
+  color: var(--chat-text);
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  resize: vertical;
+  transition: border-color 0.2s ease;
+}
+
+.chat-input::placeholder {
+  color: var(--chat-faint);
+}
+
+.chat-input:focus {
+  outline: none;
+  border-color: var(--chat-primary);
+}
+
+.chat-input:disabled {
+  opacity: 0.6;
+}
+
+.chat-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 46px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 12px;
+  background: var(--chat-primary);
+  color: var(--chat-primary-on);
+  font: inherit;
+  font-size: 0.87rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.chat-send:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.chat-send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chat-disclaimer {
+  margin: 10px 0 0;
+  color: var(--chat-faint);
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .chat-page {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .chat-bubble {
+    max-width: 92%;
+  }
+
+  .chat-send span {
+    display: none;
+  }
+
+  .chat-send {
+    padding: 0 14px;
+  }
+}

@@ -19,6 +19,9 @@ const ContactPage = lazy(() =>
 const DocsPage = lazy(() =>
   import('../pages/docs/DocsPage').then((module) => ({ default: module.DocsPage }))
 );
+const ChatPage = lazy(() =>
+  import('../pages/ChatPage').then((module) => ({ default: module.ChatPage }))
+);
 // Lazy for the same reason as the map: this route pulls in Recharts and,
 // through its embedded map panel, MapLibre — neither belongs in the bundle
 // served to someone landing on the home page.
@@ -84,6 +87,13 @@ function renderPage(pathname: string) {
     return (
       <Suspense fallback={<div className="app-route-loading">Loading…</div>}>
         <ContactPage />
+      </Suspense>
+    );
+  }
+  if (pathname === '/assistant') {
+    return (
+      <Suspense fallback={<div className="app-route-loading">Loading assistant…</div>}>
+        <ChatPage />
       </Suspense>
     );
   }
