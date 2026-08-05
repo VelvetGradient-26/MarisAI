@@ -9,7 +9,6 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.core.config import Settings
 from routers.feedback import FeedbackRequest
 from services.rate_limit import RateLimiter
 
@@ -121,63 +120,3 @@ class TestProviderErrorsAreNotForwarded:
 
         assert "AIzaSyLEAKED_KEY_VALUE" not in str(error)
         assert "401" in str(error)
-
-
-class TestCookieSecurity:
-    def test_https_frontend_marks_cookies_secure_by_default(self):
-        """The failure this prevents is silent: an HTTPS deployment that never
-        set COOKIE_SECURE used to ship session cookies without the flag."""
-        settings = Settings(FRONTEND_BASE_URL="https://marisai.example.com")
-        assert settings.cookie_secure is True
-
-    def test_http_dev_frontend_does_not(self):
-        # Marking them Secure over plain http stops the browser storing them,
-        # which would break local sign-in entirely.
-        settings = Settings(FRONTEND_BASE_URL="http://localhost:5173")
-        assert settings.cookie_secure is False
-
-    def test_explicit_setting_overrides_the_inference(self):
-        settings = Settings(FRONTEND_BASE_URL="https://marisai.example.com", COOKIE_SECURE=False)
-        assert settings.cookie_secure is False
-
-
-class TestSessionSecret:
-    def test_short_secret_refuses_to_sign(self):
-        """Signing with a weak key would appear to work while issuing tokens
-        that can be forged offline — so this must fail loudly, not degrade."""
-        import app.core.config as config_module
-        from services.auth import AuthNotConfiguredError, issue_session_token
-
-        saved = config_module.settings.SESSION_SECRET
-        try:
-            config_module.settings.SESSION_SECRET = "tooshort"
-            with pytest.raises(AuthNotConfiguredError):
-                issue_session_token("507f1f77bcf86cd799439011")
-        finally:
-            config_module.settings.SESSION_SECRET = saved
-
-    def test_adequate_secret_signs_and_verifies(self):
-        import app.core.config as config_module
-        from services.auth import decode_session_token, issue_session_token
-
-        saved = config_module.settings.SESSION_SECRET
-        try:
-            config_module.settings.SESSION_SECRET = "a" * 64
-            token = issue_session_token("507f1f77bcf86cd799439011")
-            assert decode_session_token(token) == "507f1f77bcf86cd799439011"
-        finally:
-            config_module.settings.SESSION_SECRET = saved
-
-    def test_token_signed_with_a_different_secret_is_rejected(self):
-        import app.core.config as config_module
-        from services.auth import AuthError, decode_session_token, issue_session_token
-
-        saved = config_module.settings.SESSION_SECRET
-        try:
-            config_module.settings.SESSION_SECRET = "a" * 64
-            forged = issue_session_token("507f1f77bcf86cd799439011")
-            config_module.settings.SESSION_SECRET = "b" * 64
-            with pytest.raises(AuthError):
-                decode_session_token(forged)
-        finally:
-            config_module.settings.SESSION_SECRET = saved

@@ -1,9 +1,8 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
-from dependencies.auth import current_user
 from services.insights import InsightsError, generate_ocean_insights
 from services.llm import LLMError
 from services.rate_limit import RateLimiter, enforce
@@ -62,25 +61,26 @@ class GenerateInsightsRequest(BaseModel):
 
 
 # One brief every few seconds is well past what reading a dashboard needs, and
-# far under what a script would do. Keyed on the user id rather than the
-# address: this endpoint is authenticated, and a user id cannot be rotated by
-# switching networks.
-_INSIGHTS_LIMITER = RateLimiter(limit=10, window_seconds=60)
+# far under what a script would do.
+#
+# **Tightened from 10/min when authentication was removed** (see
+# `docs/AUTH_REMOVAL.md`). This limiter previously keyed on the user id, which
+# a caller cannot rotate; keyed on the address it is materially weaker, since
+# switching networks resets it. Every call spends real LLM quota and an open
+# endpoint burned through a Gemini free tier once already, so the budget drops
+# to compensate for the weaker key.
+_INSIGHTS_LIMITER = RateLimiter(limit=5, window_seconds=60)
 
 
-# Sign-in required: every call spends real LLM quota, and an open endpoint
-# burned through a Gemini free tier once already.
 @router.post("/generate")
 async def post_generate_insights(
     payload: GenerateInsightsRequest,
     request: Request,
-    user: dict[str, Any] = Depends(current_user),
 ):
     enforce(
         _INSIGHTS_LIMITER,
         request,
         "Too many insight requests. Please wait a moment and try again.",
-        key=str(user["_id"]),
     )
     try:
         return await generate_ocean_insights(

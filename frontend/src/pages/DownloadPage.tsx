@@ -5,8 +5,6 @@ import { Link } from '../app/router';
 import { DrawableAreaMap } from '../features/map/DrawableAreaMap';
 import type { DrawnBbox } from '../features/map/DrawableAreaMap';
 import { useThemeStore } from '../store/themeStore';
-import { useAuthStore } from '../store/authStore';
-import { loginUrl } from '../features/map/api/auth';
 import {
   downloadOceanData,
   fetchVariableCategories,
@@ -47,7 +45,6 @@ function parseNumber(value: string): number | null {
 
 export function DownloadPage() {
   const isDark = useThemeStore((s) => s.dark);
-  const authStatus = useAuthStore((s) => s.status);
   const [areaMode, setAreaMode] = useState<AreaMode>('draw');
   const [lat, setLat] = useState('10.0');
   const [lon, setLon] = useState('75.0');
@@ -454,18 +451,13 @@ export function DownloadPage() {
 
         {submitError && <p className="download-error">{submitError}</p>}
 
-        {/* Downloads pull real provider data and require sign-in. The form
-            above stays usable signed-out (/api/v1/variables is public) so the
-            selection isn't lost across the round trip to Google. */}
-        {authStatus === 'anonymous' ? (
-          <a className="download-submit download-submit--signin" href={loginUrl()}>
-            Sign in to download
-          </a>
-        ) : (
-          <button type="submit" className="download-submit" disabled={submitStatus === 'loading'}>
-            {submitStatus === 'loading' ? 'Preparing download…' : 'Download Dataset'}
-          </button>
-        )}
+        {/* Downloads are open to everyone since authentication was removed
+            (docs/AUTH_REMOVAL.md); the backend rate-limits them per address
+            instead, and returns a 429 with an explanation this form surfaces
+            through `submitError`. */}
+        <button type="submit" className="download-submit" disabled={submitStatus === 'loading'}>
+          {submitStatus === 'loading' ? 'Preparing download…' : 'Download Dataset'}
+        </button>
       </form>
     </div>
   );

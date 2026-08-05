@@ -1,11 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Bookmark, Check } from 'lucide-react';
 import { Link } from '../../app/router';
 import { useMapStore } from '../../store/mapStore';
 import { useUiStore } from '../../store/uiStore';
-import { useAuthStore } from '../../store/authStore';
 import { useTimezoneStore } from '../../store/timezoneStore';
-import { createSavedLocation } from './api/savedLocations';
 import { formatFullDateTime } from '../../utils/formatTime';
 import { fetchSstPoint } from './api/sst';
 import type { SstPointResponse } from './api/sst';
@@ -13,12 +10,7 @@ import { fetchWindPoint } from './api/wind';
 import type { WindPointResponse } from './api/wind';
 import { useSelectedLocationPredictions } from './hooks/useSelectedLocationPredictions';
 import type { PredictionPointResult } from './hooks/useSelectedLocationPredictions';
-import type {
-  CursorCoordinates,
-  NearestPort,
-  RealtimeOceanConditions,
-  RealtimeOceanUnits,
-} from './types';
+import type { NearestPort, RealtimeOceanConditions, RealtimeOceanUnits } from './types';
 
 const METRICS: Array<{
   key: keyof RealtimeOceanConditions & keyof RealtimeOceanUnits;
@@ -235,7 +227,6 @@ export function SelectedLocationPanel() {
                 More info
                 <span aria-hidden="true">→</span>
               </Link>
-              <SaveLocationButton location={selectedLocation} />
             </div>
 
             <div className="selected-location-panel__attribution">
@@ -252,62 +243,6 @@ export function SelectedLocationPanel() {
         )}
       </div>
     </aside>
-  );
-}
-
-/**
- * Saves the current point to the signed-in user's account. Hidden entirely
- * when signed out rather than shown-then-erroring: an anonymous visitor can
- * still read every number in this panel, so a dead control would be noise.
- */
-function SaveLocationButton({ location }: { location: CursorCoordinates }) {
-  const authStatus = useAuthStore((s) => s.status);
-  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [error, setError] = useState<string | null>(null);
-
-  // A new point is a new save — reset so the button doesn't keep reading
-  // "Saved" after the user clicks elsewhere on the map.
-  useEffect(() => {
-    setState('idle');
-    setError(null);
-  }, [location.lat, location.lng]);
-
-  if (authStatus !== 'authenticated') return null;
-
-  const save = async () => {
-    setState('saving');
-    setError(null);
-    try {
-      await createSavedLocation({
-        label: `${location.lat.toFixed(3)}, ${location.lng.toFixed(3)}`,
-        lat: location.lat,
-        lon: location.lng,
-      });
-      setState('saved');
-    } catch (cause: unknown) {
-      setError(cause instanceof Error ? cause.message : 'Could not save this location');
-      setState('error');
-    }
-  };
-
-  return (
-    <button
-      className="selected-location-panel__save"
-      type="button"
-      onClick={() => void save()}
-      disabled={state === 'saving' || state === 'saved'}
-      title={error ?? 'Save this point to your account'}
-    >
-      {state === 'saved' ? (
-        <>
-          <Check size={14} /> Saved
-        </>
-      ) : (
-        <>
-          <Bookmark size={14} /> {state === 'saving' ? 'Saving…' : 'Save'}
-        </>
-      )}
-    </button>
   );
 }
 
