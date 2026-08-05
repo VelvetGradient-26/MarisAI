@@ -5,6 +5,7 @@ import { useSelectedLocationRealtimeData } from './hooks/useSelectedLocationReal
 import { useSelectedLocationMarker } from './hooks/useSelectedLocationMarker';
 import { useSelectedLocationFocus } from './hooks/useSelectedLocationFocus';
 import { useLiveVessels } from './hooks/useLiveVessels';
+import { useForecastGridLayers } from './hooks/useForecastGridLayers';
 import { VesselTooltip } from './VesselTooltip';
 import { VesselFeedStatus } from './VesselFeedStatus';
 
@@ -23,6 +24,9 @@ export function Map({ children }: MapProps) {
   useSelectedLocationMarker(manager, ready);
   useSelectedLocationFocus(manager, ready);
   const vessels = useLiveVessels(manager, ready);
+  // Registered at runtime rather than from `layerRegistry`: a forecast layer
+  // exists only where a model has been trained and its grid built.
+  useForecastGridLayers(manager, ready);
 
   return (
     <div className="map-root">

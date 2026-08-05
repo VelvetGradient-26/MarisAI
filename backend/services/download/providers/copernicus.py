@@ -220,3 +220,91 @@ async def fetch(
         depth_mode,
         depth_m,
     )
+
+
+# --- Whole-globe, many-timesteps ------------------------------------------
+#
+# The third access pattern, and the one the module docstring above did not
+# anticipate. `fetch` serves "bounded area, many timesteps" through
+# arco-time-series; `services/copernicus_sst.py` serves "whole globe, one
+# timestep" through arco-geo-series. The forecast grid needs "whole globe,
+# ~45 timesteps", and arco-geo-series is the right service for it: one chunk
+# read per timestep, versus arco-time-series' fine spatial chunks which would
+# mean touching every spatial chunk on the planet.
+
+
+def _coarsen(dataset: xr.Dataset, stride: int) -> xr.Dataset:
+    """Thin the lat/lon axes *before* the data is materialised.
+
+    This is a memory bound, not a speed one. arco-geo-series chunks are one
+    whole-globe timestep each, so the bytes come off the wire either way — but
+    a global 0.083deg float64 field is ~70MB per timestep per variable, and 45
+    timesteps of two variables held at full resolution is over 6GB. Striding
+    while the array is still lazy keeps the peak at roughly one chunk.
+    """
+    if stride <= 1:
+        return dataset
+    return dataset.isel(
+        latitude=slice(None, None, stride), longitude=slice(None, None, stride)
+    )
+
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=2, max=20))
+def _fetch_global_sync(
+    dataset_id: str,
+    fields: list[str],
+    start_date: date,
+    end_date: date,
+    depth_mode: str,
+    stride: int,
+) -> xr.Dataset:
+    import copernicusmarine
+
+    kwargs: dict[str, object] = {}
+    if depth_mode in (DEPTH_SURFACE, DEPTH_SELECT):
+        # Always the surface here. A depth-resolved forecast grid would be a
+        # different product with a depth axis; nothing asks for one yet, and
+        # bounding server-side is what keeps the 50-level datasets from
+        # pulling every level (see the docstring on DEPTH_SURFACE).
+        kwargs["minimum_depth"] = 0.0
+        kwargs["maximum_depth"] = _SURFACE_MAX_DEPTH
+
+    dataset = copernicusmarine.open_dataset(
+        dataset_id=dataset_id,
+        variables=fields,
+        username=settings.COPERNICUS_USERNAME,
+        password=settings.COPERNICUS_PASSWORD,
+        service="arco-geo-series",
+        start_datetime=f"{start_date.isoformat()}T00:00:00",
+        end_datetime=f"{end_date.isoformat()}T23:59:59",
+        **kwargs,
+    )
+    subset = _resolve_depth(dataset[fields], DEPTH_SURFACE, None)
+    return _coarsen(subset, stride).load()
+
+
+async def fetch_global(
+    *,
+    dataset_id: str,
+    fields: list[str],
+    start_date: date,
+    end_date: date,
+    depth_mode: str = DEPTH_NONE,
+    stride: int = 1,
+) -> xr.Dataset:
+    """One Copernicus dataset over the whole globe for a date range.
+
+    Deliberately not part of the `FetchFn` protocol: it takes no bbox, and
+    `catalog.py`'s providers are all bbox-shaped because that is what the
+    downloader needs. This is the forecast grid's entry point, reached through
+    `catalog.copernicus_dataset()` so the dataset id still has one home.
+    """
+    return await asyncio.to_thread(
+        _fetch_global_sync,
+        dataset_id,
+        fields,
+        start_date,
+        end_date,
+        depth_mode,
+        stride,
+    )

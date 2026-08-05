@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMapManagerContext } from './hooks/MapManagerContext';
 import { useMapStore } from '../../store/mapStore';
 import { useMapPreferencesStore } from '../../store/mapPreferencesStore';
@@ -75,7 +75,12 @@ export function MapControls() {
               {exclusive ? (
                 <MapButtonGroup descriptors={descriptors} layerState={layerState} layerManager={layerManager} />
               ) : (
-                <LayerList descriptors={descriptors} layerState={layerState} layerManager={layerManager} />
+                <LayerDropdown
+                  label={label}
+                  descriptors={descriptors}
+                  layerState={layerState}
+                  layerManager={layerManager}
+                />
               )}
             </section>
           );
@@ -168,34 +173,108 @@ function MapButtonGroup({
   );
 }
 
-function LayerList({
+/**
+ * A stackable group, collapsed behind a dropdown.
+ *
+ * Two constraints shaped this rather than a native `<select>`. These groups
+ * are *stackable* — EEZ and marine protected areas are meant to be readable
+ * together, and the AI group carries eight entries — so a single-choice
+ * control would remove a capability rather than tidy one. And the panel body
+ * is a fixed-width scrolling box (`overflow-x: hidden`), so an absolutely
+ * positioned popover would be clipped by its own container.
+ *
+ * Hence an inline disclosure: the trigger summarises what is on, the menu
+ * expands in normal flow, and selecting does not close it because picking two
+ * layers is the common case. The active layers' opacity slider and legend stay
+ * *outside* the menu, so adjusting one does not mean reopening the dropdown.
+ */
+function LayerDropdown({
+  label,
   descriptors,
   layerState,
   layerManager,
 }: {
+  label: string;
   descriptors: LayerDescriptor[];
   layerState: Map<string, LayerState>;
   layerManager: LayerManager;
 }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // "Outside" is the whole group, not just the menu — the active-layer
+  // controls below the menu are part of this dropdown as far as the user is
+  // concerned, and closing when they drag an opacity slider would be hostile.
+  useEffect(() => {
+    if (!open) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  const active = descriptors.filter((descriptor) => layerState.get(descriptor.id)?.active);
+  const summary =
+    active.length === 0
+      ? 'None'
+      : active.length === 1
+        ? active[0].name
+        : `${active.length} selected`;
+
   return (
-    <ul className="layer-list">
-      {descriptors.map((descriptor) => {
-        const state = layerState.get(descriptor.id);
-        const disabled = descriptor.implemented === false;
-        return (
-          <li key={descriptor.id} className={disabled ? 'disabled' : ''}>
-            <label title={descriptor.attribution}>
-              <input
-                type="checkbox"
-                checked={state?.active ?? false}
-                disabled={disabled}
-                onChange={() => layerManager.toggle(descriptor.id)}
-              />
-              {descriptor.name}
-              {disabled && <span className="badge">not wired yet</span>}
-            </label>
-            {state?.active && (
-              <>
+    <div className="layer-dropdown" ref={containerRef}>
+      <button
+        type="button"
+        className={`layer-dropdown__trigger ${open ? 'open' : ''}`}
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+      >
+        <span className="layer-dropdown__summary">{summary}</span>
+        <span className="layer-dropdown__caret" aria-hidden="true">
+          ▾
+        </span>
+      </button>
+
+      {open && (
+        <ul className="layer-dropdown__menu" role="group" aria-label={label}>
+          {descriptors.map((descriptor) => {
+            const disabled = descriptor.implemented === false;
+            return (
+              <li key={descriptor.id} className={disabled ? 'disabled' : ''}>
+                <label title={descriptor.attribution}>
+                  <input
+                    type="checkbox"
+                    checked={layerState.get(descriptor.id)?.active ?? false}
+                    disabled={disabled}
+                    onChange={() => layerManager.toggle(descriptor.id)}
+                  />
+                  {descriptor.name}
+                  {disabled && <span className="badge">not wired yet</span>}
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {active.length > 0 && (
+        <ul className="layer-list">
+          {active.map((descriptor) => {
+            const state = layerState.get(descriptor.id);
+            if (!state) return null;
+            return (
+              <li key={descriptor.id}>
+                <span className="layer-list__name">{descriptor.name}</span>
                 {!descriptor.hideOpacitySlider && (
                   <input
                     type="range"
@@ -210,12 +289,12 @@ function LayerList({
                   <VectorFieldControls descriptorId={descriptor.id} layerManager={layerManager} />
                 )}
                 {descriptor.legend && <Legend legend={descriptor.legend} />}
-              </>
-            )}
-          </li>
-        );
-      })}
-    </ul>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 

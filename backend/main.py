@@ -15,8 +15,9 @@ from routers.marine import router as marine_router
 from routers.metrics import router as metrics_router
 from routers.predictions import router as predictions_router
 from routers.tiles import router as tiles_router
+from routers.forecast_tiles import router as forecast_tiles_router
 from routers.vessels import router as vessels_router
-from services import ais, crw, gibs, ndbc, ocean_state
+from services import ais, crw, forecast_tiles, gibs, ndbc, ocean_state
 from services.copernicus_sst import refresh_sst_cache
 from services.copernicus_wind import refresh_wind_cache
 
@@ -57,6 +58,18 @@ async def lifespan(_app: FastAPI):
     scheduler.add_job(
         ocean_state.refresh_cache, "interval", hours=ocean_state.REFRESH_INTERVAL_HOURS
     )
+    # The forecast map's grids. By far the most expensive job here — ~25 min of
+    # Copernicus reads and feature building per variable — so it runs twice a
+    # day and skips any grid already newer than that interval. That skip is
+    # what makes the boot-time call safe: a restart re-checks freshness rather
+    # than rebuilding, and a machine with no grid at all starts producing one
+    # instead of waiting twelve hours for the first tick.
+    asyncio.create_task(forecast_tiles.refresh_grids())
+    scheduler.add_job(
+        forecast_tiles.refresh_grids,
+        "interval",
+        hours=forecast_tiles.REFRESH_INTERVAL_HOURS,
+    )
     scheduler.start()
 
     # Long-lived websocket to aisstream.io. Self-supervising and a no-op
@@ -92,6 +105,7 @@ app.include_router(tiles_router)
 app.include_router(download_router)
 app.include_router(feedback_router)
 app.include_router(predictions_router)
+app.include_router(forecast_tiles_router)
 app.include_router(vessels_router)
 app.include_router(dashboard_router)
 # Serves precomputed models from `models/forecasting/`. Nothing is trained at

@@ -55,3 +55,40 @@ SST_COLORMAP_STOPS: list[ColorStop] = [
 ]
 
 SST_COLORMAP = build_colormap(SST_COLORMAP_STOPS)
+
+
+# Normalised ramps, defined on a unit domain so one colormap serves every
+# variable: the caller scales its values into the domain and the same object
+# renders sea surface temperature, chlorophyll or wave height. A per-variable
+# stop list would mean a new entry every time a variable is trained, which is
+# exactly the branching the forecasting engine exists to avoid.
+
+# Sequential, on [0, 1]. Perceptually uniform (viridis control points), so
+# equal steps in value read as equal steps in colour and the scale stays
+# legible in greyscale and to colour-vision deficiencies.
+SEQUENTIAL_STOPS: list[ColorStop] = [
+    (0.00, (68, 1, 84)),
+    (0.25, (59, 82, 139)),
+    (0.50, (33, 145, 140)),
+    (0.75, (94, 201, 98)),
+    (1.00, (253, 231, 37)),
+]
+SEQUENTIAL_COLORMAP = build_colormap(SEQUENTIAL_STOPS)
+
+# Diverging, on [-1, 1], for a *change* or anomaly field. Blue-neutral-red with
+# a near-white centre, so the sign of the change is the first thing read and
+# "no change" is visually absent rather than a colour of its own. The caller
+# must scale symmetrically — an asymmetric domain would put zero off the
+# neutral point and make a warming ocean out of a longer positive tail.
+DIVERGING_STOPS: list[ColorStop] = [
+    (-1.00, (5, 48, 97)),
+    (-0.60, (33, 102, 172)),
+    (-0.25, (103, 169, 207)),
+    (-0.05, (209, 229, 240)),
+    (0.00, (247, 247, 247)),
+    (0.05, (253, 219, 199)),
+    (0.25, (239, 138, 98)),
+    (0.60, (178, 24, 43)),
+    (1.00, (103, 0, 31)),
+]
+DIVERGING_COLORMAP = build_colormap(DIVERGING_STOPS)
