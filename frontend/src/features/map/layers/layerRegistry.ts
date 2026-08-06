@@ -459,7 +459,12 @@ export const layerRegistry: LayerDescriptor[] = [
       'Copernicus Marine Service — GLOBAL_ANALYSISFORECAST_PHY_001_024, thetao (sea water ' +
       'potential temperature) at 0.494m depth, hourly resolution.',
     defaultOpacity: 0.6,
-    defaultVisible: false,
+    // On by default. Previously every overlay was off except `reference-labels`,
+    // so the map opened as a bare basemap and the platform's headline artifact
+    // was hidden behind a panel a first-time viewer had no reason to open. SST
+    // is the right default: full global coverage, immediately legible, and the
+    // layer everything else is compared against.
+    defaultVisible: true,
     // GPU-side vividness bump only (not a colormap change — the legend still
     // shows the true scale): tiles blended at 0.6 opacity over the Dark
     // Marine basemap were reading as dim/washed-out.
@@ -557,7 +562,11 @@ export const layerRegistry: LayerDescriptor[] = [
       'Copernicus Marine Service — WIND_GLO_PHY_L4_NRT_012_004, gap-filled blend of ' +
       'scatterometer and model surface wind, hourly, 0.125°.',
     defaultOpacity: 0.9,
-    defaultVisible: false,
+    // On by default alongside SST — wind is a stackable overlay, not part of
+    // the exclusive `ocean` group, and the two together are the Windy-style
+    // view this feature exists to provide. The motion is also what tells a
+    // first-time viewer the map is live rather than a screenshot.
+    defaultVisible: true,
     createLayer: (id) => createWindParticleLayer(id, 0.9),
     legend: {
       type: 'gradient',

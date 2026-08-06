@@ -1,0 +1,303 @@
+/* Guided tour overlay.
+ *
+ * Sits above the map's own panels but never covers the centre of the viewport:
+ * the whole point is that the viewer watches the map change while reading, so
+ * the card is anchored bottom-left and the map stays the subject.
+ *
+ * Colours were literal here, on the reasoning that the map is always dark so a
+ * light variant would be a card that disappears into its own background. That
+ * reasoning no longer holds: map.css now themes the map's *chrome* from
+ * `data-theme` while leaving the basemap alone, and this card was the single
+ * dark box left in an otherwise light scene. It reads the same `--ocean-*`
+ * tokens as every other overlay.
+ *
+ * `--ocean-scrim` rather than `--ocean-panel-bg` because this card is
+ * deliberately more transparent than a panel — it is meant to read as one
+ * scene with the map behind it. */
+
+.story {
+  position: absolute;
+  left: 16px;
+  /* Clears the bottom-left stack rather than covering it: `.coordinate-display`
+     sits at bottom 52px and MapLibre's ScaleControl is below it (see
+     ControlManager.ts). Anchoring at 16px put the card straight on top of both. */
+  bottom: 96px;
+  z-index: 12; /* above map panels (5) and MapLibre controls */
+  max-width: min(30rem, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.story__card {
+  position: relative;
+  padding: 1.5rem 1.5rem 1.15rem;
+  border: 1px solid var(--ocean-border);
+  border-radius: 18px;
+  /* Backdrop blur rather than a solid fill, so the map stays visible behind
+     the card and the two read as one scene. */
+  background: var(--ocean-scrim);
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  box-shadow: var(--ocean-scrim-shadow);
+  color: var(--ocean-text);
+  pointer-events: auto;
+  animation: story-in 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@keyframes story-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+.story__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: var(--ocean-accent-soft);
+  color: var(--ocean-muted);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.story__close:hover {
+  background: var(--ocean-accent-strong);
+  color: var(--ocean-text);
+}
+
+/* --- progress --- */
+
+.story__dots {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 1.15rem;
+}
+
+.story__dot {
+  width: 26px;
+  height: 3px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--ocean-border);
+  cursor: pointer;
+  transition: background 0.35s ease, width 0.35s ease;
+}
+
+.story__dot.is-done {
+  background: var(--ocean-accent-line);
+}
+
+.story__dot.is-active {
+  width: 40px;
+  background: var(--ocean-accent);
+}
+
+/* --- content --- */
+
+/* Keyed on step id in the component, so this replays on every advance and the
+   text reads as new information rather than a silent swap. */
+.story__body {
+  animation: story-text-in 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@keyframes story-text-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.story__step {
+  margin: 0 0 0.5rem;
+  font: 500 11px/1 'IBM Plex Mono', monospace;
+  letter-spacing: 0.14em;
+  color: var(--ocean-accent);
+}
+
+.story__title {
+  margin: 0 0 0.6rem;
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.story__text {
+  margin: 0;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--ocean-text);
+}
+
+.story__footnote {
+  margin: 0.85rem 0 0;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--ocean-border);
+  font: 400 11px/1.5 'IBM Plex Mono', monospace;
+  letter-spacing: 0.02em;
+  color: var(--ocean-muted);
+}
+
+/* --- final-step actions --- */
+
+.story__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1.15rem;
+}
+
+.story__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--ocean-accent-line);
+  border-radius: 999px;
+  background: var(--ocean-accent-soft);
+  color: var(--ocean-accent);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 0.2s ease;
+}
+
+.story__action:hover {
+  background: var(--ocean-accent-strong);
+}
+
+/* --- navigation --- */
+
+.story__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.35rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--ocean-border);
+}
+
+.story__nav-right {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.story__skip,
+.story__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 1.05rem;
+  border-radius: 999px;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease, opacity 0.2s ease;
+}
+
+.story__skip {
+  padding-left: 0;
+  border: none;
+  background: none;
+  color: var(--ocean-muted);
+}
+
+.story__skip:hover {
+  color: var(--ocean-text);
+}
+
+.story__button {
+  border: 1px solid var(--ocean-accent);
+  background: var(--ocean-accent);
+  color: var(--ma-accent-on);
+}
+
+.story__button--ghost {
+  border-color: var(--ocean-border);
+  background: transparent;
+  color: var(--ocean-text);
+}
+
+.story__button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* --- launcher --- */
+
+.story-launch {
+  position: absolute;
+  left: 16px;
+  bottom: 96px; /* same clearance as the card it opens */
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1.1rem;
+  border: 1px solid var(--ocean-border);
+  border-radius: 999px;
+  background: var(--ocean-scrim);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: var(--ocean-text);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.story-launch:hover {
+  border-color: var(--ocean-accent-line);
+  background: var(--ocean-scrim-strong);
+}
+
+@media (max-width: 640px) {
+  /* Clearance tracks map.css's small-screen block, where the bottom edge
+     becomes one row of chips at `bottom: 44px`. This sits above that row.
+     It still overlaps the selected-location sheet, and that is intended —
+     the tour is modal in spirit and MapView renders it last for exactly
+     that reason. */
+  .story,
+  .story-launch {
+    left: 12px;
+    right: 12px;
+    bottom: 84px;
+    max-width: none;
+  }
+
+  .story-launch {
+    right: auto;
+  }
+
+  .story__card {
+    padding: 1.25rem 1.25rem 1rem;
+  }
+
+  .story__title {
+    font-size: 1.2rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .story__card,
+  .story__body {
+    animation: none;
+  }
+
+  .story__dot {
+    transition: none;
+  }
+}

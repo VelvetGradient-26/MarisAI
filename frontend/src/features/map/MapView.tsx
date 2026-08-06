@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { setWorkerUrl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
@@ -7,6 +8,7 @@ import { CoordinateDisplay } from './CoordinateDisplay';
 import { SelectedLocationPanel } from './SelectedLocationPanel';
 import { SstLegend } from './SstLegend';
 import { WindLegend } from './WindLegend';
+import { StoryMode } from './story/StoryMode';
 import './styles/map.css';
 
 // Configure MapLibre only when the lazy map route is loaded. This must run
@@ -15,6 +17,10 @@ setWorkerUrl(workerUrl);
 
 /** Public entry point for the map feature — this is what App.tsx renders. */
 export function MapView() {
+  useEffect(() => {
+    document.title = 'Maris AI | Ocean Map';
+  }, []);
+
   return (
     <Map>
       <MapControls />
@@ -24,6 +30,9 @@ export function MapView() {
         <SstLegend />
         <WindLegend />
       </div>
+      {/* Last child so it stacks above the panels above — it is the only
+          overlay that deliberately takes precedence over the others. */}
+      <StoryMode />
     </Map>
   );
 }
