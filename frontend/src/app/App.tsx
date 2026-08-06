@@ -1,7 +1,11 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Navbar } from '../components/Navbar';
+import { Toaster } from '../components/Toaster';
 import { DashboardPage } from '../pages/DashboardPage';
 import { LandingPage } from '../pages/LandingPage';
+import { NotFoundPage } from '../pages/NotFoundPage';
+import { useThemeStore } from '../store/themeStore';
 import { useAppRouter } from './routerContext';
 
 const MapView = lazy(() =>
@@ -45,13 +49,40 @@ const MetricsIndexPage = lazy(() =>
 
 export function App() {
   const { pathname } = useAppRouter();
+  const dark = useThemeStore((s) => s.dark);
+
+  // Stamp the theme on <html>, which is what drives the shared `--ma-*` tokens
+  // in styles/tokens.css and, through `color-scheme`, the browser's own
+  // widgets — scrollbars, date pickers, select popups. Pages keep their own
+  // `--light` class too; this is the layer that covers everything outside a
+  // page root, and everything rendered by the browser rather than by us.
+  // index.html stamps the same attribute before first paint so there is no
+  // flash of the wrong theme; this keeps it in sync afterwards.
+  useEffect(() => {
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  }, [dark]);
+
+  const route = normalizePath(pathname);
 
   return (
     <>
-      <Navbar overlay={pathname === '/map'} />
-      {renderPage(pathname)}
+      <Navbar overlay={route === '/map'} />
+      {/* Keyed on the route so a failure on one page clears when you navigate
+          away, instead of latching for the rest of the session. The navbar
+          sits outside so there is always a way out of a broken page. */}
+      <ErrorBoundary resetKey={route}>{renderPage(route)}</ErrorBoundary>
+      {/* Outside the boundary: a toast reporting that something failed has to
+          outlive the page that failed. */}
+      <Toaster />
     </>
   );
+}
+
+/** Collapses the trailing-slash variants onto one route, so `/download/` is
+ *  the download page rather than a 404. `/` itself is preserved. */
+function normalizePath(pathname: string): string {
+  const trimmed = pathname.replace(/\/+$/, '');
+  return trimmed === '' ? '/' : trimmed;
 }
 
 function renderPage(pathname: string) {
@@ -132,5 +163,8 @@ function renderPage(pathname: string) {
   // narrower question (every metric at one coordinate) that the global
   // dashboard does not replace.
   if (pathname === '/analytics') return <DashboardPage />;
-  return <LandingPage />;
+  if (pathname === '/') return <LandingPage />;
+  // Anything else is genuinely not a route. This used to fall through to the
+  // landing page, which made a stale or mistyped link look like a working one.
+  return <NotFoundPage />;
 }

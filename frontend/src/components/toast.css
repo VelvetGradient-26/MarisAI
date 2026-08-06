@@ -1,0 +1,136 @@
+/* Toast region. Colours come from the shared tokens, so it inverts with the
+   theme like everything else and needs no per-page block. */
+
+.toaster {
+  position: fixed;
+  z-index: 1100; /* above the navbar (1000) — it can report on navigation */
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(380px, calc(100vw - 32px));
+  /* The region spans a column of toasts; only the toasts themselves should
+     intercept clicks, or an empty column would block the page under it. */
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--ma-border);
+  border-radius: 12px;
+  padding: 12px 12px 12px 14px;
+  background: var(--ma-surface-solid);
+  color: var(--ma-text);
+  box-shadow: var(--ma-shadow);
+  animation: toast-enter 0.24s var(--ma-ease);
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.toast--success {
+  border-color: color-mix(in srgb, var(--ma-good) 45%, var(--ma-border));
+}
+
+.toast--error {
+  border-color: color-mix(in srgb, var(--ma-error) 45%, var(--ma-border));
+}
+
+.toast__icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--ma-muted);
+}
+
+.toast--success .toast__icon {
+  color: var(--ma-good);
+}
+
+.toast--error .toast__icon {
+  color: var(--ma-error);
+}
+
+/* `data-motion` is not used here: a spinner on a pending toast is the only
+   signal that anything is still happening, but the global reduced-motion rule
+   would freeze it. Opting *this* element out keeps the affordance honest. */
+.toast__icon--spin {
+  animation: toast-spin 1s linear infinite;
+}
+
+@keyframes toast-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast__icon--spin {
+    animation: toast-spin 2.4s linear infinite !important;
+  }
+
+  .toast {
+    animation: none;
+  }
+}
+
+.toast__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast__title {
+  margin: 0;
+  font-size: var(--ma-text-base);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* Provider errors arrive as one long unbroken string; it has to wrap or it
+   widens the toast past the viewport. */
+.toast__detail {
+  margin: 4px 0 0;
+  color: var(--ma-muted);
+  font-family: var(--ma-font-mono);
+  font-size: var(--ma-text-xs);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.toast__dismiss {
+  display: grid;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ma-faint);
+  cursor: pointer;
+  transition: background var(--ma-duration) var(--ma-ease),
+    color var(--ma-duration) var(--ma-ease);
+}
+
+.toast__dismiss:hover {
+  background: var(--ma-hover-bg);
+  color: var(--ma-text);
+}
+
+/* Full width at the bottom on a phone, where a 380px card in the corner is
+   most of the screen anyway and the bottom edge is where the thumb is. */
+@media (max-width: 560px) {
+  .toaster {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto;
+  }
+}
