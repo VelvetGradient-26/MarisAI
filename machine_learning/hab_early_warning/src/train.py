@@ -32,7 +32,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from marine_ml import config
+from marine_ml import config, tracking
 from marine_ml.validation import metrics, splits
 
 from . import features as feature_lib
@@ -454,3 +454,62 @@ def save(results: dict[int, HorizonResult], name: str = "hab_early_warning") -> 
         for horizon, result in results.items()
     }
     (config.REPORTS_DIR / f"{name}_summary.json").write_text(json.dumps(summary, indent=2))
+
+    for horizon, result in results.items():
+        _track(result, horizon, name)
+
+
+def _track(result: HorizonResult, horizon: int, name: str) -> None:
+    """Append one horizon's run to the experiment log.
+
+    One run *per horizon* rather than one per invocation: the horizons are the
+    unit anyone actually compares ("is t+7 still usable?"), and t+3 improving
+    while t+7 degrades is the outcome a single averaged run would hide.
+    """
+    holdout = result.holdout.set_index("model") if "model" in result.holdout else None
+    point = result.operating_point or {}
+
+    with tracking.track(
+        "hab_early_warning",
+        run_name=f"{name}_t{horizon}",
+        params={
+            "horizon_days": horizon,
+            "random_seed": config.RANDOM_SEED,
+            "validation": "rolling_origin_cv",
+            "n_features": len(result.importances),
+            **{f"operating_{k}": v for k, v in point.items()},
+        },
+        tags={
+            "problem": "hab_early_warning",
+            "region": config.ARABIAN_SEA.name,
+            "horizon": horizon,
+        },
+    ) as run:
+        run.log_data_window(
+            start=config.HAB_START,
+            end=config.HAB_END,
+            rows=int(result.holdout["n"].sum()) if "n" in result.holdout else None,
+        )
+        run.log_dict(tracking.snapshot_config(config), "config_snapshot.json")
+
+        run.log_fold_scores(result.fold_scores)
+        run.log_table(result.holdout, "holdout.csv")
+        run.log_table(result.reliability, "reliability.csv")
+        run.log_shap(result.importances)
+        run.log_metrics({f"operating_{k}": v for k, v in point.items()})
+
+        if holdout is not None:
+            for metric in ("pr_auc", "roc_auc", "brier", "tss"):
+                if metric in holdout.columns:
+                    run.log_metrics(
+                        {f"holdout_{metric}_{model}": value
+                         for model, value in holdout[metric].items()}
+                    )
+            # The headline verdict, stored as a number so runs sort by it:
+            # a model that cannot beat "it is blooming now, so it will be
+            # blooming then" has demonstrated nothing.
+            if "pr_auc" in holdout.columns:
+                model_score = holdout["pr_auc"].get("lightgbm_calibrated")
+                baseline = holdout["pr_auc"].get("persistence")
+                if model_score is not None and baseline is not None:
+                    run.log_metrics({"pr_auc_lift_over_persistence": model_score - baseline})

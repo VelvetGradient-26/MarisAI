@@ -257,3 +257,11 @@ backend/feedback_log.jsonl
 # config, so they are built rather than committed.
 backend/models/forecasting/
 backend/forecasting/.cache/
+
+# Experiment tracking store (machine_learning/marine_ml/tracking.py).
+# Local run history — SQLite plus per-run artifacts. Machine-specific and it
+# grows without bound, so it is not version controlled. Nothing here is a
+# source of truth: every run is reproducible, and the backend's runs can be
+# rebuilt at any time with `python -m marine_ml.ingest_forecasting`.
+machine_learning/mlruns.db
+machine_learning/mlruns/

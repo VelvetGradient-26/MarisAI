@@ -144,6 +144,15 @@ variables:
     valid_min: -2.5
     valid_max: 40.0
 
+  # Configured but deliberately left untrained — measured 2026-08-05, not an
+  # oversight. Point salinity barely moves day to day (R2 0.9963 at h1), which
+  # makes persistence near-unbeatable: h3 scored -0.152 and h7 -0.118 against
+  # it, and the two horizons that did pass were inside fold noise (h1 +0.085
+  # with 1/5 folds negative, h30 +0.106 with folds spanning -0.21 to +0.36).
+  # All four artifacts were trained, inspected and deleted. Retraining it will
+  # reproduce these numbers, not better ones — the covariates are not the
+  # problem, the target's own persistence is. Ship it only if the fold spread
+  # closes, not merely if the overall mean turns positive.
   sea_surface_salinity:
     code: sea_surface_salinity
     covariates: [sea_surface_temperature, rainfall]

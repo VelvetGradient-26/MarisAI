@@ -161,3 +161,11 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
+# `scripts/` is deliberately excluded from the installed package (see
+# packages.find above) — it is a CLI, not library code — so unlike `services`
+# or `forecasting` it is not importable from the venv. Its tests still need
+# it, and a collection failure there interrupts the *whole* suite rather than
+# failing one module. Putting the backend root on the path imports it as a
+# namespace package, matching how the CLI is actually run (`cd backend &&
+# python scripts/train_forecasting.py`).
+pythonpath = ["."]

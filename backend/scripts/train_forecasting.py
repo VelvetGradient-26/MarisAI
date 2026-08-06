@@ -29,8 +29,10 @@ import argparse
 import asyncio
 import json
 import logging
+import subprocess
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +47,73 @@ from forecasting.model_store import list_trained  # noqa: E402
 from forecasting.trainer import TrainingReport, train  # noqa: E402
 
 logger = logging.getLogger("train_forecasting")
+
+
+def _git_commit() -> str | None:
+    """The commit this run trained at, so a result maps back to code.
+
+    Best-effort — no git, no problem; it is metadata, not a precondition.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=Path(__file__).resolve().parents[2],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout.strip() or None
+
+
+def write_run_record(
+    report_dir: Path,
+    *,
+    run_started: datetime,
+    summary: list[dict[str, Any]],
+    elapsed: float,
+    variables: list[str],
+    horizons: list[int] | None,
+    failures: int,
+) -> Path:
+    """Write an immutable record of one training invocation.
+
+    `training_report.json` is a *fixed* filename, so each run destroys the one
+    before it — two batches back to back leave only the second, which is
+    exactly what happened on 2026-08-05 and is why "did that change help?" was
+    unanswerable. This writes a copy keyed by start time that nothing
+    overwrites.
+
+    Deliberately stdlib-only. Experiment tracking proper lives in
+    `machine_learning/marine_ml/tracking.py`, which *reads* these directories:
+    the backend must not gain an MLflow dependency, because keeping the
+    modelling stack out of its import graph is a load-bearing boundary. The
+    direction of the dependency is the whole design — do not invert it by
+    importing a tracking client here.
+    """
+    run_dir = report_dir / "runs" / run_started.strftime("%Y%m%dT%H%M%SZ")
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "report.json").write_text(json.dumps(summary, indent=2, default=str))
+    (run_dir / "run.json").write_text(
+        json.dumps(
+            {
+                "started_at": run_started.isoformat(),
+                "finished_at": datetime.now(UTC).isoformat(),
+                "duration_seconds": round(elapsed, 2),
+                "variables": variables,
+                "horizons": horizons,
+                "models_trained": len([e for e in summary if "error" not in e]),
+                "models_failed": failures,
+                "git_commit": _git_commit(),
+                "argv": sys.argv[1:],
+            },
+            indent=2,
+            default=str,
+        )
+    )
+    return run_dir
 
 
 def _configure_logging(verbose: bool) -> None:
@@ -185,6 +254,7 @@ async def run(args: argparse.Namespace) -> int:
     report_dir.mkdir(parents=True, exist_ok=True)
 
     started = time.perf_counter()
+    run_started = datetime.now(UTC)
     summary: list[dict[str, Any]] = []
     failures = 0
 
@@ -231,11 +301,22 @@ async def run(args: argparse.Namespace) -> int:
     report_path = report_dir / "training_report.json"
     report_path.write_text(json.dumps(summary, indent=2, default=str))
 
+    run_dir = write_run_record(
+        report_dir,
+        run_started=run_started,
+        summary=summary,
+        elapsed=elapsed,
+        variables=targets,
+        horizons=args.horizons,
+        failures=failures,
+    )
+
     succeeded = len([entry for entry in summary if "error" not in entry])
     print(
         f"\n{'=' * 70}\n"
         f"  {succeeded} model(s) trained, {failures} failed, in {elapsed / 60:.1f} min\n"
         f"  report: {report_path}\n"
+        f"  run:    {run_dir}\n"
         f"{'=' * 70}"
     )
     return 1 if failures and not succeeded else 0

@@ -36,6 +36,20 @@ lightgbm==4.7.0
 shap==0.51.0
 joblib==1.5.3
 
+# --- experiment tracking ---------------------------------------------------
+# mlflow-skinny, NOT mlflow. The full package pins pandas<3 and pyarrow<23,
+# so installing it downgrades this environment from pandas 3.0.5 / pyarrow 25
+# — a major-version pandas downgrade underneath a 3.9M-row parquet feature
+# store. Skinny is the same tracking client without the bundled server; the
+# two SQL packages below are what it needs to drive the SQLite store, and are
+# the only thing the full package would have added that we use.
+#
+# The web UI is deliberately not installed. Run it without touching this venv:
+#   uvx --from mlflow mlflow ui --backend-store-uri sqlite:///mlruns.db
+mlflow-skinny==3.6.0
+sqlalchemy>=2.0
+alembic>=1.13
+
 # --- plotting & notebooks --------------------------------------------------
 matplotlib==3.11.1
 jupyter

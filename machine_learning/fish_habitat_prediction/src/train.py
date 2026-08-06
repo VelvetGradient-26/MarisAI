@@ -25,7 +25,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from marine_ml import config
+from marine_ml import config, tracking
 from marine_ml.validation import metrics, splits
 
 from . import features as feature_lib
@@ -261,3 +261,54 @@ def save(result: TrainingResult, name: str = "fish_habitat") -> None:
         "top_features": result.importances.head(15).to_dict("records"),
     }
     (config.REPORTS_DIR / f"{name}_summary.json").write_text(json.dumps(summary, indent=2))
+
+    _track(result, name)
+
+
+def _track(result: TrainingResult, name: str) -> None:
+    """Append this run to the experiment log.
+
+    Every file `save` just wrote is on a fixed path and will be destroyed by
+    the next run; this is the copy that survives so "did that change help?"
+    stays answerable. Tracking is best-effort by construction — see
+    `marine_ml.tracking`.
+    """
+    holdout = result.holdout.set_index("model") if "model" in result.holdout else None
+
+    with tracking.track(
+        "fish_habitat_prediction",
+        run_name=name,
+        params={
+            "n_features": len(result.feature_columns),
+            "models": ", ".join(sorted(result.model_scores)),
+            "random_seed": config.RANDOM_SEED,
+            "validation": "spatial_block_cv",
+            **{f"weight_{k}": round(v, 4) for k, v in result.ensemble_weights.weights.items()},
+        },
+        tags={"problem": "fish_habitat", "region": config.NORTH_INDIAN_OCEAN.name},
+    ) as run:
+        run.log_data_window(
+            start=config.HABITAT_START,
+            end=config.HABITAT_END,
+            rows=int(result.holdout["n"].sum()) if "n" in result.holdout else None,
+            extra={"note": "OBIS target-species records stop after 2014"},
+        )
+        run.log_params({"feature_count": len(result.feature_columns)})
+        run.log_dict(result.feature_columns, "feature_columns.json")
+        run.log_dict(tracking.snapshot_config(config), "config_snapshot.json")
+
+        run.log_fold_scores(result.fold_scores)
+        run.log_table(result.holdout, "holdout.csv")
+        run.log_shap(result.importances)
+
+        # CV TSS per model, and the holdout number for each. The ensemble
+        # scoring below its own best member is a live finding in TODO.md; it
+        # is only visible if both are recorded side by side.
+        run.log_metrics({f"cv_tss_{k}": v for k, v in result.model_scores.items()})
+        if holdout is not None:
+            for metric in ("tss", "roc_auc", "pr_auc", "boyce"):
+                if metric in holdout.columns:
+                    run.log_metrics(
+                        {f"holdout_{metric}_{model}": value
+                         for model, value in holdout[metric].items()}
+                    )
