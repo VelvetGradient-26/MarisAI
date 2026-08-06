@@ -36,6 +36,32 @@ def _choose_base(fetched: dict[str, tuple[ProviderSpec, xr.Dataset]]) -> str:
     return min(candidates, key=lambda k: (candidates[k][0].grid_spacing_deg, k))
 
 
+# Separator between a provider key and an upstream field name in the merged
+# dataset. Two characters that no Copernicus/ERDDAP/Open-Meteo field uses, so
+# `_qualify` is unambiguous and reversible.
+_FIELD_SEP = "::"
+
+
+def qualify(provider: str, field: str) -> str:
+    """The merged dataset's name for `field` as served by `provider`.
+
+    Provider datasets are namespaced before merging because an upstream name
+    is only unique *within* a product, not across them. Copernicus reuses
+    `thetao` for surface temperature in the physics product and for a
+    depth-resolved profile in `..._thetao_depth`, and `so` likewise for
+    salinity. Merging those raw raised
+    `MergeError: conflicting values for variable 'thetao'` and took out every
+    request pairing `water_temperature` with `sea_surface_temperature` (or
+    `water_salinity` with `sea_surface_salinity`) — legal selections in both
+    the downloader and the forecasting engine's covariates.
+
+    Namespacing makes the collision structurally impossible rather than
+    relying on no two providers ever choosing the same name. Do not "simplify"
+    this back to a bare merge.
+    """
+    return f"{provider}{_FIELD_SEP}{field}"
+
+
 def _merge_provider_datasets(fetched: dict[str, tuple[ProviderSpec, xr.Dataset]]) -> xr.Dataset:
     """Combine whichever providers were fetched onto one shared grid and time
     axis.
@@ -44,12 +70,20 @@ def _merge_provider_datasets(fetched: dict[str, tuple[ProviderSpec, xr.Dataset]]
     cadence lands on their shared timestamps: waves are 3-hourly and
     biogeochemistry daily, so pairing either with an hourly physics variable
     yields 3-hourly or daily rows rather than hourly rows mostly full of gaps.
+
+    Data variables come out qualified by provider (see `qualify`); coords are
+    left alone, since those are what the merge aligns on.
     """
     assert fetched, "at least one provider dataset is required"
 
+    namespaced = {
+        key: ds.rename({name: qualify(key, str(name)) for name in ds.data_vars})
+        for key, (_, ds) in fetched.items()
+    }
+
     base_key = _choose_base(fetched)
-    base = fetched[base_key][1]
-    others = [ds for key, (_, ds) in fetched.items() if key != base_key]
+    base = namespaced[base_key]
+    others = [ds for key, ds in namespaced.items() if key != base_key]
     if not others:
         return base
 
@@ -126,10 +160,14 @@ def build_dataframe(
 
     output = xr.Dataset(coords=merged.coords)
     for code, info in variables.items():
+        # Both a source field and a derivation's inputs are named in the
+        # provider's own vocabulary, so both need qualifying by the provider
+        # that served them.
         if info.source_field is not None:
-            output[code] = merged[info.source_field]
+            output[code] = merged[qualify(info.provider, info.source_field)]
         elif info.derived_from is not None and info.derivation is not None:
-            output[code] = _DERIVATIONS[info.derivation](merged, *info.derived_from)
+            fields = [qualify(info.provider, name) for name in info.derived_from]
+            output[code] = _DERIVATIONS[info.derivation](merged, *fields)
 
     # Bathymetry on its own has no time axis anywhere in the merge. Rather
     # than emit a frame whose shape differs from every other request's, give
