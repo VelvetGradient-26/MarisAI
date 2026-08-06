@@ -107,8 +107,20 @@
  *
  * Follows the per-page theming convention the other pages use (see
  * download.css, dashboard.css): a `--xx-*` block on the root class plus a
- * light override, driven by `useThemeStore`. Accent is cyan in dark and teal
- * in light, matching the rest of the app.
+ * light override, driven by `useThemeStore`.
+ *
+ * The accent aliases the shared palette in src/styles/tokens.css. It was the
+ * same cyan/teal written out a second time, and a duplicated identity colour
+ * is the one that eventually drifts — the map's `#22d3ee` was exactly that.
+ *
+ * Everything else here stays local *on purpose*, and this is the deliberate
+ * exception to the app-wide palette rather than an oversight. The dashboard is
+ * the one Tailwind surface: translucent glass panels floating on a radial
+ * gradient wash, with a cooler blue-white ink to sit on them. `--ma-surface`
+ * is a flat card colour and `--ma-bg` a flat canvas — aliasing to them would
+ * not unify this page, it would delete its treatment. The rule of thumb: a
+ * token that means "which product is this" is shared; a token that means "what
+ * does this page's material look like" is not.
  *
  * The alert ramp deliberately does NOT invert — orange still means warning
  * and red still means critical in both themes. Only their tints are darkened
@@ -116,11 +128,16 @@
  */
 @layer base {
   .oid-root {
-    --oid-accent: #4fd1ff;
+    --oid-accent: var(--ma-accent);
+    --oid-accent-contrast: var(--ma-accent-on);
+    /* A second hue, for gradients that need to travel somewhere — genuinely
+       this page's own, not a shared accent. */
     --oid-accent-soft: #38e0d0;
-    --oid-accent-contrast: #04080f;
-    --oid-accent-wash: color-mix(in oklab, #4fd1ff 16%, transparent);
-    --oid-accent-wash-strong: color-mix(in oklab, #4fd1ff 26%, transparent);
+    /* Mix percentages differ per theme (a wash reads heavier on white), so
+       these stay in both blocks — but the colour being mixed is the shared
+       accent, so they cannot drift from it. */
+    --oid-accent-wash: color-mix(in oklab, var(--ma-accent) 16%, transparent);
+    --oid-accent-wash-strong: color-mix(in oklab, var(--ma-accent) 26%, transparent);
 
     --oid-panel: color-mix(in oklab, #0d1c30 78%, transparent);
     --oid-panel-strong: color-mix(in oklab, #0a1626 88%, transparent);
@@ -150,11 +167,11 @@
   }
 
   .oid-root--light {
-    --oid-accent: #0f766e;
+    /* --oid-accent and --oid-accent-contrast are absent here on purpose: they
+       alias shared tokens, which invert themselves from `data-theme`. */
     --oid-accent-soft: #14b8a6;
-    --oid-accent-contrast: #ffffff;
-    --oid-accent-wash: color-mix(in oklab, #0f766e 12%, transparent);
-    --oid-accent-wash-strong: color-mix(in oklab, #0f766e 20%, transparent);
+    --oid-accent-wash: color-mix(in oklab, var(--ma-accent) 12%, transparent);
+    --oid-accent-wash-strong: color-mix(in oklab, var(--ma-accent) 20%, transparent);
 
     --oid-panel: color-mix(in oklab, #ffffff 86%, transparent);
     --oid-panel-strong: color-mix(in oklab, #ffffff 94%, transparent);
@@ -196,20 +213,23 @@
    * canvas paints rather than `.oid-root` — the scrollbar gutter, and the
    * overscroll area — came out white behind a dark dashboard.
    *
-   * `:has()` scopes both fixes to the dashboard being mounted, so the other
-   * six pages keep the light canvas they were designed against.
-   * `color-scheme` is what makes the scrollbar itself dark; the background
-   * colour covers the overscroll.
+   * `:has()` scopes the fix to the dashboard being mounted, because this
+   * page's canvas is several shades darker than `--ma-bg` — the gradient wash
+   * above is built against it.
+   *
+   * `color-scheme` used to be set here too, and no longer is: tokens.css now
+   * sets it globally from `data-theme`, which is the same signal this class
+   * comes from. Two rules asserting the same thing is one of them waiting to
+   * be forgotten. Only the background remains, and only because this page
+   * genuinely differs.
    */
   :root:has(.oid-root) {
-    color-scheme: dark;
     background-color: #04080f;
   }
 
-  /* Light mode has to flip the canvas too, or the scrollbar and overscroll
-     stay dark against a light page. */
+  /* Light mode has to flip the canvas too, or the overscroll area stays dark
+     against a light page. */
   :root:has(.oid-root--light) {
-    color-scheme: light;
     background-color: #eef4f8;
   }
 

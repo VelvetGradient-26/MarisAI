@@ -4,7 +4,29 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Maris AI</title>
+    <title>Maris AI | Marine Intelligence</title>
+    <meta
+      name="description"
+      content="MarisAI — live ocean and atmospheric data on an interactive map, an analytics dashboard, forecast layers, and a 34-variable ocean data downloader."
+    />
+    <meta name="theme-color" content="#0e1116" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f4f7f8" media="(prefers-color-scheme: light)" />
+    <!-- Stamp the persisted theme before first paint. Without this the page
+         renders in the default dark for a frame before React's effect runs,
+         which a light-mode user sees as a black flash on every cold load.
+         Reads the same localStorage key as store/themeStore.ts (zustand
+         persist), and defaults to dark exactly as that store does. -->
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem('marisai-theme');
+          var dark = raw ? JSON.parse(raw).state.dark !== false : true;
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        } catch (e) {
+          document.documentElement.dataset.theme = 'dark';
+        }
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

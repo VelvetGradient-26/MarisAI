@@ -1,8 +1,9 @@
 /* Docs.
  *
  * Per-page theming convention, same as every other page: --dc-* custom
- * properties on the root class, overridden wholesale in .docs-page--light.
- * Dark accent is the shared cyan (#4fd1ff), light accent teal (#0f766e).
+ * properties on the root class. Most now alias the shared palette in
+ * styles/tokens.css and invert from `data-theme` on <html>; the three that
+ * remain this page's own are still overridden in .docs-page--light.
  *
  * Layout is a three-column shell (chapter nav | article | on-this-page) that
  * degrades to one column on narrow screens. The article column is capped at a
@@ -11,20 +12,23 @@
  */
 
 .docs-page {
-  --dc-bg: #0e1116;
-  --dc-surface: rgba(255, 255, 255, 0.03);
-  --dc-surface-strong: rgba(255, 255, 255, 0.055);
-  --dc-border: rgba(255, 255, 255, 0.1);
-  --dc-border-strong: rgba(255, 255, 255, 0.16);
-  --dc-text: #d8dce3;
-  --dc-heading: #f5f7fa;
-  --dc-muted: #9ba0af;
-  --dc-faint: #6d7382;
-  --dc-primary: #4fd1ff;
-  --dc-primary-soft: rgba(79, 209, 255, 0.14);
-  --dc-good: #4ade80;
+  --dc-bg: var(--ma-bg);
+  --dc-surface: var(--ma-surface);
+  --dc-surface-strong: var(--ma-surface-strong);
+  --dc-border: var(--ma-border);
+  --dc-border-strong: var(--ma-border-strong);
+  --dc-text: var(--ma-text);
+  --dc-heading: var(--ma-heading);
+  --dc-muted: var(--ma-muted);
+  --dc-faint: var(--ma-faint);
+  --dc-primary: var(--ma-accent);
+  --dc-primary-soft: var(--ma-accent-soft);
+  --dc-good: var(--ma-good);
+  --dc-warn: var(--ma-warn);
+
+  /* Local: docs' "bad" is a softer red than a form's error state, and the
+     code/row surfaces sit above --dc-surface rather than replacing it. */
   --dc-bad: #f87171;
-  --dc-warn: #fbbf24;
   --dc-code-bg: rgba(255, 255, 255, 0.06);
   --dc-row-hover: rgba(255, 255, 255, 0.035);
 
@@ -32,25 +36,12 @@
   padding: calc(var(--navbar-h, 64px) + 32px) 24px 80px;
   background: var(--dc-bg);
   color: var(--dc-text);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--ma-font-ui);
   transition: background 0.3s ease, color 0.3s ease;
 }
 
 .docs-page--light {
-  --dc-bg: #f4f7f8;
-  --dc-surface: #fff;
-  --dc-surface-strong: #fff;
-  --dc-border: rgba(15, 30, 30, 0.1);
-  --dc-border-strong: rgba(15, 30, 30, 0.18);
-  --dc-text: #23312f;
-  --dc-heading: #0a1514;
-  --dc-muted: #5c6b6c;
-  --dc-faint: #85939a;
-  --dc-primary: #0f766e;
-  --dc-primary-soft: rgba(15, 118, 110, 0.1);
-  --dc-good: #15803d;
   --dc-bad: #b91c1c;
-  --dc-warn: #b45309;
   --dc-code-bg: rgba(15, 30, 30, 0.055);
   --dc-row-hover: rgba(15, 30, 30, 0.025);
 }
@@ -214,7 +205,7 @@
 
 .docs-article h1 {
   margin: 0 0 14px;
-  font-size: clamp(28px, 4vw, 38px);
+  font-size: var(--ma-text-2xl);
   line-height: 1.15;
   color: var(--dc-heading);
 }
@@ -229,7 +220,7 @@
 .docs-article h2 {
   margin: 52px 0 14px;
   padding-top: 4px;
-  font-size: 23px;
+  font-size: var(--ma-text-xl);
   line-height: 1.25;
   color: var(--dc-heading);
   scroll-margin-top: calc(var(--navbar-h, 64px) + 24px);

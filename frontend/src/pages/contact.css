@@ -1,11 +1,13 @@
+/* Page tokens alias the shared palette in styles/tokens.css; both themes come
+   from `data-theme` on <html>. */
 .contact-page {
-  --ct-bg: #0e1116;
-  --ct-card-bg: rgba(255, 255, 255, 0.03);
-  --ct-border: rgba(255, 255, 255, 0.1);
-  --ct-text: #e3e2e2;
-  --ct-muted: #9ba0af;
-  --ct-primary: #4fd1ff;
-  --ct-link-hover-bg: rgba(255, 255, 255, 0.08);
+  --ct-bg: var(--ma-bg);
+  --ct-card-bg: var(--ma-surface);
+  --ct-border: var(--ma-border);
+  --ct-text: var(--ma-text);
+  --ct-muted: var(--ma-muted);
+  --ct-primary: var(--ma-accent);
+  --ct-link-hover-bg: var(--ma-hover-bg);
 
   display: flex;
   min-height: 100vh;
@@ -13,18 +15,8 @@
   justify-content: center;
   padding: calc(var(--navbar-h, 64px) + 24px) 24px 24px;
   background: var(--ct-bg);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--ma-font-ui);
   transition: background 0.3s ease, color 0.3s ease;
-}
-
-.contact-page--light {
-  --ct-bg: #f4f7f8;
-  --ct-card-bg: #fff;
-  --ct-border: rgba(15, 30, 30, 0.09);
-  --ct-text: #12201f;
-  --ct-muted: #5c6b6c;
-  --ct-primary: #0f766e;
-  --ct-link-hover-bg: rgba(15, 30, 30, 0.05);
 }
 
 .contact-card {
@@ -40,7 +32,7 @@
 
 .contact-card h1 {
   margin: 0 0 14px;
-  font-size: 1.7rem;
+  font-size: var(--ma-text-2xl);
 }
 
 .contact-card p {
@@ -74,4 +66,22 @@
 
 .contact-link:hover {
   background: var(--ct-link-hover-bg);
+}
+
+/* The card is a fixed 40px-padded 480px box; on a 320px screen that leaves
+   240px of content, and the email address alone is 28 characters. */
+@media (max-width: 560px) {
+  .contact-page {
+    padding: calc(var(--navbar-h, 64px) + 16px) 16px 24px;
+  }
+
+  .contact-card {
+    padding: 28px 20px;
+  }
+
+  /* The mailto link is one long unbreakable token — it has to be allowed to
+     break, or it pushes the card wider than the viewport. */
+  .contact-link {
+    overflow-wrap: anywhere;
+  }
 }

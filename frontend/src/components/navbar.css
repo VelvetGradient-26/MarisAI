@@ -2,11 +2,16 @@
   --navbar-h: 64px;
 }
 
+/* The navbar's own tokens stay mostly local, and that is deliberate: it is the
+   one surface that floats *over* every page — including the full-bleed map —
+   so its background and controls are translucent, tuned against a blur, and
+   cannot simply be a page surface. Only the border and accent are shared,
+   because those are what visibly disagreed with the page underneath. */
 .navbar {
   --nav-bg: rgba(10, 12, 14, 0.82);
-  --nav-border: rgba(255, 255, 255, 0.1);
+  --nav-border: var(--ma-border);
   --nav-text: rgba(255, 255, 255, 0.65);
-  --nav-primary: #4fd1ff;
+  --nav-primary: var(--ma-accent);
   --nav-control-bg: rgba(255, 255, 255, 0.05);
   --nav-control-bg-hover: rgba(255, 255, 255, 0.12);
   --nav-control-border: rgba(255, 255, 255, 0.12);
@@ -22,15 +27,13 @@
   border-bottom: 1px solid var(--nav-border);
   background: var(--nav-bg);
   backdrop-filter: blur(20px);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--ma-font-ui);
   transition: background 0.3s ease, border-color 0.3s ease;
 }
 
 .navbar--light {
   --nav-bg: rgba(255, 255, 255, 0.85);
-  --nav-border: rgba(15, 30, 30, 0.1);
   --nav-text: rgba(15, 30, 30, 0.65);
-  --nav-primary: #0f766e;
   --nav-control-bg: rgba(15, 30, 30, 0.04);
   --nav-control-bg-hover: rgba(15, 30, 30, 0.1);
   --nav-control-border: rgba(15, 30, 30, 0.14);

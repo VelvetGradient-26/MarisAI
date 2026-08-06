@@ -1,12 +1,15 @@
 /* Ocean Assistant.
  *
  * Same per-page theming contract as download.css/feedback.css: every colour is
- * a `--chat-*` token defined on the dark root, with `.chat-page--light`
- * overriding the same names. Nothing below hardcodes a colour, which is what
- * keeps the two themes from drifting as the page grows — a literal added in
- * one block is invisible until someone toggles the theme.
+ * a `--chat-*` token, and nothing below hardcodes one — which is what keeps the
+ * two themes from drifting as the page grows, since a literal added in one
+ * block is invisible until someone toggles the theme.
  *
- * Two tokens intentionally do NOT simply invert:
+ * Most of those tokens now alias the shared palette in styles/tokens.css and
+ * invert from `data-theme` on <html>. The handful listed under "Local" below
+ * are this page's own and still need `.chat-page--light`.
+ *
+ * Two of them intentionally do NOT simply invert:
  *   --chat-flag-*  the ungrounded-figure warning stays amber-on-warm in both
  *                  themes, because it means the same thing in both and an
  *                  inverted warning reads as decoration.
@@ -15,61 +18,49 @@
  */
 
 .chat-page {
-  --chat-bg: #0e1116;
-  --chat-panel: rgba(255, 255, 255, 0.03);
-  --chat-border: rgba(255, 255, 255, 0.1);
-  --chat-border-soft: rgba(255, 255, 255, 0.06);
-  --chat-text: #e3e2e2;
-  --chat-muted: #9ba0af;
-  --chat-faint: #6b7280;
-  --chat-primary: #4fd1ff;
-  --chat-primary-on: #001b22;
-  --chat-user-bg: rgba(79, 209, 255, 0.12);
-  --chat-user-border: rgba(79, 209, 255, 0.3);
-  --chat-assistant-bg: rgba(255, 255, 255, 0.04);
-  --chat-input-bg: rgba(255, 255, 255, 0.04);
-  --chat-error: #ff8a8a;
+  --chat-bg: var(--ma-bg);
+  --chat-panel: var(--ma-surface);
+  --chat-border: var(--ma-border);
+  --chat-border-soft: var(--ma-border-soft);
+  --chat-text: var(--ma-text);
+  --chat-muted: var(--ma-muted);
+  --chat-faint: var(--ma-faint);
+  --chat-primary: var(--ma-accent);
+  --chat-primary-on: var(--ma-accent-on);
+  --chat-user-bg: var(--ma-accent-soft);
+  --chat-user-border: var(--ma-accent-line);
+  --chat-assistant-bg: var(--ma-input-bg);
+  --chat-input-bg: var(--ma-input-bg);
+  --chat-error: var(--ma-error);
+  --chat-shadow: var(--ma-shadow);
+  --chat-hover-bg: var(--ma-hover-bg);
+
+  /* Local, for the reasons in the file header above. */
   --chat-flag-bg: rgba(245, 158, 11, 0.12);
   --chat-flag-border: rgba(245, 158, 11, 0.35);
   --chat-flag-text: #fbbf24;
   --chat-code-bg: rgba(0, 0, 0, 0.32);
-  --chat-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
   --chat-sidebar-bg: rgba(255, 255, 255, 0.02);
   --chat-active-bg: rgba(79, 209, 255, 0.14);
-  --chat-hover-bg: rgba(255, 255, 255, 0.05);
   --chat-focus-ring: rgba(79, 209, 255, 0.18);
 
   min-height: 100vh;
   padding: calc(var(--navbar-h, 64px) + 24px) 20px 28px;
   background: var(--chat-bg);
   color: var(--chat-text);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--ma-font-ui);
   transition: background 0.3s ease, color 0.3s ease;
 }
 
 .chat-page--light {
-  --chat-bg: #f4f7f8;
-  --chat-panel: #fff;
-  --chat-border: rgba(15, 30, 30, 0.12);
-  --chat-border-soft: rgba(15, 30, 30, 0.07);
-  --chat-text: #12201f;
-  --chat-muted: #5c6b6c;
-  --chat-faint: #7c8a8b;
-  --chat-primary: #0f766e;
-  --chat-primary-on: #fff;
-  --chat-user-bg: rgba(15, 118, 110, 0.1);
-  --chat-user-border: rgba(15, 118, 110, 0.26);
   --chat-assistant-bg: #fff;
   --chat-input-bg: #fff;
-  --chat-error: #dc2626;
   --chat-flag-bg: rgba(180, 83, 9, 0.1);
   --chat-flag-border: rgba(180, 83, 9, 0.28);
   --chat-flag-text: #b45309;
   --chat-code-bg: rgba(15, 30, 30, 0.05);
-  --chat-shadow: 0 14px 32px rgba(15, 30, 30, 0.08);
   --chat-sidebar-bg: #fbfdfd;
   --chat-active-bg: rgba(15, 118, 110, 0.12);
-  --chat-hover-bg: rgba(15, 30, 30, 0.04);
   --chat-focus-ring: rgba(15, 118, 110, 0.15);
 }
 
@@ -144,6 +135,21 @@
   line-height: 1.5;
 }
 
+/* A failed listing is not the same as an empty one, and must not read as the
+   same quiet grey aside — see ChatPage's `sessionsStatus`. */
+.chat-sidebar__empty--error {
+  color: var(--chat-error);
+}
+
+/* Placeholder rows while the listing is in flight. Shaped like a real session
+   row so the sidebar does not resize under the cursor when they resolve. */
+.chat-session--placeholder {
+  display: flex;
+  align-items: center;
+  padding: 9px 10px;
+  pointer-events: none;
+}
+
 .chat-sessions {
   list-style: none;
   margin: 0;
@@ -155,12 +161,23 @@
   scrollbar-color: var(--chat-border) transparent;
 }
 
+/* The delete control is a sibling of the session button rather than a child of
+   it (see ChatPage), so the row — not the button — is what the two of them
+   share a hover state through. */
+.chat-session-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
 .chat-session {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 9px 10px;
+  /* Right padding reserves the delete button's lane, so a long title
+     ellipsises before it reaches the icon instead of running under it. */
+  padding: 9px 34px 9px 10px;
   border: none;
   border-radius: 8px;
   background: none;
@@ -172,7 +189,7 @@
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.chat-session:hover {
+.chat-session-row:hover .chat-session {
   background: var(--chat-hover-bg);
   color: var(--chat-text);
 }
@@ -190,16 +207,39 @@
 }
 
 .chat-session__delete {
-  display: inline-flex;
-  flex-shrink: 0;
-  opacity: 0;
+  position: absolute;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
   color: var(--chat-faint);
-  transition: opacity 0.15s ease, color 0.15s ease;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 
-.chat-session:hover .chat-session__delete,
+.chat-session-row:hover .chat-session__delete,
 .chat-session__delete:focus-visible {
   opacity: 1;
+}
+
+.chat-session__delete:hover {
+  background: var(--chat-hover-bg);
+  color: var(--chat-error);
+}
+
+/* A control revealed only on hover is unreachable on a touch screen — there is
+   no hover, and a tap produces no `:focus-visible` either. On a coarse pointer
+   it is simply always visible. */
+@media (hover: none) {
+  .chat-session__delete {
+    opacity: 1;
+  }
 }
 
 .chat-session__delete:hover {
@@ -208,7 +248,7 @@
 
 .chat-header h1 {
   margin: 0 0 6px;
-  font-size: 1.6rem;
+  font-size: var(--ma-text-2xl);
   letter-spacing: -0.01em;
 }
 

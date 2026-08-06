@@ -1,33 +1,30 @@
+/* Page tokens alias the shared palette in styles/tokens.css. Both themes come
+   from `data-theme` on <html>, so there is no longer a per-theme block here —
+   this page had its own dark canvas (#121414) and card (#1d2020), a shade off
+   every other page's. `--dl-badge-bg` is the one value still chosen locally:
+   the "coming soon" chip needs to sit above the card it is on, which is a
+   different job from any shared surface. */
 .download-page {
-  --dl-bg: #121414;
-  --dl-card: #1d2020;
-  --dl-border: rgba(255, 255, 255, 0.08);
-  --dl-text: #e3e2e2;
-  --dl-muted: #9ba0af;
-  --dl-primary: #4fd1ff;
-  --dl-primary-on: #001b22;
-  --dl-error: #ff8a8a;
-  --dl-input-bg: rgba(255, 255, 255, 0.04);
+  --dl-bg: var(--ma-bg);
+  --dl-card: var(--ma-surface-solid);
+  --dl-border: var(--ma-border-soft);
+  --dl-text: var(--ma-text);
+  --dl-muted: var(--ma-muted);
+  --dl-primary: var(--ma-accent);
+  --dl-primary-on: var(--ma-accent-on);
+  --dl-error: var(--ma-error);
+  --dl-input-bg: var(--ma-input-bg);
   --dl-badge-bg: rgba(255, 255, 255, 0.08);
 
   min-height: 100vh;
   background: var(--dl-bg);
   color: var(--dl-text);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--ma-font-ui);
   padding: calc(var(--navbar-h, 64px) + 2rem) 1.5rem 4rem;
   transition: background 0.3s ease, color 0.3s ease;
 }
 
 .download-page--light {
-  --dl-bg: #f4f7f8;
-  --dl-card: #fff;
-  --dl-border: rgba(15, 30, 30, 0.09);
-  --dl-text: #12201f;
-  --dl-muted: #5c6b6c;
-  --dl-primary: #0f766e;
-  --dl-primary-on: #fff;
-  --dl-error: #dc2626;
-  --dl-input-bg: rgba(15, 30, 30, 0.04);
   --dl-badge-bg: rgba(15, 30, 30, 0.06);
 }
 
@@ -52,7 +49,7 @@
 
 .download-header h1 {
   margin: 0 0 0.4rem;
-  font-size: 1.8rem;
+  font-size: var(--ma-text-2xl);
 }
 
 .download-subtitle {
@@ -77,7 +74,7 @@
 
 .download-section h2 {
   margin: 0 0 1rem;
-  font-size: 1rem;
+  font-size: var(--ma-text-md);
   font-weight: 600;
   color: var(--dl-muted);
   text-transform: uppercase;
@@ -272,4 +269,71 @@
 .download-submit--signin {
   display: inline-block;
   text-decoration: none;
+}
+
+/* --------------------------------------------------------------------------
+   Small screens
+   --------------------------------------------------------------------------
+   This page had no media queries at all, and it is the most control-dense one
+   in the app: 18 inputs, a 320px map, and a form column sized for a desktop.
+   Three things actually broke below ~420px rather than merely looking tight —
+   the bounding-box row (four fields at `min-width: 120px` plus 1rem gaps), the
+   format radios (a non-wrapping flex row), and the map, which ate the viewport
+   on a phone. */
+
+@media (max-width: 640px) {
+  .download-page {
+    padding: calc(var(--navbar-h, 64px) + 1.25rem) 1rem 3rem;
+  }
+
+  .download-section {
+    padding: 1rem;
+  }
+
+  .download-field-row {
+    gap: 0.75rem;
+  }
+
+  /* Two columns rather than four, and narrow enough that a longitude with
+     four decimals still fits without the field scrolling internally. */
+  .download-field-row label {
+    min-width: 110px;
+  }
+
+  /* Under 16px, iOS zooms the whole page in when the field takes focus and
+     does not zoom back out — which on this form means every tap into a
+     coordinate leaves the layout enlarged and horizontally scrolled. */
+  .download-field-row input,
+  .download-section select {
+    font-size: 16px;
+  }
+
+  .download-variable-groups {
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 0.75rem;
+  }
+
+  /* The draw map is an aid, not the subject: at 320px tall it left no room
+     for the coordinate fields it feeds. */
+  .download-draw-map {
+    height: 220px;
+  }
+
+  .download-advanced label {
+    flex: 1 1 150px;
+  }
+
+  /* Three radios in one non-wrapping row overflowed the card below ~360px. */
+  .download-format-options {
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+  }
+
+  /* Full width, because at the bottom of a long form on a phone this is the
+     one thing the thumb is reaching for. */
+  .download-submit {
+    align-self: stretch;
+    width: 100%;
+    text-align: center;
+  }
 }
