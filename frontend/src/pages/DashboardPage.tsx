@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode, SubmitEvent } from 'react';
 import {
   Activity,
@@ -33,6 +33,20 @@ type InsightsStatus = 'idle' | 'loading' | 'success' | 'error';
 const DEFAULT_LOCATION = { lat: -24.8523, lng: 38.1256 };
 
 type MetricKey = Exclude<keyof RealtimeOceanConditions, 'time'>;
+
+/**
+ * Whether the panels below are still waiting on their first response.
+ *
+ * A context rather than a prop because the flag is read by three leaf
+ * components across ~20 call sites that all already take `data`; threading it
+ * through each would be noise around a single boolean.
+ *
+ * It exists because every metric rendered an em dash while loading — which is
+ * exactly what this page renders when a value genuinely is not available. The
+ * two must not look alike: one resolves into a reading, the other already is
+ * the answer.
+ */
+const PendingContext = createContext(false);
 
 export function DashboardPage() {
   const { searchParams, navigate } = useAppRouter();
@@ -227,80 +241,86 @@ export function DashboardPage() {
 
         {requestError && <div className="dashboard-request-error">{requestError}</div>}
 
-        <div className="dashboard-grid" aria-busy={status === 'loading'}>
-          <DashboardCard>
-            <CardHeader icon={<Waves size={17} />} title="Ocean metrics" />
-            <div className="dashboard-metric-list">
-              <MetricRow label="Sea Surface Temp" metric="sea_surface_temperature" data={data} />
-              <MetricRow label="Wave Height" metric="wave_height" data={data} />
-              <MetricRow label="Wave Direction" metric="wave_direction" data={data} direction />
-              <MetricRow label="Wave Period" metric="wave_period" data={data} />
-              <MetricRow label="Current Speed" metric="ocean_current_velocity" data={data} />
-              <MetricRow
-                label="Current Direction"
-                metric="ocean_current_direction"
-                data={data}
-                direction
-              />
-              <MetricRow label="Sea Level MSL" metric="sea_level_height_msl" data={data} />
-            </div>
-            <CardFooter data={data} />
-          </DashboardCard>
+        {/* `!data` matters: on a *refresh* the previous readings are still on
+            screen and correct, so only the cold start shows skeletons. Replacing
+            live values with shimmer on every location change would be worse
+            than the em dashes this replaces. */}
+        <PendingContext.Provider value={status === 'loading' && !data}>
+          <div className="dashboard-grid" aria-busy={status === 'loading'}>
+            <DashboardCard>
+              <CardHeader icon={<Waves size={17} />} title="Ocean metrics" />
+              <div className="dashboard-metric-list">
+                <MetricRow label="Sea Surface Temp" metric="sea_surface_temperature" data={data} />
+                <MetricRow label="Wave Height" metric="wave_height" data={data} />
+                <MetricRow label="Wave Direction" metric="wave_direction" data={data} direction />
+                <MetricRow label="Wave Period" metric="wave_period" data={data} />
+                <MetricRow label="Current Speed" metric="ocean_current_velocity" data={data} />
+                <MetricRow
+                  label="Current Direction"
+                  metric="ocean_current_direction"
+                  data={data}
+                  direction
+                />
+                <MetricRow label="Sea Level MSL" metric="sea_level_height_msl" data={data} />
+              </div>
+              <CardFooter data={data} />
+            </DashboardCard>
 
-          <DashboardCard>
-            <CardHeader icon={<Thermometer size={17} />} title="Atmospheric" />
-            <div className="dashboard-stat-grid">
-              <StatBlock label="Wind Speed" metric="wind_speed" data={data} />
-              <StatBlock label="Wind Direction" metric="wind_direction" data={data} direction />
-              <StatBlock label="Air Temp" metric="air_temperature" data={data} />
-              <StatBlock label="Humidity" metric="relative_humidity" data={data} />
-              <StatBlock label="Pressure" metric="surface_pressure" data={data} />
-              <StatBlock label="Visibility" metric="visibility" data={data} visibility />
-              <StatBlock label="Cloud Cover" metric="cloud_cover" data={data} />
-              <StatBlock label="Precipitation" metric="precipitation" data={data} />
-            </div>
-          </DashboardCard>
+            <DashboardCard>
+              <CardHeader icon={<Thermometer size={17} />} title="Atmospheric" />
+              <div className="dashboard-stat-grid">
+                <StatBlock label="Wind Speed" metric="wind_speed" data={data} />
+                <StatBlock label="Wind Direction" metric="wind_direction" data={data} direction />
+                <StatBlock label="Air Temp" metric="air_temperature" data={data} />
+                <StatBlock label="Humidity" metric="relative_humidity" data={data} />
+                <StatBlock label="Pressure" metric="surface_pressure" data={data} />
+                <StatBlock label="Visibility" metric="visibility" data={data} visibility />
+                <StatBlock label="Cloud Cover" metric="cloud_cover" data={data} />
+                <StatBlock label="Precipitation" metric="precipitation" data={data} />
+              </div>
+            </DashboardCard>
 
-          <DashboardCard>
-            <CardHeader icon={<Compass size={17} />} title="Geo-location" />
-            <div className="dashboard-location-content">
-              <LocationDetail
-                icon={<MapPin size={18} />}
-                label="Ocean sector"
-                value={
-                  data?.location_context.ocean_name ??
-                  data?.location_context.locality ??
-                  'Open ocean'
-                }
-                description={data?.location_context.continent ?? 'International waters'}
-              />
-              <LocationDetail
-                icon={<Anchor size={18} />}
-                label="Nearest port"
-                value={data?.location_context.nearest_port?.name ?? '—'}
-                description={formatNearestPort(data?.location_context.nearest_port ?? null)}
-              />
-              <LocationDetail
-                icon={<Navigation2 size={18} />}
-                label="Requested point"
-                value={`${requestedLocation.lat.toFixed(4)}°, ${requestedLocation.lng.toFixed(4)}°`}
-                description={formatResolvedPoint(data)}
-              />
-              <div className="dashboard-location-summary">
-                <div>
-                  <span>Timezone</span>
-                  <strong>{formatTimezone(data)}</strong>
-                </div>
-                <div>
-                  <span>Status</span>
-                  <strong className="dashboard-status-badge">
-                    {status === 'success' ? 'LIVE' : status.toUpperCase()}
-                  </strong>
+            <DashboardCard>
+              <CardHeader icon={<Compass size={17} />} title="Geo-location" />
+              <div className="dashboard-location-content">
+                <LocationDetail
+                  icon={<MapPin size={18} />}
+                  label="Ocean sector"
+                  value={
+                    data?.location_context.ocean_name ??
+                    data?.location_context.locality ??
+                    'Open ocean'
+                  }
+                  description={data?.location_context.continent ?? 'International waters'}
+                />
+                <LocationDetail
+                  icon={<Anchor size={18} />}
+                  label="Nearest port"
+                  value={data?.location_context.nearest_port?.name ?? '—'}
+                  description={formatNearestPort(data?.location_context.nearest_port ?? null)}
+                />
+                <LocationDetail
+                  icon={<Navigation2 size={18} />}
+                  label="Requested point"
+                  value={`${requestedLocation.lat.toFixed(4)}°, ${requestedLocation.lng.toFixed(4)}°`}
+                  description={formatResolvedPoint(data)}
+                />
+                <div className="dashboard-location-summary">
+                  <div>
+                    <span>Timezone</span>
+                    <strong>{formatTimezone(data)}</strong>
+                  </div>
+                  <div>
+                    <span>Status</span>
+                    <strong className="dashboard-status-badge">
+                      {status === 'success' ? 'LIVE' : status.toUpperCase()}
+                    </strong>
+                  </div>
                 </div>
               </div>
-            </div>
-          </DashboardCard>
-        </div>
+            </DashboardCard>
+          </div>
+        </PendingContext.Provider>
 
         {insightsStatus !== 'idle' && (
           <section className="dashboard-card dashboard-insights-card">
@@ -403,10 +423,17 @@ function MetricRow({
   data: RealtimeOceanResponse | null;
   direction?: boolean;
 }) {
+  const pending = useContext(PendingContext);
   return (
     <div className="dashboard-metric-row">
       <span>{label}</span>
-      <strong>{formatMetric(data, metric, { direction })}</strong>
+      <strong>
+        {pending ? (
+          <span className="ma-skeleton" style={{ width: '3.5rem' }} />
+        ) : (
+          formatMetric(data, metric, { direction })
+        )}
+      </strong>
     </div>
   );
 }
@@ -424,10 +451,17 @@ function StatBlock({
   direction?: boolean;
   visibility?: boolean;
 }) {
+  const pending = useContext(PendingContext);
   return (
     <div className="dashboard-stat-block">
       <span>{label}</span>
-      <strong>{formatMetric(data, metric, { direction, visibility })}</strong>
+      <strong>
+        {pending ? (
+          <span className="ma-skeleton" style={{ width: '3rem' }} />
+        ) : (
+          formatMetric(data, metric, { direction, visibility })
+        )}
+      </strong>
     </div>
   );
 }
@@ -452,13 +486,14 @@ function LocationDetail({
   value: string;
   description: string;
 }) {
+  const pending = useContext(PendingContext);
   return (
     <div className="dashboard-location-detail">
       {icon}
       <div>
         <span>{label}</span>
-        <strong>{value}</strong>
-        <p>{description}</p>
+        <strong>{pending ? <span className="ma-skeleton" style={{ width: '7rem' }} /> : value}</strong>
+        <p>{pending ? <span className="ma-skeleton" style={{ width: '9rem' }} /> : description}</p>
       </div>
     </div>
   );

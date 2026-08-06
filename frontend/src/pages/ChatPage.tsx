@@ -39,6 +39,18 @@ export function ChatPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [persistence, setPersistence] = useState(true);
+  /**
+   * The sidebar's three honest answers, kept apart.
+   *
+   * With only `sessions: []` to go on, the sidebar rendered "Your
+   * conversations will appear here" from the first paint — before the listing
+   * request had even been sent, and again if that request failed. Both are the
+   * page stating as fact that you have no previous chats when it does not yet
+   * know, which is the same failure the dashboard's `unavailable_reason`
+   * contract exists to prevent. "Loading" and "could not load" are different
+   * answers from "none", and only one of the three is ever true at a time.
+   */
+  const [sessionsStatus, setSessionsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
 
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -52,9 +64,13 @@ export function ChatPage() {
       const payload = await listSessions();
       setSessions(payload.sessions);
       setPersistence(payload.persistence);
+      setSessionsStatus('ready');
     } catch {
-      // A failed listing must not break the chat itself — the sidebar simply
-      // stays as it was.
+      // A failed listing must not break the chat itself — you can still ask a
+      // question with no history in the sidebar. It must not be *silent*
+      // either: the previous version swallowed this and left the sidebar
+      // claiming there was nothing to show.
+      setSessionsStatus('error');
     }
   }, []);
 
@@ -145,8 +161,14 @@ export function ChatPage() {
     }
   }
 
-  async function remove(id: string, event: React.MouseEvent) {
-    event.stopPropagation();
+  /* The only delete path. It used to be two: a mouse handler here, and a
+     duplicate inside the row's `onKeyDown` that skipped both the `startNew()`
+     below and this catch — so deleting the open chat with the keyboard left
+     `sessionId` pointing at a row that no longer existed, and a failed delete
+     was an unhandled rejection. The markup change below (a real sibling
+     <button> instead of a nested `role="button"` span) is what makes one path
+     possible: the browser supplies the keyboard behaviour. */
+  async function remove(id: string) {
     try {
       await deleteSession(id);
       if (id === sessionId) startNew();
@@ -173,34 +195,43 @@ export function ChatPage() {
             <p className="chat-sidebar__empty">
               No database is configured, so chats are not saved between visits.
             </p>
+          ) : sessionsStatus === 'loading' ? (
+            <ul className="chat-sessions" aria-busy="true">
+              {[0, 1, 2].map((row) => (
+                <li key={row} className="chat-session chat-session--placeholder">
+                  <span className="ma-skeleton" style={{ width: `${8 - row}rem` }} />
+                </li>
+              ))}
+            </ul>
+          ) : sessionsStatus === 'error' ? (
+            <p className="chat-sidebar__empty chat-sidebar__empty--error">
+              Couldn't load your previous chats. They aren't lost — reload to try again.
+            </p>
           ) : sessions.length === 0 ? (
             <p className="chat-sidebar__empty">Your conversations will appear here.</p>
           ) : (
             <ul className="chat-sessions">
               {sessions.map((entry) => (
-                <li key={entry.id}>
+                /* Two sibling buttons, not a button inside a button. Nesting
+                   interactive content in a <button> is invalid HTML, and it is
+                   why the delete needed a hand-rolled `role`/`tabIndex`/
+                   `onKeyDown` in the first place — the reachable-by-keyboard
+                   behaviour a real <button> gives for free. */
+                <li key={entry.id} className="chat-session-row">
                   <button
                     type="button"
                     className={`chat-session${entry.id === sessionId ? ' is-active' : ''}`}
                     onClick={() => void open(entry.id)}
                   >
                     <span className="chat-session__title">{entry.title}</span>
-                    <span
-                      className="chat-session__delete"
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`Delete chat: ${entry.title}`}
-                      onClick={(event) => void remove(entry.id, event)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          void deleteSession(entry.id).then(refreshSessions);
-                        }
-                      }}
-                    >
-                      <Trash2 size={13} aria-hidden />
-                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="chat-session__delete"
+                    aria-label={`Delete chat: ${entry.title}`}
+                    onClick={() => void remove(entry.id)}
+                  >
+                    <Trash2 size={13} aria-hidden />
                   </button>
                 </li>
               ))}
