@@ -9,44 +9,177 @@ if it has been a while.
 
 ---
 
-## 1. MLflow experiment tracking
+## 1. ~~MLflow experiment tracking~~ — done 2026-08-05
 
-**Why first:** nothing else in this list can be evaluated without it. Every
-report under `machine_learning/reports/` and `backend/models/forecasting/_reports`
-is written to a **fixed filename**, so each rerun destroys the previous result.
-There is currently no way to answer "did that feature help?" — which makes every
-other improvement below unmeasurable.
+`machine_learning/marine_ml/tracking.py`, with all three producers tracked and
+110 existing runs backfilled. Browse with:
 
-- Track both ML problems (`hab_early_warning`, `fish_habitat_prediction`) and
-  the backend forecasting engine's training runs.
-- Log per run: config snapshot, feature list, fold scores, holdout scores,
-  SHAP top-N, and the resolved data window.
-- The forecasting engine already emits `skill_score` vs persistence — that is
-  the metric to make the headline comparison, since it is what catches a model
-  shipping worse than the trivial baseline.
-- Keep it offline-only. `backend/` must not gain an MLflow import: the boundary
-  that keeps `machine_learning/` out of the backend's import graph is
-  deliberate (see CLAUDE.md).
-- SQLite backend store is sufficient; no server needed for a single machine.
+```bash
+cd machine_learning && uvx --from mlflow mlflow ui --backend-store-uri sqlite:///mlruns.db
+```
 
-## 2. Train more `forecasting.yaml` variables
+| producer | how | experiment |
+|---|---|---|
+| `fish_habitat_prediction` | logs on `save()` | `fish_habitat_prediction` |
+| `hab_early_warning` | logs on `save()`, one run per horizon | `hab_early_warning` |
+| backend forecasting engine | JSON -> `marine_ml.ingest_forecasting` | `forecasting_engine` |
+
+Decisions that are load-bearing, not incidental:
+
+- **The backend dependency is inverted, not added.** `backend/` writes plain
+  stdlib JSON (an immutable `_reports/runs/<timestamp>/` per invocation) and
+  the ML side *reads* it. The backend never learns tracking exists, so the
+  import boundary holds. `tests/test_training_run_record.py` asserts the
+  `mlflow` import never appears in `backend/` — the natural "improvement"
+  someone makes later is to log directly from the training script, and that is
+  precisely what must not happen.
+- **`mlflow-skinny`, not `mlflow`.** The full package pins `pandas<3` and
+  `pyarrow<23`, so installing it downgrades the ML env from pandas 3.0.5 /
+  pyarrow 25 — a major-version pandas downgrade underneath a 3.9M-row parquet
+  feature store. Skinny + SQLAlchemy is the same client with none of that; the
+  UI runs via `uvx` and never enters the venv. **Do not "simplify" this to
+  plain `mlflow`.**
+- **Fold spread is logged, not just the mean.** `passes_bar` encodes the
+  shipping rule as a metric — overall skill > 0 **and** ≤1 of 5 folds negative.
+  Backfilling all 109 shipped forecasting models scored `passes_bar = 1` for
+  every one, independently confirming the manual curation.
+- **Tracking never fails a training run.** A HAB run is ~40 min; losing it to a
+  locked store would be worse than not tracking. Every path degrades to a
+  warning; `MARINE_ML_TRACKING=0` opts out.
+- **Ingestion is idempotent**, keyed by `(variable, horizon, trained_at)`, so a
+  retrain appends a new run instead of replacing the old one. Verified by
+  retraining `ph` h7: two runs, both preserved, identical skill.
+
+Still worth doing later: nothing blocks modelling work now, but the two ML
+pipelines log a *single* run per invocation for habitat and one per horizon for
+HAB — if per-model-member tracking is ever wanted for the habitat ensemble,
+that is the natural extension.
+
+## 2. ~~Train more `forecasting.yaml` variables~~ — 31 of 32 done, 1 rejected
 
 `backend/forecasting/config/forecasting.yaml` configures **32 variables**;
-`backend/models/forecasting/` contains **2** (`sea_surface_temperature`,
-`air_temperature`).
+`backend/models/forecasting/` now contains **31** (115 models), up from 2.
+Trained 2026-08-05 across 24 global points (~3 h wall clock), with `rainfall`
+and `sea_level_anomaly` completed 2026-08-06 once the Open-Meteo quota reset.
+The one remaining variable, `sea_surface_salinity`, is untrained deliberately
+rather than pending — see the rejection list below.
 
-This is the highest AI-surface-per-unit-effort item in the repo. Each variable
-is one YAML block naming a code the download registry already serves, plus a
-training run — and it yields a complete metric-intelligence page at
+| family | variables | skill range (h1 -> h30) |
+|---|---|---|
+| waves | significant/maximum wave height, mean/peak wave period, wave_direction | +0.08 -> +0.43 |
+| atmospheric | wind_speed, wind_gust, wind_direction, pressure, humidity, air_temperature, rainfall | +0.12 -> +0.49 |
+| currents | current_u, current_v, current_speed, current_direction | +0.06 -> +0.41 |
+| biogeochemistry | chlorophyll_a, dissolved_oxygen, ph, nitrate, phosphate, silicate, primary_productivity | +0.03 -> +0.53 |
+| optics | diffuse_attenuation, water_clarity | +0.03 -> +0.35 |
+| physical | sea_surface_temperature, sea_surface_height, water_temperature, bottom_temperature, water_salinity, sea_level_anomaly | -0.06 -> +0.44 |
+
+**Skill rises with horizon on nearly every variable** — persistence decays fast
+on dynamic fields while the model holds. That is the signature of a forecast
+doing real work, not echoing the last value. The exceptions are diagnostic: the
+variables where skill *falls* with horizon (salinity, bottom temperature) are
+exactly the ones whose targets barely move, where persistence is unbeatable.
+`chlorophyll_a` h1 is the strongest result in the repo (+0.529, a 31% error
+reduction on persistence) for the mirror-image reason — chlorophyll is patchy
+and advected, so persistence is a weak baseline with real headroom.
+
+### The bar applied, and why the headline is not enough
+
+A horizon ships only if **overall skill > 0 AND at most 1 of 5 folds is
+negative**. The second clause is load-bearing: the training log prints only the
+aggregate, and *six* of the rejected horizons below print `beats persistence`
+on it. Every shipped horizon was re-read from its `metrics.json` folds.
+
+Rejections, all deliberate — do not blindly retrain these expecting better:
+
+- **`sea_surface_salinity` — dropped entirely.** h3 -0.152, h7 -0.118; the
+  passing horizons were inside fold noise. See the note above its YAML block.
+- **`water_salinity` h3/h7 deleted, h1+h30 kept.** Same physics as above
+  (h3 -0.065 with 3/5 folds negative, h7 -0.029 with 4/5). **Kept where
+  `sea_surface_salinity` was dropped** because its h1 is materially better:
+  +0.179 with 0/5 folds negative and tightly clustered (+0.110..+0.225),
+  against surface salinity's noisy +0.085. The decision differs because the
+  evidence differs, not by oversight.
+- **`bottom_temperature` h1 only.** h3 -0.056, h7 -0.060, h30 -0.025 (4/5
+  folds negative). h1 is +0.241 and clean. "Forecastable a day out, not
+  beyond" is the honest claim.
+- **`humidity` h1 deleted.** -0.020 with 2/5 folds negative (one at -0.435).
+- **`nitrate` h3 deleted.** +0.050 on the mean but folds span -0.123..+0.208,
+  two negative — the mean is carried by a minority of folds.
+- **`sea_level_anomaly` h7/h30 deleted** (2026-08-06). Both printed
+  `beats persistence` — +0.073 and +0.111 — and both had **2 of 5 folds
+  negative** (h7 spans -0.296..+0.222, h30 -0.091..+0.379). This is the
+  cleanest demonstration in the repo of why the second clause exists: the
+  training log alone would have shipped them. h1 (+0.367) and h3 (+0.394) are
+  kept, both 0/5 negative and tightly clustered.
+
+Weakest thing kept: `diffuse_attenuation` h3 at +0.026 (1/5 negative). Revisit
+it first if the bar is ever tightened.
+
+### ~~Remaining (2), both blocked on quota rather than skill~~ — retrained 2026-08-06
+
+Both were blocked on **Open-Meteo**, whose free tier was exhausted mid-run on
+2026-08-05: **training the full variable set in one day exceeds the daily
+quota** — four Open-Meteo variables trained fine, rainfall was the fifth and
+tipped it over, escalating minutely -> hourly -> daily limits. A day later the
+quota had reset and both trained. Spread the Open-Meteo variables across days,
+or use a paid key.
+
+**`rainfall` — all four horizons shipped.** Skill rises with horizon, the
+signature of a real forecast:
+
+| horizon | skill | folds negative | points | southern points |
+|---|---|---|---|---|
+| h1 | +0.334 | 0/5 | 21/24 | 4/6 |
+| h3 | +0.421 | 0/5 | 20/24 | 4/6 |
+| h7 | +0.428 | 0/5 | 21/24 | 4/6 |
+| h30 | +0.475 | 0/5 | 21/24 | 4/6 |
+
+**`sea_level_anomaly` — h1 and h3 shipped, h7 and h30 trained and deleted.**
+h1 +0.367 and h3 +0.394, both 0/5 folds negative and tightly clustered. h7
+(+0.073) and h30 (+0.111) both printed `beats persistence` with **2 of 5 folds
+negative** — see the rejection list above; they are the cleanest case in the
+repo for why the aggregate alone is not the bar.
+
+That leaves **31 of 32 variables trained (115 models)**. The only untrained
+one is `sea_surface_salinity`, deliberately — see the note in its YAML block.
+
+Two things about the failures worth keeping, because they are not equally safe:
+
+- `sea_level_anomaly` failed *loudly* on 2026-08-05 (all 24 points gone ->
+  hard error, nothing written), while `rainfall` **degraded silently** — enough
+  points survived to train, but only 10 of 24 and every one
+  northern-hemisphere, with a different subset per horizon. Those models were
+  deleted rather than shipped: a global model carrying lat/lon as features and
+  no southern data would extrapolate across the equator on the one variable
+  whose seasonality inverts. **Partial success is the more dangerous failure
+  mode.** Check `skipped_points` in the artifact metadata, which records it
+  faithfully — it is what made the retrain reviewable at all.
+- **The retrain is only shippable because the coverage came back, not because
+  the skill did.** 429s still cost 3-4 points per horizon, but every horizon
+  retains four of the six southern points, so the equator-extrapolation
+  objection no longer applies. Rainfall's first h1 pass kept only 14 of 24
+  points; it was retrained on its own (~50 s, since the covariate history was
+  cached by then) to get to 21. Apply the same check to any Open-Meteo variable
+  trained under a hot quota: skill and folds can look perfect on a model that
+  has lost a third of the planet.
+
+### If a variable is ever added to the YAML
+
+The configured set is now exhausted, so what remains here is the procedure for
+a *new* variable. It stays the highest AI-surface-per-unit-effort item in the
+repo: one YAML block naming a code the download registry already serves, plus a
+training run, yields a complete metric-intelligence page at
 `/dashboard/<variable>` with **no frontend edit** (verified: `/dashboard/nitrate`
-already renders and correctly omits the untrained sections).
+renders fully and correctly omits the sections it has no capability for).
 
-- Start with variables whose providers are cheap and already cached:
-  `significant_wave_height`, `sea_surface_salinity`, `current_speed`.
 - Watch the `skill_score` line in the training log. `WORSE THAN PERSISTENCE`
-  means do not ship that variable+horizon, not "tune it a bit".
+  means do not ship that variable+horizon, not "tune it a bit" — and a
+  `beats persistence` is not sufficient either, since it is the aggregate.
+  Read the folds.
+- Check `skipped_points` before shipping, not just the metrics.
 - Not every variable will train well; a variable that cannot beat persistence
-  should stay untrained rather than ship a page that implies a working forecast.
+  should stay untrained rather than ship a page that implies a working
+  forecast.
 
 ## 3. Global forecasting
 
@@ -78,10 +211,16 @@ calls to `/api/v1/forecast` and `/trends`, narrated over the real returned
 numbers. Grounded in live data, and it surfaces the whole platform through one
 interface.
 
-- `services/llm.py` already provides a provider-agnostic `LLMProvider` Protocol
-  (Gemini / OpenAI / Ollama) behind `LLM_PROVIDER` / `LLM_API_KEY` /
-  `LLM_MODEL` / `LLM_BASE_URL`. The gap is that `generate(prompt) -> str` has
-  **no tool-calling**.
+- ~~The gap is that `generate(prompt) -> str` has **no tool-calling**.~~
+  **Stale as of 2026-08-05 — this is built.** `services/chat/` has a
+  tool-calling agent over **9 tools** (`tools.py::_SPECS`:
+  `list_available_variables`, `get_point_forecast`, `get_current_conditions`,
+  `get_seafloor_depth`, `get_global_ocean_summary`, `get_active_alerts`,
+  `get_historical_series`, `get_fishing_habitat`, `get_bloom_risk`), a
+  per-conversation `Ledger`, and a grounding check (`agent._ungrounded_numbers`)
+  that rejects any figure no tool returned. `services/llm.py`'s
+  provider-agnostic `LLMProvider` Protocol (Gemini / OpenAI / Ollama) is still
+  the config surface. Tool count is within the 5–8 guidance below, at 9.
 - Reuse `services/metrics/story.py`'s discipline: compute first, phrase second,
   and verify that every number in the response is derivable from the facts
   block. Hallucinated ocean readings are the whole risk here, and that pattern
@@ -141,6 +280,29 @@ consider a vector store if the literature corpus is actually pursued.
 
 ## Bugs and correctness
 
+### ~~Provider field-name collision crashed every surface+depth request~~ (fixed 2026-08-05)
+
+`cleaning.py::_merge_provider_datasets` merged raw provider Datasets before
+renaming them to registry codes. An upstream field name is unique only *within*
+a product: Copernicus serves `thetao` as surface temperature in the physics
+product and as a depth-resolved profile in `..._thetao_depth`, and `so`
+likewise for salinity. `xr.merge` saw one name with two value sets and raised
+`MergeError: conflicting values for variable 'thetao'`.
+
+Wider than it looks — the same path serves all three consumers, so this broke
+the **downloader** (selecting water temperature + SST together returned a 500 —
+a legal, obvious pairing), the **forecasting engine** (`water_temperature`'s
+configured covariate *is* `sea_surface_temperature`, so it could never train),
+and any **gridded build** of either variable.
+
+Fixed by namespacing data variables per provider (`copernicus_physics::thetao`)
+before the merge, so the collision is structurally impossible rather than
+depending on no two providers ever choosing the same name. Both halves needed
+it: derivations name raw fields too, and `current_speed` (hypot of `uo`/`vo`)
+would have thrown `KeyError` if only the `source_field` lookup were qualified.
+`tests/test_download_field_collisions.py` pins it, including a registry guard
+that fails if a *third* collision ever appears.
+
 ### Fish-habitat ensemble scores below its own best member
 
 `fish_habitat_prediction` weights ensemble members by **normalized CV TSS**,
@@ -161,34 +323,53 @@ tradeoff is currently made implicitly by a weighting formula. Make it
 deliberate: drop MaxEnt, weight by rank/softmax rather than raw TSS, or stack
 on out-of-fold predictions.
 
-### `machine_learning/` tests do not run
+### ~~`machine_learning/` tests do not run~~ (fixed 2026-08-05)
 
-`pytest tests/` fails at collection with `ModuleNotFoundError: No module named
-'marine_ml'` — there is no `pyproject.toml`, `pytest.ini` or `setup.cfg` in
-`machine_learning/`. With `PYTHONPATH=. pytest tests/`, **all 23 pass**.
+`pytest tests/` failed at collection with `ModuleNotFoundError: No module named
+'marine_ml'` — there was no `pyproject.toml`, `pytest.ini` or `setup.cfg` in
+`machine_learning/`.
 
 Higher risk than a normal broken path because of *what* those tests are: they
 enforce "only one forward shift exists", "never random K-fold", and
 "climatology fitted on training rows only". They are the guardrails against
-silent methodology error, and they are invisible to anyone who runs pytest the
-obvious way. One config file with `pythonpath = ["."]` fixes it.
+silent methodology error, and they were invisible to anyone running pytest the
+obvious way.
 
-### Feature store is stored at float64
+Fixed by `machine_learning/pytest.ini` (`pythonpath = .`, `testpaths = tests`).
+A bare `pytest` now collects and passes all 45.
 
-`data/processed/feature_store/hab_gridded.parquet` — 3.9M rows x 151 columns,
-2.6 GB, with **142 `double` columns**. It predates `compact_dtypes` being wired
-into `write_feature_store`. `read_feature_store` compensates, but only *after*
-`pd.read_parquet` has materialized ~4.7 GB, so peak is ~7 GB with both copies
-alive — the OOM-with-no-traceback its own docstring warns about, paid on every
-experiment iteration.
+### ~~Feature store is stored at float64~~ (fixed 2026-08-06)
 
-- Rewrite the store once compacted: 2.6 GB -> ~1.3 GB, peak read ~7 GB -> ~2.4 GB.
-- Add `columns=` passthrough to `read_feature_store`. Columnar projection is the
-  single biggest experimentation win: a 20-of-151-column experiment reads ~13%
-  of the file. No new infrastructure.
-- Do **not** move this to Postgres/Mongo/Redis. Row stores read all 151 columns
-  to serve 12; Parquet reads 12. If it outgrows one machine, DuckDB reads these
-  same files in place with no import step.
+`data/processed/feature_store/hab_gridded.parquet` was 3.9M rows x 151 columns,
+2.80 GB, with **142 `double` columns** — it predated `compact_dtypes` being
+wired into `write_feature_store`. `read_feature_store` compensated, but only
+*after* `pd.read_parquet` had materialized the full-width table, so peak was
+~7 GB with both copies alive: the OOM-with-no-traceback its own docstring warns
+about, paid on every experiment iteration.
+
+Both halves done, measured on the real store:
+
+| | before | after |
+|---|---|---|
+| file on disk | 2.80 GB | **1.59 GB** |
+| full read | — | 3.5 s, 2.82 GB peak RSS |
+| 20-of-151-column read | 3.5 s / 2.82 GB | **0.1 s / 1.08 GB** |
+
+- `scripts/compact_feature_store.py <name>` rewrites a store at the dtypes
+  `compact_dtypes` would give it. It streams row group by row group and casts
+  with **Arrow, not pandas** — loading 3.9M x 151 float64 to cast it would need
+  the exact peak this removes. Writes a sibling file and renames only after row
+  counts and column names match, so an interrupted run is a no-op.
+- `read_feature_store(name, columns=[...])` pushes projection into Parquet, and
+  `feature_store_columns(name)` reads the schema from the footer without
+  touching a row group. `tests/test_feature_store.py` asserts on what Parquet
+  was *asked* for, not just on the returned frame — selecting after
+  `read_parquet` returns an identical frame while paying the full cost, so a
+  frame-only test would pass against the useless implementation.
+- Still true, and still the reason not to migrate: do **not** move this to
+  Postgres/Mongo/Redis. Row stores read all 151 columns to serve 12; Parquet
+  reads 12. If it outgrows one machine, DuckDB reads these same files in place
+  with no import step.
 
 ### HAB t+7 sits at the edge of usefulness
 
@@ -207,10 +388,11 @@ signal. Report both rather than the holdout alone.
 
 ## Documentation drift
 
-- CLAUDE.md states "the HAB window is 2 years". `marine_ml/config.py` has
-  `HAB_START = 2016-01-01`, `HAB_END = 2021-12-31` — six years — and
-  `fusion.py`'s own docstring agrees ("6-year daily feature table"). Correct
-  CLAUDE.md.
+- ~~CLAUDE.md states "the HAB window is 2 years"~~ — corrected 2026-08-05.
+  `marine_ml/config.py` has `HAB_START = 2016-01-01`, `HAB_END = 2021-12-31`
+  (six years) and `fusion.py`'s docstring agreed ("6-year daily feature
+  table"); CLAUDE.md now says six years, and records that it is *region*, not
+  span, that was traded away for daily fields.
 
 ---
 
