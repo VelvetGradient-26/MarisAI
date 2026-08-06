@@ -25,8 +25,11 @@ asks for, enforced by construction rather than by discipline.
 from __future__ import annotations
 
 
+from collections.abc import Sequence
+
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 import xarray as xr
 
 from marine_ml import config
@@ -395,16 +398,53 @@ def write_feature_store(frame: pd.DataFrame, name: str) -> None:
     compact_dtypes(frame).to_parquet(path, index=False)
 
 
-def read_feature_store(name: str) -> pd.DataFrame:
+def read_feature_store(
+    name: str, columns: Sequence[str] | None = None
+) -> pd.DataFrame:
+    """Load a feature table, optionally projecting to ``columns``.
+
+    ``columns`` is pushed down into Parquet rather than applied afterwards,
+    which is the point: the store is a wide float matrix, so an experiment
+    touching 20 of 151 columns reads ~13% of the file and materializes ~13%
+    of the memory. Selecting after ``pd.read_parquet`` would pay the full
+    ~4.7 GB first — the OOM this module's docstring warns about — and save
+    nothing.
+    """
     path = config.FEATURE_STORE_DIR / f"{name}.parquet"
     if not path.exists():
         raise FusionError(
             f"feature store {name!r} has not been built yet (expected {path}). "
             "Run the matching build_features step first."
         )
+    if columns is not None:
+        columns = list(columns)
+        available = set(feature_store_columns(name))
+        missing = [column for column in columns if column not in available]
+        if missing:
+            # pyarrow's own error names one column and does not list what is
+            # available, which is unhelpful against a 151-column store.
+            raise FusionError(
+                f"feature store {name!r} has no column(s) {missing!r}. "
+                f"It carries {len(available)} columns; "
+                f"call feature_store_columns({name!r}) to list them."
+            )
     # Downcast on read too, so stores written before this existed do not
     # reintroduce the memory blowup.
-    return compact_dtypes(pd.read_parquet(path))
+    return compact_dtypes(pd.read_parquet(path, columns=columns))
+
+
+def feature_store_columns(name: str) -> list[str]:
+    """Column names of a stored feature table, read from the footer only.
+
+    Cheap enough to call before deciding what to project — Parquet keeps the
+    schema in the file footer, so this never touches a row group.
+    """
+    path = config.FEATURE_STORE_DIR / f"{name}.parquet"
+    if not path.exists():
+        raise FusionError(
+            f"feature store {name!r} has not been built yet (expected {path})."
+        )
+    return list(pq.read_schema(path).names)
 
 
 def feature_store_exists(name: str) -> bool:
