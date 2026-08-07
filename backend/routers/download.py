@@ -22,6 +22,8 @@ from services.download.models import (
     ProviderUnavailableError,
     UnsupportedVariableError,
 )
+from services.download import progress
+from services.download.progress import ProgressReporter
 from services.download.registry import grouped_for_frontend
 from services.download.service import run_download
 from services.rate_limit import RateLimiter, enforce
@@ -49,9 +51,12 @@ async def download(payload: DownloadRequest, request: Request) -> Response:
         "Copernicus and ERDDAP; please try again later.",
     )
 
+    reporter = ProgressReporter(payload.request_id)
+
     try:
-        result = await run_download(payload)
+        result = await run_download(payload, reporter)
     except DownloadError as exc:
+        reporter.failed()
         if isinstance(exc, UnsupportedVariableError | AreaTooLargeError):
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         if isinstance(exc, NoDataFoundError):
@@ -59,9 +64,34 @@ async def download(payload: DownloadRequest, request: Request) -> Response:
         if isinstance(exc, ProviderUnavailableError):
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    else:
+        # Only on success. A failed entry is deliberately left behind so a poll
+        # already in flight reports the failure rather than a bar frozen at
+        # whatever fraction it had reached; the TTL sweeps it up.
+        reporter.release()
 
     return Response(
         content=result.content,
         media_type=result.media_type,
         headers={"Content-Disposition": f'attachment; filename="{result.filename}"'},
     )
+
+
+@router.get("/download/progress/{request_id}")
+async def download_progress(request_id: str) -> dict[str, object]:
+    """Where an in-flight download has got to.
+
+    Deliberately outside the download rate limiter: this is polled every few
+    hundred milliseconds *by* a legitimate download, and counting those against
+    an hourly export budget would make watching a download cost you the ability
+    to start one.
+
+    A missing entry is reported as `tracked: false` with a 200 rather than a
+    404. It is the normal state twice in every download's life — before the
+    server registers the request, and after it completes and releases — and
+    neither is an error the client should surface.
+    """
+    state = progress.snapshot(request_id)
+    if state is None:
+        return {"tracked": False}
+    return {"tracked": True, **state}

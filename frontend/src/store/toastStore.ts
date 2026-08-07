@@ -8,6 +8,15 @@ export interface Toast {
   title: string;
   /** Optional second line. Long provider error strings land here. */
   detail?: string;
+  /**
+   * Completion of the work this toast is reporting on, 0..1.
+   *
+   * Only meaningful on a `pending` toast, and deliberately optional there:
+   * `undefined` means "still working, but how far along is genuinely not
+   * known", which the row renders as an indeterminate bar. A determinate bar
+   * with an invented number would be a worse answer than an honest sweep.
+   */
+  progress?: number;
 }
 
 interface ToastStore {
@@ -17,6 +26,14 @@ interface ToastStore {
   /** Re-points an existing toast in place — used to turn a `pending` toast
    *  into its outcome without the row disappearing and reappearing. */
   update: (id: string, toast: Omit<Toast, 'id'>) => void;
+  /**
+   * Merges fields into an existing toast, leaving the rest alone.
+   *
+   * Separate from `update` because a progress tick must not have to restate
+   * the title and detail it is not changing — with `update` every tick would
+   * need to re-send them, and forgetting one would silently blank it.
+   */
+  patch: (id: string, fields: Partial<Omit<Toast, 'id'>>) => void;
   dismiss: (id: string) => void;
 }
 
@@ -49,6 +66,12 @@ export const useToastStore = create<ToastStore>()((set) => ({
     set((state) => ({
       toasts: state.toasts.map((existing) =>
         existing.id === id ? { ...toast, id } : existing
+      ),
+    })),
+  patch: (id, fields) =>
+    set((state) => ({
+      toasts: state.toasts.map((existing) =>
+        existing.id === id ? { ...existing, ...fields } : existing
       ),
     })),
   dismiss: (id) =>

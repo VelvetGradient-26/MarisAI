@@ -104,6 +104,54 @@
   overflow-wrap: anywhere;
 }
 
+/* Progress bar on a pending toast. Sits under the detail line so the row grows
+   downward rather than reflowing the text it sits beneath. */
+.toast__progress {
+  position: relative;
+  overflow: hidden;
+  height: 4px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: var(--ma-track, color-mix(in srgb, var(--ma-text) 12%, transparent));
+}
+
+.toast__progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ma-accent);
+  /* Eased rather than linear: the fraction arrives in steps as each upstream
+     provider lands, and an un-eased jump of 20% reads as a glitch. */
+  transition: width 0.4s var(--ma-ease);
+}
+
+/* No known fraction — sweep instead of sitting at a number we'd be inventing. */
+.toast__progress--indeterminate .toast__progress-fill {
+  width: 40%;
+  animation: toast-progress-sweep 1.4s ease-in-out infinite;
+  transition: none;
+}
+
+@keyframes toast-progress-sweep {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(260%);
+  }
+}
+
+/* Same reasoning as the spinner above: this is the only sign the download is
+   still alive, so it slows rather than stopping. */
+@media (prefers-reduced-motion: reduce) {
+  .toast__progress--indeterminate .toast__progress-fill {
+    animation-duration: 3s;
+  }
+
+  .toast__progress-fill {
+    transition: none;
+  }
+}
+
 .toast__dismiss {
   display: grid;
   flex-shrink: 0;

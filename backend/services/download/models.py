@@ -67,6 +67,13 @@ class DownloadRequest(BaseModel):
     # model's 50 levels, and the level actually used is reported back in the
     # export's metadata. The deepest level is ~5728m.
     depth_m: float = Field(0.0, ge=0, le=6000)
+    # Client-generated id used only to correlate this request with polls to
+    # `/download/progress/{id}` while it is still running. Optional because
+    # progress reporting is strictly an observer — a request without one
+    # behaves identically, it simply cannot be watched. Length-capped because
+    # it is a dict key the caller chooses; it is never echoed back to a
+    # browser, stored, or used to look up anything but a progress counter.
+    request_id: str | None = Field(None, max_length=128)
 
     @model_validator(mode="after")
     def _check_dates(self) -> "DownloadRequest":
