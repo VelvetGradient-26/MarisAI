@@ -135,7 +135,23 @@ export PYTHONPATH=.
 .venv/bin/python -m fish_habitat_prediction.src.pipeline   # ~1 min
 .venv/bin/python -m hab_early_warning.src.pipeline         # ~13 min
 
-.venv/bin/python -m pytest tests/ -q                       # the anti-cheating tests`}</Code>
+.venv/bin/python -m pytest -q                              # the anti-cheating tests`}</Code>
+      <Callout kind="lesson" title="These tests were invisible for longer than they should have been">
+        <p>
+          A bare <code>pytest</code> used to fail at collection with{' '}
+          <code>ModuleNotFoundError: No module named 'marine_ml'</code> — there was no{' '}
+          <code>pyproject.toml</code>, <code>pytest.ini</code> or <code>setup.cfg</code> anywhere
+          in <code>machine_learning/</code>, so the package was only importable if you happened to
+          set <code>PYTHONPATH</code> first.
+        </p>
+        <p>
+          Worse than a normal broken path, because of <em>what</em> these tests are: they are what
+          enforce "only one forward shift exists", "never random K-fold" and "climatology fitted on
+          training rows only". The guardrails against silent methodology error were the thing
+          invisible to anyone running pytest the obvious way. A <code>pytest.ini</code> fixed it;
+          the <code>PYTHONPATH</code> export above is still needed for the pipelines themselves.
+        </p>
+      </Callout>
       <p>
         Copernicus credentials are read from the backend's untracked <code>backend/.env</code> —
         there is deliberately no second place for secrets to live. Both pipelines cache their
@@ -162,6 +178,40 @@ export PYTHONPATH=.
         exactly the artifact that was cross-validated. The numbers on this page are the ones that
         run produced; re-running the pipelines rewrites <code>reports/</code>, and this chapter is
         updated by hand from it.
+      </p>
+
+      <h3>Run history, because a rewritten report is a lost one</h3>
+      <p>
+        Every file above is written to a fixed filename, so each re-run destroys the previous
+        result — which makes the one question that matters during modelling, <em>did that change
+        help?</em>, unanswerable. Runs are therefore also appended to an MLflow store, one
+        experiment per producer:
+      </p>
+      <Table
+        headers={['Producer', 'How it logs', 'Experiment']}
+        rows={[
+          ['Fish habitat', <>on <code>save()</code></>, <code>fish_habitat_prediction</code>],
+          ['HAB early warning', <>on <code>save()</code>, one run per horizon</>, <code>hab_early_warning</code>],
+          ['Forecasting engine', <>JSON → <code>marine_ml.ingest_forecasting</code></>, <code>forecasting_engine</code>],
+        ]}
+      />
+      <Code>{`cd machine_learning
+uvx --from mlflow mlflow ui --backend-store-uri sqlite:///mlruns.db`}</Code>
+      <p>
+        The third row is the interesting one. The backend never learns that tracking exists: it
+        writes an immutable directory of plain standard-library JSON per training invocation, and
+        the ML side <em>reads</em> it. The dependency points inward rather than outward, so the
+        backend keeps no modelling-infrastructure import — and a test asserts that, because the
+        obvious later "improvement" is to log directly from the training script.
+      </p>
+      <p>
+        What gets logged is deliberately more than a headline number: the fold <em>spread</em>
+        sits beside the mean, and the shipping rule — overall skill above zero{' '}
+        <em>and</em> at most one fold in five negative — is itself recorded as a metric. An
+        aggregate that reads healthy over folds that include negatives is the failure this
+        project keeps hitting. Tracking also never fails a training run: a HAB run is around 40
+        minutes, and losing one to a locked database would be worse than not tracking at all, so
+        every path degrades to a warning.
       </p>
     </>
   );

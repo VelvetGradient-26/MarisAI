@@ -34,12 +34,17 @@ const API_DOCS_URL = 'http://127.0.0.1:8000/docs';
  */
 
 // --------------------------------------------------------------------------
-// Verified figures (2026-08-05)
+// Verified figures (2026-08-06)
 // --------------------------------------------------------------------------
 
-/** `backend/models/forecasting/` — 29 of 32 configured variables x 4 horizons. */
-const TRAINED_MODELS = 109;
-const TRAINED_VARIABLES = 29;
+/**
+ * `backend/models/forecasting/` — 31 of 32 configured variables, up to 4
+ * horizons each. It is not 31 x 4: a horizon that failed to beat persistence
+ * on its folds was deleted rather than shipped, so the model count is the
+ * count of horizons that actually passed.
+ */
+const TRAINED_MODELS = 115;
+const TRAINED_VARIABLES = 31;
 const CONFIGURED_VARIABLES = 32;
 /** `services/download/registry.py` — 34 of 36 spec variables have a real source. */
 const SERVED_VARIABLES = 34;
@@ -158,10 +163,10 @@ function Metric({ value, label, active }: { value: number; label: string; active
 const SKILL_ROWS = [
   { variable: 'Chlorophyll-a', horizon: '+1 day', skill: 0.529 },
   { variable: 'Air temperature', horizon: '+30 days', skill: 0.494 },
+  { variable: 'Rainfall', horizon: '+30 days', skill: 0.475 },
   { variable: 'Water temperature', horizon: '+30 days', skill: 0.439 },
   { variable: 'Sea surface temp.', horizon: '+30 days', skill: 0.434 },
   { variable: 'Mean wave period', horizon: '+30 days', skill: 0.428 },
-  { variable: 'Wind speed', horizon: '+30 days', skill: 0.412 },
 ];
 
 function Forecasting() {
@@ -459,8 +464,8 @@ const PRINCIPLES: { title: string; body: ReactNode }[] = [
     body: (
       <>
         A model shows a skill score against persistence before it reaches the platform.
-        Three variables were trained, measured, found no better than assuming no change,
-        and deliberately left unshipped.
+        One variable and nine further horizons were trained, measured, found no better
+        than assuming no change, and deleted rather than shipped.
       </>
     ),
   },
@@ -468,7 +473,7 @@ const PRINCIPLES: { title: string; body: ReactNode }[] = [
     title: 'Check the folds, not the headline',
     body: (
       <>
-        Four horizons reported beating persistence on their aggregate while individual
+        Six horizons reported beating persistence on their aggregate while individual
         validation folds were negative. The bar is overall skill above zero{' '}
         <em>and</em> at most one fold in five below it.
       </>

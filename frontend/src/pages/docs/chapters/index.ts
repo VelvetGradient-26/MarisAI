@@ -7,6 +7,9 @@ import { DashboardOverview } from './DashboardOverview';
 import { DashboardSources } from './DashboardSources';
 import { Data } from './Data';
 import { Features } from './Features';
+import { ForecastEngine } from './ForecastEngine';
+import { ForecastMap } from './ForecastMap';
+import { ForecastResults } from './ForecastResults';
 import { Fusion } from './Fusion';
 import { Hab } from './Hab';
 import { Habitat } from './Habitat';
@@ -33,10 +36,10 @@ export interface Chapter {
  * The chapter list, in reading order. Order here drives the sidebar, the
  * prev/next pager and the mobile picker — there is no second place to update.
  *
- * Machine learning is the only populated group today. The ocean-reference
- * groups below it are declared as pending rather than hidden, because the
- * shape of the section is part of what it communicates: this is a reference
- * that is going to keep growing, not a one-off page.
+ * The ocean-reference groups in PENDING_GROUPS are declared as pending rather
+ * than hidden, because the shape of the section is part of what it
+ * communicates: this is a reference that is going to keep growing, not a
+ * one-off page.
  */
 export const CHAPTERS: Chapter[] = [
   {
@@ -73,6 +76,27 @@ export const CHAPTERS: Chapter[] = [
     title: 'Alerts & thresholds',
     group: 'Ocean intelligence dashboard',
     Component: DashboardAlerts,
+  },
+  {
+    id: 'forecast-engine',
+    label: 'How it works',
+    title: 'One framework, every variable',
+    group: 'Forecasting engine',
+    Component: ForecastEngine,
+  },
+  {
+    id: 'forecast-results',
+    label: 'Skill & the bar',
+    title: 'What it actually achieves',
+    group: 'Forecasting engine',
+    Component: ForecastResults,
+  },
+  {
+    id: 'forecast-map',
+    label: 'The forecast map',
+    title: 'The same engine, drawn as a map',
+    group: 'Forecasting engine',
+    Component: ForecastMap,
   },
   {
     id: 'overview',

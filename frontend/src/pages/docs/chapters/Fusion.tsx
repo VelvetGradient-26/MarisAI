@@ -146,7 +146,7 @@ if merged.sizes["time"] < core_steps:
 
       <h3>Memory: why every column is float32</h3>
       <p>
-        The HAB feature table is roughly 3.84 million rows × ~150 columns. At float64 that is
+        The HAB feature table is roughly 3.9 million rows × 151 columns. At float64 that is
         ~4.7 GB for <em>one</em> copy — and scikit-learn's <code>ColumnTransformer</code> plus
         LightGBM each make more. On a 9 GB machine that is an out-of-memory kill with no
         traceback.
@@ -156,6 +156,37 @@ if merged.sizes["time"] < core_steps:
         about 7 significant digits; these are geophysical measurements good to 3–4 digits at
         best, so the precision lost is far below the measurement error already in the data.
         Peak memory went from ~9 GB to ~2.5 GB.
+      </p>
+
+      <h3>Downcasting on read is not enough</h3>
+      <p>
+        For a while the store on disk was still float64 — it predated the downcast being wired
+        into the write path, and the read path compensated. But it compensated{' '}
+        <em>after</em> <code>read_parquet</code> had already materialised the full-width table,
+        so every experiment still paid the doubled peak the downcast exists to avoid. Rewriting
+        the file once removed that permanently:
+      </p>
+      <Table
+        headers={['', 'Before', 'After']}
+        numeric={[1, 2]}
+        rows={[
+          ['File on disk', '2.80 GB', '1.59 GB'],
+          ['Full read, peak memory', '~7 GB', '2.82 GB'],
+          ['20-of-151-column read', '3.5 s / 2.82 GB', '0.1 s / 1.08 GB'],
+        ]}
+      />
+      <p>
+        That last row is the one that changes day-to-day work. Parquet is columnar, so asking
+        for 20 of 151 columns reads about 13% of the file rather than all of it — and an
+        experiment usually wants a handful of features, not the whole matrix. Selecting columns
+        <em> after</em> the read returns an identical frame while paying the full cost, which is
+        why the projection is pushed down into Parquet and why the test asserts on what Parquet
+        was asked for rather than on the frame that comes back.
+      </p>
+      <p>
+        The rewrite itself streams row group by row group and casts with Arrow rather than
+        pandas, for the obvious reason: loading 3.9M × 151 float64 values in order to downcast
+        them would need exactly the peak being removed.
       </p>
 
       <Callout kind="note" title="Two exceptions, both deliberate">
