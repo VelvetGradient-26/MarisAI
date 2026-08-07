@@ -59,6 +59,20 @@ class Settings(BaseSettings):
         Path(__file__).resolve().parents[3] / "machine_learning" / "exports"
     )
 
+    # Whether boot should kick off the forecast-grid rebuild. On by default,
+    # because that boot-time call is what lets a fresh deployment start
+    # producing grids instead of waiting twelve hours for the first scheduler
+    # tick — and it already skips anything still fresh, so a restart is
+    # normally free.
+    #
+    # It is worth switching off on a small development machine. The rebuild
+    # walks every buildable variable, and one variable's build peaks around
+    # 3 GB on its own; a restart that finds every grid stale pays that back to
+    # back. Set FORECAST_GRID_REFRESH_ON_BOOT=false in backend/.env. The
+    # scheduled job is unaffected, so grids still refresh while the server
+    # runs — this only removes the thundering herd at startup.
+    FORECAST_GRID_REFRESH_ON_BOOT: bool = True
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",

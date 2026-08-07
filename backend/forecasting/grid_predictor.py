@@ -83,14 +83,35 @@ class GridPredictionError(ForecastingError):
 
 
 @dataclass
-class CellFeatures:
-    """One scored cell: its feature row and the anchor the delta decodes from."""
+class CellMatrix:
+    """Every scored cell's features, as one dense array rather than N Series.
 
-    row_index: int
-    latitude_index: int
-    longitude_index: int
-    features: pd.Series
-    anchor: float
+    Built column-wise into a preallocated array because the previous shape —
+    a `list[CellFeatures]` holding one `pd.Series` per cell, assembled at the
+    end with `pd.DataFrame([...])` — was the single largest allocation in a
+    grid build. Profiled at 1 s resolution over a 42,499-cell run, the loop
+    itself held a flat 0.07-0.11 GB and then the assembly spiked to **1.16 GB
+    in about twelve seconds**: 42,499 Series objects alive at once, plus the
+    frame pandas builds from them.
+
+    A Series per row costs far more than the ~100 floats it carries — object
+    header, block manager and an index reference each — and none of it is
+    needed, because every row has the same columns in the same order. That is
+    what makes a plain (n_cells x n_features) float64 array the right shape:
+    34 MB for the same 42,499 x 103 numbers.
+
+    `values` is a *view* of the preallocated array trimmed to the rows that
+    actually built, so dropped cells cost nothing and no copy is made.
+    """
+
+    columns: list[str]
+    values: np.ndarray
+    anchors: np.ndarray
+    latitude_indices: np.ndarray
+    longitude_indices: np.ndarray
+
+    def __len__(self) -> int:
+        return int(self.values.shape[0])
 
 
 def grid_path(variable: str, root: Path | None = None) -> Path:
@@ -107,13 +128,13 @@ def _cell_features(
     variable_key: str,
     config: ForecastingConfig,
     cells: list[tuple[int, int, float, float]],
-) -> tuple[list[CellFeatures], dict[str, int]]:
+) -> tuple[CellMatrix | None, dict[str, int]]:
     """Build one feature row per cell. Pure: no network, no model.
 
     Returns the built rows and a tally of why cells were dropped. A dropped
     cell becomes NaN in the output grid rather than a guess — the same rule the
     dashboard holds everywhere, that a missing reading is never replaced by a
-    number.
+    number. Returns `None` when no cell built at all.
     """
     variable = resolve(variable_key, config)
     features_config = config.features_for(variable_key)
@@ -123,8 +144,21 @@ def _cell_features(
 
     codes = [code for code in fetch_codes(variable) if code in stack.variables]
 
-    built: list[CellFeatures] = []
+    # Allocated on the first successful cell, once the feature columns are
+    # known — the count depends on the variable's covariates, so it cannot be
+    # derived up front without duplicating `build_features`' own logic.
+    columns: list[str] | None = None
+    values: np.ndarray | None = None
+    anchors = np.empty(len(cells), dtype="float64")
+    latitude_indices = np.empty(len(cells), dtype="int32")
+    longitude_indices = np.empty(len(cells), dtype="int32")
+    written = 0
+
     dropped = {"no_rows": 0, "no_anchor": 0, "failed": 0}
+    # Not a drop — the cell is still scored, on the established columns. Kept
+    # out of `dropped` because the caller sums that dict to report how many
+    # cells the grid lost, and these were not lost.
+    unseen_columns = 0
     started = time.monotonic()
 
     for position, (lat_index, lon_index, latitude, longitude) in enumerate(cells):
@@ -177,15 +211,43 @@ def _cell_features(
                 dropped["no_anchor"] += 1
                 continue
 
-            built.append(
-                CellFeatures(
-                    row_index=len(built),
-                    latitude_index=lat_index,
-                    longitude_index=lon_index,
-                    features=matrix.frame.iloc[-1],
-                    anchor=anchor,
+            if columns is None:
+                # First success fixes the column order for the whole grid, the
+                # same way `feature_columns.json` fixes it for the trained
+                # model. Every later row is reindexed onto it.
+                #
+                # Numeric columns only: the feature frame also carries the
+                # timestamp it was built from, and a dense float array cannot
+                # hold a Timestamp. Nothing is lost — `_predict_horizon`
+                # reindexes onto the artifact's own feature columns, which are
+                # numeric by construction because LightGBM was fitted on them,
+                # so a non-numeric column was always discarded a step later.
+                columns = list(
+                    matrix.frame.select_dtypes(include=["number", "bool"]).columns
                 )
-            )
+                # Built once, not per cell: constructing this inside the loop
+                # allocated a fresh Index for all 42,499 iterations and cost
+                # ~5% of the loop's wall clock for a value that never changes.
+                columns_index = pd.Index(columns)
+                values = np.empty((len(cells), len(columns)), dtype="float64")
+
+            row = matrix.frame.iloc[-1]
+            if not row.index.equals(columns_index):
+                # The old `pd.DataFrame([...])` aligned differing rows into a
+                # union, filling gaps with NaN — silently, and only for rows
+                # built after the column appeared. A fixed array cannot do
+                # that, so reindex onto the established order (missing -> NaN,
+                # which LightGBM handles) and count anything genuinely new
+                # rather than passing over it without a word.
+                if not set(row.index) <= set(columns):
+                    unseen_columns += 1
+                row = row.reindex(columns_index)
+
+            values[written] = row.to_numpy(dtype="float64")
+            anchors[written] = anchor
+            latitude_indices[written] = lat_index
+            longitude_indices[written] = lon_index
+            written += 1
         except Exception as exc:  # noqa: BLE001 - one bad cell must not end the run
             dropped["failed"] += 1
             if dropped["failed"] <= 3:
@@ -201,7 +263,29 @@ def _cell_features(
                 f"~{remaining / 60:.0f} min left)"
             )
 
-    return built, dropped
+    if unseen_columns:
+        logger.warning(
+            f"{unseen_columns} cell(s) produced feature columns absent from the "
+            "first scored cell; those columns were ignored so every row stays "
+            "on one schema. Investigate before trusting the grid — the model "
+            "was fitted on a fixed column set."
+        )
+
+    if columns is None or values is None or written == 0:
+        return None, dropped
+
+    # Views, not copies: the arrays were sized for every candidate cell, and
+    # trimming to the ones that built costs nothing.
+    return (
+        CellMatrix(
+            columns=columns,
+            values=values[:written],
+            anchors=anchors[:written],
+            latitude_indices=latitude_indices[:written],
+            longitude_indices=longitude_indices[:written],
+        ),
+        dropped,
+    )
 
 
 def _nice_step(span: float) -> float:
@@ -346,16 +430,18 @@ def _score_stack(
 
     started = time.monotonic()
     built, dropped = _cell_features(stack, variable_key, config, cells)
-    if not built:
+    if built is None:
         raise GridPredictionError(
             f"no cell produced usable features for {variable_key}; "
             f"dropped {dropped}"
         )
 
-    matrix = pd.DataFrame([cell.features for cell in built]).reset_index(drop=True)
-    anchors = np.array([cell.anchor for cell in built], dtype="float64")
-    rows_lat = np.array([cell.latitude_index for cell in built])
-    rows_lon = np.array([cell.longitude_index for cell in built])
+    # `copy=False` so this wraps the array the loop already filled instead of
+    # duplicating 42,499 x ~100 float64s to hand LightGBM the same numbers.
+    matrix = pd.DataFrame(built.values, columns=built.columns, copy=False)
+    anchors = built.anchors
+    rows_lat = built.latitude_indices
+    rows_lon = built.longitude_indices
 
     shape = (len(stack.latitudes), len(stack.longitudes))
     forecast = np.full((len(artifacts), *shape), np.nan, dtype="float32")

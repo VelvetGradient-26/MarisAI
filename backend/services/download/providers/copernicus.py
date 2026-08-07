@@ -240,13 +240,53 @@ def _coarsen(dataset: xr.Dataset, stride: int) -> xr.Dataset:
     whole-globe timestep each, so the bytes come off the wire either way — but
     a global 0.083deg float64 field is ~70MB per timestep per variable, and 45
     timesteps of two variables held at full resolution is over 6GB. Striding
-    while the array is still lazy keeps the peak at roughly one chunk.
+    while the array is still lazy keeps the peak at roughly one chunk *per
+    concurrent task* — see `_bounded_load` for why that qualifier matters.
     """
     if stride <= 1:
         return dataset
     return dataset.isel(
         latitude=slice(None, None, stride), longitude=slice(None, None, stride)
     )
+
+
+# How many chunks may be in flight inside one `.load()`. Dask's threaded
+# scheduler defaults to one worker per core, which on an 8-core machine means
+# eight whole-globe timesteps decompressing at once — and `_fetch_global` is
+# itself called concurrently for every provider a variable needs, so the true
+# peak was 8 x chunk x providers, not the "roughly one chunk" `_coarsen`
+# promises. Measured on an 8 GB machine: a single-variable grid build peaked at
+# ~3.0 GB.
+#
+# Four is not a compromise between memory and speed, because this fetch is not
+# CPU-bound: it is one HTTPS stream per chunk out of S3. The same build logged
+# 18 "Connection pool is full, discarding connection" warnings against a pool of
+# 10 — the extra threads were re-handshaking TLS on connections they had just
+# discarded, so the parallelism past the pool size was costing time as well as
+# memory.
+#
+# That pool size is botocore's default, and `copernicusmarine` builds its
+# `botocore.config.Config` without `max_pool_connections`, so there is no
+# env var or setting that raises it — only monkeypatching a vendored client
+# would. Bounding the demand instead reaches the same place: four threads per
+# provider stays under ten even with two providers in flight.
+_GLOBAL_LOAD_THREADS = 4
+
+
+def _bounded_load(dataset: xr.Dataset) -> xr.Dataset:
+    """`.load()` with a bounded number of chunks in flight.
+
+    Scoped with a context manager rather than set globally: dask's thread pool
+    is process-wide, and the downloader's bbox fetches are small enough that
+    throttling them too would be a pointless slowdown. Only whole-globe reads
+    need the bound.
+    """
+    import dask
+
+    with dask.config.set(
+        scheduler="threads", num_workers=_GLOBAL_LOAD_THREADS, pool=None
+    ):
+        return dataset.load()
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=2, max=20))
@@ -280,7 +320,7 @@ def _fetch_global_sync(
         **kwargs,
     )
     subset = _resolve_depth(dataset[fields], DEPTH_SURFACE, None)
-    return _coarsen(subset, stride).load()
+    return _bounded_load(_coarsen(subset, stride))
 
 
 async def fetch_global(

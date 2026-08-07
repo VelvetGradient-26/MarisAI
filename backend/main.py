@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from loguru import logger
 
 from app.core.config import settings
 from forecasting.api import router as forecasting_router
@@ -65,7 +66,13 @@ async def lifespan(_app: FastAPI):
     # what makes the boot-time call safe: a restart re-checks freshness rather
     # than rebuilding, and a machine with no grid at all starts producing one
     # instead of waiting twelve hours for the first tick.
-    asyncio.create_task(forecast_tiles.refresh_grids())
+    if settings.FORECAST_GRID_REFRESH_ON_BOOT:
+        asyncio.create_task(forecast_tiles.refresh_grids())
+    else:
+        logger.info(
+            "forecast grid rebuild on boot disabled "
+            "(FORECAST_GRID_REFRESH_ON_BOOT=false); the scheduled job still runs"
+        )
     scheduler.add_job(
         forecast_tiles.refresh_grids,
         "interval",
