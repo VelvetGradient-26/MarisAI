@@ -40,6 +40,13 @@ export interface RasterBasemapDefinition extends BasemapCommon {
   source: RasterSourceSpecification;
   /** Optional paint/layout overrides beyond the default raster layer. */
   layerOptions?: Pick<RasterLayerSpecification, 'paint' | 'layout' | 'minzoom' | 'maxzoom'>;
+  /**
+   * Colour painted beneath the imagery. Required for the layer to render at
+   * all under globe projection — see `BasemapManager.addRaster` — and visible
+   * in its own right while tiles are still loading, so it should be close to
+   * the imagery's dominant tone rather than an arbitrary placeholder.
+   */
+  backgroundColor?: string;
 }
 
 /**

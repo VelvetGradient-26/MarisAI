@@ -4,6 +4,15 @@ import type { BasemapDefinition, BasemapId } from '../types';
 
 const BASEMAP_SOURCE_ID = 'basemap-source';
 export const BASEMAP_LAYER_ID = 'basemap-layer';
+/** Painted beneath a raster basemap. See `addRaster` for why it is required. */
+export const BASEMAP_BACKGROUND_LAYER_ID = 'basemap-background';
+
+/**
+ * Fallback for a raster basemap that names no background of its own. Matches
+ * `abyss.ts`'s deep-ocean tone, so an unstyled raster basemap sits on the same
+ * canvas as the default vector one instead of flashing white while tiles load.
+ */
+const DEFAULT_RASTER_BACKGROUND = '#030f1e';
 
 /** Prefix for the sources/layers a vector basemap brings with it. */
 const VECTOR_PREFIX = 'basemap-v-';
@@ -67,6 +76,34 @@ export class BasemapManager {
   private addRaster(def: Extract<BasemapDefinition, { kind: 'raster' }>) {
     // Cloned for the same reason as the vector path below.
     this.map.addSource(BASEMAP_SOURCE_ID, structuredClone(def.source));
+
+    const before = this.getInsertBeforeId();
+
+    // A background layer *underneath* the imagery, and it is not decoration:
+    // under globe projection MapLibre does not draw the bottom-most layer when
+    // that layer is a raster one with nothing beneath it. All three raster
+    // basemaps rendered as bare black/white sphere with only the overlays and
+    // labels on top, on /map and in the dashboard's embedded panel alike,
+    // while 2D was perfect — which is what made it look like a dashboard bug.
+    //
+    // The vector basemaps were never affected because they already begin with
+    // a `background` layer: OpenMapTiles has no landmass polygon, so land *is*
+    // the background there (see abyss.ts). That difference is the whole reason
+    // this only ever hit the raster three.
+    //
+    // Verified directly against the live map: the identical raster layer moved
+    // to the top of the stack rendered fine, and adding this background beneath
+    // it in place rendered fine — so it is stack position, not the source, the
+    // tiles, or the projection's raster support.
+    this.map.addLayer(
+      {
+        id: BASEMAP_BACKGROUND_LAYER_ID,
+        type: 'background',
+        paint: { 'background-color': def.backgroundColor ?? DEFAULT_RASTER_BACKGROUND },
+      },
+      before
+    );
+
     this.map.addLayer(
       {
         id: BASEMAP_LAYER_ID,
@@ -74,10 +111,13 @@ export class BasemapManager {
         source: BASEMAP_SOURCE_ID,
         ...def.layerOptions,
       },
-      this.getInsertBeforeId()
+      before
     );
+
     this.activeSourceIds = [BASEMAP_SOURCE_ID];
-    this.activeLayerIds = [BASEMAP_LAYER_ID];
+    // Background first: teardown walks this list in order, and it is also the
+    // order they were inserted in.
+    this.activeLayerIds = [BASEMAP_BACKGROUND_LAYER_ID, BASEMAP_LAYER_ID];
   }
 
   private addVector(def: Extract<BasemapDefinition, { kind: 'vector' }>) {

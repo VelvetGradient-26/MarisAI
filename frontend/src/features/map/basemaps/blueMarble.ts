@@ -12,6 +12,9 @@ export const blueMarble: RasterBasemapDefinition = {
   id: 'blueMarble',
   name: 'Blue Marble',
   attribution: 'NASA EOSDIS GIBS',
+  // Blue Marble's deep ocean. Required for globe rendering; see
+  // BasemapManager.addRaster.
+  backgroundColor: '#08203f',
   source: {
     type: 'raster',
     tiles: [

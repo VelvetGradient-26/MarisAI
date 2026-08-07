@@ -20,6 +20,9 @@ export const darkMarine: RasterBasemapDefinition = {
   id: 'darkMarine',
   name: 'Dark Marine',
   attribution: '© OpenStreetMap contributors, © CARTO',
+  // Carto Dark Matter's canvas. Required for globe rendering; see
+  // BasemapManager.addRaster.
+  backgroundColor: '#111618',
   source: {
     type: 'raster',
     tiles: [

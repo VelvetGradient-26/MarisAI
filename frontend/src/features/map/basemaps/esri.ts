@@ -11,6 +11,9 @@ export const esriSatellite: RasterBasemapDefinition = {
   id: 'satellite',
   name: 'Satellite',
   attribution: 'Esri, Maxar, Earthstar Geographics',
+  // Esri World Imagery's open ocean. Shows while tiles load, and is what makes
+  // this basemap render at all on the globe (see BasemapManager.addRaster).
+  backgroundColor: '#0b1a2b',
   source: {
     type: 'raster',
     tiles: [
