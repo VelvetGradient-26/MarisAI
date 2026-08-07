@@ -21,7 +21,28 @@
 import type { LayerLegend, RasterLayerDescriptor } from '../types';
 import type { ForecastGridEntry, ForecastMode } from '../api/forecastGrids';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+/**
+ * Same fallback as `layerRegistry.ts`, and it is load-bearing here rather than
+ * defensive. Every `api/*.ts` client guards this value inside a `url()` helper,
+ * but a tile template is a *string* MapLibre expands per request — an undefined
+ * base interpolates as the literal `"undefined/api/tiles/..."`, which then
+ * resolves against the page origin.
+ *
+ * What makes that especially quiet is the status it returns. Measured against
+ * the dev server, `/undefined/api/tiles/...` is not a 404: Vite's SPA fallback
+ * answers `200 text/html` with `index.html`, so MapLibre receives a *successful*
+ * response that simply is not an image, fails to decode it, and paints nothing.
+ * There is no failing request to find in the network panel.
+ *
+ * The layers still register and still appear in the panel too (the catalog fetch
+ * in `api/forecastGrids.ts` has its own fallback), so the whole failure presents
+ * as a full dropdown of forecast layers that are all silently blank.
+ *
+ * There is no `.env` in `frontend/` — the dev server proxies `/api` to
+ * :8000 (see `vite.config.ts`) — so the fallback is the *normal* path here,
+ * not an edge case.
+ */
+const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || window.location.origin;
 
 export function forecastLayerId(variable: string, horizon: number, mode: ForecastMode): string {
   return `forecast-${variable}-h${horizon}-${mode}`;
