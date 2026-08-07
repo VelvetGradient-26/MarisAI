@@ -504,12 +504,29 @@ export const layerRegistry: LayerDescriptor[] = [
     category: 'ocean',
     type: 'raster',
     attribution:
-      'NASA EOSDIS GIBS / MODIS Aqua Ocean Color L2 — 5-day rolling composite, most recent ' +
+      'NASA EOSDIS GIBS / VIIRS NOAA-21 Ocean Color — 5-day rolling composite, most recent ' +
       'observation per pixel. Remaining blank ocean is cloud, not an orbital gap: the sensor ' +
       'cannot see through cloud, so persistently overcast water has no valid retrieval at all.',
     defaultOpacity: 1,
     defaultVisible: false,
-    sources: gibsComposite(['MODIS_Aqua_L2_Chlorophyll_A'], {
+    // VIIRS NOAA-21, not MODIS Aqua. Same reason the cloud-cover layer above
+    // uses VIIRS: the 3060 km swath self-overlaps at the equator where MODIS's
+    // 2330 km leaves gaps between orbits. Measured over the same 5-day window
+    // on three z4 tiles, share of the tile carrying data:
+    //
+    //   tile      MODIS Aqua L2    VIIRS NOAA-21
+    //   4/8/10        31.8%            73.2%
+    //   4/9/10        21.2%            59.4%
+    //   4/7/9         70.9%            96.7%
+    //
+    // MODIS left roughly two-thirds of the tropical Indian Ocean — the app's
+    // home region — with no retrieval, and against the Abyss basemap's near
+    // black ocean (#030f1e) those gaps read as a broken layer rather than as
+    // missing data. Widening the MODIS window instead was measured and
+    // rejected: 14 days only reached 45% on 4/8/10, for nearly triple the
+    // tile requests, because the gaps there are persistent cloud rather than
+    // orbital geometry.
+    sources: gibsComposite(['VIIRS_NOAA21_Chlorophyll_a'], {
       days: 5,
       lagDays: 1,
       level: 7,

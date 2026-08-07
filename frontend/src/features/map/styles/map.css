@@ -71,6 +71,17 @@ body,
 }
 
 .map-root {
+  /* Height of the bottom-left furniture the layer panel must stop above.
+     Three things stack in that corner, bottom-up: MapLibre's ScaleControl
+     (32px), the coordinate readout (31px, at `bottom: 52px`), and the story
+     launcher (37px, at `bottom: 96px` — set in story/story.css). Measured
+     total including gaps, plus a 16px breathing gap.
+
+     Declared once here because several rules depend on it and they were
+     previously each carrying their own hand-tuned offset, which is how the
+     launcher ended up 23px inside the panel it sits next to. */
+  --map-bottom-left-reserve: 149px;
+
   position: relative;
   width: 100%;
   height: 100vh;
@@ -109,6 +120,16 @@ body,
   top: calc(var(--navbar-h, 64px) + 16px);
   left: 16px;
   z-index: 5;
+  /* Bounded against `.map-root`, not against `100vh`. They are not the same
+     number: measured in this app the root box was 749px while `100vh`
+     resolved to 802px, so a vh-based budget overshot by 53px and put the
+     panel back on top of the furniture below it. The root is the box the
+     panel is actually positioned in, so a percentage of it cannot disagree. */
+  max-height: calc(
+    100% - var(--navbar-h, 64px) - 16px - var(--map-bottom-left-reserve)
+  );
+  display: flex;
+  flex-direction: column;
   background: var(--ocean-panel-bg);
   border: 1px solid var(--ocean-border);
   border-radius: 10px;
@@ -136,7 +157,13 @@ body,
    fixed always, only the body's height animates away. */
 .map-controls__body {
   width: 220px;
-  max-height: calc(100vh - var(--navbar-h, 64px) - 32px);
+  /* The shell above owns the height budget; the body just takes what is left
+     of it and scrolls. Previously the body carried its own `100vh - navbar`
+     cap, which reserved nothing for the bottom-left furniture — with every
+     section expanded the panel ran to y=735 of a 749px viewport, under both
+     the coordinate readout and the tour launcher. */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 40px 14px 14px;
@@ -146,6 +173,9 @@ body,
 }
 
 .map-controls.collapsed .map-controls__body {
+  /* `flex: 0 0 0` alongside the max-height: a flex child would otherwise keep
+     its basis and refuse to animate away. */
+  flex: 0 0 0;
   max-height: 0;
   padding-top: 0;
   padding-bottom: 0;
@@ -155,11 +185,11 @@ body,
     padding 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Positioned by `.map-rail--right`, not by itself — see the rail's comment.
+   It keeps its own width and chrome; only the placement moved. */
 .selected-location-panel {
-  position: absolute;
-  bottom: 16px;
-  right: 16px;
-  z-index: 5;
+  display: flex;
+  flex-direction: column;
   width: min(320px, calc(100vw - 32px));
   background: var(--ocean-panel-bg);
   border: 1px solid var(--ocean-border);
@@ -177,7 +207,10 @@ body,
 }
 
 .selected-location-panel__body {
-  max-height: calc(100vh - 140px);
+  /* Was `calc(100vh - 140px)`, i.e. almost the whole viewport — which is how
+     a populated panel grew up into the legends. The rail now owns the height
+     budget, so the body simply takes what the rail gives it and scrolls. */
+  max-height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
   opacity: 1;
@@ -812,17 +845,67 @@ body,
    from the right edge and the legends covered 16-236px. `--map-ctrl-gutter` is
    that measured column plus a gap, named so the two stay in step if a control
    is ever added or removed. */
-.legend-stack {
+/* The right-hand rail: legends at the top, the selected-location panel at the
+   bottom, in one column that owns the vertical space between the navbar and
+   the viewport floor.
+ *
+ * Why a rail instead of positioning each panel: both size themselves from
+ * their content — the legend stack grows a whole legend when wind is enabled,
+ * and the location panel goes from three lines to a full readout once a point
+ * is clicked. As absolute siblings each was laid out in ignorance of the
+ * other, so they overlapped by 210px at 1440x749 with both populated. Flex
+ * makes that impossible rather than unlikely: `justify-content: space-between`
+ * pins one to each end, and `min-height: 0` plus `overflow-y: auto` on the
+ * children means the loser of a space fight scrolls instead of spilling.
+ *
+ * The rail itself is click-through (`pointer-events: none`) so the empty space
+ * between the two panels still pans the map; the panels re-enable it. */
+.map-rail {
   --map-ctrl-gutter: 53px;
 
   position: absolute;
   top: calc(var(--navbar-h, 64px) + 16px);
-  right: var(--map-ctrl-gutter);
+  bottom: 16px;
   z-index: 5;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  pointer-events: none;
+}
+
+.map-rail--right {
+  /* Inset by the control column rather than sitting at the edge: MapLibre's
+     NavigationControl / GeolocateControl / FullscreenControl stack is also
+     top-right (ControlManager.ts adds all three there), and at `right: 16px`
+     the legends were drawn straight over it — measured, the controls occupy
+     10-41px from the right edge. `--map-ctrl-gutter` is that measured column
+     plus a gap, named so the two stay in step if a control is ever added or
+     removed. */
+  right: var(--map-ctrl-gutter);
   align-items: flex-end;
+  justify-content: space-between;
+}
+
+.map-rail > * {
+  pointer-events: auto;
+  /* Without this a flex child refuses to shrink below its content height,
+     which is exactly how an overflowing panel escapes its own container. */
+  min-height: 0;
+}
+
+.legend-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-end;
+  /* Legends yield to the location panel: they are reference material, while
+     the panel holds the numbers the user just asked for by clicking. Capped
+     so that even three legends cannot claim the whole rail. */
+  flex: 0 1 auto;
+  max-height: 55%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
 }
 
 .sst-legend,
@@ -1143,12 +1226,23 @@ body,
     display: none;
   }
 
+  /* On a phone the rail carries the legends only — it stops where they stop,
+     so it cannot reserve a column of dead space down the right edge. */
+  .map-rail--right {
+    bottom: auto;
+  }
+
   /* A sheet docked to the bottom edge, where a thumb reaches, spanning the
-     full width instead of a 320px card wedged into a corner. */
+     full width instead of a 320px card wedged into a corner.
+     `fixed`, not `absolute`: the panel is a child of the rail now, and an
+     absolute child would resolve these offsets against the rail's narrow
+     column rather than against the viewport. */
   .selected-location-panel {
+    position: fixed;
     left: 8px;
     right: 8px;
     bottom: 78px;
+    z-index: 5;
     width: auto;
     border-radius: 14px;
   }
