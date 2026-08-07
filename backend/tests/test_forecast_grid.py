@@ -46,6 +46,8 @@ DAYS = 60
 # gives 648 cells, enough to sample ten scattered comparisons, and keeps the
 # file under a minute instead of over three.
 RESOLUTION_DEG = 10.0
+# One 256x256 tile, for coverage assertions on the rendered PNG.
+TILE_PIXELS = 256 * 256
 
 
 class WeightedSumModel:
@@ -366,20 +368,39 @@ def test_ocean_mask_reads_the_latest_timestep(stack):
 # --------------------------------------------------------------------------
 
 
-def _write_tile_grid(directory, *, forecast_offset: float) -> None:
+def _write_tile_grid(
+    directory,
+    *,
+    forecast_offset: float,
+    unforecastable: bool = False,
+    observed: bool = True,
+) -> None:
     """A global grid whose temperature ramps with latitude, so a rendered tile
-    has something to vary across."""
+    has something to vary across.
+
+    `unforecastable` punches a hole in the *forecast* while leaving `anchor`
+    intact — observable water the model could not score, which is a different
+    thing from land and must not render like it. `observed=False` removes the
+    anchor too, which is that other thing: land, or outside coverage.
+    """
     latitudes = np.arange(-89.0, 90.0, 2.0)
     longitudes = np.arange(-179.0, 180.0, 2.0)
     anchor = np.tile(
         np.linspace(0.0, 30.0, len(latitudes))[:, None], (1, len(longitudes))
     ).astype("float32")
 
+    forecast = anchor + forecast_offset
+    if unforecastable:
+        forecast = np.full_like(forecast, np.nan)
+    if observed is False:
+        anchor = np.full_like(anchor, np.nan)
+        forecast = np.full_like(forecast, np.nan)
+
     dataset = xr.Dataset(
         {
             "forecast": (
                 ("horizon", "latitude", "longitude"),
-                (anchor + forecast_offset)[None, :, :],
+                forecast[None, :, :],
             ),
             "anchor": (("latitude", "longitude"), anchor),
         },
@@ -482,6 +503,70 @@ def test_change_tile_separates_warming_from_cooling(tmp_path):
     # the blue channel the other.
     assert warm[0] > warm[2], f"warming did not render red: {warm}"
     assert cool[2] > cool[0], f"cooling did not render blue: {cool}"
+
+
+def test_unforecastable_water_does_not_render_as_an_extreme_value(tmp_path):
+    """"No forecast here" and "the strongest cooling on the scale" must differ.
+
+    Measured, not assumed: every ramp this module uses bottoms out near black,
+    and the map's default basemap is a near-black ocean (#030f1e). At the
+    layer's 0.7 opacity the darkest step of each ramp sits at 1.13-1.27:1
+    contrast against bare basemap, against a 2:1 floor — and no ramp end clears
+    2:1 even at full opacity. So an unscored cell left transparent is, to a
+    reader, the bottom of the colour scale.
+
+    That is the visual form of the rule this codebase is built on: never let
+    missing data wear the costume of a value. Absence is marked with texture,
+    which is the one channel the colour ramp does not already occupy.
+    """
+    from services import forecast_tiles
+
+    blank = tmp_path / "blank"
+    coldest = tmp_path / "coldest"
+    blank.mkdir()
+    coldest.mkdir()
+    _write_tile_grid(blank, forecast_offset=0.0, unforecastable=True)
+    # Past the -2 degC change scale, so every cell clamps to the ramp's end.
+    _write_tile_grid(coldest, forecast_offset=-10.0)
+    forecast_tiles.clear_cache()
+
+    marked = _decode(forecast_tiles.tile_or_placeholder(VARIABLE, HORIZON, "change", 0, 0, 0, blank))
+    forecast_tiles.clear_cache()
+    extreme = _decode(
+        forecast_tiles.tile_or_placeholder(VARIABLE, HORIZON, "change", 0, 0, 0, coldest)
+    )
+
+    # The unscored tile is not blank: the hatch leaves opaque pixels behind.
+    assert len(marked) > 0, "unforecastable water rendered as an empty tile"
+    # ...and it is a hatch, so the tile is mostly still transparent. A solid
+    # fill would be a colour, and a colour is what must not happen here.
+    assert len(marked) < TILE_PIXELS // 2, "the marker is a fill, not a hatch"
+
+    # The two must be separable by colour, not merely by coverage.
+    assert np.unique(marked, axis=0).shape[0] == 1, f"hatch is not one colour: {marked[:5]}"
+    separation = np.abs(marked[0].astype(int) - extreme.mean(axis=0)).max()
+    assert separation > 40, (
+        f"unforecastable water {marked[0]} is indistinguishable from the ramp's "
+        f"cold end {extreme.mean(axis=0).round()}"
+    )
+
+
+def test_land_stays_transparent(tmp_path):
+    """The hatch marks water we could see but not score — never land.
+
+    `anchor` is the discriminator: finite exactly where a latest observation
+    existed. Keying the mark on the forecast alone would hatch every continent,
+    which is why this test exists next to the one above rather than inside it.
+    """
+    from services import forecast_tiles
+
+    _write_tile_grid(tmp_path, forecast_offset=0.0, observed=False)
+    forecast_tiles.clear_cache()
+
+    pixels = _decode(
+        forecast_tiles.tile_or_placeholder(VARIABLE, HORIZON, "change", 0, 0, 0, tmp_path)
+    )
+    assert len(pixels) == 0, f"{len(pixels)} opaque pixels painted where nothing was observed"
 
 
 # --------------------------------------------------------------------------

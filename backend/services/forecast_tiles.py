@@ -92,6 +92,30 @@ _MATCHED_STOPS: dict[str, list[ColorStop]] = {
     "sea_surface_temperature": SST_COLORMAP_STOPS,
 }
 
+# Unforecastable ocean, drawn as a 45-degree hatch rather than left blank.
+#
+# This exists because of a measured collision, not a style preference. Every
+# ramp here bottoms out near black, and the map's default basemap is a near-
+# black ocean (`abyss.ts`'s #030f1e), so at the layer's 0.7 opacity the darkest
+# step of each ramp sits at 1.13-1.27:1 contrast against bare basemap — against
+# a 2:1 floor. The consequence is that a cell showing *strong cooling* and a
+# cell showing *nothing at all* were the same pixel to a reader.
+#
+# Lightening the ramps was the obvious fix and does not work: reaching 2:1
+# needs the diverging ends brightened ~1.9x (colliding with their own next
+# stop) and viridis's end 2.4x, which turns it magenta. Raising the layer's
+# opacity does not work either — none of the four ends clears 2:1 even at
+# opacity 1.0. The distinguishing mark has to be *texture*, not colour.
+#
+# `anchor` is what separates the two cases, and it is already in the grid file:
+# it is finite exactly where a latest observation existed, so anchor-finite +
+# forecast-NaN means "we can see this water, the model could not score it",
+# while anchor-NaN is land or outside coverage and stays transparent. Marking
+# the second would hatch every continent.
+_HATCH_RGB = (122, 133, 144)
+_HATCH_PERIOD = 8
+_HATCH_WIDTH = 3
+
 
 class ForecastTileError(RuntimeError):
     """A forecast grid is missing, malformed, or the request is out of range."""
@@ -293,6 +317,24 @@ def _tile_lonlat(z: int, x: int, y: int) -> tuple[np.ndarray, np.ndarray]:
     return lon, lat
 
 
+def _sample(field: xr.DataArray, lon: np.ndarray, lat: np.ndarray) -> np.ndarray:
+    """The field resampled onto a tile's pixel centres, as (y, x)."""
+    return field.interp(
+        latitude=xr.DataArray(lat, dims="y"),
+        longitude=xr.DataArray(lon, dims="x"),
+        method="linear",
+        kwargs={"bounds_error": False, "fill_value": np.nan},
+    ).values
+
+
+@lru_cache(maxsize=8)
+def _hatch(size: int) -> np.ndarray:
+    """A 45-degree stripe mask, True on the stripe. Cached — it is the same
+    array for every tile, and rebuilding it per tile is pure waste."""
+    ys, xs = np.mgrid[0:size, 0:size]
+    return ((xs + ys) % _HATCH_PERIOD) < _HATCH_WIDTH
+
+
 @lru_cache(maxsize=4096)
 def render_tile(
     variable: str, horizon: int, mode: str, z: int, x: int, y: int, directory: str, version: str
@@ -302,17 +344,19 @@ def render_tile(
     field, colormap = _field(grid, horizon, mode)
 
     lon, lat = _tile_lonlat(z, x, y)
-    values = field.interp(
-        latitude=xr.DataArray(lat, dims="y"),
-        longitude=xr.DataArray(lon, dims="x"),
-        method="linear",
-        kwargs={"bounds_error": False, "fill_value": np.nan},
-    ).values
+    values = _sample(field, lon, lat)
 
     # Raw values: every colormap `_field` hands back is already in data units,
     # and `build_colormap` clamps beyond its endpoints rather than extrapolating.
     rgb = np.nan_to_num(colormap(values), nan=0.0).astype(np.uint8)
     alpha = np.where(np.isnan(values), 0, 220).astype(np.uint8)
+
+    # Observable water the model could not score: hatched, so "no forecast" can
+    # never be read as an extreme value. See the _HATCH_* constants.
+    stripe = np.isnan(values) & np.isfinite(_sample(grid["anchor"], lon, lat)) & _hatch(TILE_SIZE)
+    rgb[stripe] = _HATCH_RGB
+    alpha[stripe] = 220
+
     rgba = np.dstack([rgb, alpha])
 
     buffer = io.BytesIO()

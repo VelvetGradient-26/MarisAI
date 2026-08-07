@@ -109,12 +109,18 @@ function attributionFor(entry: ForecastGridEntry, horizon: number, mode: Forecas
       ? `Change from the latest observation to +${horizon} days`
       : `Predicted value at +${horizon} days`;
 
+  // Stated, not left to be inferred from the picture. Every ramp here bottoms
+  // out near the basemap's own near-black ocean, so an unmarked gap would read
+  // as the cold end of the scale rather than as absence.
+  const hatched =
+    ' Diagonally hatched water was observed but could not be scored — that is missing data, not a low value.';
+
   return (
     `${what}. MODEL OUTPUT, not observation: ${entry.model ?? 'LightGBM'} trained by ` +
     `rolling-origin cross-validation on ${entry.sources.join('; ') || 'Copernicus Marine'}.` +
     `${skill} Grid is ${entry.resolution_deg}° (${entry.cells_scored.toLocaleString()} ocean cells), ` +
     `anchored on observations from ${entry.observation_date ?? 'an unknown date'}, ` +
-    `built ${entry.generated_at ?? 'at an unknown time'}.${missing}`
+    `built ${entry.generated_at ?? 'at an unknown time'}.${hatched}${missing}`
   );
 }
 
