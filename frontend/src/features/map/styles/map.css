@@ -17,12 +17,18 @@
  */
 :root {
   --ocean-bg: var(--ma-bg);
-  --ocean-panel: #101d2c;
-  --ocean-panel-bg: rgba(16, 29, 44, 0.92);
-  --ocean-panel-solid: rgba(16, 29, 44, 0.96);
-  --ocean-border: #1f3348;
-  --ocean-text: #d7e4ee;
-  --ocean-muted: #6f8ba3;
+  /* Near-black neutrals, retuned with the rest of the dark theme. Note what
+     did NOT change: the *basemap* is still `abyss.ts`'s #030f1e ocean. These
+     tokens are the floating UI chrome over it — panels, legends, tooltips —
+     and the comment above is the reason the distinction matters, since the
+     map itself is a data surface and its colours are an explicit choice. A
+     panel is page furniture and follows the theme. */
+  --ocean-panel: #101013;
+  --ocean-panel-bg: rgba(16, 16, 19, 0.92);
+  --ocean-panel-solid: rgba(16, 16, 19, 0.96);
+  --ocean-border: #2b2b33;
+  --ocean-text: #e4e4e6;
+  --ocean-muted: #9a9aa2;
   /* Was #22d3ee — the one place in the app the accent disagreed with the
      shared cyan, which showed on the legends the moment you compared the map
      against the dashboard's charts of the same field. */
@@ -36,8 +42,8 @@
   /* A heavier blur surface than --ocean-panel-bg, and more transparent: the
      story overlay is meant to read as one scene with the map behind it, not
      as a panel sitting on top of it (see story.css). */
-  --ocean-scrim: rgba(6, 14, 22, 0.82);
-  --ocean-scrim-strong: rgba(10, 22, 32, 0.9);
+  --ocean-scrim: rgba(8, 8, 10, 0.82);
+  --ocean-scrim-strong: rgba(14, 14, 17, 0.9);
   --ocean-scrim-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
   --ocean-font-ui: var(--ma-font-ui);
   --ocean-font-mono: var(--ma-font-mono);
@@ -698,6 +704,57 @@ body,
   margin-top: 4px;
 }
 
+/* Tile fetch status for an active layer. Sits between the layer's name and its
+   legend, because the legend is exactly what a user reads when the map looks
+   unchanged and they are trying to work out whether the colours are missing or
+   merely late. */
+.layer-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ocean-muted);
+}
+
+.layer-status--error {
+  color: #fca5a5;
+}
+
+.layer-status__spinner {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--ocean-border);
+  border-top-color: var(--ocean-accent);
+  animation: layer-status-spin 0.7s linear infinite;
+}
+
+.layer-status__dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ef4444;
+}
+
+@keyframes layer-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* A spinner that never stops is worse than no spinner for anyone who is
+   motion-sensitive, and tile loading can run for seconds. */
+@media (prefers-reduced-motion: reduce) {
+  .layer-status__spinner {
+    animation: none;
+    border-top-color: var(--ocean-border);
+  }
+}
+
 .vector-field-controls {
   display: flex;
   flex-direction: column;
@@ -1250,4 +1307,56 @@ body,
   .selected-location-panel__body {
     max-height: 40vh;
   }
+}
+
+/* --------------------------------------------------------------------------
+   Panel interaction polish
+   --------------------------------------------------------------------------
+   Transitions on compositor-only properties (transform, opacity, colour) and
+   nothing else. These panels float over a live MapLibre canvas that is already
+   redrawing every frame — plus, on the wind layer, a GPU particle system — so
+   anything that forces layout or paint here competes directly with the map's
+   own frame budget. No JS animation for the same reason. */
+.map-controls,
+.map-controls__body section,
+.layer-dropdown__menu li,
+.map-exclusive-select,
+.layer-dropdown__trigger {
+  transition:
+    border-color 0.2s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    background-color 0.2s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    color 0.2s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    box-shadow 0.2s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.layer-dropdown__trigger:hover,
+.map-exclusive-select:hover {
+  border-color: var(--ocean-accent);
+}
+
+/* The disclosure caret turns rather than swapping glyph. */
+.layer-dropdown__caret {
+  display: inline-block;
+  transition: transform 0.22s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.layer-dropdown__trigger.open .layer-dropdown__caret {
+  transform: rotate(180deg);
+}
+
+/* The basemap grid's selection. `transform` only — a width/padding change here
+   would reflow the whole floating panel over a redrawing canvas. */
+.basemap-grid button {
+  transition:
+    transform 0.18s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    border-color 0.2s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    color 0.2s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.basemap-grid button:hover {
+  transform: translateY(-1px);
+}
+
+.basemap-grid button:active {
+  transform: translateY(0);
 }

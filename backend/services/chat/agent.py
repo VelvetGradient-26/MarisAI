@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from collections.abc import AsyncIterator
 from typing import Any
 
 from langchain_core.messages import (
@@ -142,7 +143,23 @@ def _model() -> Any:
     )
 
 
-_NUMBER = re.compile(r"-?\d+(?:\.\d+)?")
+# Grouped forms first, so "2,048" is one number rather than "2" and "048".
+# Without the first branch the model writing a depth as "2,048 m" — which it
+# does whenever a value passes a thousand — got split into two fragments,
+# neither of which appears in any tool result, and a perfectly grounded answer
+# was flagged as carrying two untraceable figures. That is precisely the
+# cry-wolf failure `_ungrounded_numbers` documents: a banner that fires on
+# correct answers teaches people to ignore the one that matters.
+_NUMBER = re.compile(r"-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?")
+
+
+def _numeric(token: str) -> float:
+    """`float()` for a token this module's regex can produce.
+
+    Separate from a bare `float()` call because the grouped branch above emits
+    strings `float()` rejects outright.
+    """
+    return float(token.replace(",", ""))
 
 # Numbers that carry no factual claim about the ocean: list markers, a horizon
 # the user themselves named, ordinary prose quantities. Checking these produces
@@ -192,16 +209,19 @@ def _ungrounded_numbers(text: str, ledger: Ledger, said: str = "") -> list[str]:
     for match in _NUMBER.findall(block):
         allowed.add(match)
         allowed.add(match.lstrip("-"))
+        # Also admit the ungrouped spelling: a tool reports 2048.0 and the
+        # model writes "2,048", so the two must compare equal.
+        allowed.add(match.replace(",", ""))
         try:
-            allowed |= _renderings(float(match))
+            allowed |= _renderings(_numeric(match))
         except ValueError:
             continue
 
     unsupported: list[str] = []
     for match in _NUMBER.findall(text):
-        candidates = {match, match.lstrip("-")}
+        candidates = {match, match.lstrip("-"), match.replace(",", "")}
         try:
-            candidates |= _renderings(float(match))
+            candidates |= _renderings(_numeric(match))
         except ValueError:
             continue
         if not candidates & allowed and match not in unsupported:
@@ -350,3 +370,157 @@ async def answer(
         await store.record(resolved, question, reply)
 
     return reply
+
+
+async def answer_stream(
+    question: str,
+    history: list[dict[str, str]] | None = None,
+    *,
+    session_id: str | None = None,
+    client_id: str | None = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """`answer()`, yielded as it happens.
+
+    Same bounded loop, same `Ledger`, same grounding check — the only thing
+    that changes is when the caller learns about each part. `answer()` is
+    unchanged and remains the non-streaming path.
+
+    **Why this exists.** The whole point of the agent is that it calls tools,
+    and a turn that fetches three ocean fields takes tens of seconds. Returning
+    one JSON blob at the end means the user watches a spinner through all of
+    it with no evidence anything is happening. The `tool` events below are the
+    substance of that: "asking Copernicus for SST at 10N 72E" is more
+    reassuring than any progress bar, and it is true.
+
+    Events yielded, each a dict with a `type`:
+
+    - ``tool``  — one per tool call, as it completes.
+    - ``delta`` — a fragment of the answer text.
+    - ``reset`` — discard the ``delta`` text received so far (see below).
+    - ``meta``  — terminal. Carries the grounding verdict and provenance.
+
+    **`grounded` cannot be streamed, and that is the important constraint.**
+    It is computed by checking the *finished* text against everything the tools
+    returned, so it is only knowable once the last token has arrived. It
+    therefore rides on the terminal ``meta`` event, and a client must not show
+    a "verified" affordance before then — doing so would assert a check that
+    has not run. Stream the text as unverified; resolve it on ``meta``.
+
+    **Why `reset` is needed.** Whether a turn is the final answer or another
+    round of tool calls is not knowable until its stream ends. Text is
+    therefore emitted optimistically, and on the rare turn that emits prose
+    *and then* asks for a tool, that prose was preamble rather than the answer
+    — `reset` tells the client to drop it. In practice this fires almost never
+    (models emit text or tool calls, not both), but "almost never" is not
+    "never", and the alternative is buffering the entire answer, which would
+    defeat the point.
+    """
+    question = (question or "").strip()
+    if not question:
+        raise ChatError("Ask a question about ocean conditions.")
+
+    resolved: uuid.UUID | None = None
+    if client_id and store.enabled():
+        resolved = await store.ensure_session(session_id, client_id, question)
+
+    prior = await store.history(resolved) if resolved else (history or [])
+
+    ledger = Ledger()
+    tools = build_tools(ledger)
+    model = _model().bind_tools(tools)
+    by_name = {tool.name: tool for tool in tools}
+
+    messages: list[BaseMessage] = [SystemMessage(content=_SYSTEM_PROMPT)]
+    messages.extend(_history_messages(prior))
+    messages.append(HumanMessage(content=question))
+
+    truncated = False
+    for _ in range(MAX_ITERATIONS):
+        streamed = ""
+        accumulated: Any = None
+        try:
+            async for chunk in model.astream(messages):
+                accumulated = chunk if accumulated is None else accumulated + chunk
+                piece = chunk.content if isinstance(chunk.content, str) else ""
+                if piece:
+                    streamed += piece
+                    yield {"type": "delta", "text": piece}
+        except Exception as exc:  # noqa: BLE001 - provider clients raise widely
+            logger.exception("chat model stream failed")
+            raise ChatError("The AI provider could not be reached.") from exc
+
+        if accumulated is None:
+            break
+
+        messages.append(accumulated)
+        calls = getattr(accumulated, "tool_calls", None) or []
+        if not calls:
+            break
+
+        # This turn was tool calls after all, so anything already streamed was
+        # preamble, not the answer.
+        if streamed.strip():
+            yield {"type": "reset"}
+
+        for call in calls:
+            tool = by_name.get(call["name"])
+            if tool is None:
+                output = f"No such tool: {call['name']}"
+            else:
+                output = await tool.ainvoke(call["args"])
+            messages.append(ToolMessage(content=output, tool_call_id=call["id"]))
+            # Emitted after the call resolves rather than before it, so the
+            # client never shows a tool that turned out to fail as though it
+            # had produced something.
+            yield {
+                "type": "tool",
+                "tool": call["name"],
+                "arguments": call.get("args") or {},
+            }
+    else:
+        truncated = True
+
+    text = ""
+    for message in reversed(messages):
+        if isinstance(message, AIMessage) and isinstance(message.content, str) and message.content.strip():
+            text = message.content.strip()
+            break
+
+    if not text:
+        text = (
+            "I could not put together an answer from the available data. "
+            "Try narrowing the question to one variable and one location."
+        )
+        # Nothing usable was streamed, so the client has nothing to replace.
+        yield {"type": "reset"}
+        yield {"type": "delta", "text": text}
+
+    shown = "\n".join(
+        [
+            question,
+            *(turn.get("content", "") for turn in prior),
+            _SYSTEM_PROMPT,
+            *(tool.description for tool in tools),
+            *(_schema_prose(tool) for tool in tools),
+        ]
+    )
+    unsupported = _ungrounded_numbers(text, ledger, shown)
+    if unsupported:
+        logger.warning(f"chat answer carried ungrounded numbers: {unsupported}")
+
+    reply = {
+        "answer": text,
+        "grounded": not unsupported,
+        "unsupported_numbers": unsupported,
+        "observations": ledger.observations,
+        "sources": ledger.sources(),
+        "truncated": truncated,
+        "session_id": str(resolved) if resolved else None,
+    }
+
+    # Same ordering rule as `answer()`: persist only once the reply is
+    # assembled, so a failed write costs the transcript rather than the answer.
+    if resolved:
+        await store.record(resolved, question, reply)
+
+    yield {"type": "meta", **reply}

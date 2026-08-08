@@ -9,7 +9,7 @@ and only reachable by luck.
 from __future__ import annotations
 
 import pytest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, AIMessageChunk
 from pydantic import ValidationError
 
 from services.chat import agent
@@ -295,6 +295,167 @@ async def test_an_empty_question_is_rejected(patched):
     patched(ScriptedModel([AIMessage(content="hi")]))
     with pytest.raises(agent.ChatError):
         await agent.answer("   ")
+
+
+@pytest.mark.asyncio
+async def test_a_thousands_separator_does_not_fake_an_ungrounded_number(patched, depth):
+    """"2,048 m" is one figure, not a "2" and an "048".
+
+    Found live: the seafloor at 10N 72E is 2048 m, the model reported it as
+    "about 2,048 m deep (roughly 6,700 ft)", and the checker split both grouped
+    numbers into fragments that appear in no tool result — flagging a perfectly
+    grounded answer. Any depth over a thousand metres reproduces it, which is
+    most of the ocean.
+    """
+    depth({"elevation_m": -2048.0, "source": "GEBCO_2021 via Ifremer ERDDAP"})
+
+    patched(
+        ScriptedModel(
+            [
+                _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
+                AIMessage(content="The seafloor there sits about 2,048 m deep."),
+            ]
+        )
+    )
+
+    result = await agent.answer("How deep is it at 10N 72E?")
+
+    assert result["unsupported_numbers"] == []
+    assert result["grounded"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_grouped_number_is_still_checked(patched, depth):
+    """The fix must not become a way to launder an invented figure.
+
+    Admitting the ungrouped spelling of every number is only safe if a grouped
+    number that matches *nothing* still fails.
+    """
+    depth({"elevation_m": -2048.0, "source": "GEBCO_2021 via Ifremer ERDDAP"})
+
+    patched(
+        ScriptedModel(
+            [
+                _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
+                AIMessage(content="The seafloor there sits about 9,876 m deep."),
+            ]
+        )
+    )
+
+    result = await agent.answer("How deep is it at 10N 72E?")
+
+    assert result["grounded"] is False
+    assert "9,876" in result["unsupported_numbers"]
+
+
+class ScriptedStreamModel(ScriptedModel):
+    """`ScriptedModel` that also answers `astream`.
+
+    Each queued reply is emitted as one chunk per whitespace-delimited word, so
+    a test can assert on ordering and on reassembly rather than on a single
+    all-at-once yield — which would pass even if the endpoint had quietly
+    stopped streaming.
+    """
+
+    async def astream(self, messages):
+        self.seen.append(list(messages))
+        reply = self.replies.pop(0) if self.replies else AIMessage(content="done")
+
+        if getattr(reply, "tool_calls", None):
+            # A tool-calling turn carries no text, matching real providers.
+            yield AIMessageChunk(content="", tool_calls=reply.tool_calls)
+            return
+
+        words = str(reply.content).split(" ")
+        for index, word in enumerate(words):
+            yield AIMessageChunk(content=word if index == 0 else f" {word}")
+
+
+async def _collect(question: str) -> list[dict]:
+    return [event async for event in agent.answer_stream(question)]
+
+
+@pytest.mark.asyncio
+async def test_the_stream_reports_tools_before_the_answer(patched, depth):
+    """The reason the streaming endpoint exists.
+
+    A turn that fetches ocean data takes tens of seconds, and the point of
+    streaming it is that the user sees *what is being fetched* while they wait.
+    If a `tool` event could arrive after the prose it justifies, the feature
+    would be pointless — so the ordering is asserted, not assumed.
+    """
+    depth({"elevation_m": -1234.5, "source": "GEBCO_2021 via Ifremer ERDDAP"})
+    patched(
+        ScriptedStreamModel(
+            [
+                _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
+                AIMessage(content="The seafloor there is about 1234.5 m deep."),
+            ]
+        )
+    )
+
+    events = await _collect("How deep is it at 10N 72E?")
+    kinds = [event["type"] for event in events]
+
+    assert kinds[0] == "tool"
+    assert kinds.index("tool") < kinds.index("delta")
+    assert kinds[-1] == "meta", "meta must be terminal — it carries the grounding verdict"
+    assert kinds.count("meta") == 1
+
+
+@pytest.mark.asyncio
+async def test_the_streamed_text_reassembles_into_the_final_answer(patched, depth):
+    """The deltas and `meta.answer` must not be able to disagree.
+
+    They are produced by different code paths — one accumulates provider chunks,
+    the other re-reads the message list — so a change to either could leave the
+    text a user watched arrive differing from the text that was graded for
+    grounding and written to the transcript.
+    """
+    depth({"elevation_m": -1234.5, "source": "GEBCO_2021 via Ifremer ERDDAP"})
+    patched(
+        ScriptedStreamModel(
+            [
+                _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
+                AIMessage(content="The seafloor there is about 1234.5 m deep."),
+            ]
+        )
+    )
+
+    events = await _collect("How deep is it at 10N 72E?")
+    streamed = "".join(e["text"] for e in events if e["type"] == "delta")
+    meta = events[-1]
+
+    assert streamed.strip() == meta["answer"].strip()
+    assert meta["grounded"] is True
+    assert meta["observations"][0]["tool"] == "get_seafloor_depth"
+
+
+@pytest.mark.asyncio
+async def test_grounding_is_only_reported_at_the_end(patched, depth):
+    """`grounded` is computed from the finished text, so it cannot ride a delta.
+
+    A client that showed a "verified" badge mid-stream would be asserting a
+    check that had not run. Keeping the verdict exclusively on the terminal
+    event is what makes that impossible rather than merely discouraged.
+    """
+    depth({"elevation_m": -1234.5, "source": "GEBCO_2021 via Ifremer ERDDAP"})
+    patched(
+        ScriptedStreamModel(
+            [
+                _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
+                # 4321.0 appears in no tool result.
+                AIMessage(content="It is 4321.0 m deep."),
+            ]
+        )
+    )
+
+    events = await _collect("How deep is it at 10N 72E?")
+
+    for event in events[:-1]:
+        assert "grounded" not in event
+    assert events[-1]["grounded"] is False
+    assert "4321.0" in events[-1]["unsupported_numbers"]
 
 
 def test_every_tool_declares_a_description_and_schema():

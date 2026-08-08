@@ -17,6 +17,14 @@ export function Panel({
   return (
     <Component
       className={cn(
+        // `oid-panel` carries no Tailwind styling — it is a stable hook for the
+        // hover/interaction CSS in styles/tailwind.css. That polish is
+        // deliberately CSS rather than framer-motion: these panels host
+        // Recharts, whose entry animation is already disabled here because it
+        // ran before ResponsiveContainer had settled its width (see CLAUDE.md),
+        // and a JS mount animation on the container is the same hazard.
+        // Hover is safe because nothing measures during it.
+        'oid-panel',
         'relative overflow-hidden rounded-[var(--radius-panel)]',
         'border border-[color:var(--oid-border)]',
         'bg-[color:var(--oid-panel)] backdrop-blur-xl',

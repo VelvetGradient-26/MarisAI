@@ -87,8 +87,37 @@
 
 .navbar__links a:hover,
 .navbar__links a.is-active {
-  border-color: var(--nav-primary);
   color: var(--nav-primary);
+}
+
+/* Hover keeps a border because it is per-link and instantaneous. The *active*
+   link's underline is the shared motion indicator below instead, so the two
+   must not both draw: a static border under the active link would sit there
+   while the animated one slid onto it. */
+.navbar__links--desktop a:hover:not(.is-active) {
+  border-color: var(--nav-primary);
+}
+
+.navbar__links--mobile a.is-active,
+.navbar__links--mobile a:hover {
+  border-color: var(--nav-primary);
+}
+
+/* Positioning context for the indicator. `inline-flex` so the slot is exactly
+   as wide as its link — the indicator is sized from it. */
+.navbar__link-slot {
+  position: relative;
+  display: inline-flex;
+}
+
+.navbar__indicator {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: var(--nav-primary);
+  border-radius: 1px;
 }
 
 .navbar__actions {

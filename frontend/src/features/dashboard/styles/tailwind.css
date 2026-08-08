@@ -25,13 +25,18 @@
    * states. Nothing outside the alert ramp is allowed to be bright: the
    * point is that an orange pixel on this page always means something.
    */
-  --color-abyss-950: #04080f;
-  --color-abyss-900: #07101c;
-  --color-abyss-850: #0a1626;
-  --color-abyss-800: #0d1c30;
-  --color-abyss-700: #12263f;
-  --color-abyss-600: #1a3552;
-  --color-abyss-500: #24466a;
+  /* Retuned to the near-black neutrals alongside the --oid-* set below.
+     No component currently uses these utilities (checked), which is exactly
+     why they were worth changing: left navy, the first person to reach for
+     `bg-abyss-900` on this page would get a blue panel on a black page and
+     have no idea where it came from. */
+  --color-abyss-950: #050506;
+  --color-abyss-900: #08080a;
+  --color-abyss-850: #0e0e11;
+  --color-abyss-800: #131316;
+  --color-abyss-700: #1a1a1f;
+  --color-abyss-600: #26262d;
+  --color-abyss-500: #34343d;
 
   --color-cyan-glow: #4fd1ff;
   --color-aqua-400: #38e0d0;
@@ -46,8 +51,8 @@
 
   /* Surfaces. Glass panels are a translucent navy over the page gradient
    * rather than a flat fill, so the map and gradients read through them. */
-  --color-glass: color-mix(in oklab, #0d1c30 78%, transparent);
-  --color-glass-strong: color-mix(in oklab, #0a1626 88%, transparent);
+  --color-glass: color-mix(in oklab, #131316 78%, transparent);
+  --color-glass-strong: color-mix(in oklab, #0e0e11 88%, transparent);
   --color-hairline: color-mix(in oklab, #4fd1ff 14%, transparent);
 
   --font-display: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
@@ -116,7 +121,8 @@
  * Everything else here stays local *on purpose*, and this is the deliberate
  * exception to the app-wide palette rather than an oversight. The dashboard is
  * the one Tailwind surface: translucent glass panels floating on a radial
- * gradient wash, with a cooler blue-white ink to sit on them. `--ma-surface`
+ * gradient wash. (The ink used to be a cooler blue-white too; it is now the
+ * shared neutral, since that was hue drift rather than material.) `--ma-surface`
  * is a flat card colour and `--ma-bg` a flat canvas — aliasing to them would
  * not unify this page, it would delete its treatment. The rule of thumb: a
  * token that means "which product is this" is shared; a token that means "what
@@ -139,31 +145,45 @@
     --oid-accent-wash: color-mix(in oklab, var(--ma-accent) 16%, transparent);
     --oid-accent-wash-strong: color-mix(in oklab, var(--ma-accent) 26%, transparent);
 
-    --oid-panel: color-mix(in oklab, #0d1c30 78%, transparent);
-    --oid-panel-strong: color-mix(in oklab, #0a1626 88%, transparent);
-    --oid-elevated: #0a1626;
-    --oid-hover: #12263f;
+    /* Neutral near-black, retuned with the rest of the app's dark theme. The
+       *material* this block describes is unchanged — translucent glass on a
+       gradient wash — but its hue is not: this page was the single most
+       saturated navy surface in the product (#0d1c30 panels, #1a3552 grid
+       lines, #e2f1ff ink), so leaving it while every other page went
+       near-black would have made /dashboard look like a different
+       application. The greys below are the shared --ma-* ink values, so the
+       two palettes now agree on what "muted" means. */
+    --oid-panel: color-mix(in oklab, #131316 78%, transparent);
+    --oid-panel-strong: color-mix(in oklab, #0e0e11 88%, transparent);
+    --oid-elevated: #0e0e11;
+    --oid-hover: #1a1a1f;
+    /* Still mixed from the accent, not from a blue-grey — these are the one
+       place the page's chrome is allowed to carry the brand hue. */
     --oid-border: color-mix(in oklab, #4fd1ff 14%, transparent);
     --oid-border-hover: color-mix(in oklab, #4fd1ff 28%, transparent);
-    --oid-track: #12263f;
-    --oid-grid: #1a3552;
+    --oid-track: #1a1a1f;
+    --oid-grid: #26262d;
 
-    --oid-text: #e2f1ff;
-    --oid-text-strong: #f8fbff;
-    --oid-text-muted: #94a3b8;
-    --oid-text-faint: #64748b;
-    --oid-text-ghost: #475569;
+    --oid-text: #e4e4e6;
+    --oid-text-strong: #f6f6f8;
+    --oid-text-muted: #9a9aa2;
+    --oid-text-faint: #75757d;
+    --oid-text-ghost: #56565e;
 
     --oid-shadow: 0 1px 0 0 color-mix(in oklab, #4fd1ff 8%, transparent) inset,
       0 18px 48px -24px rgb(0 0 0 / 0.85);
     --oid-shadow-raised: 0 1px 0 0 color-mix(in oklab, #4fd1ff 12%, transparent) inset,
       0 28px 64px -28px rgb(0 0 0 / 0.9);
 
-    /* The page wash behind the glass panels. */
-    --oid-page: radial-gradient(1200px 600px at 15% -10%, #12263f 0%, transparent 60%),
-      radial-gradient(900px 500px at 85% 0%, #0f3b4d 0%, transparent 55%),
-      linear-gradient(180deg, #07101c 0%, #04080f 100%);
-    --oid-canvas: #04080f;
+    /* The page wash behind the glass panels. Kept as a wash rather than
+       flattened to one colour — the glass treatment needs something to be
+       glass *over* — but pulled down to a near-black neutral with only a
+       trace of the accent hue left in the two radials, which is what stops a
+       full-viewport black page reading as dead rather than deep. */
+    --oid-page: radial-gradient(1200px 600px at 15% -10%, #0f1416 0%, transparent 60%),
+      radial-gradient(900px 500px at 85% 0%, #0c1215 0%, transparent 55%),
+      linear-gradient(180deg, #08080a 0%, #050506 100%);
+    --oid-canvas: #050506;
   }
 
   .oid-root--light {
@@ -331,4 +351,39 @@
 
 .oid-scroll::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* --------------------------------------------------------------------------
+   Panel interaction polish
+   --------------------------------------------------------------------------
+   CSS, not framer-motion, and deliberately hover-only.
+
+   These panels host Recharts. Its entry animation is already switched off in
+   this feature because it began before `ResponsiveContainer` had settled its
+   width and left correct paths clipped to ~12px (see CLAUDE.md), and
+   `AnalyticsGrid`'s LazyMount decides what to render by measuring geometry.
+   A JS mount animation on the container is the same class of hazard: it moves
+   and rescales the thing being measured at exactly the moment it is measured.
+   Hover carries no such risk — nothing measures while a pointer is resting.
+
+   `translateZ(0)` is not a hack for its own sake: these panels use
+   `backdrop-blur-xl`, and promoting them to their own layer stops the blur
+   being recomposited against the page wash on every hover frame. */
+.oid-panel {
+  transition:
+    border-color 0.25s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    box-shadow 0.25s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    transform 0.25s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.oid-panel:hover {
+  border-color: var(--oid-border-hover);
+  box-shadow: var(--oid-shadow-raised);
+  transform: translateY(-2px) translateZ(0);
+}
+
+/* A panel the user is dragging/scrolling inside should not float away under
+   the pointer, and a KPI card that is also a link keeps its own affordance. */
+.oid-panel:active {
+  transform: translateY(0) translateZ(0);
 }

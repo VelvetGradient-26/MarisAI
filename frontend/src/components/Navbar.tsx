@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import { Menu, Moon, Sun, X } from 'lucide-react';
 import { Link } from '../app/router';
 import { useAppRouter } from '../app/routerContext';
@@ -52,15 +53,29 @@ export function Navbar({ overlay = false }: NavbarProps) {
         </Link>
 
         <nav className="navbar__links navbar__links--desktop" aria-label="Primary navigation">
-          {NAV_LINKS.map((link) => (
-            <Link
-              key={link.to}
-              className={pathname === link.to ? 'is-active' : ''}
-              to={link.to}
-            >
-              {link.label}
-            </Link>
-          ))}
+          {NAV_LINKS.map((link) => {
+            const active = pathname === link.to;
+            return (
+              <span key={link.to} className="navbar__link-slot">
+                <Link className={active ? 'is-active' : ''} to={link.to}>
+                  {link.label}
+                </Link>
+                {/* One indicator for the whole bar, not one per link: a shared
+                    `layoutId` makes framer-motion animate the *same* element
+                    between slots, so it slides from the old link to the new
+                    one instead of blinking off and on. The underline is no
+                    longer drawn by `border-color` for the same reason — a
+                    border cannot travel between elements. */}
+                {active ? (
+                  <motion.span
+                    className="navbar__indicator"
+                    layoutId="navbar-indicator"
+                    transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                  />
+                ) : null}
+              </span>
+            );
+          })}
         </nav>
 
         <div className="navbar__actions">

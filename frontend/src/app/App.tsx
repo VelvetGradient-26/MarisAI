@@ -1,4 +1,6 @@
 import { lazy, Suspense, useEffect } from 'react';
+import type { ReactNode } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Navbar } from '../components/Navbar';
 import { Toaster } from '../components/Toaster';
@@ -70,11 +72,49 @@ export function App() {
       {/* Keyed on the route so a failure on one page clears when you navigate
           away, instead of latching for the rest of the session. The navbar
           sits outside so there is always a way out of a broken page. */}
-      <ErrorBoundary resetKey={route}>{renderPage(route)}</ErrorBoundary>
+      <ErrorBoundary resetKey={route}>
+        <RouteTransition route={route}>{renderPage(route)}</RouteTransition>
+      </ErrorBoundary>
       {/* Outside the boundary: a toast reporting that something failed has to
           outlive the page that failed. */}
       <Toaster />
     </>
+  );
+}
+
+/**
+ * Cross-fades between routes.
+ *
+ * **`/map` is deliberately excluded, and this is not a style choice.** The map
+ * route owns a MapLibre instance built by `useMapManager`; wrapping it in a
+ * keyed, animated element makes React unmount and remount it on every
+ * navigation, which destroys and rebuilds the WebGL context, refetches the
+ * basemap and drops the layer state that `mapPreferencesStore` exists to
+ * preserve. It would also keep the outgoing page mounted during the exit
+ * animation, so for those milliseconds there would be two live maps.
+ *
+ * Everything else is cheap to remount, so it animates.
+ *
+ * `mode="wait"` rather than a crossfade in place: these pages are full-height
+ * and overlapping two of them mid-transition produces a scrollbar that jumps.
+ */
+function RouteTransition({ route, children }: { route: string; children: ReactNode }) {
+  const reduce = useReducedMotion();
+
+  if (route === '/map') return <>{children}</>;
+
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={route}
+        initial={{ opacity: 0, y: reduce ? 0 : 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: reduce ? 0 : -6 }}
+        transition={{ duration: 0.24, ease: [0.22, 0.61, 0.36, 1] }}
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
   );
 }
 

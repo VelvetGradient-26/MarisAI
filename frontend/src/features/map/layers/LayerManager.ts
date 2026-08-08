@@ -6,10 +6,36 @@ import type { LayerDescriptor, LayerCategory, CustomVectorFieldLayer } from '../
  * the ADR's ambiguous hierarchy diagram. */
 const CATEGORY_ORDER: LayerCategory[] = ['ocean', 'flow', 'ai', 'reference'];
 
+/**
+ * MapLibre's tile errors read like `AJAXError: Bad Request (400):
+ * http://localhost:5173/api/tiles/sst/0/0/0.png` — the tile URL is most of the
+ * string, wraps over three lines in a 240px panel, and tells the user nothing
+ * they can act on. Keep the status, drop the address.
+ */
+function summariseTileError(message: string | undefined): string {
+  if (!message) return 'Tiles failed to load';
+  const withoutUrl = message.replace(/https?:\/\/\S+/g, '').trim();
+  const cleaned = withoutUrl.replace(/^AJAXError:\s*/, '').replace(/[:\s]+$/, '');
+  return cleaned || 'Tiles failed to load';
+}
+
 export interface LayerState {
   descriptor: LayerDescriptor;
   active: boolean;
   opacity: number;
+  /**
+   * The layer is on but its tiles for the current viewport have not all
+   * arrived. Derived from MapLibre's own source-cache state, not from a timer:
+   * see `syncTileStatus`.
+   */
+  loading: boolean;
+  /**
+   * Set when MapLibre reported a source/tile error for this layer. A raster
+   * layer whose tiles all fail renders as nothing, which is indistinguishable
+   * from "the model predicts nothing here" — the panel says which it is
+   * instead of leaving a blank map to be interpreted.
+   */
+  error?: string;
 }
 
 /**
@@ -34,6 +60,16 @@ export class LayerManager {
   constructor(map: MapLibreMap, getFallbackBeforeId: () => string | undefined = () => undefined) {
     this.map = map;
     this.getFallbackBeforeId = getFallbackBeforeId;
+
+    // MapLibre is the only thing that knows whether a tile is in flight, and
+    // it only says so through events. `sourcedata`/`sourcedataloading` fire
+    // once per tile, so `syncTileStatus` emits only when a boolean actually
+    // flips — otherwise panning a raster layer would re-render the panel
+    // dozens of times a second.
+    this.map.on('sourcedataloading', this.onSourceEvent);
+    this.map.on('sourcedata', this.onSourceEvent);
+    this.map.on('idle', this.onSourceEvent);
+    this.map.on('error', this.onMapError);
   }
 
   register(descriptor: LayerDescriptor) {
@@ -42,6 +78,7 @@ export class LayerManager {
       descriptor,
       active: false,
       opacity: descriptor.defaultOpacity ?? 1,
+      loading: false,
     });
     this.emit();
   }
@@ -129,7 +166,16 @@ export class LayerManager {
       });
     }
 
-    this.state.set(id, { ...current, active: true });
+    // Optimistically loading: the source was just added, so its tiles are in
+    // flight and no event has had a chance to fire yet. syncTileStatus clears
+    // it as soon as MapLibre reports the source cache settled — and a custom
+    // (GPU particle) layer has no source cache, so it is never loading.
+    this.state.set(id, {
+      ...current,
+      active: true,
+      loading: descriptor.type !== 'custom',
+      error: undefined,
+    });
     this.emit();
   }
 
@@ -158,7 +204,7 @@ export class LayerManager {
       });
     }
 
-    this.state.set(id, { ...current, active: false });
+    this.state.set(id, { ...current, active: false, loading: false, error: undefined });
     this.emit();
   }
 
@@ -299,8 +345,75 @@ export class LayerManager {
   }
 
   destroy() {
+    this.map.off('sourcedataloading', this.onSourceEvent);
+    this.map.off('sourcedata', this.onSourceEvent);
+    this.map.off('idle', this.onSourceEvent);
+    this.map.off('error', this.onMapError);
     for (const id of [...this.state.keys()]) this.remove(id);
     this.emitter.clear();
+  }
+
+  /** Bound so `off()` in destroy() removes the same reference `on()` added. */
+  private onSourceEvent = () => this.syncTileStatus();
+
+  /**
+   * MapLibre reports a failed tile as a map-level `error` with the offending
+   * source id, not as a rejected promise anyone can await, so this is the only
+   * place a broken tile URL is observable. Attributed back to the owning layer
+   * by reversing `sourceId()`.
+   */
+  private onMapError = (event: { sourceId?: string; error?: { message?: string } }) => {
+    const layerId = event.sourceId ? this.layerIdForSource(event.sourceId) : undefined;
+    if (!layerId) return;
+    const current = this.state.get(layerId);
+    if (!current || !current.active) return;
+    this.state.set(layerId, {
+      ...current,
+      loading: false,
+      error: summariseTileError(event.error?.message),
+    });
+    this.emit();
+  };
+
+  /**
+   * Recomputes `loading` for every active layer from MapLibre's source caches.
+   *
+   * Emits only on a change. These handlers run once per tile per source — the
+   * basemap alone fires them continuously while panning — so an unconditional
+   * emit would put the whole control panel into a re-render loop for the
+   * duration of every map movement.
+   */
+  private syncTileStatus() {
+    let changed = false;
+
+    for (const [id, s] of this.state) {
+      if (!s.active || s.descriptor.type === 'custom') continue;
+
+      const sourceCount = s.descriptor.type === 'geojson' ? 1 : s.descriptor.sources.length;
+      let loading = false;
+      for (let index = 0; index < sourceCount; index += 1) {
+        const sourceId = this.sourceId(id, index);
+        // A source mid-teardown is gone from the style but may still be in
+        // this.state for one tick; treat missing as settled rather than as a
+        // permanent spinner.
+        if (!this.map.getSource(sourceId)) continue;
+        if (!this.map.isSourceLoaded(sourceId)) loading = true;
+      }
+
+      if (loading !== s.loading) {
+        // A source that starts loading again (pan, zoom) is a fresh attempt,
+        // so a stale error from the previous viewport is cleared with it.
+        this.state.set(id, { ...s, loading, error: loading ? undefined : s.error });
+        changed = true;
+      }
+    }
+
+    if (changed) this.emit();
+  }
+
+  private layerIdForSource(sourceId: string): string | undefined {
+    const match = /^layer-src-(.+)-\d+$/.exec(sourceId);
+    return match?.[1];
   }
 
   /** Finds the first active layer whose category renders at or above

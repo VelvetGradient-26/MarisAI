@@ -21,7 +21,15 @@
 import type { LayerLegend, RasterLayerDescriptor } from '../types';
 import type { ForecastGridEntry, ForecastMode } from '../api/forecastGrids';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+// Same fallback as `layerRegistry.ts`, and it is load-bearing rather than
+// defensive: with no `VITE_API_BASE_URL` set (the dev default — the Vite proxy
+// forwards `/api` to the backend) a bare `import.meta.env` read is `undefined`,
+// and template-interpolating it produced the literal tile URL
+// `undefined/api/tiles/forecast/...`. That resolves against the page origin, so
+// the dev server answered every tile with `index.html`, MapLibre failed to
+// decode it, and the forecast layers rendered as nothing at all — selectable in
+// the panel, invisible on the map.
+const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || window.location.origin;
 
 export function forecastLayerId(variable: string, horizon: number, mode: ForecastMode): string {
   return `forecast-${variable}-h${horizon}-${mode}`;

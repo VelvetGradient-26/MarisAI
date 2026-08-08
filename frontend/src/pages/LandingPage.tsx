@@ -13,6 +13,9 @@ import {
   SpatialBlockDiagram,
 } from './landing/Diagrams';
 import { useCountUp, useReveal, useScrollProgress } from './landing/useScrollReveal';
+import SplitText from '../components/reactbits/SplitText/SplitText';
+import SpotlightCard from '../components/reactbits/SpotlightCard/SpotlightCard';
+import { ClosingBackdrop } from './landing/ClosingBackdrop';
 import './landing.css';
 
 const API_DOCS_URL = 'http://127.0.0.1:8000/docs';
@@ -100,9 +103,25 @@ function Hero({ dark }: { dark: boolean }) {
         }}
       >
         <p className="lp-eyebrow lp-eyebrow--hero">Marine intelligence platform</p>
+        {/* Two lines, two SplitText instances, because the component takes a
+            flat string — a `<br />` inside it would be split into characters
+            along with everything else.
+
+            Each is wrapped in a block span rather than being made block
+            itself: SplitText writes `display: inline-block` to the element's
+            *inline style*, which no class rule can outrank, so styling its own
+            node put both lines on one baseline side by side. The wrapper owns
+            the layout, the component owns its node.
+
+            Under reduced motion SplitText renders the text untouched and never
+            splits it, so this stays a plain two-line heading in that mode. */}
         <h1 className="lp-hero__title">
-          The ocean, <br />
-          quantified.
+          <span className="lp-hero__title-line">
+            <SplitText text="The ocean," tag="span" textAlign="left" delay={28} duration={0.9} />
+          </span>
+          <span className="lp-hero__title-line">
+            <SplitText text="quantified." tag="span" textAlign="left" delay={28} duration={0.9} />
+          </span>
         </h1>
         <p className="lp-hero__lede">
           Live ocean and atmospheric data from {PROVIDERS} upstream providers, a global
@@ -427,7 +446,12 @@ function ResearchCard({
   specs: [string, string][];
 }) {
   return (
-    <article className="lp-research-card">
+    // SpotlightCard renders a plain <div> with a pointer-tracked glow. The
+    // card keeps its own `lp-research-card` styling — the vendored component
+    // supplies only the spotlight, with its geometry handed back to this page
+    // through the two custom properties so it does not impose its own padding
+    // and radius (see the vendored CSS).
+    <SpotlightCard className="lp-research-card">
       <p className="lp-research-card__eyebrow">{eyebrow}</p>
       <h3 className="lp-research-card__title">{title}</h3>
       {diagram}
@@ -440,7 +464,7 @@ function ResearchCard({
           </div>
         ))}
       </dl>
-    </article>
+    </SpotlightCard>
   );
 }
 
@@ -528,6 +552,7 @@ function Closing() {
 
   return (
     <section className="lp-section lp-section--closing">
+      <ClosingBackdrop />
       <div ref={ref} className={`lp-closing ${revealed ? 'is-in' : ''}`}>
         <h2 className="lp-closing__title">Start with the map.</h2>
         <p className="lp-body lp-body--wide">

@@ -168,9 +168,45 @@ function MapButtonGroup({
           </option>
         ))}
       </select>
+      {active && <LayerStatus state={layerState.get(active.id)} />}
       {active?.legend && <Legend legend={active.legend} />}
     </>
   );
+}
+
+/**
+ * Whether the selected layer's tiles are still arriving, or failed.
+ *
+ * This group is where the full-coverage colour fields live — SST, and every
+ * forecast/change grid — and all of them share a failure mode where nothing
+ * renders. A forecast grid is a near-black ramp over a near-black ocean at 0.7
+ * opacity, so "still fetching", "scored nothing here" and "the tile request
+ * 404'd" were three very different states that all looked like an unchanged
+ * map. Only the first two are legitimate, and neither was previously
+ * distinguishable from the third.
+ */
+function LayerStatus({ state }: { state: LayerState | undefined }) {
+  if (!state?.active) return null;
+
+  if (state.error) {
+    return (
+      <p className="layer-status layer-status--error" role="status">
+        <span className="layer-status__dot" aria-hidden="true" />
+        Tiles failed to load — {state.error}
+      </p>
+    );
+  }
+
+  if (state.loading) {
+    return (
+      <p className="layer-status layer-status--loading" role="status">
+        <span className="layer-status__spinner" aria-hidden="true" />
+        Loading tiles…
+      </p>
+    );
+  }
+
+  return null;
 }
 
 /**
@@ -288,6 +324,7 @@ function LayerDropdown({
                 {descriptor.type === 'custom' && (
                   <VectorFieldControls descriptorId={descriptor.id} layerManager={layerManager} />
                 )}
+                <LayerStatus state={state} />
                 {descriptor.legend && <Legend legend={descriptor.legend} />}
               </li>
             );

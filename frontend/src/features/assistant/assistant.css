@@ -1,0 +1,66 @@
+/* Additions on top of `pages/chat.css`, which this page reuses wholesale.
+   Only what is genuinely new lives here: the live tool-call feed, the
+   "traced" confirmation, and the cancel state — none of which the previous
+   non-streaming page could have had. */
+
+/* A data call, announced as it lands during the wait. Indented under the
+   thinking bubble so it reads as detail *of* that bubble rather than as a
+   separate turn. */
+.chat-livecall {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.3rem 0 0 1.15rem;
+  font: var(--ma-text-2xs) / 1.4 var(--ma-font-mono);
+  color: var(--chat-muted, var(--ma-muted));
+}
+
+.chat-livecall code {
+  font: inherit;
+  color: var(--chat-text, var(--ma-text));
+}
+
+.chat-livecall__tick {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--chat-accent, var(--ma-accent));
+  flex: none;
+}
+
+/* The positive counterpart to `.chat-flag`. Deliberately quieter than the
+   warning it mirrors: "traced" is the expected outcome, and styling it as
+   loudly as a failure would train people to stop reading both. It appears
+   only once `meta` has arrived — see AssistantThread's Provenance. */
+.chat-traced {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.6rem 0 0;
+  font-size: var(--ma-text-2xs);
+  color: var(--chat-muted, var(--ma-muted));
+}
+
+.chat-traced svg {
+  color: var(--ma-good);
+  flex: none;
+}
+
+/* Cancel occupies the send button's slot while a run is in flight. */
+.chat-send--cancel {
+  background: transparent;
+  color: var(--chat-muted, var(--ma-muted));
+  border: 1px solid var(--ma-border-strong);
+}
+
+.chat-send--cancel:hover {
+  color: var(--chat-text, var(--ma-text));
+  border-color: var(--ma-accent);
+}
+
+/* assistant-ui's viewport manages its own scrolling; smooth it so streamed
+   tokens do not jerk the log. Suppressed under reduced motion by the app-wide
+   rule in tokens.css, which sets `scroll-behavior: auto`. */
+.chat-log {
+  scroll-behavior: smooth;
+}

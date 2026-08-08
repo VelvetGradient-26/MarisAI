@@ -117,7 +117,11 @@ export function HeroField({ dark }: HeroFieldProps) {
     // core with a warmer-cyan highlight on the brightest filaments.
     const core = dark ? '150, 226, 255' : '11, 105, 115';
     const hot = dark ? '196, 245, 255' : '6, 78, 86';
-    const fade = dark ? 'rgba(2, 6, 12, ' : 'rgba(247, 250, 251, ';
+    // Must track --ma-bg-deep. The veil is what the canvas converges to
+    // between strokes, so a mismatch here shows up as the hero being a
+    // different shade from the section under it — and at 0.018 per frame it
+    // accumulates into the dominant colour of the whole hero, not a tint.
+    const fade = dark ? 'rgba(0, 1, 3, ' : 'rgba(247, 250, 251, ';
 
     function draw() {
       if (!running || !context) return;

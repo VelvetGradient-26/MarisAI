@@ -30,16 +30,30 @@
      was set only for the dashboard (`:root:has(.oid-root)`). */
   color-scheme: dark;
 
-  /* --- surfaces -------------------------------------------------------- */
-  --ma-bg: #0e1116;
+  /* --- surfaces --------------------------------------------------------
+     Near-black and near-neutral, not the blue-grey this used to be (#0e1116
+     ground, #02060c deep, #171b21 solid). Two things about the choice:
+
+     Not `#000`. The elevation model below is white-alpha surfaces over the
+     ground *plus* pure-black shadows reading darker than it; at #000 the
+     shadow half collapses and every card loses its edge. A ground a few
+     points off black keeps both halves working, and avoids the smear
+     large #000 areas produce on OLED during scroll.
+
+     Not blue. The old ramp carried a blue cast at every step, which is what
+     made the app read "dark blue" rather than "dark" — so the greys below
+     moved with it. The cyan accent is untouched: it is the one place colour
+     is wanted, and it reads better against a neutral ground than it did
+     against a blue one. */
+  --ma-bg: #060607;
   /* The landing hero's deeper ground. Deliberately not --ma-bg: the hero
      canvas veils itself against this colour every frame (HeroField's
      TRAIL_FADE), and the page's elevation model depends on pure-black shadows
      reading darker than the ground. Named here so it stays a decision. */
-  --ma-bg-deep: #02060c;
+  --ma-bg-deep: #000103;
   --ma-surface: rgba(255, 255, 255, 0.03);
   --ma-surface-strong: rgba(255, 255, 255, 0.055);
-  --ma-surface-solid: #171b21;
+  --ma-surface-solid: #101012;
   --ma-input-bg: rgba(255, 255, 255, 0.04);
   --ma-hover-bg: rgba(255, 255, 255, 0.05);
 
@@ -49,10 +63,13 @@
   --ma-border-strong: rgba(255, 255, 255, 0.16);
 
   /* --- ink ------------------------------------------------------------- */
-  --ma-heading: #f5f7fa;
-  --ma-text: #e3e2e2;
-  --ma-muted: #9ba0af;
-  --ma-faint: #6d7382;
+  /* Measured against the new #060607 ground, not eyeballed: muted 7.3:1 and
+     faint 4.4:1 (the old blue-grey pair scored 7.8:1 and 4.0:1 on the old
+     ground, so faint is slightly *better* than it was). */
+  --ma-heading: #f6f6f8;
+  --ma-text: #e4e4e6;
+  --ma-muted: #9a9aa2;
+  --ma-faint: #75757d;
 
   /* --- accent ---------------------------------------------------------- */
   --ma-accent: #4fd1ff;

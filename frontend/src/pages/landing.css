@@ -16,8 +16,10 @@
      rather than drift — see the token file, and HeroField, which veils its
      canvas against exactly this colour every frame. */
   --lp-bg: var(--ma-bg-deep);
-  --lp-bg-panel: #050b13;
-  --lp-text: #f4f8fa;
+  /* A hair above --lp-bg so alternating panel sections still separate from
+     the ground. Neutral now, like the ground it sits on. */
+  --lp-bg-panel: #08080b;
+  --lp-text: #f6f6f8;
   /* Raised from 0.62 / 0.38. At 0.38 the labels, chips and spec values were
      barely present on a near-black background — the page read as washed out
      rather than as restrained. Restraint is contrast you chose; this was
@@ -30,9 +32,11 @@
   --lp-rule-soft: rgba(255, 255, 255, 0.06);
   --lp-card: rgba(255, 255, 255, 0.035);
   --lp-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-  /* Pure black, because the page ground (#02060c) is dark but not black — a
-     shadow darker than the background is what makes elevation legible in dark
-     mode without resorting to a colour wash. */
+  /* Pure black, because the page ground (--ma-bg-deep, #000103) is dark but
+     not black — a shadow darker than the background is what makes elevation
+     legible in dark mode without resorting to a colour wash. The margin is
+     thinner than it was now that the ground is near-black, so the hover
+     shadow leans on the second, tighter layer to read at all. */
   --lp-shadow-hover: 0 22px 48px rgba(0, 0, 0, 0.72), 0 4px 14px rgba(0, 0, 0, 0.55);
 
   --lp-gutter: clamp(1.25rem, 5vw, 4rem);
@@ -170,6 +174,33 @@
 
 .lp-section--closing {
   text-align: center;
+  /* Containing block for the absolutely positioned aurora, and the clip that
+     keeps it inside this section. `isolation` gives the backdrop its own
+     stacking context so its blending cannot reach the sections above. */
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+/* The WebGL wash behind the closing call to action (ClosingBackdrop.tsx).
+   Masked to fade out at all four edges rather than ending on a hard line —
+   the canvas is a rectangle and the section is not visually bounded, so
+   without this it reads as a pasted-in box. `pointer-events: none` because
+   the buttons sit on top of it. */
+.lp-closing__backdrop {
+  position: absolute;
+  inset: -10% -5%;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.55;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, #000 35%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, #000 35%, transparent 78%);
+}
+
+/* The aurora is a light-on-dark effect by construction; on the near-white
+   light theme it needs to sit back much further or it reads as a smudge. */
+.lp--light .lp-closing__backdrop {
+  opacity: 0.34;
 }
 
 /* One shared entrance: fade plus a short rise. Applied by adding `is-in`,
@@ -261,6 +292,29 @@
   font-weight: 600;
 }
 
+/* Each headline line is its own SplitText, wrapped so the wrapper can be the
+   block element (SplitText forces `display: inline-block` inline on its own
+   node, which no class can outrank).
+
+   The clip gives the characters something to rise *out of* — they tween from
+   y+40 and would otherwise be visible below the line before it starts.
+   `padding-bottom` buys back the descender room the clip takes, or the tail of
+   the "q" in "quantified." is shaved off.
+
+   `vertical-align: top` on the child is what keeps the 0.98 line-height. An
+   inline-block sits on the text baseline by default, so the line box reserves
+   descender space *under* it and the two lines drifted apart — the one thing
+   the wrapper must not cost is the headline's tight leading. */
+.lp-hero__title-line {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.08em;
+}
+
+.lp-hero__title-line > * {
+  vertical-align: top;
+}
+
 .lp-hero__lede {
   max-width: 58ch;
   margin: 0 0 2.5rem;
@@ -296,7 +350,7 @@
 
 .lp-button--primary {
   background: var(--lp-accent);
-  color: #02060c;
+  color: var(--ma-accent-on);
   border: 1px solid var(--lp-accent);
 }
 
@@ -694,7 +748,19 @@
   gap: clamp(1rem, 2.5vw, 1.75rem);
 }
 
+/* Composed with the vendored SpotlightCard, so the element carries both
+   `.card-spotlight` and `.lp-research-card`. Both classes set padding, border,
+   radius and background, and at one class each they have identical
+   specificity — which would leave the winner decided by stylesheet import
+   order. Naming both classes here settles it explicitly instead.
+
+   The radius is also fed back to the component as `--rb-spotlight-radius`,
+   because the spotlight glow is clipped by `.card-spotlight`'s own
+   `overflow: hidden` + radius; if the two disagree the glow corners square off
+   outside the card's rounded edge. */
+.lp-research-card.card-spotlight,
 .lp-research-card {
+  --rb-spotlight-radius: 20px;
   padding: clamp(1.5rem, 3vw, 2.25rem);
   border: 1px solid var(--lp-rule);
   border-radius: 20px;

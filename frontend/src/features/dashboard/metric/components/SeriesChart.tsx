@@ -59,12 +59,14 @@ export interface SeriesChartProps {
 function palette(isDark: boolean) {
   return isDark
     ? {
+        // uPlot draws to a canvas, so like TrendChart this is a hand-kept
+        // mirror of the --oid-* dark set rather than a read of it.
         stroke: '#4fd1ff',
         stroke2: '#38e0d0',
         band: 'rgba(79,209,255,0.14)',
-        grid: 'rgba(36,70,106,0.55)',
-        axis: '#64748b',
-        marker: 'rgba(148,163,184,0.5)',
+        grid: 'rgba(56,56,64,0.6)',
+        axis: '#75757d',
+        marker: 'rgba(154,154,162,0.5)',
       }
     : {
         stroke: '#0f766e',

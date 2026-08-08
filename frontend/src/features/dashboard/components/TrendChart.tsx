@@ -80,14 +80,18 @@ export const TrendChart = memo(function TrendChart({
   const isDark = useThemeStore((state) => state.dark);
   const chart = isDark
     ? {
+        // These mirror the --oid-* dark set in styles/tailwind.css by hand —
+        // there is no way to read a custom property from a Recharts prop, so
+        // retuning the palette there means retuning it here too or the chart
+        // keeps painting the old navy inside a near-black panel.
         stroke: '#4fd1ff',
-        grid: '#1a3552',
-        tick: '#64748b',
-        tooltipBg: '#0a1626',
+        grid: '#26262d',
+        tick: '#75757d',
+        tooltipBg: '#0e0e11',
         tooltipBorder: 'rgba(79,209,255,0.22)',
-        tooltipText: '#e2f1ff',
-        tooltipLabel: '#94a3b8',
-        exportBg: '#0a1626',
+        tooltipText: '#e4e4e6',
+        tooltipLabel: '#9a9aa2',
+        exportBg: '#0e0e11',
       }
     : {
         stroke: '#0f766e',
