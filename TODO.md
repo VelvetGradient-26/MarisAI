@@ -191,15 +191,86 @@ problems and about grid build cost.
 - Cost is dominated by the fetch and is **independent of output resolution**:
   ~1080 whole-globe reads (~35 min) plus ~15 min of cell loop at 1°.
   `--resolution 4.0` speeds up only the loop.
-- The ~40x cheaper daily Copernicus products were measured and deliberately not
-  adopted: they would collapse hourly wind onto a daily axis inside
-  `build_dataframe`'s inner join, turning wind speed from a 24-hour mean into
-  one instantaneous value. Solve that before swapping them in.
+- ~~The ~40x cheaper daily Copernicus products would collapse hourly wind onto
+  a daily axis inside `build_dataframe`'s inner join. Solve that before
+  swapping them in.~~ **The join half is fixed (2026-08-10); the ~40x is not
+  confirmed.** See "Mixed-cadence merge" below.
+- **26 of the 31 trained variables are griddable and only 3 grids exist**
+  (`bottom_temperature`, `chlorophyll_a`, `current_direction`). The other five
+  are Open-Meteo and can never be gridded. So the forecast *map* is where
+  "global" is actually missing — 23 variables are trained, served at any point
+  by `POST /api/v1/forecast`, and invisible as a layer. That is a long run
+  rather than an engineering problem, and it gets cheaper if the daily-product
+  question below resolves in its favour.
 - Open-Meteo variables can never be gridded (point API, 900-point cap).
   `grid_history.ungriddable_reason` already encodes this — extend rather than
   work around it.
-- Region expansion for HAB/habitat is bounded by data, not code: the habitat
-  window is 2000–2013 because OBIS target-species records stop after 2014.
+- **Re-measure the daily products through the real fetch path before adopting
+  them.** Probed 2026-08-10 by reading one global surface field strided to 1°:
+  hourly physics **34–46 s/timestep**, daily thetao **84–104 s/timestep** — the
+  daily product is ~2.5x *slower per read*, because those datasets carry 50
+  depth levels and a geo-series chunk brings the whole depth column down for a
+  surface field. 45 × ~98 s still beats 1080 × ~39 s by a lot on paper, but
+  this probe read the lazy array directly rather than going through
+  `copernicus.fetch_global`, and neither figure reconciles with the ~35 min a
+  real SST grid takes. Redo it through the real path **with a server-side depth
+  bound** (`minimum_depth`/`maximum_depth`) — that is the same omission
+  `machine_learning/` documents turning a 15-minute-plus fetch into ~60 s, and
+  it may be the entire discrepancy. The 1.05 s/0.60 s per-timestep figures
+  previously recorded in `grid_history.py` were not measured through this path
+  and should not be trusted.
+- Note the *merged* daily product `cmems_mod_glo_phy_anfc_0.083deg_P1D-m` is
+  **not** the substitute — it carries `zos`/`tob`/`sob`/`mlotst` and sea ice but
+  not `thetao`/`so`/`uo`/`vo`. The per-variable daily datasets
+  (`...phy-thetao...`, `...phy-so...`, `...phy-cur...`, all 50-level) are.
+- ~~Region expansion for HAB/habitat is bounded by data, not code~~ — **the
+  code side is now built (2026-08-10)**; see below.
+
+### Global PFZ and multi-region HAB — built 2026-08-10
+
+Both `machine_learning/` pipelines now take `--region`. The default region keeps
+its historic artifact names, so the regional models remain untouched as the
+baselines a wider model has to beat. Everything a global extent needs is opt-in
+for the same reason.
+
+What actually broke at planetary scale, and what it cost to fix — all measured:
+
+| | before | after |
+|---|---|---|
+| Copernicus service, global monthly, 1 year | 89.0 s (`arco-time-series`) | **7.5 s** (`arco-geo-series`) |
+| Global physics window, in memory | ~35 GB in one array | **135 MB/year**, lazy, chunked |
+| Global bathymetry | 233M cells — ERDDAP refuses | **5.1 s / 7.9 MB** at stride 15 |
+| Global OBIS target group | 21,789,311 records | effort-weighted sample off one 1.4 MB call |
+
+Three findings worth keeping:
+
+- **The post-2014 label drought is global, not regional.** Yellowfin worldwide:
+  67,780 records 2000–2013 vs 772 after; bigeye 29,982 vs 59. So
+  `HABITAT_END = 2013` stands worldwide and going global buys ~170x the labels
+  *inside* the existing window (~117,000 vs ~800), not a longer one. It buys
+  nothing for the two Indian coastal species — oil sardine has 112 records
+  worldwide and every one is already inside `NORTH_INDIAN_OCEAN`.
+- **The OBIS pager would have truncated silently.** At the page cap it returned
+  the first 1M records by `after` cursor — an *ordered*, spatially skewed
+  prefix, which for a pool whose job is representing survey effort is worse
+  than no pool. It raises now, and `sample_target_group` is the affordable
+  path.
+- **Memory, not network, was the binding constraint** on a 9 GB machine.
+  `sample_at_points(batch_years=True)` fixes it, and is value-identical rather
+  than just cheaper — verified by a test comparing it against the unbatched
+  path column for column, which fails (`thetao` off by 2.92) if the ±45-day
+  slice pad is removed. Eddy kinetic energy needs the record mean passed in for
+  the same reason: it is the one derived field that reduces over time.
+
+HAB stays **multi-region rather than global**, decided on arithmetic: the same
+six years worldwide at 0.25° is ~1.6 billion rows and ~650 GB, most of it
+open-ocean rows that are near-constant negatives. `config.HAB_REGIONS` has five
+boxes; only the Arabian Sea control has data so far.
+
+Remaining: run the other four HAB regions (one fetch each), and validate the
+global PFZ model against the regional one **on the regional holdout** — a
+global model that scores well on a global average can still be worse over the
+Indian Ocean, which is the region that matters here.
 
 ---
 
@@ -276,9 +347,132 @@ Two targets are legitimate:
 Sequence: do the catalog version as prompt context inside (4) first, and only
 consider a vector store if the literature corpus is actually pursued.
 
+## 7. Vector-field particle layers — remaining work
+
+Shipped 2026-08-12: live ocean currents as a particle layer beside wind, and
+the serving path for forecast currents. `services/vector_field.py` is now the
+one place a U/V field is encoded for the GPU, and `VectorFieldParticleLayer`
+takes the field's geographic frame and visual speed scale as config rather than
+assuming wind's. See CLAUDE.md for what was load-bearing about that.
+
+What is left, roughly in the order it unblocks things:
+
+### Build the `current_u` / `current_v` forecast grids
+
+The forecast currents layers are complete and tested but **do not appear**,
+because only three grids exist on disk (`bottom_temperature`, `chlorophyll_a`,
+`current_direction`). Both models are already trained.
+
+```bash
+python scripts/build_forecast_grid.py --variable current_u
+python scripts/build_forecast_grid.py --variable current_v
+```
+
+Budget ~50 min for the first and much less for the second — the whole-globe
+Copernicus reads are disk-cached for 6h and both variables draw on the same
+physics dataset, so the second build pays for the cell loop only.
+
+Until then `/api/tiles/forecast/vector/catalog` returns the pair with an
+explicit reason and the frontend hook logs it, rather than the layer silently
+not existing. Note these two are in the 13 variables affected by the
+mixed-cadence merge bug below, so if that retrain happens first, build after it
+and the grids only get made once.
+
+### `wind_u` / `wind_v` as forecast variables, for forecast wind particles
+
+There is no forecast wind particle layer and there **cannot** be one from the
+current config: wind is configured as `wind_speed` + `wind_direction`, and
+direction is circular while every step to the screen is linear (see the
+circular-variable entry under Bugs). Composing a vector from those two grids
+would flow backwards along every wrap.
+
+The fix is to forecast the components directly, exactly as currents already do.
+The downloader's Copernicus wind provider already serves
+`eastward_wind`/`northward_wind`, so this is:
+
+1. two `VariableInfo` entries in `services/download/registry.py`;
+2. two blocks in `forecasting/config/forecasting.yaml`;
+3. two training runs, then two grid builds;
+4. one `VectorPair` entry in `services/forecast_vectors.py` — the frontend
+   needs no edit, since the layers register from the catalog at runtime.
+
+The same move would make `wind_direction` a derived field rather than a trained
+one, which is the better answer for it anyway.
+
+### Verify the animation in a real browser
+
+Everything up to and including the texture and its sampling math is verified
+against live data — `tests/test_vector_field.py` reimplements the shader's
+`fieldUV()` in Python and asserts the encoded texture decodes back to the input
+velocity, and the live fetch was checked against known features (Gulf Stream
+1.44 m/s NE, Agulhas 0.54 m/s SW, no data below 80°S). **The moving pixels
+themselves have not been seen.** Browser tabs driven from the agent harness are
+always hidden, so `requestAnimationFrame` never fires, the map never
+initialises and every animation freezes — this is a limitation of the harness,
+not evidence of a problem. Needs one human look at `/map` with the Ocean
+Currents layer on.
+
+Worth checking at the same time: two particle systems running at once (wind +
+currents) on a mid-range GPU. Each is an independent
+`requestAnimationFrame` + `map.redraw()` loop with its own trail framebuffers
+at drawing-buffer resolution, and nothing currently coordinates them.
+
+### Other fields the engine could now carry
+
+Cheap, since the engine is generic and the encoder is shared — each is one
+service + one registry entry:
+
+- **Stokes drift / wave direction** from `GLOBAL_ANALYSISFORECAST_WAV_001_027`,
+  which the downloader already integrates. Same circular caveat: use the
+  component fields if the product carries them.
+- **Depth-resolved currents.** `uo`/`vo` exist on all 50 levels of the daily
+  product; a depth selector on the currents layer would be a genuinely
+  different view of the same integration, and the server-side depth bound
+  documented for the 50-level products applies.
+
 ---
 
 ## Bugs and correctness
+
+### ~~Mixed-cadence merge sampled fine providers instead of averaging them~~ (fixed 2026-08-10)
+
+`cleaning.py::build_dataframe` merged providers and *then* resampled. The merge
+is `xr.merge(join="inner")` on time, which keeps the coarse provider's
+timestamps — so an hourly field paired with a daily one survived as its 00:00
+sample, and the later resample averaged a single value per day. Every row
+carried an instantaneous reading where a 24-hour mean was intended.
+
+Silent by construction: nothing raised, nothing was NaN, the units and
+magnitude were right, and the error is systematic rather than noisy. On a
+synthetic 3 °C diurnal cycle the old path returned **23.0 where the daily mean
+is 20.0** — wrong by the full amplitude, in the same direction, in every row.
+
+**13 of the 32 configured forecasting variables trained on this**: all five
+wave variables (3-hourly target against hourly wind), all seven
+biogeochemistry variables (daily target against hourly SST), the three
+depth-resolved ones (`water_temperature`, `water_salinity`,
+`bottom_temperature`) and `sea_level_anomaly`.
+
+Fixed by reordering `build_dataframe` to **resolve codes -> aggregate per
+provider -> merge**. Aggregating before the join means the axes already agree
+when it runs, so the intersection only drops genuinely uncovered periods.
+Resolving codes first keeps non-linear derivations on native samples —
+`current_speed` is `hypot(uo, vo)`, and a current rotating through the day at
+a constant 1 m/s averages to ~0 components. The post-merge resample is gone;
+two places defining the cadence is how the earlier one stops mattering.
+`tests/test_download_cadence.py` pins all of it (the first test fails against
+the old implementation with exactly the 23.0/20.0 split).
+
+Consequences, neither of them done:
+
+- **Those 13 variables should be retrained.** Their covariate columns changed
+  value. Nothing is *unsafe* about the shipped models — they are
+  self-consistent, trained and served on the same features — but they are
+  fitted on a covariate that misrepresents its own day. Retrain after the
+  daily-product question below settles, so the features change once.
+- The three built grids (`bottom_temperature`, `chlorophyll_a`,
+  `current_direction`) are all in the affected set and should be rebuilt with
+  the models.
 
 ### ~~Provider field-name collision crashed every surface+depth request~~ (fixed 2026-08-05)
 
@@ -302,6 +496,71 @@ it: derivations name raw fields too, and `current_speed` (hypot of `uo`/`vo`)
 would have thrown `KeyError` if only the `source_field` lookup were qualified.
 `tests/test_download_field_collisions.py` pins it, including a registry guard
 that fails if a *third* collision ever appears.
+
+### The habitat / bloom-risk tiles still erode their coastlines
+
+`forecast_tiles` was fixed 2026-08-12: a plain bilinear read of a NaN-holed
+grid is poisoned by the hole, so every pixel with a land cell among its four
+neighbours came back NaN, the painted ocean retreated a full cell from every
+coast, and the edge fell on the grid's own axis-aligned steps. Measured on the
+shipped chlorophyll grid: **3,609 of 42,499 ocean cells (8.5%) erased** — the
+coastal band the layer is most about. Fixed by nearest-filling the values and
+carrying coverage as a separate field thresholded at 0.5, so the edge follows
+the bilinear 0.5 contour (a chamfer, not a staircase) and lands on the correct
+nearest-cell footprint.
+
+**`services/predictions.py` has the identical defect and was deliberately left
+alone** — it serves the habitat and bloom-risk layers in the map's `ai` group
+through its own `_render`, with the same `field.interp(method="linear")` over a
+holed 0.25° grid. Coarser grid, so the staircase is 3x the size of the one just
+fixed. The fix is to reuse `forecast_tiles._build_sampler` rather than to write
+it twice; that is the whole reason it was written as a standalone helper.
+
+While there: `forecast_tiles` also gained a both-ends longitude wrap, because
+these grids are cell-*centred* (−179.5 to 179.5 at 1°) and leave half a cell
+hanging off each edge of the map. `predictions.py` has no wrap at all.
+
+### Circular variables are modelled, resampled and painted as if they were linear
+
+`current_direction` and `wind_direction` are degrees on 0–360. **Every stage
+between the model and the screen is linear**, and a wrap through north is
+therefore averaged rather than wrapped:
+
+- the model regresses on the level (`target_mode: delta` makes it the *change*
+  in degrees, which is worse — a 5° veer across north is a −355° delta);
+- `forecast_tiles._build_sampler` bilinearly resamples the grid, so a pixel
+  between a 359° cell and a 1° cell paints **180°, the exact opposite
+  heading**;
+- `change` mode subtracts two directions, so the same 5° veer renders as −355
+  against a `change_scale` of 80 — clamped hard to the ramp's cold end;
+- `display_max` on the built `current_direction` grid is **400**, which is not
+  a direction.
+
+Verified on the shipped grid 2026-08-12: values span 0.31–359.97, so the wrap
+is populated and the artefact is live, not theoretical. It is not a *new*
+defect — the old nearest-cell renderer had the same flaw in the model and in
+`change` mode, and only the resampling half arrived with the smoothing work.
+
+**This is also what blocks forecast wind particles** (see §7): a particle field
+composed from a forecast `wind_speed` × forecast `wind_direction` would flow
+backwards along every wrap.
+
+Fixing it properly means treating direction as circular end to end, and the
+pieces do not have to land together:
+
+1. **Rendering** — resample `sin`/`cos` separately and recombine with `atan2`,
+   rather than interpolating degrees. Cheapest, fixes the map, changes no
+   model.
+2. **Legend and change mode** — a cyclic ramp (so 359° and 1° are adjacent
+   colours) and a signed angular difference wrapped to ±180 for `change`.
+3. **Modelling** — either predict the components and derive the angle (which is
+   what `current_u`/`current_v` already do, and why the currents *particle*
+   layer is unaffected), or fit `sin`/`cos` targets. Predicting components is
+   the better answer and makes `current_direction` a derived field rather than
+   a trained one.
+
+Worth checking whether `wave_direction` has the same problem — it is configured
+the same way and was trained in the same batch.
 
 ### Fish-habitat ensemble scores below its own best member
 

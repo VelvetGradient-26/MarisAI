@@ -1,0 +1,124 @@
+---
+references:
+  - "File: /backend/scripts/train_forecasting.py"
+  - "File: /backend/tests/test_training_run_record.py"
+  - "File: /machine_learning/fish_habitat_prediction/src/train.py"
+  - "File: /machine_learning/hab_early_warning/src/train.py"
+  - "File: /machine_learning/marine_ml/ingest_forecasting.py"
+  - "File: /machine_learning/marine_ml/tracking.py"
+  - "File: /machine_learning/tests/test_ingest_forecasting.py"
+  - "File: /machine_learning/tests/test_tracking.py"
+generationTime: 2026-08-06T16:31:02.338Z
+---
+flowchart TD
+    Start(("Start")) --> Main["train_forecasting.main()"]
+    Main --> Parse["parse CLI args"]
+    Parse --> Log["_configure_logging(verbose)"]
+    Log --> RunCall["asyncio.run(run(args))"]
+    RunCall --> AllCond{"args.all?"}
+    AllCond -->|Yes| TargetsAll["targets = enabled variables"]
+    AllCond -->|No| TargetsArgs["targets = args.variable"]
+    TargetsArgs --> Unknown{"unknown variable?"}
+    Unknown -->|Yes| ErrorUnknown["log error and exit 2"]
+    Unknown -->|No| TargetsCheck["targets set"]
+    TargetsAll --> TargetsCheck
+    TargetsCheck --> Empty{"targets empty?"}
+    Empty -->|Yes| ErrorEmpty["log error and exit 2"]
+    Empty -->|No| ListTrained["trained = list_trained()"]
+    ListTrained --> DryRun{"args.dry_run?"}
+    DryRun -->|Yes| DryRunOut["print dry-run summary and exit 0"]
+    DryRun -->|No| ClearCache{"args.clear_cache?"}
+    ClearCache -->|Yes| Clear["clear_cache()"]
+    ClearCache -->|No| NoClear["skip cache clear"]
+    Clear --> Prepare["prepare report_dir and timer"]
+    NoClear --> Prepare
+    Prepare --> LoopTargets["loop over targets"]
+    LoopTargets --> LoopHorizons["loop over horizons"]
+    LoopHorizons --> Skip{"skip_existing and horizon already trained?"}
+    Skip -->|Yes| SkipNote["skip horizon"]
+    Skip -->|No| TrainCall["await train(key, horizon, config)"]
+    TrainCall --> Success{"training success?"}
+    Success -->|Yes| SuccessAppend["append report summary"]
+    Success -->|No| FailureAppend["append error summary; failures++"]
+    SuccessAppend --> PlotCond{"args.plots and artifact_path?"}
+    PlotCond -->|Yes| Plot["load metrics and _plot_diagnostics"]
+    PlotCond -->|No| LoopHorizons
+    Plot --> LoopHorizons
+    FailureAppend --> LoopHorizons
+    SkipNote --> LoopHorizons
+    LoopHorizons --> EndLoops["finished targets/horizons"]
+    EndLoops --> ReportWrite["write training_report.json"]
+    ReportWrite --> RunRecord["write_run_record(report_dir, summary, ...)"]
+    RunRecord --> Summary["print final summary and exit status"]
+    ErrorUnknown --> Summary
+    ErrorEmpty --> Summary
+
+    subgraph "MLflow ingestion"
+        IngRun["ingest_forecasting.run_cli()"]
+        Discover["discover_models(models_root)"]
+        Force{"args.force or already ingested?"}
+        Pending["pending model artifact runs"]
+        IngestOne["ingest_one(run)"]
+        TrackCond{"tracking enabled and mlflow installed?"}
+        TrackNode["tracking.track(EXPERIMENT, ...)"]
+        NoOpNode["noop RunHandle"]
+        LogNode["log metadata, metrics, fold scores, SHAP"]
+        Completed["record run or skip"]
+        IngRun --> Discover
+        Discover --> Force
+        Force --> Pending
+        Pending -->|for each run| IngestOne
+        IngestOne --> TrackCond
+        TrackCond -->|Yes| TrackNode
+        TrackCond -->|No| NoOpNode
+        TrackNode --> LogNode
+        NoOpNode --> Completed
+        LogNode --> Completed
+    end
+
+    subgraph "Tracking library"
+        TrackFunc["track(experiment, run_name, params, tags)"]
+        Enabled{"enabled?"}
+        MLflowNode["start mlflow run / set experiment"]
+        NoOpHandle["return noop RunHandle"]
+        HandleOps["RunHandle methods sanitize and log data"]
+        TrackFunc --> Enabled
+        Enabled -->|Yes| MLflowNode
+        Enabled -->|No| NoOpHandle
+        MLflowNode --> HandleOps
+        NoOpHandle --> HandleOps
+    end
+
+    subgraph "fish_habitat_prediction"
+        FHRun["run(frame)"]
+        FHPrep["feature_columns + drop_unusable_rows"]
+        FHCV["cross_validate(...)"]
+        FHLoop["spatial_block_splits loop; model fit and evaluate"]
+        FHTest["fit_final(...); ensemble, holdout, explain SHAP"]
+        FHSave["save(result) -> joblib/csv/json + _track"]
+        FHRun --> FHPrep --> FHCV --> FHLoop --> FHTest --> FHSave
+    end
+
+    subgraph "hab_early_warning"
+        HABRun["run(frame, horizons)"]
+        HABPrep["feature_columns + drop_unusable_rows_all_horizons"]
+        HABFor["for each horizon"]
+        HABCV["cross_validate(...)"]
+        HABLoop["rolling_origin_splits loop; model + persistence baseline"]
+        HABFinal["fit_final(...); calibrate, holdout, reliability, operating point"]
+        HABSave["save(results) -> joblib/csv/json + _track"]
+        HABRun --> HABPrep --> HABFor --> HABCV --> HABLoop --> HABFinal --> HABSave
+    end
+
+    subgraph "tests"
+        TestRecord["test_training_run_record checks immutable run dirs"]
+        TestIngest["test_ingest_forecasting checks discover_models, idempotency, metrics"]
+        TestTracking["test_tracking checks no-fail tracking and honest metrics"]
+        TestRecord -->|verifies| RunRecord
+        TestIngest -->|verifies| IngestOne
+        TestTracking -.->|verifies| TrackFunc
+    end
+
+    FHSave -.-> TrackFunc
+    HABSave -.-> TrackFunc
+    TrackNode -.-> TrackFunc
