@@ -214,7 +214,11 @@ function habitatLayers(): RasterLayerDescriptor[] {
       `Maris AI habitat-suitability model (MaxEnt + Random Forest + LightGBM ensemble), ` +
       `${MONTH_NAMES[month - 1]} climatology. Trained on OBIS occurrence records 2000-2013 ` +
       `with Copernicus Marine environmental covariates, validated by spatial block ` +
-      `cross-validation. MODEL OUTPUT, not observation: values are relative habitat ` +
+      `cross-validation. SKILL: TSS 0.76-0.90 across five spatial folds of 397-791 points ` +
+      `each; a single held-out block scores 0.79 on 885 points / 167 presences. The fold ` +
+      `range is the more trustworthy signal — one block of that size carries a wide ` +
+      `confidence interval, so a lone number would imply precision this does not have. ` +
+      `MODEL OUTPUT, not observation: values are relative habitat ` +
       `suitability, not probability of catch, and the model is presence-only (no verified ` +
       `absences exist). Northern Indian Ocean only — elsewhere renders transparent.`,
     defaultOpacity: 0.75,
@@ -240,10 +244,27 @@ function habitatLayers(): RasterLayerDescriptor[] {
   }));
 }
 
+/**
+ * The measured operating point of each lead, at the 80%-recall threshold the
+ * model is tuned to. Stated per horizon rather than as one sentence covering
+ * all three, because the difference between them is the whole decision: at +3d
+ * roughly half of alerts are genuine, at +7d four in five are false.
+ *
+ * That is defensible for a screening tool — a missed bloom costs more than a
+ * false alarm — but it has to be a decision the reader can see, not a horizon
+ * that merely exists in a dropdown next to a much stronger one.
+ */
+const HAB_OPERATING_POINTS: Record<number, { precision: number; falseAlarm: number }> = {
+  3: { precision: 0.449, falseAlarm: 0.551 },
+  5: { precision: 0.28, falseAlarm: 0.72 },
+  7: { precision: 0.202, falseAlarm: 0.798 },
+};
+
 function bloomRiskLayers(): RasterLayerDescriptor[] {
   return HAB_HORIZONS.map((horizon) => ({
     id: bloomRiskLayerId(horizon),
-    name: `Bloom Risk (+${horizon}d)`,
+    name:
+      horizon >= 7 ? `Bloom Risk (+${horizon}d, screening)` : `Bloom Risk (+${horizon}d)`,
     category: 'ai' as const,
     type: 'raster' as const,
     attribution:
@@ -251,8 +272,15 @@ function bloomRiskLayers(): RasterLayerDescriptor[] {
       `isotonic calibration, so values read as probabilities. Validated by rolling-origin ` +
       `cross-validation with an embargo gap; beats a persistence baseline at every lead. ` +
       `WEAK LABEL: a "bloom" is model chlorophyll above the local seasonal 90th percentile ` +
-      `— a proxy, not a verified bloom, and it says nothing about toxicity. Skill falls with ` +
-      `lead time (at 80% recall the false-alarm rate is 0.55 at +3d but 0.80 at +7d). ` +
+      `— a proxy, not a verified bloom, and it says nothing about toxicity. ` +
+      `OPERATING POINT at 80% recall: precision ${HAB_OPERATING_POINTS[horizon].precision}, ` +
+      `false-alarm rate ${HAB_OPERATING_POINTS[horizon].falseAlarm} — ` +
+      (horizon >= 7
+        ? `four in five alerts at this lead are false. SCREENING ONLY: use it to decide where ` +
+          `to look, not to decide that a bloom is happening; the +3d layer is the one that ` +
+          `would survive contact with a coastal agency. `
+        : `about ${Math.round((1 - HAB_OPERATING_POINTS[horizon].falseAlarm) * 100)} in 100 ` +
+          `alerts at this lead are genuine. `) +
       `Arabian Sea only — elsewhere renders transparent.`,
     defaultOpacity: 0.75,
     defaultVisible: false,
