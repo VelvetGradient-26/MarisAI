@@ -11,13 +11,30 @@ import { AppRouter } from './router';
  * that spins through three backoffs before saying so. Refetch-on-focus is off
  * because every query already polls on a schedule chosen per widget — tabbing
  * back should not trigger a second, unscheduled round of requests.
+ *
+ * `gcTime` is the one that decides whether leaving a page costs anything.
+ * React Query's default drops a query 5 minutes after its last observer
+ * unmounts, and this router is a plain if/else on `pathname` — navigating to
+ * /map unmounts every dashboard widget at once. Past that 5 minutes the whole
+ * page refetches from scratch on return, and behind these endpoints that is
+ * not a cheap round trip: a cold metric page costs ~30s of upstream history
+ * fetching before a model runs. Holding the cache for the session means
+ * returning to a page paints instantly from cache and revalidates behind the
+ * already-visible numbers, instead of showing skeletons for half a minute.
+ *
+ * This is a *session* cache — it does not survive a reload, and it is not
+ * meant to. The durable copy lives on the backend, which caches upstream
+ * history on disk and pre-warms it on a schedule.
  */
+const SESSION = 2 * 60 * 60 * 1000;
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
       refetchOnWindowFocus: false,
       staleTime: 30_000,
+      gcTime: SESSION,
     },
   },
 });

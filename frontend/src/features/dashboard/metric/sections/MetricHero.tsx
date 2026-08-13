@@ -8,7 +8,7 @@
  */
 
 import { motion } from 'framer-motion';
-import { ArrowDownRight, ArrowRight, ArrowUpRight, Clock } from 'lucide-react';
+import { ArrowDownRight, ArrowRight, ArrowUpRight, Clock, Loader2 } from 'lucide-react';
 import type { SectionProps } from '../sections';
 import { useBatchForecast, useMetricStatistics } from '../hooks/useMetricData';
 import { isForecastError } from '../api/types';
@@ -39,6 +39,34 @@ function confidenceFrom(skill: number | null | undefined): {
   return { word: 'Poor', tone: 'weak', detail: 'no better than persistence' };
 }
 
+/** A value that is still being computed.
+ *
+ * Deliberately a moving mark rather than an em dash or a placeholder number.
+ * The hero's numbers can take ~30s to arrive on a cold point (the upstream
+ * history fetch, not inference), and a static "—" for half a minute is
+ * indistinguishable from "there is nothing here".
+ */
+function Pending({ width = 56, label }: { width?: number; label: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 align-middle"
+      role="status"
+      aria-label={label}
+    >
+      <span
+        aria-hidden="true"
+        className="block h-[1.05em] animate-pulse rounded bg-[color:var(--oid-track)]"
+        style={{ width }}
+      />
+      <Loader2
+        size={13}
+        aria-hidden="true"
+        className="animate-spin text-[color:var(--oid-text-ghost)]"
+      />
+    </span>
+  );
+}
+
 function Stat({
   label,
   children,
@@ -64,7 +92,11 @@ function Stat({
 }
 
 export function MetricHero({ variable, latitude, longitude }: SectionProps) {
-  const { data: stats } = useMetricStatistics({
+  const {
+    data: stats,
+    isPending: statsPending,
+    isError: statsFailed,
+  } = useMetricStatistics({
     variable: variable.key,
     latitude,
     longitude,
@@ -75,7 +107,11 @@ export function MetricHero({ variable, latitude, longitude }: SectionProps) {
     ? 7
     : (variable.trained_horizons[0] ?? null);
 
-  const { data: batch } = useBatchForecast({
+  const {
+    data: batch,
+    isPending: forecastPending,
+    isError: forecastFailed,
+  } = useBatchForecast({
     variable: variable.key,
     latitude,
     longitude,
@@ -86,8 +122,39 @@ export function MetricHero({ variable, latitude, longitude }: SectionProps) {
   const entry = horizon != null ? batch?.forecasts?.[String(horizon)] : undefined;
   const forecast = entry && !isForecastError(entry) ? entry : null;
 
+  // Why the forecast is absent, which is four different facts that used to
+  // render as the single word "Not modelled" — including the two that are not
+  // true. A cold point costs ~30s of upstream history fetching before any
+  // model runs, so `pending` is the *common* case on first load, and a
+  // restarted or unreachable backend produces `failed`. Stating either as
+  // "not modelled" asserts something false about the platform.
+  // `rejected` is the backend answering with a per-horizon error (it reached
+  // the model and could not serve it); `failed` is not reaching the backend at
+  // all. They read the same to a user but not to whoever is debugging.
+  const forecastState: 'ready' | 'untrained' | 'pending' | 'failed' | 'rejected' = forecast
+    ? 'ready'
+    : horizon == null
+      ? 'untrained'
+      : forecastPending
+        ? 'pending'
+        : forecastFailed
+          ? 'failed'
+          : 'rejected';
+
+  const forecastProblem =
+    entry && isForecastError(entry)
+      ? entry.error
+      : forecastState === 'failed'
+        ? 'could not reach the forecasting service'
+        : null;
+
   const current = stats?.statistics.find((item) => item.key === 'current');
-  const confidence = confidenceFrom(forecast?.evaluation.skill_score);
+  // Only a served model can rate itself. While one is still being computed the
+  // absence of a skill score is not "unrated" — it is not yet known.
+  const confidence =
+    forecastState === 'pending'
+      ? { word: 'Computing', tone: 'unknown' as const, detail: 'awaiting model skill score' }
+      : confidenceFrom(forecast?.evaluation.skill_score);
 
   const TrendIcon =
     forecast?.trend === 'Increasing'
@@ -126,8 +193,17 @@ export function MetricHero({ variable, latitude, longitude }: SectionProps) {
                 <span className="text-[44px] leading-none font-semibold tracking-tight text-[color:var(--oid-text-strong)]">
                   {current?.value != null ? (
                     <AnimatedNumber value={current.value} decimals={2} />
+                  ) : statsPending ? (
+                    <Pending width={120} label={`Loading current ${variable.label}`} />
                   ) : (
-                    '—'
+                    <span
+                      className={cn(
+                        'text-[20px]',
+                        statsFailed && 'text-[color:var(--color-alert-warning)]'
+                      )}
+                    >
+                      {statsFailed ? 'Unavailable' : '—'}
+                    </span>
                   )}
                 </span>
                 <span className="text-[15px] font-medium text-[color:var(--oid-text-faint)]">
@@ -138,23 +214,41 @@ export function MetricHero({ variable, latitude, longitude }: SectionProps) {
 
             <Stat label="Trend">
               <span className="inline-flex items-center gap-1 text-[17px] font-medium">
-                <TrendIcon size={16} className="text-[color:var(--oid-accent)]" />
-                {forecast?.trend ?? '—'}
+                {forecastState === 'pending' ? (
+                  <Pending label={`Loading ${variable.label} trend`} />
+                ) : (
+                  <>
+                    <TrendIcon size={16} className="text-[color:var(--oid-accent)]" />
+                    {forecast?.trend ?? '—'}
+                  </>
+                )}
               </span>
             </Stat>
 
             <Stat
               label={horizon ? `Forecast (${horizon}d)` : 'Forecast'}
               hint={
-                forecast
+                forecastState === 'ready' && forecast
                   ? `${forecast.confidence_interval.lower.toFixed(2)} – ${forecast.confidence_interval.upper.toFixed(2)} ${variable.unit}`
-                  : undefined
+                  : forecastState === 'pending'
+                    ? 'fetching upstream history'
+                    : (forecastProblem ?? variable.unavailable_reason ?? undefined)
               }
             >
-              <span className="text-[17px] font-medium">
-                {forecast
+              <span
+                className={cn(
+                  'text-[17px] font-medium',
+                  (forecastState === 'failed' || forecastState === 'rejected') &&
+                    'text-[color:var(--color-alert-warning)]'
+                )}
+              >
+                {forecastState === 'ready' && forecast
                   ? `${forecast.trend_delta >= 0 ? '+' : ''}${forecast.trend_delta.toFixed(2)} ${variable.unit}`
-                  : 'Not modelled'}
+                  : forecastState === 'pending'
+                    ? <Pending label={`Computing ${variable.label} forecast`} />
+                    : forecastState === 'untrained'
+                      ? 'Not modelled'
+                      : 'Unavailable'}
               </span>
             </Stat>
 
@@ -173,10 +267,14 @@ export function MetricHero({ variable, latitude, longitude }: SectionProps) {
 
             <Stat label="Last updated">
               <span className="inline-flex items-center gap-1.5 text-[17px] font-medium">
-                <Clock size={14} className="text-[color:var(--oid-text-ghost)]" />
-                {current?.detail && stats
-                  ? formatAge(ageSeconds(stats.end))
-                  : '—'}
+                {statsPending ? (
+                  <Pending label="Loading last updated time" />
+                ) : (
+                  <>
+                    <Clock size={14} className="text-[color:var(--oid-text-ghost)]" />
+                    {current?.detail && stats ? formatAge(ageSeconds(stats.end)) : '—'}
+                  </>
+                )}
               </span>
             </Stat>
           </div>

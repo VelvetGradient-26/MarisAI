@@ -19,7 +19,15 @@ from routers.metrics import router as metrics_router
 from routers.predictions import router as predictions_router
 from routers.tiles import router as tiles_router
 from routers.vessels import router as vessels_router
-from services import ais, crw, forecast_tiles, gibs, ndbc, ocean_state
+from services import (
+    ais,
+    crw,
+    forecast_tiles,
+    forecast_warm,
+    gibs,
+    ndbc,
+    ocean_state,
+)
 from services.copernicus_currents import refresh_currents_cache
 from services.copernicus_sst import refresh_sst_cache
 from services.copernicus_wind import refresh_wind_cache
@@ -86,6 +94,17 @@ async def lifespan(_app: FastAPI):
         forecast_tiles.refresh_grids,
         "interval",
         hours=forecast_tiles.REFRESH_INTERVAL_HOURS,
+    )
+    # Fill the point-forecast history cache before anyone asks for it. A cold
+    # metric page costs ~33s, warm ~0.08s, and the whole difference is the
+    # upstream fetch this sweep pays for. It is fire-and-forget for the same
+    # reason as everything above it: until it finishes, pages are merely as
+    # slow as they were before, which is not a reason to delay boot.
+    asyncio.create_task(forecast_warm.refresh_cache())
+    scheduler.add_job(
+        forecast_warm.refresh_cache,
+        "interval",
+        hours=forecast_warm.REFRESH_INTERVAL_HOURS,
     )
     scheduler.start()
 
