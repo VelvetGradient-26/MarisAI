@@ -62,7 +62,7 @@ def qualify(provider: str, field: str) -> str:
     return f"{provider}{_FIELD_SEP}{field}"
 
 
-def _merge_provider_datasets(fetched: dict[str, tuple[ProviderSpec, xr.Dataset]]) -> xr.Dataset:
+def _merge_provider_datasets(resolved: dict[str, tuple[ProviderSpec, xr.Dataset]]) -> xr.Dataset:
     """Combine whichever providers were fetched onto one shared grid and time
     axis.
 
@@ -71,19 +71,24 @@ def _merge_provider_datasets(fetched: dict[str, tuple[ProviderSpec, xr.Dataset]]
     biogeochemistry daily, so pairing either with an hourly physics variable
     yields 3-hourly or daily rows rather than hourly rows mostly full of gaps.
 
-    Data variables come out qualified by provider (see `qualify`); coords are
+    **What the intersection must not be asked to do is aggregate.** Left to
+    itself it keeps the coarse provider's timestamps and takes the fine
+    provider's *instantaneous* value at each — an hourly wind field paired
+    with a daily one becomes one 00:00 sample standing in for the day, not a
+    24-hour mean, and Jensen's inequality guarantees the difference is biased
+    rather than merely noisy on anything non-linear downstream. `build_dataframe`
+    therefore aggregates each provider to the requested cadence *before* it
+    gets here, so by the time the join runs the axes already agree and the
+    intersection only drops genuinely uncovered periods.
+
+    Data variables arrive qualified by provider (see `qualify`); coords are
     left alone, since those are what the merge aligns on.
     """
-    assert fetched, "at least one provider dataset is required"
+    assert resolved, "at least one provider dataset is required"
 
-    namespaced = {
-        key: ds.rename({name: qualify(key, str(name)) for name in ds.data_vars})
-        for key, (_, ds) in fetched.items()
-    }
-
-    base_key = _choose_base(fetched)
-    base = namespaced[base_key]
-    others = [ds for key, ds in namespaced.items() if key != base_key]
+    base_key = _choose_base(resolved)
+    base = resolved[base_key][1]
+    others = [ds for key, (_, ds) in resolved.items() if key != base_key]
     if not others:
         return base
 
@@ -149,6 +154,62 @@ _DERIVATIONS = {
 }
 
 
+def _resolve_codes(
+    fetched: dict[str, tuple[ProviderSpec, xr.Dataset]],
+    variables: dict[str, VariableInfo],
+) -> dict[str, tuple[ProviderSpec, xr.Dataset]]:
+    """Turn each provider's raw fields into the registry codes it serves.
+
+    Done per provider, before any merge or resample, for two reasons:
+
+    * **A derivation is non-linear and must run at native cadence.**
+      `current_speed` is `hypot(uo, vo)`; the mean of hourly speeds is not the
+      speed of the mean hourly components, and only the first is what the
+      variable means. Deriving after aggregation would quietly report a
+      slack-water day as calmer than it was. Every derivation's inputs come
+      from one provider, so there is nothing cross-provider to wait for.
+    * A provider's raw field names are only unique within its own product, so
+      resolving inside it removes the collision instead of managing it.
+
+    Output variables are still `qualify`-namespaced, because the *codes* then
+    travel through the same merge and a future registry could legitimately
+    serve one code from two providers.
+    """
+    resolved: dict[str, tuple[ProviderSpec, xr.Dataset]] = {}
+    for key, (spec, ds) in fetched.items():
+        codes = xr.Dataset(coords=ds.coords)
+        for code, info in variables.items():
+            if info.provider != key:
+                continue
+            if info.source_field is not None:
+                codes[qualify(key, code)] = ds[info.source_field]
+            elif info.derived_from is not None and info.derivation is not None:
+                codes[qualify(key, code)] = _DERIVATIONS[info.derivation](
+                    ds, *info.derived_from
+                )
+        resolved[key] = (spec, codes)
+
+    # A provider fetched but contributing no requested code would otherwise be
+    # eligible to become the merge's base grid on the strength of its spacing
+    # alone, and drag every other provider onto a grid nothing was asked for.
+    contributing = {k: v for k, v in resolved.items() if v[1].data_vars}
+    return contributing or resolved
+
+
+def _aggregate_time(ds: xr.Dataset, rule: str | None) -> xr.Dataset:
+    """Bin one provider onto the requested cadence, at its own native cadence.
+
+    `mean` skips NaN, so a cell with partial coverage across the bin averages
+    what it has and a cell with none stays NaN — the same contract the
+    post-merge aggregation had. A provider already at or coarser than the rule
+    is unchanged in value (each bin holds one sample), so this is safe to apply
+    uniformly rather than only to the fine ones.
+    """
+    if rule is None or "time" not in ds.dims:
+        return ds
+    return ds.resample(time=rule).mean(keep_attrs=True)
+
+
 def build_dataframe(
     *,
     fetched: dict[str, tuple[ProviderSpec, xr.Dataset]],
@@ -156,18 +217,23 @@ def build_dataframe(
     resolution: Resolution,
     start_date: date,
 ) -> pd.DataFrame:
-    merged = _merge_provider_datasets(fetched)
+    rule = _RESAMPLE_RULE[resolution]
+
+    # Codes first, then cadence, then the merge. The order is the whole point:
+    # aggregating before the join is what stops a fine provider being sampled
+    # instantaneously by a coarse one's timestamps, and resolving codes before
+    # aggregating is what keeps a non-linear derivation on native samples.
+    resolved = {
+        key: (spec, _aggregate_time(ds, rule))
+        for key, (spec, ds) in _resolve_codes(fetched, variables).items()
+    }
+    merged = _merge_provider_datasets(resolved)
 
     output = xr.Dataset(coords=merged.coords)
     for code, info in variables.items():
-        # Both a source field and a derivation's inputs are named in the
-        # provider's own vocabulary, so both need qualifying by the provider
-        # that served them.
-        if info.source_field is not None:
-            output[code] = merged[qualify(info.provider, info.source_field)]
-        elif info.derived_from is not None and info.derivation is not None:
-            fields = [qualify(info.provider, name) for name in info.derived_from]
-            output[code] = _DERIVATIONS[info.derivation](merged, *fields)
+        name = qualify(info.provider, code)
+        if name in merged:
+            output[code] = merged[name]
 
     # Bathymetry on its own has no time axis anywhere in the merge. Rather
     # than emit a frame whose shape differs from every other request's, give
@@ -196,15 +262,9 @@ def build_dataframe(
     df["latitude"] = df["latitude"].astype("float64").round(6)
     df["longitude"] = df["longitude"].astype("float64").round(6)
 
-    rule = _RESAMPLE_RULE[resolution]
-    if rule is not None:
-        df = (
-            df.set_index("timestamp")
-            .groupby(["latitude", "longitude", pd.Grouper(freq=rule)])[value_columns]
-            .mean()
-            .round(4)
-            .reset_index()
-        )
-
+    # No resample here: `_aggregate_time` already put every provider on `rule`
+    # before the merge. Re-running it would be a no-op mean over single-row
+    # groups, and having two places that could define the cadence is how the
+    # pre-merge one silently stops mattering.
     df = df.sort_values(["timestamp", "latitude", "longitude"]).reset_index(drop=True)
     return df[["timestamp", "latitude", "longitude", *value_columns]]

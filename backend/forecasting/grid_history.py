@@ -27,18 +27,35 @@ Three things about this module are load-bearing:
   resolution, since geo-series chunks come off the wire at full resolution
   whatever stride is applied afterwards.
 
-  The cheap alternative was measured and rejected *for now*: the daily
-  depth-resolved datasets (`cmems_mod_glo_phy-thetao_anfc_0.083deg_P1D-m`,
-  1.05s/timestep, and its salinity twin at 0.60s) serve the same surface fields
-  at 45 timesteps instead of 1080 — a ~40x reduction. Substituting them would
-  change two things at once, though: the daily product's own mean replaces a
-  mean of hourly steps (near-identical), *and* the merge in `build_dataframe`
-  would inner-join hourly wind against a daily axis, collapsing wind speed from
-  a 24-hour mean to a single instantaneous value (not near-identical, and in a
-  direction Jensen's inequality guarantees is biased). Correctness first: the
-  grid uses exactly what the point path uses, so there is no divergence to
-  argue about. The substitution is worth revisiting with a measured comparison
-  against the point API behind it.
+  The cheap alternative — the daily depth-resolved datasets
+  (`cmems_mod_glo_phy-thetao_anfc_0.083deg_P1D-m` and its salinity/current
+  twins) at 45 timesteps instead of 1080 — is still open, but **neither half of
+  the case for it stands as it was originally recorded**:
+
+  * The correctness objection is **gone**. It was that the merge in
+    `build_dataframe` would inner-join hourly wind against a daily axis and
+    collapse wind speed from a 24-hour mean to one instantaneous value.
+    `cleaning.py` now aggregates each provider to the requested cadence
+    *before* the merge, so a mixed-cadence request means a real daily mean per
+    provider. (That was never grid-specific: the point path had the same defect
+    and 13 configured variables were training on it.)
+  * The **~40x speedup is not supported by measurement**, and the figures once
+    quoted here (1.05s and 0.60s per timestep) were not measured through this
+    fetch path. Probed 2026-08-10, one global surface field strided to 1deg:
+    hourly physics **34-46s/timestep**, daily thetao **84-104s/timestep** — the
+    daily product was ~2.5x *slower* per read, because those datasets carry 50
+    depth levels and a geo-series chunk brings the whole depth column for a
+    surface field. Fewer timesteps at ~2.5x each is still a large net win on
+    paper (45 x ~98s vs 1080 x ~39s), but a probe reading a lazy array directly
+    is not the real path, and neither number reconciles with the ~35 min a full
+    SST grid actually takes. **Re-measure through `copernicus.fetch_global`,
+    with a server-side depth bound on the daily datasets, before swapping
+    anything** — the depth bound is the same trap `machine_learning/` documents,
+    where omitting it turned a 15-minute-plus fetch into ~60s.
+
+  Note also that the *merged* daily product `cmems_mod_glo_phy_anfc_0.083deg
+  _P1D-m` is not the substitute: it carries `zos`/`tob`/`sob`/`mlotst` and sea
+  ice, but **not** `thetao`/`so`/`uo`/`vo`. The per-variable daily datasets are.
 
 * **Striding happens while the array is still lazy.** A global 0.083deg float64
   field is ~70MB per timestep per variable; 45 timesteps of two variables at
