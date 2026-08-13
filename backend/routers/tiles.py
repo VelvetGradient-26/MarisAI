@@ -2,8 +2,18 @@ import asyncio
 
 from fastapi import APIRouter, HTTPException, Response
 
-from services import copernicus_currents, copernicus_sst, copernicus_wind
+from fastapi import Query
+
+from services import (
+    copernicus_currents,
+    copernicus_sst,
+    copernicus_wind,
+    currents_depth,
+    stokes_drift,
+)
 from services.copernicus_currents import CopernicusCurrentsError
+from services.currents_depth import CurrentsDepthError
+from services.stokes_drift import StokesDriftError
 from services.copernicus_wind import CopernicusWindError
 from services.gfw import GfwError, fetch_tile
 
@@ -53,5 +63,42 @@ async def get_currents_field():
     try:
         png_bytes = await asyncio.to_thread(copernicus_currents.get_field_png)
     except CopernicusCurrentsError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(content=png_bytes, media_type="image/png")
+
+
+@router.get("/stokes/field.png")
+async def get_stokes_field():
+    """Wave-induced transport, as a texture for the same particle engine.
+
+    Separate from the currents field rather than summed into it: what carries a
+    drifting object is the sum, but a layer that only ever showed the sum could
+    not answer which of the two put it there — and in the trade-wind belts they
+    routinely disagree in direction.
+    """
+    try:
+        png_bytes = await asyncio.to_thread(stokes_drift.get_field_png)
+    except StokesDriftError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(content=png_bytes, media_type="image/png")
+
+
+@router.get("/currents/depth/catalog")
+async def get_currents_depth_catalog():
+    """Which depth levels can be drawn right now, and why not where they cannot."""
+    return {"levels": currents_depth.catalog()}
+
+
+@router.get("/currents/depth/field.png")
+async def get_currents_depth_field(depth_m: float = Query(..., ge=0.0, le=6000.0)):
+    """One depth level of the daily currents product.
+
+    A 503 rather than a placeholder when the level is still warming: each depth
+    is an independent whole-globe fetch, and an empty texture animates nothing
+    while looking exactly like one that is still loading.
+    """
+    try:
+        png_bytes = await asyncio.to_thread(currents_depth.get_field_png, depth_m)
+    except CurrentsDepthError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return Response(content=png_bytes, media_type="image/png")

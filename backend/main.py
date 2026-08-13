@@ -28,6 +28,7 @@ from services import (
     ndbc,
     ocean_state,
 )
+from services import currents_depth, stokes_drift
 from services.copernicus_currents import refresh_currents_cache
 from services.copernicus_sst import refresh_sst_cache
 from services.copernicus_wind import refresh_wind_cache
@@ -52,6 +53,12 @@ async def lifespan(_app: FastAPI):
     asyncio.create_task(refresh_sst_cache())
     asyncio.create_task(refresh_wind_cache())
     asyncio.create_task(refresh_currents_cache())
+    # Stokes drift and the depth-resolved currents, on the same fire-and-forget
+    # footing. Depth warms only the levels someone has opened (plus two on the
+    # schedule) — six whole-globe fetches per cycle for levels nobody is looking
+    # at is most of the cost of the feature for none of its value.
+    asyncio.create_task(stokes_drift.refresh_cache())
+    asyncio.create_task(currents_depth.refresh_cache())
 
     # The dashboard's caches, on the same fire-and-forget footing. Each
     # service keeps its previous data on a failed refresh and reports itself
@@ -68,6 +75,15 @@ async def lifespan(_app: FastAPI):
     scheduler.add_job(refresh_wind_cache, "interval", hours=WIND_REFRESH_INTERVAL_HOURS)
     scheduler.add_job(
         refresh_currents_cache, "interval", hours=CURRENTS_REFRESH_INTERVAL_HOURS
+    )
+    # Cadences match each product's own publication rate rather than a shared
+    # default: the wave product is 3-hourly and the depth currents daily, so a
+    # faster interval would refetch a field that cannot have changed.
+    scheduler.add_job(
+        stokes_drift.refresh_cache, "interval", hours=stokes_drift.REFRESH_INTERVAL_HOURS
+    )
+    scheduler.add_job(
+        currents_depth.refresh_cache, "interval", hours=currents_depth.REFRESH_INTERVAL_HOURS
     )
     scheduler.add_job(
         ndbc.refresh_cache, "interval", minutes=ndbc.REFRESH_INTERVAL_MINUTES

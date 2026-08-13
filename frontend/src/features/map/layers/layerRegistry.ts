@@ -4,7 +4,11 @@ import type {
   RasterLayerDescriptor,
 } from '../types';
 import { createWindParticleLayer } from '../vectorField/windLayer';
-import { createCurrentsParticleLayer } from '../vectorField/currentsLayer';
+import {
+  createCurrentsDepthParticleLayer,
+  createCurrentsParticleLayer,
+  createStokesParticleLayer,
+} from '../vectorField/currentsLayer';
 
 type LayerSource = RasterLayerDescriptor['sources'][number];
 
@@ -158,6 +162,15 @@ const HAB_HORIZONS = [3, 5, 7];
 
 function habitatLayerId(speciesKey: string): string {
   return `habitat-${speciesKey.replace(/_/g, '-')}`;
+}
+
+/** The depth levels the backend offers, mirroring `DEPTH_LADDER` in
+ *  `services/currents_depth.py`. Six rather than the product's fifty because
+ *  each is an independent whole-globe fetch — see that module for why these. */
+const CURRENTS_DEPTH_LEVELS = [50, 100, 200, 500, 1000];
+
+function currentsDepthLayerId(depth: number): string {
+  return `currents-${depth}m`;
 }
 
 function bloomRiskLayerId(horizon: number): string {
@@ -677,6 +690,92 @@ export const layerRegistry: LayerDescriptor[] = [
       ],
     },
   },
+
+  // Stokes drift — the wave-induced transport, beside the currents it is not.
+  //
+  // Worth its own layer rather than being summed into currents: what actually
+  // carries a drifting hull, a slick or a larva is the *sum* of the two, and a
+  // layer that only ever showed the sum could not answer which of them put it
+  // there. They routinely disagree in direction, and in the trade-wind belts and
+  // the Southern Ocean Stokes drift is a large fraction of the total — which the
+  // currents layer alone does not show at all.
+  {
+    id: 'stokes-drift',
+    name: 'Stokes Drift',
+    category: 'flow',
+    type: 'custom',
+    attribution:
+      'Copernicus Marine Service — GLOBAL_ANALYSISFORECAST_WAV_001_027, VSDX/VSDY (eastward ' +
+      'and northward Stokes drift), 3-hourly, 0.083°. Wave-induced mass transport, NOT the ' +
+      'current: a floating object moves with the sum of this and the ocean current layer. ' +
+      'Direction is the direction the water is carried toward, matching the currents layer ' +
+      'and opposite to the wind layer.',
+    defaultOpacity: 0.9,
+    defaultVisible: false,
+    createLayer: (id) => createStokesParticleLayer(id, 0.9),
+    legend: {
+      type: 'gradient',
+      unit: 'm/s',
+      min: 0,
+      max: 1,
+      // Matches STOKES_DRIFT_COLOR_STOPS in vectorField/colorRamp.ts. Single
+      // hue at ~269°, so it reads as a different *structure* from the amber
+      // currents ramp rather than as a second palette to memorise.
+      stops: [
+        { offset: 0, color: '#7e4eb0' },
+        { offset: 0.08, color: '#9260c6' },
+        { offset: 0.15, color: '#a676d8' },
+        { offset: 0.3, color: '#be94ea' },
+        { offset: 0.5, color: '#d4b4f4' },
+        { offset: 0.75, color: '#e8d4fa' },
+        { offset: 1, color: '#f7f0ff' },
+      ],
+    },
+  },
+
+  // Currents below the surface, one layer per offered level.
+  //
+  // A different *product* from the surface layer, and necessarily so: the hourly
+  // physics dataset carries one singleton surface level, so there is nothing
+  // beneath it to draw. These come from the daily depth-resolved currents, which
+  // is the trade the layer names — hourly at the surface, daily at depth.
+  //
+  // Six levels rather than the product's fifty: each is an independent
+  // whole-globe fetch, and the interesting comparison is surface-against-depth,
+  // not a continuous profile. The requested depth snaps to the nearest model
+  // level and the meta reports which one answered (200 m resolves to 186.13 m).
+  ...CURRENTS_DEPTH_LEVELS.map((depth) => ({
+    id: currentsDepthLayerId(depth),
+    name: `Currents at ${depth} m`,
+    category: 'flow' as const,
+    type: 'custom' as const,
+    attribution:
+      `Copernicus Marine Service — GLOBAL_ANALYSISFORECAST_PHY_001_024 daily depth-resolved ` +
+      `currents (uo/vo), 0.083°, at the model level nearest ${depth} m. DAILY MEAN, unlike ` +
+      `the hourly surface currents layer. Direction is the direction the water flows toward. ` +
+      `A level that has not been opened before takes a few minutes to fetch the first time.`,
+    defaultOpacity: 0.9,
+    defaultVisible: false,
+    createLayer: (id: string) => createCurrentsDepthParticleLayer(id, depth, 0.9),
+    legend: {
+      type: 'gradient' as const,
+      unit: 'm/s',
+      min: 0,
+      max: 2,
+      // Deliberately the surface layer's scale and ramp. Comparing one level
+      // against another is the whole point of the control, and a legend that
+      // rescaled per level would make that comparison meaningless.
+      stops: [
+        { offset: 0, color: '#96601c' },
+        { offset: 0.075, color: '#b87410' },
+        { offset: 0.15, color: '#dc9418' },
+        { offset: 0.3, color: '#f5b73c' },
+        { offset: 0.5, color: '#ffd47a' },
+        { offset: 0.75, color: '#ffeab8' },
+        { offset: 1, color: '#fff6e0' },
+      ],
+    },
+  })),
 
   // --- Boundaries / reference (render above science data, alongside labels) ---
   {

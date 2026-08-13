@@ -1,8 +1,16 @@
 from fastapi import APIRouter, HTTPException, Query
 
-from services import copernicus_currents, copernicus_sst, copernicus_wind
+from services import (
+    copernicus_currents,
+    copernicus_sst,
+    copernicus_wind,
+    currents_depth,
+    stokes_drift,
+)
 from services.bathymetry import BathymetryError, get_elevation
 from services.copernicus_currents import CopernicusCurrentsError
+from services.currents_depth import CurrentsDepthError
+from services.stokes_drift import StokesDriftError
 from services.copernicus_sst import CopernicusSstError
 from services.copernicus_wind import CopernicusWindError
 from services.openmeteo import OpenMeteoError, get_realtime_ocean_conditions
@@ -86,4 +94,43 @@ async def get_currents_meta():
     try:
         return copernicus_currents.get_meta()
     except CopernicusCurrentsError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/stokes/point")
+async def get_stokes_point(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+):
+    try:
+        return stokes_drift.get_point(lat, lon)
+    except StokesDriftError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/stokes/meta")
+async def get_stokes_meta():
+    try:
+        return stokes_drift.get_meta()
+    except StokesDriftError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/currents/depth/point")
+async def get_currents_depth_point(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    depth_m: float = Query(..., ge=0.0, le=6000.0),
+):
+    try:
+        return currents_depth.get_point(lat, lon, depth_m)
+    except CurrentsDepthError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/currents/depth/meta")
+async def get_currents_depth_meta(depth_m: float = Query(..., ge=0.0, le=6000.0)):
+    try:
+        return currents_depth.get_meta(depth_m)
+    except CurrentsDepthError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

@@ -105,3 +105,37 @@ export const CURRENT_SPEED_COLOR_STOPS: ColorStop[] = [
   { value: 1.5, color: [255, 234, 184] }, // #ffeab8
   { value: 2.0, color: [255, 246, 224] }, // #fff6e0 — boundary-current core
 ];
+
+/**
+ * Stokes drift — a third field, and therefore a third *structure* rather than a
+ * third palette.
+ *
+ * The rule this follows is the one the currents ramp set: wind cycles hues
+ * (Windy convention), currents never leave amber, and this never leaves violet
+ * — hue is locked at ~269° across every stop. Two single-hue ramps can be told
+ * apart at a glance in a way two rainbows cannot, and all three of these layers
+ * live in the stackable `flow` group and are meant to be read together.
+ *
+ * Measured against the Abyss basemap's near-black ocean (#030f1e): lightness
+ * rises 0.498 → 0.971 with no reversal and the darkest stop clears **3.30:1**,
+ * so the whole ramp is above the 3:1 floor the currents ramp holds.
+ *
+ * One honest caveat: at their extreme tops this ramp and the amber one converge
+ * toward near-white and are ~33 RGB apart. That is inherent to two sequential
+ * scales that both end light, and it only bites where both fields are
+ * simultaneously at maximum — Stokes at 1 m/s is a storm sea and currents at
+ * 2 m/s is a boundary-current core. Everywhere the map actually lives, violet
+ * and amber are unmistakable.
+ *
+ * Anchors: open-ocean Stokes drift is 0.05-0.3 m/s, so most of the map sits in
+ * the first three stops; the top exists for storm seas.
+ */
+export const STOKES_DRIFT_COLOR_STOPS: ColorStop[] = [
+  { value: 0, color: [126, 78, 176] }, // #7e4eb0 — calm, still visible
+  { value: 0.08, color: [146, 96, 198] }, // #9260c6
+  { value: 0.15, color: [166, 118, 216] }, // #a676d8
+  { value: 0.3, color: [190, 148, 234] }, // #be94ea
+  { value: 0.5, color: [212, 180, 244] }, // #d4b4f4
+  { value: 0.75, color: [232, 212, 250] }, // #e8d4fa
+  { value: 1.0, color: [247, 240, 255] }, // #f7f0ff — storm sea
+];

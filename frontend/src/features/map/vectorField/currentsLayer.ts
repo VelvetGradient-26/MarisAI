@@ -1,6 +1,11 @@
 import { VectorFieldParticleLayer } from './VectorFieldParticleLayer';
-import { CURRENT_SPEED_COLOR_STOPS } from './colorRamp';
+import { CURRENT_SPEED_COLOR_STOPS, STOKES_DRIFT_COLOR_STOPS } from './colorRamp';
 import { currentsFieldTextureUrl, fetchCurrentsMeta } from '../api/currents';
+import {
+  currentsDepthFieldTextureUrl,
+  fetchCurrentsDepthMeta,
+} from '../api/currentsDepth';
+import { fetchStokesMeta, stokesFieldTextureUrl } from '../api/stokes';
 import { forecastVectorFieldTextureUrl, fetchForecastVectorMeta } from '../api/forecastVectors';
 import type { ForecastVectorMode } from '../api/forecastVectors';
 import type { CustomVectorFieldLayer } from '../types';
@@ -65,6 +70,60 @@ export function createForecastCurrentsParticleLayer(
     {
       fieldTextureUrl: forecastVectorFieldTextureUrl(key, horizon, mode),
       fetchMeta: fetchForecastVectorMeta(key, horizon, mode),
+      colorStops: CURRENT_SPEED_COLOR_STOPS,
+      visualSpeedScale: CURRENTS_VISUAL_SPEED_SCALE,
+    },
+    initialOpacity
+  );
+}
+
+/**
+ * Stokes drift — the wave-induced transport, on the same engine.
+ *
+ * Same visual speed scale as currents, deliberately. The two fields are drawn
+ * to be read against each other (what carries a drifting object is their sum),
+ * and a different pace would make "which one is moving the water here" a
+ * question about the rendering rather than about the ocean.
+ *
+ * The ramp is what separates them: violet against currents' amber, both single
+ * hue. See `colorRamp.ts`.
+ */
+export function createStokesParticleLayer(
+  id: string,
+  initialOpacity: number
+): CustomVectorFieldLayer {
+  return new VectorFieldParticleLayer(
+    id,
+    {
+      fieldTextureUrl: stokesFieldTextureUrl(),
+      fetchMeta: fetchStokesMeta,
+      colorStops: STOKES_DRIFT_COLOR_STOPS,
+      visualSpeedScale: CURRENTS_VISUAL_SPEED_SCALE,
+    },
+    initialOpacity
+  );
+}
+
+/**
+ * Currents at one depth level, from the daily depth-resolved product.
+ *
+ * Identical in every visual respect to the surface layer — same ramp, same
+ * speed scale, same legend maximum — because the entire purpose of a depth
+ * selector is comparing one level against another. A legend that rescaled per
+ * level, or a ramp that changed with depth, would make that comparison
+ * meaningless. What differs is stated in the layer's name and attribution: this
+ * is a daily mean, where the surface layer is hourly.
+ */
+export function createCurrentsDepthParticleLayer(
+  id: string,
+  depthM: number,
+  initialOpacity: number
+): CustomVectorFieldLayer {
+  return new VectorFieldParticleLayer(
+    id,
+    {
+      fieldTextureUrl: currentsDepthFieldTextureUrl(depthM),
+      fetchMeta: fetchCurrentsDepthMeta(depthM),
       colorStops: CURRENT_SPEED_COLOR_STOPS,
       visualSpeedScale: CURRENTS_VISUAL_SPEED_SCALE,
     },
