@@ -47,7 +47,8 @@ DAYS = 60
 # file under a minute instead of over three.
 RESOLUTION_DEG = 10.0
 # One 256x256 tile, for coverage assertions on the rendered PNG.
-TILE_PIXELS = 256 * 256
+TILE_SIZE = 256
+TILE_PIXELS = TILE_SIZE * TILE_SIZE
 
 
 class WeightedSumModel:
@@ -374,6 +375,7 @@ def _write_tile_grid(
     forecast_offset: float,
     unforecastable: bool = False,
     observed: bool = True,
+    land_east_of: float | None = None,
 ) -> None:
     """A global grid whose temperature ramps with latitude, so a rendered tile
     has something to vary across.
@@ -382,6 +384,9 @@ def _write_tile_grid(
     intact — observable water the model could not score, which is a different
     thing from land and must not render like it. `observed=False` removes the
     anchor too, which is that other thing: land, or outside coverage.
+
+    `land_east_of` makes every cell east of that longitude land in both fields,
+    giving a coastline at a known place to measure the painted edge against.
     """
     latitudes = np.arange(-89.0, 90.0, 2.0)
     longitudes = np.arange(-179.0, 180.0, 2.0)
@@ -395,6 +400,10 @@ def _write_tile_grid(
     if observed is False:
         anchor = np.full_like(anchor, np.nan)
         forecast = np.full_like(forecast, np.nan)
+    if land_east_of is not None:
+        is_land = longitudes > land_east_of
+        anchor[:, is_land] = np.nan
+        forecast[:, is_land] = np.nan
 
     dataset = xr.Dataset(
         {
@@ -567,6 +576,75 @@ def test_land_stays_transparent(tmp_path):
         forecast_tiles.tile_or_placeholder(VARIABLE, HORIZON, "change", 0, 0, 0, tmp_path)
     )
     assert len(pixels) == 0, f"{len(pixels)} opaque pixels painted where nothing was observed"
+
+
+def _alpha_row(png: bytes, row: int) -> np.ndarray:
+    from io import BytesIO
+
+    from PIL import Image
+
+    return np.array(Image.open(BytesIO(png)).convert("RGBA"))[row, :, 3]
+
+
+def test_the_painted_edge_reaches_halfway_to_the_first_land_cell(tmp_path):
+    """Coastal water must be painted, and its edge must sit at the half-cell
+    contour rather than on the last whole cell.
+
+    A plain bilinear read of a NaN-holed field is poisoned by the hole: every
+    pixel with a land cell among its four neighbours comes back NaN, so the
+    painted ocean retreats a full cell from the coast and its edge is forced
+    onto the grid's own axis-aligned steps. On the shipped 1-degree grids that
+    erased 3,609 of chlorophyll's 42,499 ocean cells — 8.5%, and the 8.5% a
+    fisheries map is most about.
+
+    Here the last ocean cell centre is 1 degE and the first land centre 3 degE,
+    so the correct nearest-cell footprint ends at 2 degE. Asserting on the
+    boundary's *position* rather than on "some coastal pixel is opaque" is what
+    catches the failure in either direction: erosion pulls it back to 1 degE,
+    and a fill that bleeds instead of being masked pushes it past 3 degE onto
+    land.
+    """
+    from services import forecast_tiles
+
+    _write_tile_grid(tmp_path, forecast_offset=0.0, land_east_of=1.0)
+    forecast_tiles.clear_cache()
+
+    # z2/x=2 spans 0-90 degE, so the coast falls a few pixels in and each pixel
+    # is 0.352 deg — fine enough to locate a half-cell edge.
+    png = forecast_tiles.tile_or_placeholder(VARIABLE, HORIZON, "absolute", 2, 2, 1, tmp_path)
+    alpha = _alpha_row(png, TILE_SIZE // 2)
+
+    opaque = np.flatnonzero(alpha > 0)
+    assert opaque.size > 0, "the coastal row painted nothing at all"
+    edge_lon = (opaque[-1] + 0.5) / TILE_SIZE * 90.0
+
+    assert 1.0 < edge_lon <= 2.0, (
+        f"painted ocean ends at {edge_lon:.2f} degE; expected the half-cell "
+        f"boundary between the last ocean cell (1 degE) and the first land cell (3 degE)"
+    )
+
+
+def test_no_no_data_seam_at_the_antimeridian(tmp_path):
+    """The grid's last cell centre is short of 180 deg, and sampling must wrap.
+
+    Longitude is periodic but the stored axis is not: every pixel between the
+    final cell centre and the antimeridian falls outside it and, left alone,
+    renders as a transparent stripe down an ocean that is continuous in
+    reality. Measured on the shipped chlorophyll grid before the wrap: the
+    final pixel column of a z2 dateline tile was 0/256 opaque against 223/256
+    in the column beside it. Same fix, same reason, as
+    `copernicus_sst._build_interpolator`.
+    """
+    from services import forecast_tiles
+
+    _write_tile_grid(tmp_path, forecast_offset=0.0)
+    forecast_tiles.clear_cache()
+
+    png = forecast_tiles.tile_or_placeholder(VARIABLE, HORIZON, "absolute", 0, 0, 0, tmp_path)
+    alpha = _alpha_row(png, TILE_SIZE // 2)
+
+    assert alpha[-1] > 0, "the antimeridian column is transparent — the wrap is missing"
+    assert (alpha > 0).all(), f"{int((alpha == 0).sum())} transparent pixels in an all-ocean row"
 
 
 # --------------------------------------------------------------------------

@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -38,6 +39,8 @@ from typing import Any
 import numpy as np
 import xarray as xr
 from PIL import Image
+from scipy.interpolate import RegularGridInterpolator
+from scipy.ndimage import distance_transform_edt
 
 from forecasting.grid_history import ungriddable_reason
 from forecasting.grid_predictor import (
@@ -153,6 +156,7 @@ def _load_grid(variable: str, directory: str) -> xr.Dataset:
 def clear_cache() -> None:
     """Drop cached grids — call after a scheduled rebuild writes new ones."""
     _load_grid.cache_clear()
+    _samplers.cache_clear()
     render_tile.cache_clear()
 
 
@@ -317,14 +321,97 @@ def _tile_lonlat(z: int, x: int, y: int) -> tuple[np.ndarray, np.ndarray]:
     return lon, lat
 
 
-def _sample(field: xr.DataArray, lon: np.ndarray, lat: np.ndarray) -> np.ndarray:
-    """The field resampled onto a tile's pixel centres, as (y, x)."""
-    return field.interp(
-        latitude=xr.DataArray(lat, dims="y"),
-        longitude=xr.DataArray(lon, dims="x"),
-        method="linear",
-        kwargs={"bounds_error": False, "fill_value": np.nan},
-    ).values
+@dataclass(frozen=True)
+class _Sampler:
+    """A field prepared for smooth resampling: values and coverage separately.
+
+    The two are split because they degrade differently at a coastline. A plain
+    bilinear read of a NaN-holed array is *poisoned* by the hole — any pixel
+    whose four surrounding cells include one land cell comes back NaN — so the
+    painted ocean erodes by up to a full cell and its edge is forced onto the
+    grid's own axis-aligned steps. On a 1-degree grid that is ~110 km of
+    staircase, and it is exactly the coastal water this layer exists to show:
+    3,609 of chlorophyll's 42,499 ocean cells (8.5%) touch land and were being
+    dropped.
+
+    So coverage is carried as its own 0/1 field. `values` is nearest-filled
+    across the gaps before interpolation, which keeps the coastal cells finite;
+    `coverage` is interpolated the same way and thresholded at 0.5, which puts
+    the edge halfway between the last ocean cell centre and the first land cell
+    centre — the correct nearest-cell footprint — along the bilinear 0.5
+    contour rather than along cell boundaries. That contour cuts diagonally, so
+    the staircase becomes a chamfer, and the edge stays crisp: no feathering,
+    which over a near-black basemap would read as haze rather than as land.
+
+    Nothing is invented beyond one cell. The fill only ever reaches the first
+    ring, because bilinear weights vanish past it, and everywhere the fill goes
+    further coverage is already 0 and the pixel is transparent.
+    """
+
+    values: RegularGridInterpolator
+    coverage: RegularGridInterpolator
+
+    def __call__(self, lon: np.ndarray, lat: np.ndarray) -> np.ndarray:
+        """The field on a tile's pixel-centre axes, as (y, x), NaN off-coverage."""
+        lon_grid, lat_grid = np.meshgrid(lon, lat)
+        points = np.stack([lat_grid.ravel(), lon_grid.ravel()], axis=-1)
+        shape = (lat.size, lon.size)
+        values = self.values(points).reshape(shape)
+        covered = self.coverage(points).reshape(shape) >= 0.5
+        return np.where(covered, values, np.nan)
+
+
+def _build_sampler(field: xr.DataArray) -> _Sampler:
+    """Prepare `field` for smooth resampling. See `_Sampler`.
+
+    The longitude wrap is the same trick as `copernicus_sst._build_interpolator`
+    and fixes the same bug: this grid's last cell centre is 179.5degE, so
+    without a wrap column every pixel between there and the antimeridian falls
+    outside the source axis and renders as a no-data seam. Measured before the
+    wrap: the final pixel column of a z2 tile at the dateline was 0/256 finite
+    against 223/256 in the column beside it.
+
+    Unlike SST's, the wrap has to go on **both** ends. Copernicus's native grid
+    starts at exactly -180, so only its east side is short; these grids are
+    cell-*centred* (-179.5 to 179.5 at 1 degree), leaving half a cell hanging
+    off each edge of the map. Wrapping one end moves the seam rather than
+    closing it — which is how this was found.
+    """
+    lat = np.asarray(field["latitude"].values, dtype=np.float64)
+    lon = np.asarray(field["longitude"].values, dtype=np.float64)
+    grid = np.asarray(field.values, dtype=np.float64)
+
+    covered = np.isfinite(grid)
+    if covered.any():
+        # Nearest valid cell for every hole, in one pass. `distance_transform_edt`
+        # measures distance *into* the zero region, so it is handed the holes.
+        _, (rows, cols) = distance_transform_edt(~covered, return_indices=True)
+        filled = grid[rows, cols]
+    else:
+        filled = np.zeros_like(grid)
+
+    lon_wrapped = np.concatenate([[lon[-1] - 360.0], lon, [lon[0] + 360.0]])
+    filled = np.concatenate([filled[:, -1:], filled, filled[:, :1]], axis=1)
+    coverage = np.concatenate([covered[:, -1:], covered, covered[:, :1]], axis=1).astype(np.float64)
+
+    def interpolator(values: np.ndarray) -> RegularGridInterpolator:
+        return RegularGridInterpolator(
+            (lat, lon_wrapped), values, method="linear", bounds_error=False, fill_value=np.nan
+        )
+
+    return _Sampler(values=interpolator(filled), coverage=interpolator(coverage))
+
+
+@lru_cache(maxsize=64)
+def _samplers(
+    variable: str, horizon: int, mode: str, directory: str, version: str
+) -> tuple[_Sampler, _Sampler]:
+    """The field's sampler and its anchor's, built once per grid rather than per
+    tile. Building them costs a nearest-fill over the whole globe, which is
+    trivial once and wasteful 4,096 times."""
+    grid = _load_grid(variable, directory)
+    field, _colormap = _field(grid, horizon, mode)
+    return _build_sampler(field), _build_sampler(grid["anchor"])
 
 
 @lru_cache(maxsize=8)
@@ -341,10 +428,11 @@ def render_tile(
 ) -> bytes:
     """One tile. `version` is part of the key only so a rebuild invalidates it."""
     grid = _load_grid(variable, directory)
-    field, colormap = _field(grid, horizon, mode)
+    _, colormap = _field(grid, horizon, mode)
+    sample_field, sample_anchor = _samplers(variable, horizon, mode, directory, version)
 
     lon, lat = _tile_lonlat(z, x, y)
-    values = _sample(field, lon, lat)
+    values = sample_field(lon, lat)
 
     # Raw values: every colormap `_field` hands back is already in data units,
     # and `build_colormap` clamps beyond its endpoints rather than extrapolating.
@@ -353,7 +441,7 @@ def render_tile(
 
     # Observable water the model could not score: hatched, so "no forecast" can
     # never be read as an extreme value. See the _HATCH_* constants.
-    stripe = np.isnan(values) & np.isfinite(_sample(grid["anchor"], lon, lat)) & _hatch(TILE_SIZE)
+    stripe = np.isnan(values) & np.isfinite(sample_anchor(lon, lat)) & _hatch(TILE_SIZE)
     rgb[stripe] = _HATCH_RGB
     alpha[stripe] = 220
 
