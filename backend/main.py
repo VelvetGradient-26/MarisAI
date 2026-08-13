@@ -8,6 +8,7 @@ from loguru import logger
 
 from app.core.config import settings
 from forecasting.api import router as forecasting_router
+from routers.brief import router as brief_router
 from routers.chat import router as chat_router
 from routers.dashboard import router as dashboard_router
 from routers.download import router as download_router
@@ -161,6 +162,7 @@ app.include_router(forecast_tiles_router)
 app.include_router(chat_router)
 app.include_router(vessels_router)
 app.include_router(dashboard_router)
+app.include_router(brief_router)
 # Serves precomputed models from `models/forecasting/`. Nothing is trained at
 # request time and nothing is scheduled — an untrained variable answers 404
 # with the command to train it, so mounting this is safe on a cold install.

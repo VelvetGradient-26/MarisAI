@@ -1444,3 +1444,39 @@ body,
   color: var(--ocean-accent);
   border-color: var(--ocean-border);
 }
+
+/* Point brief trigger, in the location panel's header area rather than its
+   scrolling body: it acts on the whole panel's subject, so it must not scroll
+   away from the coordinate it applies to. */
+.selected-location-panel__brief {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 14px 10px;
+}
+
+.selected-location-panel__brief-button {
+  font: 11px/1 var(--ocean-font-mono);
+  color: var(--ocean-text);
+  background: transparent;
+  border: 1px solid var(--ocean-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.selected-location-panel__brief-button:hover:not(:disabled) {
+  border-color: var(--ocean-accent);
+  color: var(--ocean-accent);
+}
+
+.selected-location-panel__brief-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.selected-location-panel__brief-error {
+  font: 10px/1.4 var(--ocean-font-mono);
+  color: var(--ocean-warn);
+}

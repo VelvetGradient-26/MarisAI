@@ -9,6 +9,7 @@ import type { SstPointResponse } from './api/sst';
 import { fetchWindPoint } from './api/wind';
 import type { WindPointResponse } from './api/wind';
 import { fetchCurrentsPoint } from './api/currents';
+import { downloadBriefPdf } from './api/brief';
 import type { CurrentsPointResponse } from './api/currents';
 import { useSelectedLocationPredictions } from './hooks/useSelectedLocationPredictions';
 import type { PredictionPointResult } from './hooks/useSelectedLocationPredictions';
@@ -117,6 +118,10 @@ export function SelectedLocationPanel() {
   }, [currentsLayerActive, selectedLocation]);
 
   const predictions = useSelectedLocationPredictions(selectedLocation);
+  // Three-way rather than a boolean: 'building' and 'failed' are different
+  // answers, and a brief takes long enough (bathymetry plus a point API) that
+  // a button with no feedback reads as broken.
+  const [briefStatus, setBriefStatus] = useState<'idle' | 'loading' | 'error'>('idle');
 
   return (
     <aside className={`selected-location-panel ${panelOpen ? 'open' : 'collapsed'}`}>
@@ -143,6 +148,40 @@ export function SelectedLocationPanel() {
           </span>
         )}
       </div>
+
+      {selectedLocation && (
+        <div className="selected-location-panel__brief">
+          <button
+            type="button"
+            className="selected-location-panel__brief-button"
+            disabled={briefStatus === 'loading'}
+            onClick={() => {
+              if (!selectedLocation) return;
+              setBriefStatus('loading');
+              downloadBriefPdf(selectedLocation)
+                .then(({ blob, filename }) => {
+                  // Same hand-rolled anchor click the download page uses. No
+                  // library, and no navigation: the map keeps its WebGL context.
+                  const href = URL.createObjectURL(blob);
+                  const anchor = document.createElement('a');
+                  anchor.href = href;
+                  anchor.download = filename;
+                  anchor.click();
+                  URL.revokeObjectURL(href);
+                  setBriefStatus('idle');
+                })
+                .catch(() => setBriefStatus('error'));
+            }}
+          >
+            {briefStatus === 'loading' ? 'Building brief…' : '↓ Point brief (PDF)'}
+          </button>
+          {briefStatus === 'error' && (
+            <span className="selected-location-panel__brief-error">
+              Could not build the brief. Try again in a moment.
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="selected-location-panel__body" aria-hidden={!panelOpen}>
         {sstLayerActive && selectedLocation && (
