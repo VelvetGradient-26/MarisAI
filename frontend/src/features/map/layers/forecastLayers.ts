@@ -49,6 +49,23 @@ export function forecastLayerId(variable: string, horizon: number, mode: Forecas
 }
 
 /**
+ * The inverse of `forecastLayerId`, or null for any other layer id.
+ *
+ * Written as the pair rather than parsed ad hoc at the call site, because a
+ * variable key contains hyphens' natural competitor — underscores — but nothing
+ * stops one containing a hyphen later, and the `-h<n>-<mode>` suffix is the only
+ * part with fixed shape. Anchoring the pattern at the *end* is what makes it
+ * safe: the variable is whatever is left in the middle.
+ */
+export function parseForecastLayerId(
+  id: string
+): { variable: string; horizon: number; mode: ForecastMode } | null {
+  const match = /^forecast-(.+)-h(\d+)-(absolute|change)$/.exec(id);
+  if (!match) return null;
+  return { variable: match[1], horizon: Number(match[2]), mode: match[3] as ForecastMode };
+}
+
+/**
  * Matches SST_COLORMAP_STOPS in backend/services/colormaps.py — the same nine
  * control points the observed SST layer uses, so a forecast and the
  * observation it is compared against read on one scale.

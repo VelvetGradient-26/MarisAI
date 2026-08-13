@@ -1360,3 +1360,87 @@ body,
 .basemap-grid button:active {
   transform: translateY(0);
 }
+
+/* ---------------------------------------------------------------------------
+   Forecast horizon scrubber
+   --------------------------------------------------------------------------- */
+
+/* Sits in the legend stack rather than floating on its own, for the reason the
+   stack exists at all: it appears only alongside a forecast layer, which always
+   brings its own legend, so as an independent absolute overlay it would draw
+   over one. */
+.horizon-control {
+  width: 220px;
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: var(--ocean-text);
+  backdrop-filter: blur(6px);
+  box-sizing: border-box;
+}
+
+.horizon-control__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.horizon-control__title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ocean-muted);
+}
+
+.horizon-control__play {
+  font: 10px/1 var(--ocean-font-mono);
+  color: var(--ocean-text);
+  background: transparent;
+  border: 1px solid var(--ocean-border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.horizon-control__play:hover {
+  border-color: var(--ocean-accent);
+  color: var(--ocean-accent);
+}
+
+.horizon-control__scrubber {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--ocean-accent);
+  cursor: pointer;
+}
+
+.horizon-control__ticks {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.horizon-control__tick {
+  flex: 1 1 auto;
+  font: 10px/1 var(--ocean-font-mono);
+  color: var(--ocean-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+
+.horizon-control__tick:hover {
+  color: var(--ocean-text);
+}
+
+.horizon-control__tick--current {
+  color: var(--ocean-accent);
+  border-color: var(--ocean-border);
+}

@@ -6,6 +6,7 @@ import { Map } from './Map';
 import { MapControls } from './MapControls';
 import { CoordinateDisplay } from './CoordinateDisplay';
 import { SelectedLocationPanel } from './SelectedLocationPanel';
+import { ForecastHorizonControl } from './ForecastHorizonControl';
 import { SstLegend } from './SstLegend';
 import { WindLegend } from './WindLegend';
 import { StoryMode } from './story/StoryMode';
@@ -36,6 +37,9 @@ export function MapView() {
         <div className="legend-stack">
           <SstLegend />
           <WindLegend />
+          {/* Renders only while a forecast layer is active, and sits with the
+              legends because it always appears beside one. */}
+          <ForecastHorizonControl />
         </div>
         <SelectedLocationPanel />
       </div>
