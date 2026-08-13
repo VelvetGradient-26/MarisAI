@@ -69,6 +69,13 @@ logger = logging.getLogger("build_forecast_grid")
 # with.
 _NOISY_LOGGERS = ("copernicusmarine", "copernicus_marine_client", "httpx", "urllib3")
 
+# Quieted only in this script, and only because of *where* it runs. These are
+# MarisAI's own loggers and their messages are worth reading in the point path,
+# which handles one location per request. The grid path calls the same code once
+# per ocean cell, so each line arrives ~42,000 times per build — identical every
+# time, since it reports a property of the fetch window rather than of the cell.
+_PER_CELL_LOGGERS = ("forecasting.preprocessing", "forecasting.feature_engineering")
+
 
 class _QuietFilter(logging.Filter):
     """Drops sub-ERROR records from the noisy third-party loggers.
@@ -85,8 +92,14 @@ class _QuietFilter(logging.Filter):
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
-        noisy = record.name.split(".")[0] in _NOISY_LOGGERS
-        return record.levelno >= logging.ERROR if noisy else True
+        if record.name.split(".")[0] in _NOISY_LOGGERS:
+            return record.levelno >= logging.ERROR
+        # Per-cell chatter is dropped below WARNING rather than entirely: a
+        # genuine warning from the feature builder still needs to reach the
+        # operator, it just must not arrive 42,000 times at INFO.
+        if record.name in _PER_CELL_LOGGERS:
+            return record.levelno >= logging.WARNING
+        return True
 
 
 def _configure_logging(verbose: bool) -> None:
@@ -98,6 +111,8 @@ def _configure_logging(verbose: bool) -> None:
     # copernicusmarine logs a banner per dataset open, and a build opens several
     # — left alone it buries the progress bar this script draws underneath it.
     quiet = _QuietFilter()
+    for name in _PER_CELL_LOGGERS:
+        logging.getLogger(name).addFilter(quiet)
     for noisy in _NOISY_LOGGERS:
         logger_ = logging.getLogger(noisy)
         logger_.setLevel(logging.ERROR)
