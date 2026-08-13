@@ -49,7 +49,7 @@ from pathlib import Path
 # without requiring PYTHONPATH to be set by hand.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from forecasting import ForecastingError  # noqa: E402
+from forecasting import ForecastingError, progress  # noqa: E402
 from forecasting.grid_history import ungriddable_reason  # noqa: E402
 from forecasting.grid_predictor import (  # noqa: E402
     build_forecast_grid,
@@ -61,16 +61,49 @@ from forecasting.model_store import list_trained  # noqa: E402
 logger = logging.getLogger("build_forecast_grid")
 
 
+# `urllib3` is here for one specific line: copernicusmarine opens more parallel
+# S3 connections than its pool holds and logs "Connection pool is full,
+# discarding connection" once or twice a second for the whole fetch. It is
+# harmless — the connection is recycled, not the data — but it is thousands of
+# lines across a 35-minute read, and it is what the progress bar has to compete
+# with.
+_NOISY_LOGGERS = ("copernicusmarine", "copernicus_marine_client", "httpx", "urllib3")
+
+
+class _QuietFilter(logging.Filter):
+    """Drops sub-ERROR records from the noisy third-party loggers.
+
+    A filter rather than a level, because `setLevel` alone does not hold:
+    `copernicusmarine` configures its own logging when it opens a dataset —
+    it attaches a handler *and* resets the level — so a level set here is
+    overwritten the moment the first fetch starts. The symptom was every one of
+    its banner lines appearing twice, once in its format and once in ours.
+
+    Filters survive that, since nothing upstream clears them, and one installed
+    on the logger itself runs before its handlers and before propagation, so it
+    silences both copies.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        noisy = record.name.split(".")[0] in _NOISY_LOGGERS
+        return record.levelno >= logging.ERROR if noisy else True
+
+
 def _configure_logging(verbose: bool) -> None:
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
         datefmt="%H:%M:%S",
     )
-    # copernicusmarine logs a banner per dataset open; the progress lines this
-    # script emits are the ones worth reading.
-    for noisy in ("copernicusmarine", "copernicus_marine_client", "httpx"):
-        logging.getLogger(noisy).setLevel(logging.ERROR)
+    # copernicusmarine logs a banner per dataset open, and a build opens several
+    # — left alone it buries the progress bar this script draws underneath it.
+    quiet = _QuietFilter()
+    for noisy in _NOISY_LOGGERS:
+        logger_ = logging.getLogger(noisy)
+        logger_.setLevel(logging.ERROR)
+        logger_.addFilter(quiet)
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(quiet)
 
 
 async def _build_one(variable: str, horizons: list[int], resolution: float) -> bool:
@@ -192,10 +225,19 @@ def main() -> int:
         help="output grid spacing in degrees (default 1.0; 2.0 is ~4x faster)",
     )
     parser.add_argument("--dry-run", action="store_true", help="plan only, fetch nothing")
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="suppress the progress bars (they are on for this script by default)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
     _configure_logging(args.verbose)
+    # On here and nowhere else. The same build runs from the API's scheduler,
+    # where a bar rewriting stderr would interleave with request logs — see
+    # `forecasting/progress.py`.
+    progress.enable(not args.no_progress)
     return asyncio.run(_main_async(args))
 
 

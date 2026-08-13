@@ -89,7 +89,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
-from forecasting import ForecastingError
+from forecasting import ForecastingError, progress
 from services.download import catalog
 from services.download.catalog import ProviderSpec
 from services.download.providers import copernicus, gebco
@@ -405,17 +405,27 @@ async def fetch_stack(request: GridRequest) -> GridStack:
     provider_keys = sorted({info.provider for info in griddable.values() if info.provider})
     specs = {key: catalog.get(key) for key in provider_keys}
 
-    try:
-        datasets = await asyncio.gather(
-            *(
-                _fetch_provider(key, specs[key], _needed_fields(griddable, key), request)
-                for key in provider_keys
+    # A bar over *providers*, not timesteps: a global fetch is one
+    # `copernicusmarine` read of a whole window, so there is no per-timestep
+    # event to count from out here. Coarse, but it is the difference between a
+    # 35-minute silence and a job that visibly has two of three fields in hand.
+    with progress.counter(
+        description="global fetch", total=len(provider_keys), unit="provider"
+    ) as bar:
+
+        async def _tracked(key: str) -> xr.Dataset:
+            dataset = await _fetch_provider(
+                key, specs[key], _needed_fields(griddable, key), request
             )
-        )
-    except GridHistoryError:
-        raise
-    except Exception as exc:  # noqa: BLE001 - never leak a provider traceback
-        raise GridHistoryError(f"global grid fetch failed: {exc}") from exc
+            bar.update(1)
+            return dataset
+
+        try:
+            datasets = await asyncio.gather(*(_tracked(key) for key in provider_keys))
+        except GridHistoryError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - never leak a provider traceback
+            raise GridHistoryError(f"global grid fetch failed: {exc}") from exc
 
     latitudes, longitudes = output_grid(request.resolution_deg)
 

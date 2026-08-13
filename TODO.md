@@ -378,26 +378,35 @@ not existing. Note these two are in the 13 variables affected by the
 mixed-cadence merge bug below, so if that retrain happens first, build after it
 and the grids only get made once.
 
-### `wind_u` / `wind_v` as forecast variables, for forecast wind particles
+### `wind_u` / `wind_v` — configured 2026-08-13, awaiting a training run
 
-There is no forecast wind particle layer and there **cannot** be one from the
-current config: wind is configured as `wind_speed` + `wind_direction`, and
-direction is circular while every step to the screen is linear (see the
-circular-variable entry under Bugs). Composing a vector from those two grids
-would flow backwards along every wrap.
+There is no forecast wind particle layer and there **cannot** be one from
+`wind_speed` + `wind_direction`: direction is circular while every step to the
+screen is linear (see the circular-variable entry under Bugs), so a vector
+composed from those two grids flows backwards along every wrap. The fix is to
+forecast the components directly, exactly as currents already do.
 
-The fix is to forecast the components directly, exactly as currents already do.
-The downloader's Copernicus wind provider already serves
-`eastward_wind`/`northward_wind`, so this is:
+Steps 1, 2 and 4 are done — `wind_u`/`wind_v` are registry entries (from the
+Copernicus wind provider's `eastward_wind`/`northward_wind`, which it already
+served), YAML blocks carrying `wind_speed`'s covariates, and a `VectorPair`.
+The pair is registered **before its grids exist, deliberately**: the catalog
+reports it with an explicit reason (`no forecast grid for 'wind_u'. Build it
+with: ...`) and the frontend hook logs that, which is a better answer than a
+layer silently not existing.
 
-1. two `VariableInfo` entries in `services/download/registry.py`;
-2. two blocks in `forecasting/config/forecasting.yaml`;
-3. two training runs, then two grid builds;
-4. one `VectorPair` entry in `services/forecast_vectors.py` — the frontend
-   needs no edit, since the layers register from the catalog at runtime.
+What remains is step 3, which is machine time rather than code:
 
-The same move would make `wind_direction` a derived field rather than a trained
-one, which is the better answer for it anyway.
+```bash
+python scripts/train_forecasting.py --variable wind_u
+python scripts/train_forecasting.py --variable wind_v
+python scripts/build_forecast_grid.py --variable wind_u
+python scripts/build_forecast_grid.py --variable wind_v
+```
+
+Apply the usual bar to the training log — skill > 0 *and* ≤1 of 5 folds
+negative, read from `metrics.json` rather than the aggregate line. The same move
+would make `wind_direction` a derived field rather than a trained one, which is
+the better answer for it anyway.
 
 ### Verify the animation in a real browser
 
@@ -497,90 +506,111 @@ would have thrown `KeyError` if only the `source_field` lookup were qualified.
 `tests/test_download_field_collisions.py` pins it, including a registry guard
 that fails if a *third* collision ever appears.
 
-### The habitat / bloom-risk tiles still erode their coastlines
+### ~~The habitat / bloom-risk tiles still erode their coastlines~~ (fixed 2026-08-13)
 
-`forecast_tiles` was fixed 2026-08-12: a plain bilinear read of a NaN-holed
-grid is poisoned by the hole, so every pixel with a land cell among its four
-neighbours came back NaN, the painted ocean retreated a full cell from every
-coast, and the edge fell on the grid's own axis-aligned steps. Measured on the
-shipped chlorophyll grid: **3,609 of 42,499 ocean cells (8.5%) erased** — the
-coastal band the layer is most about. Fixed by nearest-filling the values and
-carrying coverage as a separate field thresholded at 0.5, so the edge follows
-the bilinear 0.5 contour (a chamfer, not a staircase) and lands on the correct
-nearest-cell footprint.
+`forecast_tiles` was fixed 2026-08-12 and `predictions.py` on 2026-08-13. The
+defect: a plain bilinear read of a NaN-holed grid is poisoned by the hole, so
+every pixel with a land cell among its four neighbours came back NaN, the
+painted ocean retreated a full cell from every coast, and the edge fell on the
+grid's own axis-aligned steps. Measured on the shipped chlorophyll grid:
+**3,609 of 42,499 ocean cells (8.5%) erased** — the coastal band the layer is
+most about. On the ML grids the exposed band is **698 of 15,765 habitat cells
+(4.4%)** and **196 of 1,761 bloom-risk cells (11.1%)**.
 
-**`services/predictions.py` has the identical defect and was deliberately left
-alone** — it serves the habitat and bloom-risk layers in the map's `ai` group
-through its own `_render`, with the same `field.interp(method="linear")` over a
-holed 0.25° grid. Coarser grid, so the staircase is 3x the size of the one just
-fixed. The fix is to reuse `forecast_tiles._build_sampler` rather than to write
-it twice; that is the whole reason it was written as a standalone helper.
+The sampler now lives in **`services/field_sampling.py`**, imported by both,
+rather than being copied. Two things came out of making it shared, and both are
+load-bearing:
 
-While there: `forecast_tiles` also gained a both-ends longitude wrap, because
-these grids are cell-*centred* (−179.5 to 179.5 at 1°) and leave half a cell
-hanging off each edge of the map. `predictions.py` has no wrap at all.
+- **The longitude wrap had to become conditional.** `forecast_tiles`' version
+  wrapped both ends unconditionally, which is right for a global cell-centred
+  grid (−179.5 to 179.5 at 1°) and *catastrophic* for the ML grids, which are
+  regional — habitat spans 55–95°E, bloom risk 68–78°E. Wrapping those splices
+  the Bay of Bengal onto the Arabian Sea coast. `is_globally_periodic` measures
+  the span from the cell edges instead of assuming.
+- **Angular resampling landed here too**, since it is the same interpolation
+  step. See the circular-variable entry below.
 
-### Circular variables are modelled, resampled and painted as if they were linear
+Verified against the real exports: covered cell centres sample to their own
+value with **0.0** error, so `point()`'s nearest-cell answer still agrees with
+the pixel.
 
-`current_direction` and `wind_direction` are degrees on 0–360. **Every stage
-between the model and the screen is linear**, and a wrap through north is
-therefore averaged rather than wrapped:
+### Circular variables — rendering and legend fixed 2026-08-13, modelling still open
 
-- the model regresses on the level (`target_mode: delta` makes it the *change*
-  in degrees, which is worse — a 5° veer across north is a −355° delta);
-- `forecast_tiles._build_sampler` bilinearly resamples the grid, so a pixel
-  between a 359° cell and a 1° cell paints **180°, the exact opposite
-  heading**;
-- `change` mode subtracts two directions, so the same 5° veer renders as −355
-  against a `change_scale` of 80 — clamped hard to the ramp's cold end;
-- `display_max` on the built `current_direction` grid is **400**, which is not
-  a direction.
+`current_direction`, `wind_direction` and `wave_direction` are degrees on 0–360.
+Every stage between the model and the screen was linear, so a wrap through north
+was averaged rather than wrapped. Verified on the shipped grid 2026-08-12:
+values span 0.31–359.97, so the wrap is populated and the artefact was live.
 
-Verified on the shipped grid 2026-08-12: values span 0.31–359.97, so the wrap
-is populated and the artefact is live, not theoretical. It is not a *new*
-defect — the old nearest-cell renderer had the same flaw in the model and in
-`change` mode, and only the resampling half arrived with the smoothing work.
+**Done (2026-08-13) — everything between the trained model and the screen:**
 
-**This is also what blocks forecast wind particles** (see §7): a particle field
-composed from a forecast `wind_speed` × forecast `wind_direction` would flow
-backwards along every wrap.
+- **Resampling** interpolates `sin`/`cos` separately and recombines with
+  `atan2` (`field_sampling.build_sampler(angular=True)`). The defect is pinned
+  by a test that still asserts the *linear* path returns 180 for the midpoint of
+  359 and 1 — the exact opposite heading.
+- **`change` mode** uses `angular_difference`, a signed veer wrapped to
+  [−180, 180). A 5° veer across north was reading as −355 and clamping to the
+  cold end of a ramp reaching ±80; it now reads +5. The point panel uses the
+  same function, so the number and the colour agree.
+- **Legend and scale.** A cyclic ramp (`CYCLIC_STOPS`), whose first and last
+  stop are the same colour by construction, on the bearing's true 0–360 domain
+  rather than the grid's percentiles. Hue at fixed lightness rather than a
+  perceptual cyclic map like twilight, because twilight passes through
+  near-black at a quarter turn and this repo has already measured what that does
+  over the Abyss basemap (1.13:1). Every stop here clears **3.34:1**, and
+  opposite headings stay ≥246 apart in RGB.
+- **Grid metadata.** `grid_predictor` writes 0–360 and a ±180 change scale for a
+  bearing instead of running percentiles round a circle — which is where
+  `display_max: 400` came from. The tile catalog also reports the geometric
+  bounds for circular variables regardless of what an older grid file stored, so
+  grids built before this change render correctly without a rebuild.
+- **One source of truth.** `circular` is a `VariableInfo` field in the download
+  registry; `VariableConfig.circular` now *inherits* it rather than restating it
+  in YAML, exactly as label/unit already do. It was briefly declared in both
+  places, and the two disagreeing is the bug worth designing out — the modelling
+  half would encode sin/cos while the rendering half painted a linear ramp.
+- **`wave_direction` had the same problem** — it is configured the same way and
+  trained in the same batch, and it is fixed by the same change.
 
-Fixing it properly means treating direction as circular end to end, and the
-pieces do not have to land together:
+**Still open — the modelling half.** The model regresses on the level, and with
+`target_mode: delta` that makes the target the *change* in degrees, so a 5° veer
+across north is still a −355° training target. The fix is to predict the
+components and derive the angle, which is what `current_u`/`current_v` already
+do — and is why the currents *particle* layer was never affected. That would
+make `current_direction` and `wind_direction` derived fields rather than trained
+ones. `wind_u`/`wind_v` are now configured (see §7); the training run is what
+remains.
 
-1. **Rendering** — resample `sin`/`cos` separately and recombine with `atan2`,
-   rather than interpolating degrees. Cheapest, fixes the map, changes no
-   model.
-2. **Legend and change mode** — a cyclic ramp (so 359° and 1° are adjacent
-   colours) and a signed angular difference wrapped to ±180 for `change`.
-3. **Modelling** — either predict the components and derive the angle (which is
-   what `current_u`/`current_v` already do, and why the currents *particle*
-   layer is unaffected), or fit `sin`/`cos` targets. Predicting components is
-   the better answer and makes `current_direction` a derived field rather than
-   a trained one.
+### ~~Fish-habitat ensemble scores below its own best member~~ (fixed 2026-08-13)
 
-Worth checking whether `wave_direction` has the same problem — it is configured
-the same way and was trained in the same batch.
+Members were weighted by **normalized CV TSS**, which compresses a large quality
+gap into a small weight gap: because TSS is 0 at chance and the floor is 0, the
+weights were proportional to the raw scores, so MaxEnt's 0.619 — 75% of
+LightGBM's 0.826, but less than *half* as good on the holdout — collected 27% of
+the vote. The exported product (`habitat_suitability.nc`) is the ensemble, so
+this was a property of what gets served.
 
-### Fish-habitat ensemble scores below its own best member
+Weighting is now a **softmax over CV TSS** at temperature 0.05, chosen so the
+two interchangeable leaders (0.826 and 0.821, a tenth of a temperature unit
+apart) stay comparable while MaxEnt, four units back, falls out. Measured on the
+same folds and the same fitted members, changing only the rule:
 
-`fish_habitat_prediction` weights ensemble members by **normalized CV TSS**,
-which compresses a large quality gap into a small weight gap:
+| rule | weights (lgbm / rf / maxent) | holdout TSS | Boyce | ROC-AUC |
+|---|---|---|---|---|
+| proportional | 0.364 / 0.362 / 0.273 | 0.694 | **0.936** | 0.917 |
+| softmax | 0.519 / 0.473 / 0.008 | **0.792** | 0.905 | **0.944** |
 
-| model | CV TSS | weight | holdout TSS |
-|---|---|---|---|
-| lightgbm | 0.826 | 0.364 | **0.788** |
-| random_forest | 0.821 | 0.362 | 0.774 |
-| maxent | 0.619 | **0.273** | 0.365 |
-| ensemble | — | — | **0.694** |
+The ensemble is finally above every member (0.792 against LightGBM's 0.788), if
+only by 0.004. **The cost is real and is why the temperature is a named
+constant, not a literal:** Boyce falls 0.936 → 0.905, so the old ensemble was
+the better spatially *calibrated* surface. It is still better calibrated than
+LightGBM alone (0.895), so the trade does not take the ensemble below its best
+member on either axis — but it is a trade, and it is now made explicitly rather
+than by a normalisation constant. `proportional` is kept so the earlier baseline
+reproduces exactly, and the rule is logged per run to the tracking store.
 
-MaxEnt gets 27% of the vote at less than half the holdout TSS, and the exported
-product (`habitat_suitability.nc`) is the ensemble. **Not a pure loss:** the
-ensemble has the best Boyce index (0.936 vs 0.895), so it is better spatially
-calibrated while being worse at discrimination. The problem is that this
-tradeoff is currently made implicitly by a weighting formula. Make it
-deliberate: drop MaxEnt, weight by rank/softmax rather than raw TSS, or stack
-on out-of-fold predictions.
+Models, reports and `exports/*.nc` were regenerated, and the docs chapters carry
+the new numbers. Still open from the original note: **stacking on out-of-fold
+predictions** is the more principled version and was not attempted.
 
 ### ~~`machine_learning/` tests do not run~~ (fixed 2026-08-05)
 
@@ -634,14 +664,20 @@ Both halves done, measured on the real store:
 
 At the 0.8-recall operating point: precision 0.202, false-alarm rate 0.798 —
 four of every five alerts are false. Defensible for a screening tool where a
-miss costs more than a false alarm, but that should be an explicit decision
-recorded in the UI copy, not a horizon that merely exists.
+miss costs more than a false alarm, and **now recorded as a decision rather than
+left implicit** (2026-08-13): the layer is named `Bloom Risk (+7d, screening)`
+in the picker, and its attribution carries the per-horizon operating point
+(+3d precision 0.449 / +5d 0.280 / +7d 0.202) with an explicit "use it to decide
+where to look, not that a bloom is happening". The horizons no longer sit in a
+dropdown looking interchangeable.
 
-### Small habitat holdout
+### ~~Small habitat holdout~~ — both now reported (2026-08-13)
 
-885 rows / 167 positives. The confidence interval on holdout TSS 0.788 is wide;
-the spatial folds (471–791 rows each, TSS 0.76–0.90) are the more trustworthy
-signal. Report both rather than the holdout alone.
+885 rows / 167 positives, so the confidence interval on a single holdout number
+is wide. Re-measured from the fold scores: LightGBM's five spatial folds carry
+**397–791 rows each and TSS 0.757–0.898** (the earlier note said 471–791; fold 5
+is 397). The map layer's attribution now states the fold range *and* the holdout,
+and says which one to trust — a lone number implies precision this does not have.
 
 ---
 
