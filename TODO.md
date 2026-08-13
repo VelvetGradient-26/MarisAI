@@ -195,13 +195,19 @@ problems and about grid build cost.
   a daily axis inside `build_dataframe`'s inner join. Solve that before
   swapping them in.~~ **The join half is fixed (2026-08-10); the ~40x is not
   confirmed.** See "Mixed-cadence merge" below.
-- **26 of the 31 trained variables are griddable and only 3 grids exist**
-  (`bottom_temperature`, `chlorophyll_a`, `current_direction`). The other five
-  are Open-Meteo and can never be gridded. So the forecast *map* is where
-  "global" is actually missing — 23 variables are trained, served at any point
-  by `POST /api/v1/forecast`, and invisible as a layer. That is a long run
-  rather than an engineering problem, and it gets cheaper if the daily-product
-  question below resolves in its favour.
+- **26 of the 31 trained variables are griddable**; the other five are
+  Open-Meteo and can never be gridded. A full `--all` build was started
+  2026-08-14 to close the gap between "trained" and "visible on the map", which
+  had stood at 3 grids against 26.
+  - **The build is affordable now because the fetch cache was fixed.** It keyed
+    on the exact field list, so `current_u` fetching `(uo, zos)` and `current_v`
+    fetching `(vo, zos)` missed each other and each paid 35 minutes for the same
+    product. A cached entry that *contains* the requested fields is now a hit,
+    and `--all` warms the union first: measured on this repo's 26 griddable
+    variables, that is **one** fetch window covering 31 codes instead of 26
+    separate fetches.
+  - What remains is the cell loop, ~30 min per variable at 1°, which is what
+    `--skip-fresh HOURS` exists for — an interrupted run resumes.
 - Open-Meteo variables can never be gridded (point API, 900-point cap).
   `grid_history.ungriddable_reason` already encodes this — extend rather than
   work around it.
@@ -426,18 +432,110 @@ currents) on a mid-range GPU. Each is an independent
 `requestAnimationFrame` + `map.redraw()` loop with its own trail framebuffers
 at drawing-buffer resolution, and nothing currently coordinates them.
 
-### Other fields the engine could now carry
+### ~~Other fields the engine could now carry~~ — both built 2026-08-14
 
-Cheap, since the engine is generic and the encoder is shared — each is one
-service + one registry entry:
+**Stokes drift** and **currents at depth** ship, and the service layer was
+generalised first: `services/vector_source.py` holds fetch/cache/encode/point,
+and a live field is now a `VectorSourceSpec`. `copernicus_wind` and
+`copernicus_currents` were two copies of the same 250 lines; these would have
+made four.
 
-- **Stokes drift / wave direction** from `GLOBAL_ANALYSISFORECAST_WAV_001_027`,
-  which the downloader already integrates. Same circular caveat: use the
-  component fields if the product carries them.
-- **Depth-resolved currents.** `uo`/`vo` exist on all 50 levels of the daily
-  product; a depth selector on the currents layer would be a genuinely
-  different view of the same integration, and the server-side depth bound
-  documented for the 50-level products applies.
+- Stokes drift uses `VSDX`/`VSDY` — a genuine vector in the product, verified
+  live, which is what makes it drawable. The wave *direction* fields beside it
+  are bearings, and the circular caveat applies to them exactly as it does to
+  forecast wind.
+- Depth currents come from `cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m` (50
+  levels, daily) because the hourly product the surface layer reads carries one
+  singleton level. Six levels, not fifty: each is an independent whole-globe
+  fetch. Levels warm lazily and report *why* they are absent. A requested depth
+  snaps to the nearest model level and the meta says which — 200 m is 186.13 m.
+
+Measured at the Gulf Stream: 0.169 m/s SE at the surface, 0.065 m/s N at 186 m.
+
+Still open here: **the two are not summed anywhere.** What carries a floating
+object is current + Stokes drift, and the brief says so in words, but there is
+no combined field and no trajectory tool. That is the natural next thing the
+engine could carry, and it is genuinely useful (search and rescue, spill
+drift, larval transport) rather than a fourth way to draw the same water.
+
+---
+
+## 8. Feature candidates, surveyed 2026-08-14
+
+Ordered by value per unit of work, and written down because each was considered
+against the codebase rather than brainstormed. Four shipped the day this was
+written (horizon animation, Stokes drift, depth currents, point brief); these
+are what was deliberately left.
+
+### Alerts you can subscribe to — the real product gap
+
+The dashboard already computes threshold alerts over real fields, and
+`services/feedback.py` already sends mail through Gmail SMTP. What is missing is
+the noun: *"watch this point, tell me when bloom risk at +3d crosses 0.4"*.
+
+**This is the first feature that genuinely needs the migrated-but-unused
+`app/models/` schema**, and that is half the reason to do it. The established
+in-code-registry pattern cannot hold per-user subscriptions — they are records,
+not configuration — so this forces the persistence decision honestly instead of
+leaving a real schema sitting unused and a `# currently unused` note in
+CLAUDE.md forever. Scope it as: subscription rows, a scheduler job that
+evaluates them against the caches that already exist, and an unsubscribe link.
+
+Two traps worth writing down before anyone starts:
+- **An alert is a claim.** Everything in `services/dashboard/` is careful to say
+  its alerts are threshold rules over model fields, not issued warnings. An
+  email is read far from that disclaimer, so it has to carry it.
+- **The bloom model's +7d precision is 0.202.** Emailing week-ahead bloom alerts
+  at four-in-five false would train recipients to ignore the +3d one that is
+  actually useful. If alerts ship for HAB, they ship at +3d.
+
+### Union GBIF with OBIS
+
+Measured 2026-08-05 and still the biggest cheap win for the habitat model: 3-6x
+the tuna labels *inside* the existing 2000-2013 window. It must be a union, not
+a switch — OBIS dominates ~10x for Indian mackerel and oil sardine, the two
+species the model most exists to serve — and it needs dedup on `occurrenceID`
+falling back to (dataset, catalogNumber, lat, lon, date), because much of GBIF's
+marine holdings are OBIS datasets republished. Merging naively double-counts
+exactly where the pseudo-absence scheme is most sensitive to sampling effort.
+
+It does **not** extend the window: the post-2014 drought is real in both
+sources. Do it when the habitat pipeline is next touched, since it changes
+labels and wants a retrain anyway.
+
+### True absences — the biggest accuracy lever, and a strategic call
+
+ICES DATRAS (trawl surveys with real zero-catch hauls) and RLS (standardised
+reef transects with abundance and real zeros) are the only true-absence sources
+found in the 2026-08-05 survey. They would remove pseudo-absences entirely,
+which is worth more than any change to the classifier — `fish_habitat` only
+draws a target-group background because nothing else was available.
+
+The catch is geographic: DATRAS is North Atlantic/European and RLS is reef
+transects. Using either means moving the model's region away from the northern
+Indian Ocean, which is the platform's whole reason for existing. So this is a
+decision about what the product is, not a modelling task, and it should be taken
+as one. A defensible middle path is a *second* model in a DATRAS region, kept
+beside the regional one as evidence of how much the pseudo-absence scheme costs.
+
+### ConvLSTM / U-Net for spatial forecasting
+
+Unchanged from §5, and now unblocked: MLflow exists, and the argument is
+architectural rather than decorative — `grid_predictor` scores every cell
+independently, so the model cannot see an eddy, a front, or the shape of a
+bloom. Start with U-Net segmentation of HAB bloom extent (contained, 3.9M
+labelled rows already exist) rather than grid-to-grid ConvLSTM.
+
+### Smaller things that came up and were not done
+
+- **A combined drift field** (current + Stokes). See §7 — genuinely useful, and
+  the only one of these that is a few hours' work.
+- **A saved-locations workspace.** Everything is ephemeral today; the Zustand
+  `persist` pattern already exists for preferences. Needs the same persistence
+  decision as alerts, so do it after that lands rather than inventing a second
+  answer.
+- **Catalog RAG by prompt-stuffing**, inside the chat agent. ~36 records fits in
+  a single prompt; standing up a vector store for it is the trap §6 names.
 
 ---
 
