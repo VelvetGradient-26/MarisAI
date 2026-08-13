@@ -98,12 +98,23 @@ def _dim_named(dataset: xr.Dataset | xr.DataArray, prefix: str) -> str:
 # --------------------------------------------------------------------------
 
 
-def add_derived_fields(dataset: xr.Dataset) -> xr.Dataset:
+def add_derived_fields(
+    dataset: xr.Dataset, flow_mean: xr.Dataset | None = None
+) -> xr.Dataset:
     """Attach the shared physics-derived fields to a gridded dataset.
 
     Fronts, eddies and current speed are needed by both problem statements, so
     they are computed once here on the common grid rather than twice, slightly
     differently, in two pipelines.
+
+    ``flow_mean`` supplies the record-mean ``uo``/``vo`` that eddy kinetic
+    energy is an anomaly against. It exists for the batched path in
+    `sample_at_points`: EKE is the one derived field here that reduces over
+    time, so computing it on a one-year slice would measure anomalies against
+    that year's mean instead of the record's — a different quantity under the
+    same column name. Every other field on this function is per-timestep and
+    indifferent to how the record is sliced. Leave it None for the whole-record
+    call, which is what regional builds do.
     """
     result = dataset.copy()
 
@@ -117,7 +128,13 @@ def add_derived_fields(dataset: xr.Dataset) -> xr.Dataset:
         result["current_speed"] = geometry.current_speed(result["uo"], result["vo"])
         result["okubo_weiss"] = geometry.okubo_weiss(result["uo"], result["vo"])
         result["relative_vorticity"] = geometry.relative_vorticity(result["uo"], result["vo"])
-        if "time" in result.dims and result.sizes["time"] > 1:
+        if flow_mean is not None:
+            u_prime = result["uo"] - flow_mean["uo"]
+            v_prime = result["vo"] - flow_mean["vo"]
+            eke = 0.5 * (u_prime**2 + v_prime**2)
+            eke.attrs.update(units="m2 s-2", long_name="eddy kinetic energy")
+            result["eddy_kinetic_energy"] = eke
+        elif "time" in result.dims and result.sizes["time"] > 1:
             result["eddy_kinetic_energy"] = geometry.eddy_kinetic_energy(
                 result["uo"], result["vo"]
             )
@@ -263,6 +280,75 @@ def build_gridded_frame(
 # --------------------------------------------------------------------------
 
 
+# How far outside a batch's own year the field slice reaches. Selection is
+# nearest-in-time, and these are monthly products stamped mid-month, so a
+# 1 January point's nearest timestep is the *previous* December's. Without the
+# pad, batching would silently change those points' values; with it, every
+# point sees the same candidate timesteps it would have seen unbatched.
+_BATCH_PAD_DAYS = 45
+
+
+def _sample_batched(
+    points: pd.DataFrame,
+    physics: xr.Dataset,
+    bgc: xr.Dataset,
+    bathymetry: xr.Dataset,
+    region: config.Region,
+    resolution: float,
+    date_column: str,
+) -> pd.DataFrame:
+    """`sample_at_points` a calendar year at a time, bounding peak memory.
+
+    Value-identical to the unbatched path, which is the only reason it is
+    allowed to exist — a memory optimisation that quietly changes features
+    would be far worse than an OOM. Two things make it so:
+
+    * **Slices are padded** by `_BATCH_PAD_DAYS`, so nearest-in-time selection
+      sees the same candidates near a year boundary.
+    * **Eddy kinetic energy is handed the record mean**, computed once here
+      over the whole (still lazy) record. It is the one derived field that
+      reduces over time; every other one is per-timestep.
+
+    Rows come back in the caller's original order.
+    """
+    latitudes, longitudes = common_grid(region, resolution)
+    dates = pd.to_datetime(points[date_column])
+
+    # A lazy 2-D reduction over the full record: ~4 GB collapses to ~8 MB, and
+    # this is the only thing the batches need to share.
+    flow_mean = None
+    if {"uo", "vo"} <= set(physics.data_vars):
+        flow_mean = regrid(
+            physics[["uo", "vo"]].mean("time"), latitudes, longitudes
+        ).compute()
+
+    pieces: list[pd.DataFrame] = []
+    for year, index in points.groupby(dates.dt.year).groups.items():
+        subset = points.loc[index]
+        window = slice(
+            pd.Timestamp(int(year), 1, 1) - pd.Timedelta(days=_BATCH_PAD_DAYS),
+            pd.Timestamp(int(year), 12, 31) + pd.Timedelta(days=_BATCH_PAD_DAYS),
+        )
+        physics_year = physics.sel(time=window)
+        bgc_year = bgc.sel(time=window)
+        if physics_year.sizes.get("time", 0) == 0:
+            raise FusionError(
+                f"no physics timesteps within {_BATCH_PAD_DAYS} days of {year}, "
+                f"but {len(subset)} observations fall in it"
+            )
+
+        physics_grid = regrid(physics_year, latitudes, longitudes)
+        bgc_grid = regrid(bgc_year, latitudes, longitudes)
+        merged = xr.merge([physics_grid, bgc_grid], compat="override", join="inner")
+        merged = add_derived_fields(merged, flow_mean=flow_mean)
+        merged = add_static_fields(merged, bathymetry, latitudes, longitudes)
+        pieces.append(
+            _sample_from_merged(subset, merged, resolution, date_column)
+        )
+
+    return pd.concat(pieces).loc[points.index].reset_index(drop=True)
+
+
 def sample_at_points(
     points: pd.DataFrame,
     physics: xr.Dataset,
@@ -271,6 +357,7 @@ def sample_at_points(
     region: config.Region = config.DEFAULT_REGION,
     resolution: float = config.GRID_RESOLUTION,
     date_column: str = "observation_date",
+    batch_years: bool = False,
 ) -> pd.DataFrame:
     """Ocean state at scattered (latitude, longitude, date) observations.
 
@@ -281,9 +368,21 @@ def sample_at_points(
     simply cannot be recovered from an isolated point, so computing it after
     sampling would silently produce a different (wrong) feature than the
     gridded path produces under the same name.
+
+    ``batch_years`` samples one calendar year of points at a time against that
+    year's slice of the fields. It is for the worldwide build, where the full
+    regridded record is ~4 GB per product before derived fields are added — on
+    a 9 GB machine the unbatched path is an OOM rather than a slow run. It is
+    opt-in so regional builds keep the exact code path their models were fitted
+    on. See `_sample_batched` for why the batching is value-identical.
     """
     if points.empty:
         raise FusionError("no points to sample")
+
+    if batch_years:
+        return _sample_batched(
+            points, physics, bgc, bathymetry, region, resolution, date_column
+        )
 
     latitudes, longitudes = common_grid(region, resolution)
     physics_grid = regrid(physics, latitudes, longitudes)
@@ -293,9 +392,24 @@ def sample_at_points(
     merged = add_derived_fields(merged)
     merged = add_static_fields(merged, bathymetry, latitudes, longitudes)
 
+    return _sample_from_merged(
+        points, merged, resolution, date_column
+    ).reset_index(drop=True)
+
+
+def _sample_from_merged(
+    points: pd.DataFrame,
+    merged: xr.Dataset,
+    resolution: float,
+    date_column: str,
+) -> pd.DataFrame:
+    """Pull one value per point out of an already-derived, already-static
+    merged field. Shared by the batched and unbatched paths so there is one
+    definition of what sampling means."""
     lat_name = _dim_named(merged, "lat")
     lon_name = _dim_named(merged, "lon")
 
+    original_index = points.index
     points = points.reset_index(drop=True)
     dates = pd.to_datetime(points[date_column]).dt.normalize()
 
@@ -333,7 +447,10 @@ def sample_at_points(
     if core:
         result["data_quality"] = result[core].notna().mean(axis=1)
 
-    return result
+    # Carry the caller's index back so the batched path can restore its
+    # original row order; the unbatched path drops it again immediately, as it
+    # always did.
+    return result.set_index(original_index)
 
 
 # --------------------------------------------------------------------------

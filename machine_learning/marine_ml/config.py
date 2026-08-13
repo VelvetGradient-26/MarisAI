@@ -66,8 +66,64 @@ class Region:
 # this box returns 280-400 for the tunas).
 NORTH_INDIAN_OCEAN = Region("north_indian_ocean", west=55.0, east=95.0, south=-5.0, north=25.0)
 
-# Smaller Arabian Sea box — fast iteration / smoke runs.
+# Smaller Arabian Sea box — fast iteration / smoke runs, and the HAB region.
 ARABIAN_SEA = Region("arabian_sea", west=68.0, east=78.0, south=6.0, north=23.0)
+
+# --- HAB regions ----------------------------------------------------------
+#
+# The HAB problem is deliberately **multi-region rather than global**, and the
+# arithmetic is why. The Arabian Sea store is 3.9M rows / 1.59 GB over ~1,780
+# ocean cells at 0.25 degrees; the global ocean is ~736,000 such cells, so the
+# same six years worldwide is ~1.6 billion rows and ~650 GB. Coarsening is not
+# the escape either — 1 degree is ~110 km, wider than most blooms.
+#
+# It would also be the wrong shape of data. Blooms are a coastal and upwelling
+# phenomenon, so most of that 650 GB would be open-ocean rows that are
+# near-constant negatives: enormous cost to make the positive class rarer.
+#
+# So: bloom-prone boxes, each its own feature store and model, each keeping
+# daily fields at 0.25 degrees. Thresholds and climatology are fitted **per
+# region** (see the pipeline) — they define what counts as a bloom, and one
+# region's distribution must not define another's labels.
+BAY_OF_BENGAL = Region("bay_of_bengal", west=80.0, east=95.0, south=5.0, north=22.0)
+BENGUELA = Region("benguela", west=8.0, east=20.0, south=-34.0, north=-17.0)
+CALIFORNIA_CURRENT = Region(
+    "california_current", west=-127.0, east=-115.0, south=30.0, north=43.0
+)
+BALTIC_SEA = Region("baltic_sea", west=12.0, east=30.0, south=53.0, north=66.0)
+
+# Ordered with the Arabian Sea first because it is the control: it is the only
+# box with a known-good result to reproduce, so it is rebuilt and checked
+# before any fetch is spent on the others.
+HAB_REGIONS: dict[str, Region] = {
+    "arabian_sea": ARABIAN_SEA,
+    "bay_of_bengal": BAY_OF_BENGAL,
+    "benguela": BENGUELA,
+    "california_current": CALIFORNIA_CURRENT,
+    "baltic_sea": BALTIC_SEA,
+}
+
+# The whole ocean, for the worldwide habitat model.
+#
+# North is 90 but **south is -80, not -90**: the Copernicus global grid stops
+# near there, and asking past it buys empty rows rather than an error. Nothing
+# in the target-species range is south of the Antarctic Circumpolar Current
+# anyway.
+#
+# Worth knowing before reaching for this: going global multiplies *label
+# density*, not the usable window. Measured against OBIS on 2026-08-10, target
+# species 2000-2013 vs 2014-2025 — worldwide: yellowfin 67,780 -> 772,
+# skipjack 18,759 -> 272, bigeye 29,982 -> 59. **The post-2014 drought that
+# HABITAT_END records is global, not an artefact of the regional box.** It is
+# the same cliff in every basin, so no amount of widening moves the window;
+# what widening buys is ~170x more records inside it (~117,000 vs ~800).
+#
+# The two Indian coastal species do not benefit: oil sardine has 112 records
+# worldwide and *all of them* are already inside NORTH_INDIAN_OCEAN, Indian
+# mackerel 243. They stay in the pooled table (see fish_habitat labels.py,
+# which stacks species deliberately so sparse ones borrow strength) but expect
+# no gain for them from going global.
+GLOBAL_OCEAN = Region("global_ocean", west=-180.0, east=180.0, south=-80.0, north=90.0)
 
 DEFAULT_REGION = NORTH_INDIAN_OCEAN
 
@@ -133,6 +189,14 @@ VALIDATION_FRACTION = 0.15
 # chunks). arco-geo-series would be the wrong tool by orders of magnitude —
 # see backend/services/download/providers/copernicus.py for the same call.
 COPERNICUS_SERVICE = "arco-time-series"
+
+# ...and the opposite pattern, for GLOBAL_OCEAN: whole globe, few timesteps,
+# where one global timestep per chunk is exactly what is wanted. Measured
+# 2026-08-10 on one year of global monthly physics coarsened to 0.25deg —
+# geo-series 7.5s, time-series 89.0s, so ~12x. Pass this per call
+# (`fetch_physics(service=...)`); do not change COPERNICUS_SERVICE itself,
+# which would make every regional fetch pathological.
+GLOBAL_COPERNICUS_SERVICE = "arco-geo-series"
 
 PHYSICS_DATASET_ID = "cmems_mod_glo_phy_my_0.083deg_P1D-m"
 PHYSICS_VARIABLES = ("thetao", "so", "uo", "vo", "zos", "mlotst")

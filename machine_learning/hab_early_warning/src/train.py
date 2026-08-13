@@ -424,7 +424,11 @@ def run(
     return results
 
 
-def save(results: dict[int, HorizonResult], name: str = "hab_early_warning") -> None:
+def save(
+    results: dict[int, HorizonResult],
+    name: str = "hab_early_warning",
+    region: config.Region = config.ARABIAN_SEA,
+) -> None:
     config.ensure_directories()
 
     joblib.dump(
@@ -456,10 +460,15 @@ def save(results: dict[int, HorizonResult], name: str = "hab_early_warning") -> 
     (config.REPORTS_DIR / f"{name}_summary.json").write_text(json.dumps(summary, indent=2))
 
     for horizon, result in results.items():
-        _track(result, horizon, name)
+        _track(result, horizon, name, region)
 
 
-def _track(result: HorizonResult, horizon: int, name: str) -> None:
+def _track(
+    result: HorizonResult,
+    horizon: int,
+    name: str,
+    region: config.Region = config.ARABIAN_SEA,
+) -> None:
     """Append one horizon's run to the experiment log.
 
     One run *per horizon* rather than one per invocation: the horizons are the
@@ -481,7 +490,9 @@ def _track(result: HorizonResult, horizon: int, name: str) -> None:
         },
         tags={
             "problem": "hab_early_warning",
-            "region": config.ARABIAN_SEA.name,
+            # The real region: with several bloom boxes trained separately,
+            # a hardcoded tag makes every run look like the same experiment.
+            "region": region.name,
             "horizon": horizon,
         },
     ) as run:

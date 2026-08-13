@@ -7,12 +7,31 @@ re-download. Both problem statements pull from these two functions.
 Two things here are load-bearing and were established empirically, not
 assumed (see the module's timings below):
 
-1. **Service choice.** The access pattern is "one bounded area, many
-   timesteps", so every call goes through ``arco-time-series``. Copernicus's
-   other service, ``arco-geo-series``, stores one timestep per huge lat/lon
-   chunk and would fetch the whole globe once per day of the range — the
-   difference is seconds vs. hours. The backend's downloader made the same
-   call for the same reason (``backend/services/download/providers/copernicus.py``).
+1. **Service choice follows the access pattern, and there are now two
+   patterns here.** For a *bounded region over many timesteps* —
+   every regional fetch — ``arco-time-series`` is right: ``arco-geo-series``
+   stores one timestep per huge lat/lon chunk and would pull the whole globe
+   once per timestep. The backend's downloader made the same call for the same
+   reason (``backend/services/download/providers/copernicus.py``).
+
+   **The worldwide habitat build inverts it**, exactly as
+   ``backend/forecasting/grid_history.py`` documents for the forecast map:
+   whole globe, few timesteps, where one global timestep per chunk is precisely
+   what you want. Measured 2026-08-10 on one year of global monthly physics
+   (12 timesteps, coarsened to 0.25deg):
+
+   ===================  ==========  =====================
+   service              open        load 1 yr, global
+   ===================  ==========  =====================
+   ``arco-geo-series``  7.8 s       **7.5 s**
+   ``arco-time-series`` 8.9 s       89.0 s
+   ===================  ==========  =====================
+
+   ~12x, so the full 14-year global window is ~2 minutes rather than ~20.
+   ``config.COPERNICUS_SERVICE`` remains the regional default and
+   ``config.GLOBAL_COPERNICUS_SERVICE`` is the global one; pass ``service=``
+   rather than changing the default, since flipping it globally would make
+   every regional fetch pathological.
 
 2. **Depth selection must happen server-side.** These reanalysis products
    carry 50 depth levels. ``open_dataset`` without a depth range returns all
@@ -86,13 +105,92 @@ WIND_VARIABLES = (
 
 
 def _cache_path(
-    product: str, cadence: Cadence, region: config.Region, start: date, end: date
+    product: str,
+    cadence: Cadence,
+    region: config.Region,
+    start: date,
+    end: date,
+    coarsen_to: float | None = None,
 ) -> Path:
+    # `coarsen_to` is part of the identity, not a detail: a coarsened file and
+    # a native-resolution one cover the same region and dates and would
+    # otherwise collide, silently serving 0.25deg data to a caller that asked
+    # for 1/12deg.
+    suffix = "" if coarsen_to is None else f"_c{coarsen_to:g}"
     name = (
         f"{product}_{cadence}_{region.name}_"
-        f"{start.isoformat()}_{end.isoformat()}.nc"
+        f"{start.isoformat()}_{end.isoformat()}{suffix}.nc"
     )
     return config.COPERNICUS_RAW_DIR / name
+
+
+def _native_spacing(dataset: xr.Dataset, dim: str) -> float | None:
+    """The dataset's own grid spacing along ``dim``, or None if undeterminable."""
+    import numpy as np
+
+    values = dataset[dim].values
+    if values.size < 2:
+        return None
+    spacing = float(np.abs(np.diff(values)).mean())
+    return spacing or None
+
+
+def _coarsen_to(dataset: xr.Dataset, resolution: float) -> xr.Dataset:
+    """Block-average ``dataset`` down to approximately ``resolution`` degrees.
+
+    Applied **while the array is still lazy**, which is the whole point: a
+    global 1/12deg monthly physics window is ~35 GB as one array, and both the
+    in-memory copy and the NetCDF cache are sized by what comes out of here
+    rather than by what the product natively serves. Measured on the real
+    fetch: 6 physics variables, global, monthly, at 0.25deg cost **135 MB per
+    calendar year** (~1.9 GB for the full 2000-2013 window) at ~83 s/year.
+
+    Note what this does *not* buy: the bytes still cross the network. Copernicus
+    subsets server-side by bbox, time and depth, but a stride is applied client
+    side, so this bounds memory and disk, not download time.
+
+    Block mean rather than striding, because striding throws away 8 of every 9
+    cells and its answer depends on which one it kept. The mean is also the
+    honest downsample of a field that `fusion.regrid` will linearly interpolate
+    onto the exact common grid afterwards.
+
+    Coarsening is **opt-in for exactly this reason**: applying it to a regional
+    fetch would change the values feeding the existing regional models, since
+    `regrid` interpolates from whatever resolution it is handed.
+    """
+    factors: dict[str, int] = {}
+    for prefix in ("lat", "lon"):
+        dim = next((str(d) for d in dataset.dims if str(d).lower().startswith(prefix)), None)
+        if dim is None:
+            continue
+        native = _native_spacing(dataset, dim)
+        if native is None:
+            continue
+        factor = int(round(resolution / native))
+        if factor > 1:
+            factors[dim] = factor
+
+    if not factors:
+        return dataset
+    # `boundary="trim"` drops a partial block at the edge rather than averaging
+    # a short one, so every output cell covers the same area.
+    return dataset.coarsen(factors, boundary="trim").mean(keep_attrs=True)
+
+
+def _year_chunks(start: date, end: date) -> list[tuple[date, date]]:
+    """Split a date range into calendar-year (start, end) pairs.
+
+    The sibling of `_month_starts` one scale up. Years are the right chunk for
+    a whole-globe monthly fetch: 14 chunks of ~300 MB rather than one 4 GB
+    array, and a run interrupted halfway keeps the years it already wrote.
+    """
+    chunks: list[tuple[date, date]] = []
+    for year in range(start.year, end.year + 1):
+        chunk_start = max(start, date(year, 1, 1))
+        chunk_end = min(end, date(year, 12, 31))
+        if chunk_start <= chunk_end:
+            chunks.append((chunk_start, chunk_end))
+    return chunks
 
 
 def _open(
@@ -101,6 +199,7 @@ def _open(
     region: config.Region,
     start: date,
     end: date,
+    service: str | None = None,
 ) -> xr.Dataset:
     import copernicusmarine
 
@@ -111,7 +210,7 @@ def _open(
             variables=list(variables),
             username=username,
             password=password,
-            service=config.COPERNICUS_SERVICE,
+            service=service or config.COPERNICUS_SERVICE,
             minimum_longitude=region.west,
             maximum_longitude=region.east,
             minimum_latitude=region.south,
@@ -137,6 +236,9 @@ def _fetch(
     start: date,
     end: date,
     refresh: bool,
+    coarsen_to: float | None = None,
+    chunk_years: bool = False,
+    service: str | None = None,
 ) -> xr.Dataset:
     try:
         dataset_id = _DATASET_IDS[(product, cadence)]
@@ -146,15 +248,25 @@ def _fetch(
         ) from None
 
     config.ensure_directories()
-    cached = _cache_path(product, cadence, region, start, end)
+
+    if chunk_years:
+        return _fetch_by_year(
+            product, dataset_id, variables, cadence, region, start, end,
+            refresh, coarsen_to, service,
+        )
+
+    cached = _cache_path(product, cadence, region, start, end, coarsen_to)
     if cached.exists() and not refresh:
         return xr.open_dataset(cached)
 
-    ds = _open(dataset_id, variables, region, start, end)
+    ds = _open(dataset_id, variables, region, start, end, service)
     # Drop the now-singleton depth dimension so downstream code sees clean
     # (time, latitude, longitude) fields.
     if "depth" in ds.dims:
         ds = ds.isel(depth=0, drop=True)
+
+    if coarsen_to is not None:
+        ds = _coarsen_to(ds, coarsen_to)
 
     try:
         ds = ds.load()
@@ -180,9 +292,65 @@ def _fetch(
         marine_ml_bbox=f"{region.west},{region.south},{region.east},{region.north}",
         marine_ml_start=start.isoformat(),
         marine_ml_end=end.isoformat(),
+        # "native" rather than omitting the key, so a file always states which
+        # grid it is on instead of leaving it to be inferred from the filename.
+        marine_ml_coarsened_to="native" if coarsen_to is None else f"{coarsen_to:g}",
     )
     ds.to_netcdf(cached)
     return ds
+
+
+def _fetch_by_year(
+    product: str,
+    dataset_id: str,
+    variables: Sequence[str],
+    cadence: Cadence,
+    region: config.Region,
+    start: date,
+    end: date,
+    refresh: bool,
+    coarsen_to: float | None,
+    service: str | None = None,
+) -> xr.Dataset:
+    """One cache file per calendar year, returned as one lazy dataset.
+
+    Two properties matter and neither is available from the single-file path
+    at global extent:
+
+    * **Peak memory is one year, not the whole window.** Each year is loaded,
+      written and released before the next is requested.
+    * **The result stays lazy.** `open_mfdataset` over the year files hands
+      back a chunked dataset rather than a resident array, so a caller that
+      only samples scattered points never materialises the globe. That matches
+      what the single-file cache-hit path already returns (`open_dataset` is
+      lazy too), so callers see no behavioural difference.
+
+    An interrupted run keeps the years it finished; the next one resumes.
+    """
+    paths: list[Path] = []
+    for chunk_start, chunk_end in _year_chunks(start, end):
+        cached = _cache_path(product, cadence, region, chunk_start, chunk_end, coarsen_to)
+        if not cached.exists() or refresh:
+            _fetch(
+                product, variables, cadence, region, chunk_start, chunk_end,
+                refresh, coarsen_to, chunk_years=False, service=service,
+            )
+        paths.append(cached)
+
+    if not paths:
+        raise CopernicusError(
+            f"{product} ({cadence}): {start}..{end} contains no calendar years"
+        )
+
+    try:
+        return xr.open_mfdataset(
+            [str(p) for p in paths], combine="by_coords", join="exact"
+        )
+    except Exception as exc:
+        raise CopernicusError(
+            f"could not combine {len(paths)} yearly {product} files for "
+            f"{region.name} {start}..{end}: {exc}"
+        ) from exc
 
 
 def fetch_physics(
@@ -192,10 +360,23 @@ def fetch_physics(
     cadence: Cadence = "daily",
     variables: Sequence[str] = config.PHYSICS_VARIABLES,
     refresh: bool = False,
+    coarsen_to: float | None = None,
+    chunk_years: bool = False,
+    service: str | None = None,
 ) -> xr.Dataset:
     """Surface temperature, salinity, currents, sea surface height and mixed
-    layer depth over ``region``. Cached as NetCDF in the raw zone."""
-    return _fetch("physics", variables, cadence, region, start, end, refresh)
+    layer depth over ``region``. Cached as NetCDF in the raw zone.
+
+    ``coarsen_to``, ``chunk_years`` and ``service`` are what make a whole-globe
+    region tractable, and all three default off/inherited so every regional
+    call behaves exactly as before. For a global fetch pass
+    ``coarsen_to=config.GRID_RESOLUTION, chunk_years=True,
+    service=config.GLOBAL_COPERNICUS_SERVICE``.
+    """
+    return _fetch(
+        "physics", variables, cadence, region, start, end, refresh,
+        coarsen_to, chunk_years, service,
+    )
 
 
 def _month_starts(start: date, end: date) -> list[tuple[date, date]]:
@@ -286,6 +467,9 @@ def fetch_bgc(
     cadence: Cadence = "daily",
     variables: Sequence[str] = config.BGC_VARIABLES,
     refresh: bool = False,
+    coarsen_to: float | None = None,
+    chunk_years: bool = False,
+    service: str | None = None,
 ) -> xr.Dataset:
     """Chlorophyll, nutrients, dissolved oxygen and primary production over
     ``region``. Cached as NetCDF in the raw zone.
@@ -295,5 +479,13 @@ def fetch_bgc(
     gives continuous daily coverage where satellite chlorophyll has gaps
     (approach doc 3.3, "missingness / cloud-cover audit"). Satellite ocean
     colour remains the higher-fidelity source when it is available.
+
+    ``coarsen_to``/``chunk_years``/``service``: see `fetch_physics`. BGC is
+    natively 0.25deg, so coarsening to `config.GRID_RESOLUTION` is a no-op on
+    it — the parameter is accepted anyway so a global caller passes the same
+    arguments to both products rather than tracking which one needs it.
     """
-    return _fetch("bgc", variables, cadence, region, start, end, refresh)
+    return _fetch(
+        "bgc", variables, cadence, region, start, end, refresh,
+        coarsen_to, chunk_years, service,
+    )

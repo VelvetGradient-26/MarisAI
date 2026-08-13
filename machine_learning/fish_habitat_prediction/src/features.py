@@ -81,14 +81,23 @@ def build_features(
     bathymetry: xr.Dataset,
     region: config.Region = config.DEFAULT_REGION,
     resolution: float = config.GRID_RESOLUTION,
+    batch_years: bool = False,
 ) -> pd.DataFrame:
-    """Sample ocean state at each labelled point and derive habitat features."""
+    """Sample ocean state at each labelled point and derive habitat features.
+
+    ``batch_years`` is passed straight through to `fusion.sample_at_points`
+    for the worldwide build; see there for why it is value-identical and why
+    it is opt-in.
+    """
     sampled = fusion.sample_at_points(
-        table, physics, bgc, bathymetry, region=region, resolution=resolution
+        table, physics, bgc, bathymetry, region=region, resolution=resolution,
+        batch_years=batch_years,
     )
     sampled["date"] = pd.to_datetime(sampled["observation_date"]).dt.normalize()
 
-    sampled = _add_prey_lag(sampled, physics, bgc, bathymetry, region, resolution)
+    sampled = _add_prey_lag(
+        sampled, physics, bgc, bathymetry, region, resolution, batch_years=batch_years
+    )
     sampled = _add_bathymetric_context(sampled)
 
     cyclical = temporal.cyclical_time_features(sampled["date"])
@@ -112,6 +121,7 @@ def _add_prey_lag(
     region: config.Region,
     resolution: float,
     lag_days: tuple[int, ...] = (30, 60),
+    batch_years: bool = False,
 ) -> pd.DataFrame:
     """Chlorophyll and SST at earlier dates — the trophic-transfer delay.
 
@@ -125,7 +135,8 @@ def _add_prey_lag(
         shifted["observation_date"] = pd.to_datetime(frame["date"]) - pd.Timedelta(days=lag)
 
         sampled = fusion.sample_at_points(
-            shifted, physics, bgc, bathymetry, region=region, resolution=resolution
+            shifted, physics, bgc, bathymetry, region=region, resolution=resolution,
+            batch_years=batch_years,
         )
         for column in ("chl", "thetao", "nppv"):
             if column in sampled.columns:

@@ -236,7 +236,11 @@ def run(
     )
 
 
-def save(result: TrainingResult, name: str = "fish_habitat") -> None:
+def save(
+    result: TrainingResult,
+    name: str = "fish_habitat",
+    region: config.Region = config.NORTH_INDIAN_OCEAN,
+) -> None:
     """Persist models, weights and reports."""
     config.ensure_directories()
 
@@ -262,10 +266,14 @@ def save(result: TrainingResult, name: str = "fish_habitat") -> None:
     }
     (config.REPORTS_DIR / f"{name}_summary.json").write_text(json.dumps(summary, indent=2))
 
-    _track(result, name)
+    _track(result, name, region)
 
 
-def _track(result: TrainingResult, name: str) -> None:
+def _track(
+    result: TrainingResult,
+    name: str,
+    region: config.Region = config.NORTH_INDIAN_OCEAN,
+) -> None:
     """Append this run to the experiment log.
 
     Every file `save` just wrote is on a fixed path and will be destroyed by
@@ -285,13 +293,23 @@ def _track(result: TrainingResult, name: str) -> None:
             "validation": "spatial_block_cv",
             **{f"weight_{k}": round(v, 4) for k, v in result.ensemble_weights.weights.items()},
         },
-        tags={"problem": "fish_habitat", "region": config.NORTH_INDIAN_OCEAN.name},
+        # The real region, not a constant: a global run and a regional one are
+        # the two things anyone will want to compare here, and a hardcoded tag
+        # makes them indistinguishable in the tracking UI.
+        tags={"problem": "fish_habitat", "region": region.name},
     ) as run:
         run.log_data_window(
             start=config.HABITAT_START,
             end=config.HABITAT_END,
             rows=int(result.holdout["n"].sum()) if "n" in result.holdout else None,
-            extra={"note": "OBIS target-species records stop after 2014"},
+            extra={
+                "region": region.name,
+                "note": (
+                    "OBIS target-species records stop after 2014 — verified "
+                    "2026-08-10 to be a global cliff, not a regional artefact "
+                    "(yellowfin worldwide: 67,780 records 2000-2013, 772 after)"
+                ),
+            },
         )
         run.log_params({"feature_count": len(result.feature_columns)})
         run.log_dict(result.feature_columns, "feature_columns.json")
