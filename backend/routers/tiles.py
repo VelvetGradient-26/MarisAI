@@ -2,7 +2,8 @@ import asyncio
 
 from fastapi import APIRouter, HTTPException, Response
 
-from services import copernicus_sst, copernicus_wind
+from services import copernicus_currents, copernicus_sst, copernicus_wind
+from services.copernicus_currents import CopernicusCurrentsError
 from services.copernicus_wind import CopernicusWindError
 from services.gfw import GfwError, fetch_tile
 
@@ -39,5 +40,18 @@ async def get_wind_field():
     try:
         png_bytes = await asyncio.to_thread(copernicus_wind.get_field_png)
     except CopernicusWindError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(content=png_bytes, media_type="image/png")
+
+
+@router.get("/currents/field.png")
+async def get_currents_field():
+    # Same shape as the wind field above, and for the same reasons: one
+    # whole-globe texture the particle shader samples client-side, rendered
+    # once per cache refresh, with an honest 503 rather than a faked
+    # placeholder when no cache has been populated yet.
+    try:
+        png_bytes = await asyncio.to_thread(copernicus_currents.get_field_png)
+    except CopernicusCurrentsError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return Response(content=png_bytes, media_type="image/png")

@@ -8,18 +8,19 @@ from loguru import logger
 
 from app.core.config import settings
 from forecasting.api import router as forecasting_router
+from routers.chat import router as chat_router
 from routers.dashboard import router as dashboard_router
 from routers.download import router as download_router
 from routers.feedback import router as feedback_router
+from routers.forecast_tiles import router as forecast_tiles_router
 from routers.insights import router as insights_router
 from routers.marine import router as marine_router
 from routers.metrics import router as metrics_router
 from routers.predictions import router as predictions_router
 from routers.tiles import router as tiles_router
-from routers.chat import router as chat_router
-from routers.forecast_tiles import router as forecast_tiles_router
 from routers.vessels import router as vessels_router
 from services import ais, crw, forecast_tiles, gibs, ndbc, ocean_state
+from services.copernicus_currents import refresh_currents_cache
 from services.copernicus_sst import refresh_sst_cache
 from services.copernicus_wind import refresh_wind_cache
 
@@ -27,6 +28,10 @@ SST_REFRESH_INTERVAL_HOURS = 3
 # Wind's source dataset is itself hourly (vs. SST's underlying hourly-but-slow-
 # changing thetao) and drives a live animation, so it's refreshed more often.
 WIND_REFRESH_INTERVAL_HOURS = 1
+# Currents come from the same hourly product as SST and drive an animation like
+# wind's, so they follow wind's cadence rather than SST's — the layer's whole
+# point is that it is moving *now*.
+CURRENTS_REFRESH_INTERVAL_HOURS = 1
 
 
 @asynccontextmanager
@@ -38,6 +43,7 @@ async def lifespan(_app: FastAPI):
     # CopernicusSstError/CopernicusWindError) instead of erroring.
     asyncio.create_task(refresh_sst_cache())
     asyncio.create_task(refresh_wind_cache())
+    asyncio.create_task(refresh_currents_cache())
 
     # The dashboard's caches, on the same fire-and-forget footing. Each
     # service keeps its previous data on a failed refresh and reports itself
@@ -52,6 +58,9 @@ async def lifespan(_app: FastAPI):
     scheduler = AsyncIOScheduler()
     scheduler.add_job(refresh_sst_cache, "interval", hours=SST_REFRESH_INTERVAL_HOURS)
     scheduler.add_job(refresh_wind_cache, "interval", hours=WIND_REFRESH_INTERVAL_HOURS)
+    scheduler.add_job(
+        refresh_currents_cache, "interval", hours=CURRENTS_REFRESH_INTERVAL_HOURS
+    )
     scheduler.add_job(
         ndbc.refresh_cache, "interval", minutes=ndbc.REFRESH_INTERVAL_MINUTES
     )

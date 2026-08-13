@@ -71,3 +71,37 @@ export const WIND_SPEED_COLOR_STOPS: ColorStop[] = [
   { value: 18, color: [220, 38, 38] }, // red
   { value: 25, color: [147, 51, 234] }, // purple
 ];
+
+/**
+ * Current speed, 0 to 2+ m/s. **Single-hue amber, dark to light** — and the
+ * single hue is the point.
+ *
+ * Wind and currents are both in the stackable `flow` group and are meant to be
+ * read together, so the two ramps have to be told apart at a glance. Hue alone
+ * cannot do it: wind's ramp is a full rainbow and has already spent every hue,
+ * so any second rainbow collides with it somewhere. What separates them is
+ * *structure* — one field cycles through hues, the other never leaves amber —
+ * and that reads instantly even where a current pixel and a wind pixel happen
+ * to land on the same colour.
+ *
+ * It is also what a sequential scale is supposed to be (one hue, monotonic
+ * lightness), which wind's Windy-convention rainbow is not. Measured against
+ * the Abyss basemap's near-black ocean (#030f1e): lightness rises
+ * 0.149 -> 0.926 with no reversal, and the darkest stop clears 3.65:1 — the
+ * whole ramp is above the 3:1 floor, unlike the raster ramps in
+ * `services/colormaps.py`, whose dark ends bottom out near the basemap and had
+ * to be rescued with a hatch.
+ *
+ * Anchors: open ocean sits at 0.1-0.4 m/s, so most of the map lives in the
+ * first two stops; the top of the scale exists for the western boundary
+ * currents (Gulf Stream, Kuroshio, Agulhas) that actually reach 2 m/s.
+ */
+export const CURRENT_SPEED_COLOR_STOPS: ColorStop[] = [
+  { value: 0, color: [150, 96, 28] }, // #96601c — slack water, still visible
+  { value: 0.15, color: [184, 116, 16] }, // #b87410
+  { value: 0.3, color: [220, 148, 24] }, // #dc9418
+  { value: 0.6, color: [245, 183, 60] }, // #f5b73c
+  { value: 1.0, color: [255, 212, 122] }, // #ffd47a
+  { value: 1.5, color: [255, 234, 184] }, // #ffeab8
+  { value: 2.0, color: [255, 246, 224] }, // #fff6e0 — boundary-current core
+];

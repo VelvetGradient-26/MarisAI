@@ -1,11 +1,11 @@
 from fastapi import APIRouter, HTTPException, Query
 
-from services import copernicus_sst, copernicus_wind
+from services import copernicus_currents, copernicus_sst, copernicus_wind
 from services.bathymetry import BathymetryError, get_elevation
+from services.copernicus_currents import CopernicusCurrentsError
 from services.copernicus_sst import CopernicusSstError
 from services.copernicus_wind import CopernicusWindError
 from services.openmeteo import OpenMeteoError, get_realtime_ocean_conditions
-
 
 router = APIRouter(prefix="/api/ocean", tags=["ocean"])
 
@@ -67,4 +67,23 @@ async def get_wind_meta():
     try:
         return copernicus_wind.get_meta()
     except CopernicusWindError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/currents/point")
+async def get_currents_point(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+):
+    try:
+        return copernicus_currents.get_point(lat, lon)
+    except CopernicusCurrentsError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/currents/meta")
+async def get_currents_meta():
+    try:
+        return copernicus_currents.get_meta()
+    except CopernicusCurrentsError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

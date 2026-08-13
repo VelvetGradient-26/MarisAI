@@ -4,6 +4,7 @@ import type {
   RasterLayerDescriptor,
 } from '../types';
 import { createWindParticleLayer } from '../vectorField/windLayer';
+import { createCurrentsParticleLayer } from '../vectorField/currentsLayer';
 
 type LayerSource = RasterLayerDescriptor['sources'][number];
 
@@ -599,6 +600,52 @@ export const layerRegistry: LayerDescriptor[] = [
         { offset: 0.48, color: '#f97316' },
         { offset: 0.72, color: '#dc2626' },
         { offset: 1, color: '#9333ea' },
+      ],
+    },
+  },
+  // Surface currents, on the same GPU particle engine as wind above — the only
+  // currents-specific code is the field URL, the colour ramp and a visual
+  // speed scale (see vectorField/currentsLayer.ts; currents run an order of
+  // magnitude slower than wind and are invisible at wind's pace).
+  //
+  // Source is the *ocean physics* product — the same hourly dataset SST is
+  // drawn from, `uo`/`vo` at ~0.494m — not the L4 wind blend. The two layers
+  // answer different questions and routinely disagree in direction: wind
+  // drives the surface, but the large-scale flow is set by rotation and
+  // density, which is exactly why they are worth showing together.
+  //
+  // Off by default, unlike wind. Wind ships on because it plus SST is the
+  // headline view; two particle systems running at once is a busier map than
+  // a first-time viewer should be handed, and the layer costs a second global
+  // texture download the moment it is switched on.
+  {
+    id: 'currents',
+    name: 'Ocean Currents',
+    category: 'flow',
+    type: 'custom',
+    attribution:
+      'Copernicus Marine Service — GLOBAL_ANALYSISFORECAST_PHY_001_024, uo/vo (eastward and ' +
+      'northward sea water velocity) at 0.494m depth, hourly, 0.083°. Particle direction is ' +
+      'the direction the water flows toward (oceanographic convention) — the opposite of the ' +
+      'wind layer, which is named for the direction wind blows from.',
+    defaultOpacity: 0.9,
+    defaultVisible: false,
+    createLayer: (id) => createCurrentsParticleLayer(id, 0.9),
+    legend: {
+      type: 'gradient',
+      unit: 'm/s',
+      min: 0,
+      max: 2,
+      // Matches CURRENT_SPEED_COLOR_STOPS in vectorField/colorRamp.ts. Single
+      // hue, dark to light — see that file for why it is not a second rainbow.
+      stops: [
+        { offset: 0, color: '#96601c' },
+        { offset: 0.075, color: '#b87410' },
+        { offset: 0.15, color: '#dc9418' },
+        { offset: 0.3, color: '#f5b73c' },
+        { offset: 0.5, color: '#ffd47a' },
+        { offset: 0.75, color: '#ffeab8' },
+        { offset: 1, color: '#fff6e0' },
       ],
     },
   },

@@ -8,6 +8,8 @@ import { fetchSstPoint } from './api/sst';
 import type { SstPointResponse } from './api/sst';
 import { fetchWindPoint } from './api/wind';
 import type { WindPointResponse } from './api/wind';
+import { fetchCurrentsPoint } from './api/currents';
+import type { CurrentsPointResponse } from './api/currents';
 import { useSelectedLocationPredictions } from './hooks/useSelectedLocationPredictions';
 import type { PredictionPointResult } from './hooks/useSelectedLocationPredictions';
 import type { NearestPort, RealtimeOceanConditions, RealtimeOceanUnits } from './types';
@@ -86,6 +88,34 @@ export function SelectedLocationPanel() {
     return () => controller.abort();
   }, [windLayerActive, selectedLocation]);
 
+  const currentsLayerActive = useMapStore((s) => s.layers.get('currents')?.active ?? false);
+  const [currentsPoint, setCurrentsPoint] = useState<CurrentsPointResponse | null>(null);
+  const [currentsStatus, setCurrentsStatus] = useState<'idle' | 'loading' | 'error' | 'success'>(
+    'idle'
+  );
+
+  useEffect(() => {
+    if (!currentsLayerActive || !selectedLocation) {
+      setCurrentsPoint(null);
+      setCurrentsStatus('idle');
+      return;
+    }
+
+    const controller = new AbortController();
+    setCurrentsStatus('loading');
+    fetchCurrentsPoint(selectedLocation, controller.signal)
+      .then((response) => {
+        setCurrentsPoint(response);
+        setCurrentsStatus('success');
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setCurrentsStatus('error');
+      });
+
+    return () => controller.abort();
+  }, [currentsLayerActive, selectedLocation]);
+
   const predictions = useSelectedLocationPredictions(selectedLocation);
 
   return (
@@ -154,6 +184,42 @@ export function SelectedLocationPanel() {
                         F{windPoint.beaufort.force} · {windPoint.beaufort.label}
                       </span>
                     )}
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {currentsLayerActive && selectedLocation && (
+          <div className="selected-location-panel__wind-point">
+            <span className="selected-location-panel__wind-point-label">
+              Copernicus Currents (cursor)
+            </span>
+            {currentsStatus === 'loading' && <span>Loading…</span>}
+            {currentsStatus === 'error' && (
+              <span className="selected-location-panel__state--error">
+                Currents data unavailable
+              </span>
+            )}
+            {currentsStatus === 'success' && currentsPoint && (
+              <>
+                {currentsPoint.is_land_or_no_data || currentsPoint.speed_ms === null ? (
+                  <span className="selected-location-panel__wind-point-value">No data</span>
+                ) : (
+                  <>
+                    <span className="selected-location-panel__wind-point-value">
+                      {currentsPoint.speed_ms.toFixed(2)} m/s
+                    </span>
+                    {/* "towards", not "from" — a current is named for where the
+                        water goes, the opposite of the wind row above. The two
+                        rows sit next to each other, so the mode label is what
+                        stops one being read as the other. */}
+                    <DirectionValue
+                      degrees={currentsPoint.direction_toward_deg}
+                      unit="°"
+                      mode="towards"
+                    />
                   </>
                 )}
               </>

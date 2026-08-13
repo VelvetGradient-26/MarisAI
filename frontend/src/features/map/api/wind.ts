@@ -21,6 +21,16 @@ export interface WindMetaResponse {
   u_max: number;
   v_min: number;
   v_max: number;
+  /**
+   * The field texture's outer cell edges, from `services/vector_field`. For
+   * this product they are the whole globe, which is why the shader used to
+   * hardcode them — and why they had to become data as soon as a second field
+   * (currents, latitude -80 to 90) arrived.
+   */
+  lon_west: number;
+  lon_east: number;
+  lat_south: number;
+  lat_north: number;
 }
 
 function url(path: string): URL {
