@@ -82,6 +82,24 @@ PAIRS: dict[str, VectorPair] = {
         speed_max_legend=2.0,
         direction_convention="toward",
     ),
+    # Registered before its grids exist, deliberately. `catalog()` reports a
+    # pair with an explicit reason when a component is missing, and the frontend
+    # hook logs that — which is a better answer than a layer that silently does
+    # not exist while two trained models sit on disk. It becomes a live layer
+    # the moment `wind_u`/`wind_v` are trained and built; no frontend edit.
+    #
+    # 25 m/s is a strong gale, chosen as a legend top the same way currents'
+    # 2.0 m/s was: high enough that a storm is not clipped flat, low enough that
+    # ordinary weather uses most of the ramp.
+    "wind": VectorPair(
+        key="wind",
+        label="Forecast Wind",
+        unit="m/s",
+        u_variable="wind_u",
+        v_variable="wind_v",
+        speed_max_legend=25.0,
+        direction_convention="from",
+    ),
 }
 
 

@@ -238,6 +238,30 @@ VARIABLE_REGISTRY: dict[str, VariableInfo] = {
         derived_from=("eastward_wind", "northward_wind"),
         derivation="speed",
     ),
+    # The components exist as variables of their own, not only as the fields
+    # `wind_speed`/`wind_direction` are derived from, for one reason: a vector
+    # field has to be forecast as components. Direction is circular and every
+    # step to the screen is linear, so a particle layer composed from a forecast
+    # speed and a forecast bearing would flow backwards along every wrap — the
+    # mean of 359 and 1 degrees is 180. Currents already work this way; this is
+    # the same move for wind. It also makes `wind_direction` derivable rather
+    # than trained, which is the better answer for it anyway.
+    "wind_u": VariableInfo(
+        label="Wind U Component",
+        category="Wind",
+        unit="m/s",
+        available=True,
+        provider=PROVIDER_COPERNICUS_WIND,
+        source_field="eastward_wind",
+    ),
+    "wind_v": VariableInfo(
+        label="Wind V Component",
+        category="Wind",
+        unit="m/s",
+        available=True,
+        provider=PROVIDER_COPERNICUS_WIND,
+        source_field="northward_wind",
+    ),
     "wind_direction": VariableInfo(
         label="Wind Direction",
         category="Wind",

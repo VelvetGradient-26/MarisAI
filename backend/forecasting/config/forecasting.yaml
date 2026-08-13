@@ -237,6 +237,19 @@ variables:
     covariates: [pressure, air_temperature]
     valid_min: 0.0
 
+  # Forecast as components so a wind particle layer is possible at all: a vector
+  # composed from a forecast speed and a forecast bearing flows backwards
+  # wherever the bearing wraps through north. Same reasoning as current_u/v, and
+  # the covariates mirror wind_speed's rather than each other's — a component is
+  # signed, so it carries no valid_min.
+  wind_u:
+    code: wind_u
+    covariates: [pressure, air_temperature]
+
+  wind_v:
+    code: wind_v
+    covariates: [pressure, air_temperature]
+
   wind_direction:
     code: wind_direction
     covariates: [wind_speed, pressure]
