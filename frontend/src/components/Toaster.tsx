@@ -35,6 +35,42 @@ export function Toaster() {
   );
 }
 
+/**
+ * The bar under a pending toast.
+ *
+ * Two modes, and the distinction is the point. With a known fraction it fills
+ * to it; with none it sweeps, which says "working, extent unknown" instead of
+ * asserting a position. The download reports real stage progress, but there is
+ * a genuine window at the start — between the request leaving the browser and
+ * the server registering it — where nothing is known yet, and a bar that
+ * started at a confident 5% would be making that number up.
+ *
+ * Never animates backwards: `progress` is clamped and the width transition is
+ * one-directional in practice because the backend's fraction is monotonic.
+ */
+function ToastProgress({ value }: { value?: number }) {
+  const determinate = typeof value === 'number' && Number.isFinite(value);
+  const pct = determinate ? Math.min(100, Math.max(0, value * 100)) : 0;
+
+  return (
+    <div
+      className={`toast__progress${determinate ? '' : ' toast__progress--indeterminate'}`}
+      role="progressbar"
+      aria-label="Download progress"
+      // Omitting aria-valuenow is what marks a progressbar as indeterminate to
+      // assistive tech; a 0 here would be read as "0 percent, and stuck".
+      {...(determinate
+        ? { 'aria-valuenow': Math.round(pct), 'aria-valuemin': 0, 'aria-valuemax': 100 }
+        : {})}
+    >
+      <div
+        className="toast__progress-fill"
+        style={determinate ? { width: `${pct}%` } : undefined}
+      />
+    </div>
+  );
+}
+
 function ToastRow({ toast }: { toast: Toast }) {
   const dismiss = useToastStore((state) => state.dismiss);
 
@@ -65,6 +101,7 @@ function ToastRow({ toast }: { toast: Toast }) {
       <div className="toast__content">
         <p className="toast__title">{toast.title}</p>
         {toast.detail && <p className="toast__detail">{toast.detail}</p>}
+        {toast.tone === 'pending' && <ToastProgress value={toast.progress} />}
       </div>
       <button
         type="button"

@@ -8,6 +8,7 @@ import { useThemeStore } from '../store/themeStore';
 import { useToastStore } from '../store/toastStore';
 import {
   downloadOceanData,
+  fetchDownloadProgress,
   fetchVariableCategories,
   type Area,
   type OutputFormat,
@@ -15,6 +16,25 @@ import {
   type VariableCategory,
 } from '../features/map/api/download';
 import './download.css';
+
+/**
+ * How often to ask the server where the download has got to.
+ *
+ * The signal being watched is one upstream provider finishing, of which there
+ * are at most fourteen across a request measured in tens of seconds — so this
+ * is fast enough that the bar never visibly lags a real step, and slow enough
+ * that a two-minute download costs ~160 dict lookups rather than thousands.
+ */
+const PROGRESS_POLL_MS = 750;
+
+/** Plain-language stage names. The API's own words are internal. */
+const STAGE_LABELS: Record<string, string> = {
+  preparing: 'Checking coverage and limits',
+  fetching: 'Fetching from data providers',
+  merging: 'Merging and cleaning',
+  formatting: 'Formatting your file',
+  done: 'Finishing up',
+};
 
 type AreaMode = 'point' | 'draw';
 
@@ -48,6 +68,7 @@ export function DownloadPage() {
   const isDark = useThemeStore((s) => s.dark);
   const pushToast = useToastStore((s) => s.push);
   const updateToast = useToastStore((s) => s.update);
+  const patchToast = useToastStore((s) => s.patch);
   const dismissToast = useToastStore((s) => s.dismiss);
   const [areaMode, setAreaMode] = useState<AreaMode>('draw');
   const [lat, setLat] = useState('10.0');
@@ -195,11 +216,44 @@ export function DownloadPage() {
     // download tray — happened entirely off-page. The toast covers both: it
     // stays pending for the duration, then reports the outcome.
     const variableCount = selectedVariables.size;
+    const summary = `${variableCount} variable${variableCount === 1 ? '' : 's'}, ${startDate} to ${endDate}`;
     const toastId = pushToast({
       tone: 'pending',
       title: 'Preparing your download…',
-      detail: `${variableCount} variable${variableCount === 1 ? '' : 's'}, ${startDate} to ${endDate}`,
+      detail: summary,
+      // No `progress` yet, so the bar starts indeterminate. Nothing is known
+      // until the server has registered the request — see ToastProgress.
     });
+
+    // The id is generated here rather than returned by the server because the
+    // POST does not resolve until the entire download is finished; by the time
+    // it could hand back an id, there would be nothing left to report on.
+    const requestId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `dl-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    // Polls alongside the download. `stopped` guards the tail: the interval is
+    // cleared in `finally`, but a poll already awaiting a response would
+    // otherwise resolve afterwards and overwrite the finished toast's title
+    // with a stage that is no longer true.
+    let stopped = false;
+    const poll = window.setInterval(async () => {
+      const state = await fetchDownloadProgress(requestId);
+      if (stopped || !state.tracked || state.failed) return;
+
+      const stageLabel = state.stage ? STAGE_LABELS[state.stage] : null;
+      const sourceCount =
+        state.stage === 'fetching' && state.providersTotal
+          ? ` · ${state.providersDone ?? 0} of ${state.providersTotal} sources`
+          : '';
+
+      patchToast(toastId, {
+        title: stageLabel ? `${stageLabel}…` : 'Preparing your download…',
+        detail: `${summary}${sourceCount}`,
+        progress: state.fraction,
+      });
+    }, PROGRESS_POLL_MS);
 
     try {
       const { blob, filename } = await downloadOceanData({
@@ -210,6 +264,7 @@ export function DownloadPage() {
         variables: Array.from(selectedVariables),
         format,
         depth_m: needsDepth ? (parsedDepth ?? 0) : 0,
+        request_id: requestId,
       });
       saveBlob(blob, filename);
       setSubmitStatus('idle');
@@ -221,6 +276,9 @@ export function DownloadPage() {
       // form the user is about to correct, and does not time out.
       setSubmitError(message);
       updateToast(toastId, { tone: 'error', title: 'Download failed', detail: message });
+    } finally {
+      stopped = true;
+      window.clearInterval(poll);
     }
   }
 

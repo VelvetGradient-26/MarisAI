@@ -31,6 +31,7 @@ from services.download.models import (
     ProviderUnavailableError,
     UnsupportedVariableError,
 )
+from services.download.progress import ProgressReporter
 from services.download.registry import VariableInfo, resolve_variables
 
 # A point request is widened to a small bbox before fetching (same idea as
@@ -118,7 +119,14 @@ def _resolved_depth(
     return None
 
 
-async def run_download(request: DownloadRequest) -> DownloadResult:
+async def run_download(
+    request: DownloadRequest, reporter: ProgressReporter | None = None
+) -> DownloadResult:
+    # A no-op reporter when none is supplied, so every call site below stays
+    # unconditional. Progress is an observer of this function, never a
+    # participant in it: nothing here branches on whether anyone is watching.
+    reporter = reporter or ProgressReporter(None)
+
     try:
         variables = resolve_variables(request.variables)
     except ValueError as exc:
@@ -128,14 +136,25 @@ async def run_download(request: DownloadRequest) -> DownloadResult:
     specs = {key: catalog.get(key) for key in provider_keys if key is not None}
     assert len(specs) == len(provider_keys), "every available variable must name a provider"
 
+    reporter.start(providers_total=len(specs), output_format=request.format.value)
+
     _check_coverage(request, specs)
     for spec in specs.values():
         limits.check_limits(request.area, request.start_date, request.end_date, spec)
 
     west, south, east, north = _area_to_bbox(request.area)
 
-    tasks = {
-        key: spec.fetch(
+    async def _fetch_reporting(key: str, spec: ProviderSpec) -> xr.Dataset:
+        """One provider's fetch, announcing itself when it lands.
+
+        The reporting has to wrap each fetch individually rather than sit after
+        the `gather`: these run concurrently and finish at wildly different
+        times (ERDDAP in ~2s, a wide Copernicus window in tens of seconds), so
+        completion order is the only real progress signal the pipeline emits.
+        Awaiting the gather and then reporting would tick the bar from 0 to 100
+        in one step, at the exact moment the information stopped being useful.
+        """
+        dataset = await spec.fetch(
             fields=_needed_fields(variables, key),
             west=west,
             south=south,
@@ -145,16 +164,22 @@ async def run_download(request: DownloadRequest) -> DownloadResult:
             end_date=request.end_date,
             depth_m=request.depth_m,
         )
-        for key, spec in specs.items()
-    }
+        reporter.provider_done(spec.source_label)
+        return dataset
+
+    reporter.fetching()
+    ordered_keys = list(specs.keys())
 
     try:
-        results = await asyncio.gather(*tasks.values())
+        results = await asyncio.gather(
+            *(_fetch_reporting(key, specs[key]) for key in ordered_keys)
+        )
     except Exception as exc:  # noqa: BLE001 - never leak a raw provider traceback
+        reporter.failed()
         raise ProviderUnavailableError(f"Data provider request failed: {exc}") from exc
 
     fetched: dict[str, tuple[ProviderSpec, xr.Dataset]] = {
-        key: (specs[key], ds) for key, ds in zip(tasks.keys(), results, strict=True)
+        key: (specs[key], ds) for key, ds in zip(ordered_keys, results, strict=True)
     }
 
     if isinstance(request.area, PointArea):
@@ -166,6 +191,7 @@ async def run_download(request: DownloadRequest) -> DownloadResult:
             for key, (spec, ds) in fetched.items()
         }
 
+    reporter.merging()
     df = build_dataframe(
         fetched=fetched,
         variables=variables,
@@ -185,26 +211,33 @@ async def run_download(request: DownloadRequest) -> DownloadResult:
             else f"the requested depth ({resolved_depth_m}m) may be below the seafloor there, "
             "or the area may be over land"
         )
+        reporter.failed()
         raise NoDataFoundError(f"No data found for the requested area/date range — {reason}.")
 
     metadata = _build_metadata(request, variables, resolved_depth_m)
     filename_stem = f"marisai_ocean_data_{request.start_date}_{request.end_date}"
 
+    reporter.formatting()
+
     if request.format == OutputFormat.csv:
-        return DownloadResult(
+        result = DownloadResult(
             content=to_csv_bytes(df), filename=f"{filename_stem}.csv", media_type="text/csv"
         )
-    if request.format == OutputFormat.pdf:
-        return DownloadResult(
+    elif request.format == OutputFormat.pdf:
+        result = DownloadResult(
             content=await asyncio.to_thread(to_pdf_bytes, df, metadata, variables),
             filename=f"{filename_stem}.pdf",
             media_type="application/pdf",
         )
-    return DownloadResult(
-        content=to_json_bytes(df, metadata, variables),
-        filename=f"{filename_stem}.json",
-        media_type="application/json",
-    )
+    else:
+        result = DownloadResult(
+            content=to_json_bytes(df, metadata, variables),
+            filename=f"{filename_stem}.json",
+            media_type="application/json",
+        )
+
+    reporter.done()
+    return result
 
 
 def _build_metadata(
