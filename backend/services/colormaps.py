@@ -92,3 +92,34 @@ DIVERGING_STOPS: list[ColorStop] = [
     (1.00, (103, 0, 31)),
 ]
 DIVERGING_COLORMAP = build_colormap(DIVERGING_STOPS)
+
+# Cyclic, on [0, 1], for a compass bearing. The first and last stop are the
+# *same colour* by construction — that is what makes it cyclic, and it is the
+# whole point: on a sequential ramp 359 degrees and 1 degree sit at opposite
+# ends of the scale, so a heading nudging across north reads as the largest
+# possible change rather than the smallest.
+#
+# Hue cycles at fixed saturation and value rather than following a perceptual
+# cyclic map like twilight, for one reason specific to this app: twilight and
+# its relatives pass through near-black at a quarter turn, and this repo has
+# already measured what a near-black ramp end does over the Abyss basemap's
+# #030f1e ocean — 1.13:1, indistinguishable from bare basemap. Every stop here
+# composites at >= 3.34:1 against it (weakest is 270 degrees at 3.34), and
+# opposite headings stay at least 246 apart in RGB, so the ramp reads as a
+# direction rather than as a smear.
+#
+# The tradeoff, stated: hue at constant lightness is not perceptually uniform,
+# so equal angular steps are not equal perceptual steps. For a bearing that is
+# acceptable — the reader is judging "which way", not "how much".
+CYCLIC_STOPS: list[ColorStop] = [
+    (0.000, (242, 68, 68)),
+    (0.125, (242, 199, 68)),
+    (0.250, (155, 242, 68)),
+    (0.375, (68, 242, 111)),
+    (0.500, (68, 242, 242)),
+    (0.625, (68, 111, 242)),
+    (0.750, (155, 68, 242)),
+    (0.875, (242, 68, 199)),
+    (1.000, (242, 68, 68)),
+]
+CYCLIC_COLORMAP = build_colormap(CYCLIC_STOPS)

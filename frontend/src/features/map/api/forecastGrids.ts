@@ -31,6 +31,13 @@ export interface ForecastGridEntry {
   trained_at: string | null;
   model: string | null;
   sources: string[];
+  /**
+   * True for a compass bearing on 0-360, where 359 and 1 are neighbours. The
+   * legend must use a cyclic ramp for these — on a sequential one the two ends
+   * are the same heading painted the opposite colour, so a current nudging
+   * across north reads as the largest change on the map.
+   */
+  circular: boolean;
   display_min: number;
   display_max: number;
   change_scale: number;

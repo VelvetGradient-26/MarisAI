@@ -30,7 +30,6 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -39,8 +38,6 @@ from typing import Any
 import numpy as np
 import xarray as xr
 from PIL import Image
-from scipy.interpolate import RegularGridInterpolator
-from scipy.ndimage import distance_transform_edt
 
 from forecasting.grid_history import ungriddable_reason
 from forecasting.grid_predictor import (
@@ -51,12 +48,15 @@ from forecasting.grid_predictor import (
 )
 from forecasting.model_store import list_trained
 from services.colormaps import (
+    CYCLIC_STOPS,
     DIVERGING_STOPS,
     SEQUENTIAL_STOPS,
     SST_COLORMAP_STOPS,
     ColorStop,
     build_colormap,
 )
+from services.download.registry import VARIABLE_REGISTRY
+from services.field_sampling import Sampler, angular_difference, build_sampler
 
 logger = logging.getLogger(__name__)
 
@@ -197,9 +197,22 @@ def catalog(root: Path | None = None) -> list[dict[str, Any]]:
                 "trained_at": attrs.get("trained_at"),
                 "model": attrs.get("model"),
                 "sources": str(attrs.get("sources", "")).split("; ") if attrs.get("sources") else [],
-                "display_min": float(attrs.get("display_min", 0.0)),
-                "display_max": float(attrs.get("display_max", 1.0)),
-                "change_scale": float(attrs.get("change_scale", 1.0)),
+                # A bearing's scale comes from geometry, not from the grid's own
+                # percentiles, and the renderer already ignores the stored
+                # values for one. Reporting the geometric bounds here is what
+                # keeps the frontend legend showing the same thing the tiles
+                # were painted with — including on grids built before circular
+                # variables were handled, whose stored `display_max` is 400.
+                "circular": is_circular(variable),
+                "display_min": 0.0 if is_circular(variable) else float(attrs.get("display_min", 0.0)),
+                "display_max": (
+                    360.0 if is_circular(variable) else float(attrs.get("display_max", 1.0))
+                ),
+                "change_scale": (
+                    _CIRCULAR_CHANGE_SCALE
+                    if is_circular(variable)
+                    else float(attrs.get("change_scale", 1.0))
+                ),
                 "skill_scores": attrs.get("skill_scores"),
                 "cells_scored": int(attrs.get("cells_scored", 0)),
                 # Named, never omitted. These covariates were in the model at
@@ -217,6 +230,25 @@ def catalog(root: Path | None = None) -> list[dict[str, Any]]:
 # --------------------------------------------------------------------------
 
 
+def is_circular(variable: str) -> bool:
+    """Whether this variable is a compass bearing rather than a magnitude.
+
+    Read from the download registry, which is the one place that fact is
+    recorded — every consumer of a direction field needs it, and a second list
+    here would drift the first time a fourth direction variable is added.
+    """
+    info = VARIABLE_REGISTRY.get(variable)
+    return bool(info and info.circular)
+
+
+# A veer of half a turn is the largest one there is, so the change ramp for a
+# direction spans the whole of it. Unlike the per-variable `change_scale` in the
+# grid file, this is not fitted to observed spread: the domain is fixed by
+# geometry, and a ramp whose ends were percentiles could paint two genuinely
+# opposite headings the same colour.
+_CIRCULAR_CHANGE_SCALE = 180.0
+
+
 @lru_cache(maxsize=64)
 def _rescaled(stops_key: str, low: float, high: float) -> Any:
     """A colormap whose control points sit in the data's own units.
@@ -230,7 +262,11 @@ def _rescaled(stops_key: str, low: float, high: float) -> Any:
     handing it a normalised 0-1 array paints the entire ocean the colour of
     -2 degC.
     """
-    source = {"sequential": SEQUENTIAL_STOPS, "diverging": DIVERGING_STOPS}[stops_key]
+    source = {
+        "sequential": SEQUENTIAL_STOPS,
+        "diverging": DIVERGING_STOPS,
+        "cyclic": CYCLIC_STOPS,
+    }[stops_key]
     lowest = source[0][0]
     span = source[-1][0] - lowest
     return build_colormap(
@@ -249,14 +285,30 @@ def _field(grid: xr.Dataset, horizon: int, mode: str) -> tuple[xr.DataArray, Any
             f"horizon {horizon} is not in this grid (has: {', '.join(map(str, horizons))})"
         )
 
+    variable_key = str(grid.attrs.get("variable", ""))
+    circular = is_circular(variable_key)
     forecast = grid["forecast"].sel(horizon=horizon)
 
     if mode == MODE_CHANGE:
+        if circular:
+            # A signed veer wrapped to (-180, 180], not a subtraction. Plain
+            # arithmetic reads a 5-degree veer across north as -355, which on a
+            # ramp reaching +/-180 clamps hard to the cold end — a small
+            # clockwise turn painted as the largest possible anticlockwise one.
+            change = xr.apply_ufunc(angular_difference, forecast, grid["anchor"])
+            return change, _rescaled("diverging", -_CIRCULAR_CHANGE_SCALE, _CIRCULAR_CHANGE_SCALE)
+
         # Symmetric by construction, so zero lands on the ramp's neutral centre.
         scale = abs(float(grid.attrs.get("change_scale", 1.0))) or 1.0
         return forecast - grid["anchor"], _rescaled("diverging", -scale, scale)
 
-    matched = _MATCHED_STOPS.get(str(grid.attrs.get("variable", "")))
+    if circular:
+        # A cyclic ramp, on the variable's true domain rather than the grid's
+        # observed percentiles: 0 and 360 are the same heading and must be the
+        # same colour, which a scale fitted to the data cannot guarantee.
+        return forecast, _rescaled("cyclic", 0.0, 360.0)
+
+    matched = _MATCHED_STOPS.get(variable_key)
     if matched is not None:
         return forecast, build_colormap(matched)
 
@@ -291,6 +343,17 @@ def point(
     observed = float(anchor)
     finite = np.isfinite(value)
 
+    # The same wrap the change layer uses, so the number in the panel and the
+    # colour under the cursor agree about which way the current turned.
+    change: float | None = None
+    if finite and np.isfinite(observed):
+        difference = (
+            float(angular_difference(value, observed))
+            if is_circular(variable)
+            else value - observed
+        )
+        change = round(difference, 3)
+
     return {
         "variable": variable,
         "label": grid.attrs.get("label", variable),
@@ -298,7 +361,7 @@ def point(
         "horizon_days": horizon,
         "forecast": round(value, 3) if finite else None,
         "last_observed": round(observed, 3) if np.isfinite(observed) else None,
-        "change": round(value - observed, 3) if finite and np.isfinite(observed) else None,
+        "change": change,
         "observation_date": grid.attrs.get("observation_date"),
         "generated_at": grid.attrs.get("generated_at"),
         "resolution_deg": float(grid.attrs.get("resolution_deg", 0.0)),
@@ -321,97 +384,25 @@ def _tile_lonlat(z: int, x: int, y: int) -> tuple[np.ndarray, np.ndarray]:
     return lon, lat
 
 
-@dataclass(frozen=True)
-class _Sampler:
-    """A field prepared for smooth resampling: values and coverage separately.
-
-    The two are split because they degrade differently at a coastline. A plain
-    bilinear read of a NaN-holed array is *poisoned* by the hole — any pixel
-    whose four surrounding cells include one land cell comes back NaN — so the
-    painted ocean erodes by up to a full cell and its edge is forced onto the
-    grid's own axis-aligned steps. On a 1-degree grid that is ~110 km of
-    staircase, and it is exactly the coastal water this layer exists to show:
-    3,609 of chlorophyll's 42,499 ocean cells (8.5%) touch land and were being
-    dropped.
-
-    So coverage is carried as its own 0/1 field. `values` is nearest-filled
-    across the gaps before interpolation, which keeps the coastal cells finite;
-    `coverage` is interpolated the same way and thresholded at 0.5, which puts
-    the edge halfway between the last ocean cell centre and the first land cell
-    centre — the correct nearest-cell footprint — along the bilinear 0.5
-    contour rather than along cell boundaries. That contour cuts diagonally, so
-    the staircase becomes a chamfer, and the edge stays crisp: no feathering,
-    which over a near-black basemap would read as haze rather than as land.
-
-    Nothing is invented beyond one cell. The fill only ever reaches the first
-    ring, because bilinear weights vanish past it, and everywhere the fill goes
-    further coverage is already 0 and the pixel is transparent.
-    """
-
-    values: RegularGridInterpolator
-    coverage: RegularGridInterpolator
-
-    def __call__(self, lon: np.ndarray, lat: np.ndarray) -> np.ndarray:
-        """The field on a tile's pixel-centre axes, as (y, x), NaN off-coverage."""
-        lon_grid, lat_grid = np.meshgrid(lon, lat)
-        points = np.stack([lat_grid.ravel(), lon_grid.ravel()], axis=-1)
-        shape = (lat.size, lon.size)
-        values = self.values(points).reshape(shape)
-        covered = self.coverage(points).reshape(shape) >= 0.5
-        return np.where(covered, values, np.nan)
-
-
-def _build_sampler(field: xr.DataArray) -> _Sampler:
-    """Prepare `field` for smooth resampling. See `_Sampler`.
-
-    The longitude wrap is the same trick as `copernicus_sst._build_interpolator`
-    and fixes the same bug: this grid's last cell centre is 179.5degE, so
-    without a wrap column every pixel between there and the antimeridian falls
-    outside the source axis and renders as a no-data seam. Measured before the
-    wrap: the final pixel column of a z2 tile at the dateline was 0/256 finite
-    against 223/256 in the column beside it.
-
-    Unlike SST's, the wrap has to go on **both** ends. Copernicus's native grid
-    starts at exactly -180, so only its east side is short; these grids are
-    cell-*centred* (-179.5 to 179.5 at 1 degree), leaving half a cell hanging
-    off each edge of the map. Wrapping one end moves the seam rather than
-    closing it — which is how this was found.
-    """
-    lat = np.asarray(field["latitude"].values, dtype=np.float64)
-    lon = np.asarray(field["longitude"].values, dtype=np.float64)
-    grid = np.asarray(field.values, dtype=np.float64)
-
-    covered = np.isfinite(grid)
-    if covered.any():
-        # Nearest valid cell for every hole, in one pass. `distance_transform_edt`
-        # measures distance *into* the zero region, so it is handed the holes.
-        _, (rows, cols) = distance_transform_edt(~covered, return_indices=True)
-        filled = grid[rows, cols]
-    else:
-        filled = np.zeros_like(grid)
-
-    lon_wrapped = np.concatenate([[lon[-1] - 360.0], lon, [lon[0] + 360.0]])
-    filled = np.concatenate([filled[:, -1:], filled, filled[:, :1]], axis=1)
-    coverage = np.concatenate([covered[:, -1:], covered, covered[:, :1]], axis=1).astype(np.float64)
-
-    def interpolator(values: np.ndarray) -> RegularGridInterpolator:
-        return RegularGridInterpolator(
-            (lat, lon_wrapped), values, method="linear", bounds_error=False, fill_value=np.nan
-        )
-
-    return _Sampler(values=interpolator(filled), coverage=interpolator(coverage))
-
-
 @lru_cache(maxsize=64)
 def _samplers(
     variable: str, horizon: int, mode: str, directory: str, version: str
-) -> tuple[_Sampler, _Sampler]:
+) -> tuple[Sampler, Sampler]:
     """The field's sampler and its anchor's, built once per grid rather than per
     tile. Building them costs a nearest-fill over the whole globe, which is
     trivial once and wasteful 4,096 times."""
     grid = _load_grid(variable, directory)
     field, _colormap = _field(grid, horizon, mode)
-    return _build_sampler(field), _build_sampler(grid["anchor"])
+
+    # Only the *absolute* field of a circular variable is still an angle. In
+    # `change` mode `_field` has already differenced it into a signed veer on
+    # (-180, 180], which is an ordinary linear quantity — resampling that as an
+    # angle would fold negative veers back onto positive ones.
+    angular = is_circular(variable) and mode != MODE_CHANGE
+    return (
+        build_sampler(field, angular=angular),
+        build_sampler(grid["anchor"], angular=is_circular(variable)),
+    )
 
 
 @lru_cache(maxsize=8)

@@ -246,12 +246,30 @@ class VariableConfig(BaseModel):
     # Degrees on a circle: 359 and 1 are two degrees apart, not 358. Flagged
     # here so the feature builder can encode sin/cos and the evaluator can use
     # circular error instead of pretending the axis is linear.
-    circular: bool = False
+    #
+    # Not stated in the YAML: it is read from the registry entry `code` names,
+    # exactly as label/unit/category are, because whether a quantity is a
+    # bearing is a property of the quantity and not of one consumer's opinion
+    # about it. It was briefly declared in both places, and the two disagreeing
+    # is a class of bug worth designing out — the modelling half would encode
+    # sin/cos while the rendering half painted a linear ramp, and both would
+    # look plausible.
+    circular: bool | None = None
     # Hard physical bounds, applied to the prediction and its interval. None
     # means unbounded on that side.
     valid_min: float | None = None
     valid_max: float | None = None
     enabled: bool = True
+
+    @model_validator(mode="after")
+    def _inherit_circular(self) -> VariableConfig:
+        if self.circular is None:
+            # `code` is validated against the registry by the loader, so a
+            # missing entry here means the file was constructed by hand in a
+            # test; default to linear rather than raising a second time.
+            info = VARIABLE_REGISTRY.get(self.code)
+            object.__setattr__(self, "circular", bool(info and info.circular))
+        return self
 
     @property
     def label(self) -> str:

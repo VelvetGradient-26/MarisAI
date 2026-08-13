@@ -49,7 +49,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from forecasting import ForecastingError
+from forecasting import ForecastingError, progress
 from forecasting.config import ForecastingConfig, get_config
 from forecasting.feature_engineering import build_features
 from forecasting.grid_history import GridRequest, GridStack, fetch_stack
@@ -161,7 +161,8 @@ def _cell_features(
     unseen_columns = 0
     started = time.monotonic()
 
-    for position, (lat_index, lon_index, latitude, longitude) in enumerate(cells):
+    tracked = progress.track(cells, description=f"{variable_key} cells", total=len(cells))
+    for position, (lat_index, lon_index, latitude, longitude) in enumerate(tracked):
         try:
             frame = build_dataframe(
                 fetched=stack.slice_point(latitude, longitude),
@@ -255,7 +256,9 @@ def _cell_features(
                     f"cell {latitude:.2f},{longitude:.2f} failed: {str(exc)[:160]}"
                 )
 
-        if position and position % _LOG_EVERY == 0:
+        # Skipped while a bar is drawing: it already reports rate and ETA, and a
+        # log line every 5,000 cells lands in the middle of the bar's own line.
+        if position and position % _LOG_EVERY == 0 and not progress.enabled():
             rate = position / max(1e-9, time.monotonic() - started)
             remaining = (len(cells) - position) / max(1e-9, rate)
             logger.info(
@@ -476,17 +479,26 @@ def _score_stack(
         },
     )
 
-    display_min, display_max = _display_bounds(forecast)
-    # The change layer's scale is symmetric by construction: zero must sit at
-    # the neutral colour, or a diverging ramp reads as though the ocean were
-    # warming everywhere simply because the positive tail is longer.
-    change = forecast - anchor_grid[None, :, :]
-    finite_change = np.abs(change[np.isfinite(change)])
-    change_scale = 1.0
-    if finite_change.size:
-        magnitude = float(np.percentile(finite_change, 98.0))
-        step = _nice_step(max(magnitude, 1e-9))
-        change_scale = float(max(np.ceil(magnitude / step) * step, step))
+    if variable.circular:
+        # A bearing's display range is its domain, and its largest possible
+        # change is half a turn. Percentiles are meaningless on a circle — the
+        # 98th percentile of a field spanning 0.31 to 359.97 degrees is not a
+        # bound, it is an artefact of where zero happens to be, and it is how a
+        # `display_max` of 400 was written to the shipped grid.
+        display_min, display_max = 0.0, 360.0
+        change_scale = 180.0
+    else:
+        display_min, display_max = _display_bounds(forecast)
+        # The change layer's scale is symmetric by construction: zero must sit at
+        # the neutral colour, or a diverging ramp reads as though the ocean were
+        # warming everywhere simply because the positive tail is longer.
+        change = forecast - anchor_grid[None, :, :]
+        finite_change = np.abs(change[np.isfinite(change)])
+        change_scale = 1.0
+        if finite_change.size:
+            magnitude = float(np.percentile(finite_change, 98.0))
+            step = _nice_step(max(magnitude, 1e-9))
+            change_scale = float(max(np.ceil(magnitude / step) * step, step))
 
     first = next(iter(artifacts.values()))
     dataset.attrs.update(

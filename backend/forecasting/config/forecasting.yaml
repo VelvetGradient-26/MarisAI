@@ -181,7 +181,6 @@ variables:
   current_direction:
     code: current_direction
     covariates: [wind_speed, current_speed]
-    circular: true
     valid_min: 0.0
     valid_max: 360.0
 
@@ -212,7 +211,6 @@ variables:
   wave_direction:
     code: wave_direction
     covariates: [wind_direction, significant_wave_height]
-    circular: true
     valid_min: 0.0
     valid_max: 360.0
 
@@ -242,7 +240,6 @@ variables:
   wind_direction:
     code: wind_direction
     covariates: [wind_speed, pressure]
-    circular: true
     valid_min: 0.0
     valid_max: 360.0
 

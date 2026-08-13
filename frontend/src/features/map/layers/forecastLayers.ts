@@ -88,6 +88,24 @@ const DIVERGING_STOPS = [
   { offset: 1, color: '#67001F' },
 ];
 
+/**
+ * Matches CYCLIC_STOPS in backend/services/colormaps.py. First and last stop are
+ * the same colour on purpose — that is what makes it cyclic, and it is why a
+ * bearing cannot share the sequential ramp: there, 359° and 1° sit at opposite
+ * ends of the scale.
+ */
+const CYCLIC_STOPS = [
+  { offset: 0, color: '#f24444' },
+  { offset: 0.125, color: '#f2c744' },
+  { offset: 0.25, color: '#9bf244' },
+  { offset: 0.375, color: '#44f26f' },
+  { offset: 0.5, color: '#44f2f2' },
+  { offset: 0.625, color: '#446ff2' },
+  { offset: 0.75, color: '#9b44f2' },
+  { offset: 0.875, color: '#f244c7' },
+  { offset: 1, color: '#f24444' },
+];
+
 /** The one variable colour-matched to an existing observation layer. Mirrors
  *  `_MATCHED_COLORMAPS` in backend/services/forecast_tiles.py. */
 const MATCHED_SCALES: Record<string, { stops: typeof SST_STOPS; min: number; max: number }> = {
@@ -98,11 +116,18 @@ function legendFor(entry: ForecastGridEntry, mode: ForecastMode): LayerLegend {
   if (mode === 'change') {
     return {
       type: 'gradient',
-      unit: `${entry.unit} vs today`,
+      // A bearing's change is a signed veer wrapped to half a turn, so it stays
+      // on the diverging ramp — it is an ordinary linear quantity by this point,
+      // and only the *absolute* field is still an angle.
+      unit: entry.circular ? `${entry.unit} veer vs today` : `${entry.unit} vs today`,
       min: -entry.change_scale,
       max: entry.change_scale,
       stops: DIVERGING_STOPS,
     };
+  }
+
+  if (entry.circular) {
+    return { type: 'gradient', unit: entry.unit, min: 0, max: 360, stops: CYCLIC_STOPS };
   }
 
   const matched = MATCHED_SCALES[entry.variable];
