@@ -43,6 +43,7 @@ import asyncio
 import logging
 import sys
 import time
+from datetime import date
 from pathlib import Path
 
 # Allow `python scripts/build_forecast_grid.py` from the backend directory
@@ -51,9 +52,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from forecasting import ForecastingError, progress  # noqa: E402
 from forecasting.grid_history import ungriddable_reason  # noqa: E402
+from forecasting.grid_history import GridRequest, fetch_stack  # noqa: E402
 from forecasting.grid_predictor import (  # noqa: E402
     build_forecast_grid,
     grid_path,
+    grid_request,
     save_grid,
 )
 from forecasting.model_store import list_trained  # noqa: E402
@@ -151,6 +154,54 @@ async def _build_one(variable: str, horizons: list[int], resolution: float) -> b
     return True
 
 
+async def _warm_shared_fetches(plan: dict[str, list[int]], resolution: float) -> None:
+    """Fetch each dataset once for the whole plan, rather than once per variable.
+
+    The grid fetch cache is keyed by scope *and* fields, and serves a request
+    from any cached entry that contains the fields asked for. That superset rule
+    only helps if something wide was cached first — otherwise the first variable
+    caches `(uo, zos)`, the second asks for `(vo, zos)`, and the second misses.
+    Measured on the run that prompted this: `current_v` repeated `current_u`'s
+    whole-globe physics fetch, 35 minutes, for one different field. Across a
+    26-variable build that is most of a day of refetching the same products.
+
+    So the union is requested up front, grouped by the window each variable would
+    have asked for — the window comes from `grid_predictor.grid_request`, not
+    from a copy of its arithmetic here, because a planner whose window drifts
+    from the real one warms a cache nothing then hits and the only symptom is
+    that the build is slow.
+
+    Best-effort by construction: a failure here is logged and left to the real
+    build, which fetches what it needs and reports properly. Warming must not be
+    able to fail a run it exists only to speed up.
+    """
+    if len(plan) < 2:
+        return
+
+    groups: dict[tuple[str, str], set[str]] = {}
+    for variable in plan:
+        request = grid_request(variable, resolution)
+        window = (request.start_date.isoformat(), request.end_date.isoformat())
+        groups.setdefault(window, set()).update(request.codes)
+
+    for (start, end), codes in groups.items():
+        logger.info(
+            f"warming shared fetch for {len(codes)} code(s) over {start}..{end}: "
+            f"{', '.join(sorted(codes))}"
+        )
+        try:
+            await fetch_stack(
+                GridRequest(
+                    codes=tuple(sorted(codes)),
+                    start_date=date.fromisoformat(start),
+                    end_date=date.fromisoformat(end),
+                    resolution_deg=resolution,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - warming is an optimisation
+            logger.warning(f"could not warm shared fetch ({start}..{end}): {exc}")
+
+
 async def _main_async(args: argparse.Namespace) -> int:
     trained = list_trained()
     if not trained:
@@ -174,6 +225,21 @@ async def _main_async(args: argparse.Namespace) -> int:
     plan: dict[str, list[int]] = {}
     skipped: dict[str, str] = {}
     for variable, available_horizons in selected.items():
+        # Resume support, and the reason it exists: a full `--all` run is one
+        # shared fetch plus ~30 min of cell loop per variable, so it is measured
+        # in hours and anything that interrupts it should not cost the grids
+        # already on disk. Mirrors the scheduler's own skip-if-fresh rule rather
+        # than inventing a second definition of fresh.
+        if args.skip_fresh is not None:
+            existing = grid_path(variable)
+            if existing.exists():
+                age_hours = (time.time() - existing.stat().st_mtime) / 3600.0
+                if age_hours < args.skip_fresh:
+                    skipped[variable] = (
+                        f"grid is {age_hours:.1f}h old, inside --skip-fresh "
+                        f"{args.skip_fresh}h"
+                    )
+                    continue
         # Checked before any fetch: a variable whose *target* comes from a
         # point API can never have a global grid, and finding that out after
         # ten minutes of Copernicus reads would be a poor way to learn it.
@@ -212,6 +278,8 @@ async def _main_async(args: argparse.Namespace) -> int:
         logger.info("dry run — nothing fetched, nothing written")
         return 0
 
+    await _warm_shared_fetches(plan, args.resolution)
+
     failures = 0
     for variable, horizons in plan.items():
         if not await _build_one(variable, horizons, args.resolution):
@@ -240,6 +308,13 @@ def main() -> int:
         help="output grid spacing in degrees (default 1.0; 2.0 is ~4x faster)",
     )
     parser.add_argument("--dry-run", action="store_true", help="plan only, fetch nothing")
+    parser.add_argument(
+        "--skip-fresh",
+        type=float,
+        metavar="HOURS",
+        help="skip variables whose grid is newer than HOURS, so an interrupted "
+        "multi-variable run resumes instead of restarting",
+    )
     parser.add_argument(
         "--no-progress",
         action="store_true",

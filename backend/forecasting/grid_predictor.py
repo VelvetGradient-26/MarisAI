@@ -379,18 +379,8 @@ async def build_forecast_grid(
 
     artifacts = {horizon: load(variable_key, horizon, root) for horizon in sorted(horizons)}
 
-    features_config = config.features_for(variable_key)
-    lookback = features_config.max_lookback_days + _LOOKBACK_MARGIN_DAYS
     end = end_date or datetime.now(UTC).date()
-
-    stack = await fetch_stack(
-        GridRequest(
-            codes=fetch_codes(variable),
-            start_date=end - timedelta(days=lookback),
-            end_date=end,
-            resolution_deg=resolution_deg,
-        )
-    )
+    stack = await fetch_stack(grid_request(variable_key, resolution_deg, config, end))
 
     # Everything past the fetch is CPU-bound and contains no await — about 15
     # minutes of pandas and LightGBM at 1 degree. Run inline it would hold the
@@ -400,6 +390,33 @@ async def build_forecast_grid(
     # `ocean_state` and `copernicus_sst` thread their fetches.
     return await asyncio.to_thread(
         _score_stack, stack, variable_key, artifacts, config, resolution_deg, end
+    )
+
+
+def grid_request(
+    variable_key: str,
+    resolution_deg: float,
+    config: ForecastingConfig | None = None,
+    end_date: date | None = None,
+) -> GridRequest:
+    """Exactly what this variable's grid build will ask the network for.
+
+    Public so a planner can compute a build's fetch *before* running it — see
+    `scripts/build_forecast_grid.py`, which unions these across a multi-variable
+    plan to warm one fetch instead of one per variable. Keeping it here rather
+    than reimplementing it there is the point: a planner whose window drifts from
+    the real one warms a cache nothing then hits, and the only symptom is that
+    the build is slow.
+    """
+    config = config or get_config()
+    variable = resolve(variable_key, config)
+    lookback = config.features_for(variable_key).max_lookback_days + _LOOKBACK_MARGIN_DAYS
+    end = end_date or datetime.now(UTC).date()
+    return GridRequest(
+        codes=fetch_codes(variable),
+        start_date=end - timedelta(days=lookback),
+        end_date=end,
+        resolution_deg=resolution_deg,
     )
 
 

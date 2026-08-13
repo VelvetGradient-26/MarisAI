@@ -239,16 +239,18 @@ class GridStack:
 # --------------------------------------------------------------------------
 
 
-def _cache_key(provider_key: str, fields: list[str], request: GridRequest, stride: int) -> str:
-    """Identify a cached global field by exactly what varies its contents.
+def _scope_key(provider_key: str, request: GridRequest, stride: int) -> str:
+    """Identify a cached global field by everything *except* which fields it holds.
 
-    Two things are deliberately conditional. A time-invariant provider drops
-    the date window, because bathymetry for one week is bathymetry for any
-    other. And GEBCO drops the stride, because it does its own server-side
-    thinning (`gebco.choose_stride`) and ignores the value passed here — keying
-    on it would refetch an identical global grid once per output resolution.
+    Fields are deliberately excluded so that one entry can serve a request for a
+    subset of it — see `_cache_get`. Two other things are conditional. A
+    time-invariant provider drops the date window, because bathymetry for one
+    week is bathymetry for any other. And GEBCO drops the stride, because it does
+    its own server-side thinning (`gebco.choose_stride`) and ignores the value
+    passed here — keying on it would refetch an identical global grid once per
+    output resolution.
     """
-    payload: dict[str, object] = {"provider": provider_key, "fields": sorted(fields)}
+    payload: dict[str, object] = {"provider": provider_key}
     if catalog.get(provider_key).time_varying:
         payload["start"] = request.start_date.isoformat()
         payload["end"] = request.end_date.isoformat()
@@ -257,8 +259,18 @@ def _cache_key(provider_key: str, fields: list[str], request: GridRequest, strid
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:32]
 
 
-def _cache_get(key: str, ttl: timedelta) -> xr.Dataset | None:
-    path = CACHE_DIR / f"{key}.nc"
+def _cache_key(provider_key: str, fields: list[str], request: GridRequest, stride: int) -> str:
+    """The filename for one cached fetch: its scope, then which fields it holds.
+
+    The two halves are separate so a lookup can scan by scope and then decide on
+    fields, which a single opaque hash cannot do.
+    """
+    fields_hash = hashlib.sha256(",".join(sorted(fields)).encode()).hexdigest()[:12]
+    return f"{_scope_key(provider_key, request, stride)}-{fields_hash}"
+
+
+def _read_cached(path: Path, ttl: timedelta) -> xr.Dataset | None:
+    """One cache file, if it exists and is fresh enough."""
     if not path.exists():
         return None
     age = datetime.now(UTC) - datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
@@ -274,6 +286,50 @@ def _cache_get(key: str, ttl: timedelta) -> xr.Dataset | None:
         logger.warning(f"discarding unreadable grid cache entry {path.name}: {exc}")
         path.unlink(missing_ok=True)
         return None
+
+
+def _cache_get(
+    provider_key: str, fields: list[str], request: GridRequest, stride: int, ttl: timedelta
+) -> xr.Dataset | None:
+    """A cached fetch covering `fields` — an exact match, or a superset.
+
+    The superset half is what makes a multi-variable build affordable. Each
+    variable asks its provider for only the fields it needs, so `current_u` wants
+    `(uo, zos)` from the physics product and `current_v` wants `(vo, zos)`. Keyed
+    on the field list alone those two miss each other, and the second variable
+    repeats a whole-globe fetch that took **35 minutes** — measured, on the run
+    that prompted this. Across ~26 trained variables drawing on a handful of
+    datasets that is most of a day spent refetching the same product.
+
+    So a cached entry that *contains* the requested fields is a hit, and the
+    extra variables are dropped on the way out. Nothing is assumed about which
+    entry that might be: the candidates are the ones sharing this scope, and
+    freshest wins, so a wider cache written by `warm` is preferred over a narrow
+    one written by an earlier single-variable build.
+    """
+    scope = _scope_key(provider_key, request, stride)
+    wanted = set(fields)
+
+    exact = _read_cached(CACHE_DIR / f"{_cache_key(provider_key, fields, request, stride)}.nc", ttl)
+    if exact is not None:
+        return exact
+
+    if not CACHE_DIR.exists():
+        return None
+    candidates = sorted(
+        CACHE_DIR.glob(f"{scope}-*.nc"), key=lambda p: p.stat().st_mtime, reverse=True
+    )
+    for path in candidates:
+        dataset = _read_cached(path, ttl)
+        if dataset is None:
+            continue
+        if wanted <= set(dataset.data_vars):
+            logger.info(
+                f"grid cache hit for {provider_key} ({', '.join(sorted(wanted))}) "
+                f"from a wider cached fetch ({len(dataset.data_vars)} fields)"
+            )
+            return dataset[sorted(wanted)]
+    return None
 
 
 def _cache_put(key: str, dataset: xr.Dataset) -> None:
@@ -341,7 +397,7 @@ async def _fetch_provider(
     key = _cache_key(provider_key, fields, request, stride)
     ttl = _FIELD_TTL if spec.time_varying else _STATIC_TTL
 
-    cached = _cache_get(key, ttl)
+    cached = _cache_get(provider_key, fields, request, stride, ttl)
     if cached is not None:
         logger.info(f"grid cache hit for {provider_key} ({', '.join(fields)})")
         return cached
