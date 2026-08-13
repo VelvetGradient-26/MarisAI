@@ -73,9 +73,9 @@ export function Results() {
         headers={['Model', 'ROC-AUC', 'PR-AUC', 'TSS', 'Boyce']}
         numeric={[1, 2, 3, 4]}
         rows={[
-          ['LightGBM', <Best>0.946</Best>, <Best>0.816</Best>, <Best>0.788</Best>, '0.895'],
+          ['LightGBM', <Best>0.946</Best>, <Best>0.816</Best>, '0.788', '0.895'],
           ['Random Forest', '0.927', '0.741', '0.774', '0.927'],
-          ['Ensemble', '0.917', '0.752', '0.694', <Best>0.936</Best>],
+          ['Ensemble', '0.944', '0.803', <Best>0.792</Best>, '0.905'],
           ['MaxEnt', <Poor>0.722</Poor>, <Poor>0.365</Poor>, <Poor>0.365</Poor>, '0.884'],
         ]}
         caption="9.0% of held-out points are environmentally extrapolating (MESS < 0); median MESS 0.44."

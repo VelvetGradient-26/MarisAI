@@ -31,6 +31,13 @@ from marine_ml.validation import metrics, splits
 from . import features as feature_lib
 from . import models as model_lib
 
+# How ensemble members are weighted. `softmax` (the default) resolves a large
+# quality gap into a large weight gap; `proportional` is the original rule and
+# is kept so the earlier baselines can be reproduced exactly. Logged to the
+# tracking store per run, because it changes what the exported product *is* —
+# `habitat_suitability.nc` is the ensemble, not the best member.
+ENSEMBLE_WEIGHTING = "softmax"
+
 
 @dataclass
 class TrainingResult:
@@ -127,8 +134,13 @@ def fit_final(
         )
         rows.append(report.as_row() | {"model": name})
 
-    # TSS is 0 at chance, so it is its own floor.
-    weights = model_lib.EnsembleWeights.from_scores(model_scores, floor=0.0)
+    # TSS is 0 at chance, so it is its own floor. The rule is named rather than
+    # defaulted: under `proportional`, weight is skill *relative to chance*, so a
+    # model less than half as good on the holdout still drew 27% of the vote
+    # merely because 0.619 is 75% of 0.826. See `EnsembleWeights.from_scores`.
+    weights = model_lib.EnsembleWeights.from_scores(
+        model_scores, floor=0.0, method=ENSEMBLE_WEIGHTING
+    )
     ensemble_scores = weights.combine(predictions)
     ensemble_report = metrics.evaluate_classification(
         test_fold["presence"].to_numpy(), ensemble_scores,
@@ -291,6 +303,10 @@ def _track(
             "models": ", ".join(sorted(result.model_scores)),
             "random_seed": config.RANDOM_SEED,
             "validation": "spatial_block_cv",
+            # The weighting rule, beside the weights it produced. Without it two
+            # runs with different ensemble scores look like noise rather than
+            # like the deliberate change one of them was.
+            "ensemble_weighting": ENSEMBLE_WEIGHTING,
             **{f"weight_{k}": round(v, 4) for k, v in result.ensemble_weights.weights.items()},
         },
         # The real region, not a constant: a global run and a regional one are

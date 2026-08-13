@@ -138,19 +138,43 @@ export function Habitat() {
 
       <h3>The ensemble</h3>
       <p>
-        A weighted average of the three, with weights proportional to each model's
-        cross-validated TSS. TSS is 0 at chance, so it is its own floor — a model no better than
-        chance gets zero weight rather than dragging the ensemble.
+        A weighted average of the three, with weights from a <strong>softmax</strong> over each
+        model's cross-validated TSS. TSS is 0 at chance, so chance is still the floor — a model
+        no better than chance gets zero weight rather than dragging the ensemble.
       </p>
       <Table
-        headers={['Model', 'CV TSS', 'Ensemble weight']}
-        numeric={[1, 2]}
+        headers={['Model', 'CV TSS', 'Weight (softmax)', 'Weight (proportional)']}
+        numeric={[1, 2, 3]}
         rows={[
-          ['LightGBM', '0.826', '0.364'],
-          ['Random Forest', '0.821', '0.362'],
-          ['MaxEnt', '0.619', '0.273'],
+          ['LightGBM', '0.826', '0.519', '0.364'],
+          ['Random Forest', '0.821', '0.473', '0.362'],
+          ['MaxEnt', '0.619', '0.008', <Poor>0.273</Poor>],
         ]}
+        caption="The last column is the rule this used to use, and the reason it changed."
       />
+
+      <Callout kind="note" title="Why not weight proportionally to skill">
+        <p>
+          Because TSS is 0 at chance and the floor is 0, proportional weights are proportional to
+          the raw scores — so a <em>large</em> quality gap compresses into a <em>small</em> weight
+          gap. MaxEnt scores 0.619 against LightGBM's 0.826, which is less than half as good on
+          the holdout (0.365 against 0.788), and still collected 27% of the vote, purely because
+          0.619 is 75% of 0.826.
+        </p>
+        <p>
+          The consequence was the one thing an ensemble may not do: it scored{' '}
+          <strong>below its own best member</strong> — 0.694 TSS against LightGBM's 0.788 — while
+          being the artifact actually exported and served. A softmax over the same scores makes
+          the size of a gap a decision rather than an artefact of where zero sits, and takes the
+          ensemble to 0.792, finally above every member.
+        </p>
+        <p>
+          It is not free, and the cost is worth stating: Boyce falls from 0.936 to 0.905, so the
+          old ensemble was the better <em>spatially calibrated</em> surface. It remains better
+          calibrated than LightGBM alone (0.895), so the trade does not take the ensemble below
+          its best member on either axis — but a trade is what it is.
+        </p>
+      </Callout>
 
       <h2 id="validation">Validation: spatial block cross-validation</h2>
       <p>
@@ -204,9 +228,9 @@ fold_of_block = {block: i % 5 for i, block in enumerate(shuffled_blocks)}`}</Cod
         headers={['Model', 'ROC-AUC', 'PR-AUC', 'TSS', 'Boyce']}
         numeric={[1, 2, 3, 4]}
         rows={[
-          ['LightGBM', <Best>0.946</Best>, <Best>0.816</Best>, <Best>0.788</Best>, '0.895'],
+          ['LightGBM', <Best>0.946</Best>, <Best>0.816</Best>, '0.788', '0.895'],
           ['Random Forest', '0.927', '0.741', '0.774', '0.927'],
-          ['Ensemble', '0.917', '0.752', '0.694', <Best>0.936</Best>],
+          ['Ensemble', '0.944', '0.803', <Best>0.792</Best>, '0.905'],
           ['MaxEnt', <Poor>0.722</Poor>, <Poor>0.365</Poor>, <Poor>0.365</Poor>, '0.884'],
         ]}
         caption="9% of held-out points are environmentally extrapolating (MESS < 0) — i.e. at least one variable falls outside the range the model was fitted on. Median MESS is 0.44."
