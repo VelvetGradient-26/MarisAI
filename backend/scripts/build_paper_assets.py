@@ -140,10 +140,21 @@ def figure_skill_by_horizon(main: pd.DataFrame) -> None:
     for index in range(len(variables), rows * columns):
         axes[index // columns][index % columns].axis("off")
 
+    # The label and tick labels belong on the bottom-most *populated* panel of
+    # each column, which is not the bottom row when the grid is ragged. With
+    # `sharex` on, matplotlib hides tick labels everywhere but the final row,
+    # so a 13-panel grid four columns wide left three columns with no readable
+    # x axis at all.
     for column in range(columns):
-        axes[rows - 1][column].set_xlabel("horizon (days)")
+        occupied = [r for r in range(rows) if r * columns + column < len(variables)]
+        if not occupied:
+            continue
+        axis = axes[occupied[-1]][column]
+        axis.set_xlabel("horizon (days)")
+        axis.tick_params(labelbottom=True)
     for row in range(rows):
-        axes[row][0].set_ylabel("skill score")
+        if row * columns < len(variables):
+            axes[row][0].set_ylabel("skill score")
 
     handles = [
         plt.Line2D([], [], color=PERSISTENCE, marker="o", markersize=3.5,
@@ -287,17 +298,42 @@ def figure_site_map(loso: pd.DataFrame) -> None:
     # silently clamped.
     bound = float(np.nanpercentile(np.abs(by_site["skill"]), 90)) or 1.0
     bound = max(bound, 0.05)
+    # `RdBu`, not `RdBu_r`: this ramp runs red at the low end and blue at the
+    # high end, so positive skill (the model transfers) is blue and negative
+    # (persistence wins) is red. The reversed variant paints it the other way
+    # round, which contradicts the caption and reads as the opposite result.
     scatter = axis.scatter(
         by_site["longitude"], by_site["latitude"], c=by_site["skill"],
-        cmap="RdBu_r", vmin=-bound, vmax=bound, s=70, edgecolor="white",
+        cmap="RdBu", vmin=-bound, vmax=bound, s=70, edgecolor="white",
         linewidth=0.8, zorder=3,
     )
-    for _, row in by_site.iterrows():
-        axis.annotate(
-            pretty(row["site"]), (row["longitude"], row["latitude"]),
-            textcoords="offset points", xytext=(0, 7), ha="center",
-            fontsize=5.2, color=INK,
+
+    # Stagger labels within a cluster. Eight of the sites sit inside the North
+    # Indian Ocean within ~20 degrees of each other, and at a fixed offset
+    # their labels overprint into an unreadable block.
+    offsets = [8, -14, 18, -24, 28, -34, 38, -44]
+    placed: list[tuple[float, float]] = []
+    ordered = by_site.sort_values(["longitude", "latitude"])
+    for _, row in ordered.iterrows():
+        longitude, latitude = float(row["longitude"]), float(row["latitude"])
+        crowd = sum(
+            1
+            for (x, y) in placed
+            if abs(x - longitude) < 28 and abs(y - latitude) < 18
         )
+        dy = offsets[crowd % len(offsets)]
+        axis.annotate(
+            pretty(row["site"]), (longitude, latitude),
+            textcoords="offset points", xytext=(0, dy), ha="center",
+            fontsize=5.0, color=INK,
+            arrowprops=(
+                {"arrowstyle": "-", "linewidth": 0.4, "color": MUTED,
+                 "shrinkA": 0, "shrinkB": 3}
+                if crowd
+                else None
+            ),
+        )
+        placed.append((longitude, latitude))
     axis.set_xlim(-180, 180)
     axis.set_ylim(-70, 75)
     axis.set_xticks(range(-180, 181, 60))
@@ -487,6 +523,19 @@ def macros(main: pd.DataFrame, loso: pd.DataFrame, meta: dict) -> None:
     loso7 = loso[loso["horizon"] == 7]
     pooled7 = main[main["horizon"] == 7]
 
+    # How many variables' climatology skill is *lower* at the longest horizon
+    # than at the shortest. This is the claim the paper actually makes, so it
+    # is counted rather than asserted.
+    falling = 0
+    for variable in main["variable"].unique():
+        subset = main[main["variable"] == variable].sort_values("horizon")
+        skills = subset["skill_c"].to_numpy(dtype="float64")
+        if len(skills) >= 2 and skills[-1] < skills[0]:
+            falling += 1
+
+    def at(horizon: int, column: str) -> str:
+        return _number(float(main[main["horizon"] == horizon][column].median()))
+
     values = {
         "NVars": str(main["variable"].nunique()),
         "NSites": str(int(main["sites"].max())),
@@ -495,10 +544,19 @@ def macros(main: pd.DataFrame, loso: pd.DataFrame, meta: dict) -> None:
         "AsOf": meta.get("as_of", ""),
         "ClimWindow": str(meta.get("climatology_window_days", 15)),
         "NRising": str(rising),
+        "NFallingClim": str(falling),
         "MedSkillPOne": _number(float(at1["skill_p"].median())),
+        "MedSkillPThree": at(3, "skill_p"),
+        "MedSkillPSeven": at(7, "skill_p"),
         "MedSkillPThirty": _number(float(at30["skill_p"].median())),
         "MedSkillCOne": _number(float(at1["skill_c"].median())),
+        "MedSkillCThree": at(3, "skill_c"),
+        "MedSkillCSeven": at(7, "skill_c"),
         "MedSkillCThirty": _number(float(at30["skill_c"].median())),
+        # Sign counts at the longest horizon, where the two baselines disagree
+        # most sharply.
+        "NLoseClimThirty": str(int((at30["skill_c"] < 0).sum())),
+        "NLosePersThirty": str(int((at30["skill_p"] < 0).sum())),
         "NLoseToClim": str(int((main["skill_c"] < 0).sum())),
         "NLoseToPers": str(int((main["skill_p"] < 0).sum())),
         "MedPooledSeven": _number(float(pooled7["skill_p"].median())),

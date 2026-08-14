@@ -55,18 +55,23 @@ Statistical forecasts of ocean state are conventionally scored against
 \emph{persistence}, the last observed value. We show this single baseline is
 not merely incomplete but actively misleading, because it fails in a direction
 that flatters the model. Persistence decays with forecast horizon while a
-seasonal cycle does not, so a model that has learned nothing but the time of
-year exhibits skill against persistence that \emph{increases} with horizon ---
-the signature normally read as evidence of a strong model. We audit \NVars{}
-operational ocean variables across \NSites{} globally distributed sites and
-four horizons (\SIrange{1}{30}{\day}), using one gradient-boosted framework
-with no variable-specific code, and score every model against both persistence
-and a leakage-controlled day-of-year climatology. Median skill against
-persistence rises from \MedSkillPOne{} at \SI{1}{\day} to \MedSkillPThirty{} at
-\SI{30}{\day}; over the same range median skill against climatology falls from
-\MedSkillCOne{} to \MedSkillCThirty{}. The two baselines therefore support
-opposite conclusions about the same models, and \NLoseToClim{} model--horizon
-combinations beat persistence while losing to climatology outright. We further
+seasonal cycle does not, so the persistence-referenced score of a model that
+has learned nothing but the time of year stays flat, or rises, while the model
+genuinely degrades. We audit \NVars{} operational ocean variables across
+\NSites{} globally distributed sites and four horizons
+(\SIrange{1}{30}{\day}), using one gradient-boosted framework with no
+variable-specific code, and score every model against both persistence and a
+leakage-controlled day-of-year climatology. Median skill against persistence is
+\MedSkillPOne{} at \SI{1}{\day} and \MedSkillPThirty{} at \SI{30}{\day}
+--- essentially unchanged, which reads as a horizon-invariant forecaster. Over
+the same range median skill against climatology falls monotonically from
+\MedSkillCOne{} to \MedSkillCThirty{}, declining with horizon for
+\NFallingClim{} of \NVars{} variables without exception; by \SI{30}{\day}
+\NLoseClimThirty{} of \NVars{} variables lose to the seasonal cycle outright,
+against \NLosePersThirty{} that lose to persistence. The two baselines
+therefore support opposite conclusions about the same predictions, and
+\NLoseToClim{} model--horizon combinations beat persistence while losing to
+climatology. We further
 test whether these globally pooled models transfer to locations they never saw,
 using leave-one-site-out validation blocked in space and time simultaneously
 (\NLosoFits{} held-out fits). Transfer is real but costly: median held-out

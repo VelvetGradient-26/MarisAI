@@ -25,21 +25,22 @@ The argument is structural. Persistence error grows with the forecast horizon,
 because the ocean decorrelates from its present state. The error of a
 \emph{seasonal climatology} does not: knowing that it is February is exactly as
 informative thirty days ahead as it is one day ahead. A skill score computed
-against persistence therefore has a denominator that inflates with horizon
-while the numerator of a purely seasonal model does not. The consequence is
-that a model which has learned nothing beyond the annual cycle will display
-skill against persistence that \emph{increases} with horizon --- precisely the
-pattern a reader interprets as a model with genuine long-range predictive
-content.
+against persistence therefore has a denominator that inflates with horizon,
+which buoys the score of a model whose own error is growing. A model that has
+learned nothing beyond the annual cycle can hold its skill against persistence
+flat, or even increase it, while genuinely degrading --- and flat or rising
+skill with lead time is precisely what a reader interprets as long-range
+predictive content.
 
 We encountered this pattern empirically. In a framework trained across
 \NVars{} ocean variables, skill against persistence rose with horizon for
-\NRising{} of them. Whether that reflected real forecast skill or a seasonal
-artefact was, with persistence as the only baseline, unanswerable. This paper
-resolves it by adding the baseline that discriminates, and finds that both
-readings are present in the same set of models --- including
-\NLoseToClim{} model--horizon combinations that beat persistence while losing
-to climatology outright.
+\NRising{} of them and, in the median, was no lower at thirty days than at one.
+Whether that reflected real long-range skill or a seasonal artefact was, with
+persistence as the only baseline, unanswerable. This paper resolves it by
+adding the baseline that discriminates, and the answer is largely the second:
+skill against climatology falls with horizon for \NFallingClim{} of \NVars{}
+variables, and \NLoseToClim{} model--horizon combinations beat persistence
+while losing to climatology outright.
 
 \subsection{Contributions}
 
@@ -274,29 +275,38 @@ against persistence and skill against climatology as a function of horizon.
 \centering
 \includegraphics[width=\linewidth]{fig_skill_by_horizon.pdf}
 \caption{Skill against two baselines, by forecast horizon, for each of the
-\NVars{} variables. Skill against persistence (blue circles) and against
-climatology (orange squares) move in \emph{opposite} directions with horizon
-for most variables. The dashed line is parity; points below it mean the
-baseline wins. A reader given only the blue curve would conclude these models
-improve with lead time.}
+\NVars{} variables. The climatology curve (orange squares) falls in every
+panel, without exception; the persistence curve (blue circles) is flat or
+rising in most. The dashed line is parity; points below it mean the baseline
+wins. A reader given only the blue curve would conclude these models hold their
+skill out to a month.}
 \label{fig:skill}
 \end{wfigure}
 
-The two curves systematically diverge. Median skill against persistence rises
-from \MedSkillPOne{} at \SI{1}{\day} to \MedSkillPThirty{} at \SI{30}{\day},
-while median skill against climatology falls from \MedSkillCOne{} to
-\MedSkillCThirty{} over the same range. This is the structural prediction of
-Section~1 realised in data: persistence becomes easy to beat as the horizon
-grows because the ocean decorrelates from its present state, while climatology
-becomes \emph{harder} to beat because the seasonal cycle is an increasing share
-of what remains predictable.
+The two curves systematically diverge. Median skill against persistence is
+\MedSkillPOne{} at \SI{1}{\day} and \MedSkillPThirty{} at \SI{30}{\day} ---
+essentially unchanged, having dipped to \MedSkillPThree{} and
+\MedSkillPSeven{} in between. Over exactly the same range, median skill against
+climatology falls monotonically: \MedSkillCOne{}, \MedSkillCThree{},
+\MedSkillCSeven{}, \MedSkillCThirty{}. The fall is not a property of a few
+variables --- climatology skill is lower at \SI{30}{\day} than at \SI{1}{\day}
+for \NFallingClim{} of \NVars{} variables, without exception.
+
+This is the structural prediction of Section~1 realised in data. Persistence
+becomes easy to beat as the horizon grows, which holds the persistence-referenced
+score up even as the models' own errors grow; climatology becomes \emph{harder}
+to beat, because the seasonal cycle is an increasing share of what remains
+predictable at all.
 
 The practical consequence is that the two baselines license opposite statements
 about the same models. Reported against persistence alone, this framework
-appears to improve with lead time. Reported against climatology alone, it
-appears to degrade toward the seasonal cycle. Both are true; neither is
-complete. Per-variable skill scores are given in Table~\ref{tab:skill}, and the
-full error decomposition in the appendix table.
+appears \emph{horizon-invariant} --- as skilful at a month as at a day, which
+for a forecasting system is a remarkable claim. Reported against climatology,
+the median model has fallen \emph{below} the seasonal cycle by \SI{30}{\day}
+(\MedSkillCThirty{}), and \NLoseClimThirty{} of \NVars{} variables lose to it
+outright there, against \NLosePersThirty{} that lose to persistence. Both
+readings come from the same predictions. Per-variable scores are in
+Table~\ref{tab:skill}.
 
 \begin{wtable}[tb]
 \centering
@@ -311,20 +321,27 @@ $S_{\mathrm{c}}$ columns shows it is systematic.}
 
 \subsection{What survives the seasonal cycle}
 
-The inversion does not mean every model is purely seasonal. At \SI{30}{\day},
-skill against climatology remains positive for most variables, meaning they
-carry information the seasonal cycle does not. But \NLoseToClim{}
-model--horizon combinations have $S_{\mathrm{clim}} < 0$ while
-$S_{\mathrm{pers}} > 0$: these models beat the last observed value and lose to
-the seasonal cycle. Under the reporting convention this literature most often
-uses, they would be presented as successes.
+The divergence does not mean every model is purely seasonal. At \SI{1}{\day}
+every variable beats climatology comfortably, several by more than 0.9, and at
+\SI{30}{\day} \NLoseClimThirty{} of \NVars{} lose to it --- meaning the
+remaining six still carry information the seasonal cycle does not, even a month
+out. Water temperature is the clearest of these, holding $S_{\mathrm{clim}}$
+positive at every horizon tested.
 
-The correct reading is that long-horizon skill measured against persistence is
-substantially --- and for some variables entirely --- seasonal, and only the
-climatology comparison separates the two components. Variables whose
-$S_{\mathrm{clim}}$ approaches or crosses zero at long range are those for
-which the model has effectively reduced to a seasonal lookup, and for which a
-climatology would be the rational operational choice.
+The consequential cases are the \NLoseToClim{} model--horizon combinations with
+$S_{\mathrm{clim}} < 0$ while $S_{\mathrm{pers}} > 0$. These models beat the
+last observed value and lose to the seasonal cycle. Under the reporting
+convention this literature most often uses, every one of them would be
+presented as a success --- and for each, the correct operational decision is to
+ship the climatology instead, which is cheaper to compute, cheaper to serve,
+and more accurate.
+
+The general reading is that long-horizon skill measured against persistence is
+substantially, and for some variables entirely, seasonal; only the climatology
+comparison separates the components. The horizon at which $S_{\mathrm{clim}}$
+crosses zero is a per-variable property worth reporting in its own right: it is
+the lead time beyond which the model stops being a forecast and becomes a
+seasonal lookup.
 
 \subsection{Where the framework fails}
 
@@ -506,9 +523,11 @@ Skill against persistence and skill against climatology are not interchangeable
 summaries of the same quantity, and the difference between them is not noise:
 it is a systematic function of forecast horizon that can invert the qualitative
 conclusion. Across \NVars{} ocean variables, \NSites{} sites and four horizons,
-median skill against persistence rises with lead time while median skill
-against climatology falls, and \NLoseToClim{} model--horizon combinations beat
-persistence while losing to the seasonal cycle outright.
+median skill against persistence is no lower at a month than at a day, while
+median skill against climatology falls monotonically to \MedSkillCThirty{} ---
+declining with horizon for \NFallingClim{} of \NVars{} variables without
+exception. \NLoseToClim{} model--horizon combinations beat persistence while
+losing to the seasonal cycle outright.
 
 We also find that globally pooled models do transfer to sites they never saw,
 with \LosoPositiveShare{}\% of held-out sites retaining positive skill at

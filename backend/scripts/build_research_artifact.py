@@ -69,9 +69,9 @@ def pretty(name: str) -> str:
 def hero_chart(main: pd.DataFrame) -> str:
     """An inline SVG of the paper's whole argument in one shape.
 
-    Two lines, one rising and one falling, drawn from the per-horizon medians.
-    Hand-built rather than exported from matplotlib so it inherits the page's
-    theme tokens and stays crisp at any width.
+    One line roughly flat and one falling through zero, drawn from the
+    per-horizon medians. Hand-built rather than exported from matplotlib so it
+    inherits the page's theme tokens and stays crisp at any width.
     """
     medians = (
         main.groupby("horizon")[["skill_p", "skill_c"]].median().reindex(HORIZONS)
@@ -148,9 +148,10 @@ def hero_chart(main: pd.DataFrame) -> str:
 
     return (
         f'<svg viewBox="0 0 {width} {height}" role="img" '
-        f'aria-label="Median skill against persistence rises with forecast '
-        f'horizon while median skill against climatology falls; the two lines '
-        f'cross." class="hero-svg">' + "".join(parts) + "</svg>"
+        f'aria-label="Median skill against persistence stays roughly flat '
+        f'across forecast horizons from one to thirty days, while median skill '
+        f'against climatology falls steadily and crosses below zero by thirty '
+        f'days." class="hero-svg">' + "".join(parts) + "</svg>"
     )
 
 
@@ -221,6 +222,20 @@ def build() -> None:
         "lose_pers": int((main["skill_p"] < 0).sum()),
         "lose_clim": int((main["skill_c"] < 0).sum()),
         "flattered": int(((main["skill_p"] > 0) & (main["skill_c"] < 0)).sum()),
+        "sp3": float(main[main["horizon"] == 3]["skill_p"].median()),
+        "sp7": float(main[main["horizon"] == 7]["skill_p"].median()),
+        "sc3": float(main[main["horizon"] == 3]["skill_c"].median()),
+        "sc7": float(main[main["horizon"] == 7]["skill_c"].median()),
+        "clim_neg_30": int((at30["skill_c"] < 0).sum()),
+        "pers_neg_30": int((at30["skill_p"] < 0).sum()),
+        "falling": sum(
+            1
+            for v in main["variable"].unique()
+            if (s := main[main["variable"] == v].sort_values("horizon")["skill_c"].to_numpy())
+            is not None
+            and len(s) >= 2
+            and s[-1] < s[0]
+        ),
         "pooled7": float(pooled7["skill_p"].median()),
         "loso7": float(loso7["skill_score"].median()),
         "loso_pos": float((loso7["skill_score"] > 0).mean()) * 100.0,
@@ -488,9 +503,9 @@ TEMPLATE = """<title>Rising Skill, Falling Skill</title>
   <div class="plate">{hero}</div>
   <figcaption>Median skill across {n_vars} ocean variables, against two
   baselines. Persistence decays with lead time; a seasonal cycle does not. So
-  the same models look like they improve with horizon and like they decay
-  toward a seasonal lookup &mdash; depending only on which baseline is
-  reported.</figcaption>
+  the same predictions look horizon-invariant against one baseline and look
+  like they decay past a seasonal lookup against the other &mdash; depending
+  only on which is reported.</figcaption>
 </figure>
 
 <p class="byline">Deepak Krishna &middot; MarisAI &middot; snapshot {as_of}</p>
@@ -506,12 +521,13 @@ than statistical.</p>
 ocean decorrelates from its present state. The error of a seasonal climatology
 does not: knowing that it is February is exactly as informative thirty days
 ahead as it is one day ahead. A skill score against persistence therefore has a
-denominator that inflates with horizon while a purely seasonal model's numerator
-stays put.</p>
+denominator that inflates with horizon &mdash; which holds the score up even as
+the model's own error grows.</p>
 
-<blockquote>A model that has learned nothing but the time of year will show
-skill against persistence that <em>increases</em> with horizon &mdash; the
-signature normally read as a strong long-range forecaster.</blockquote>
+<blockquote>A model that has learned nothing but the time of year can hold its
+skill against persistence flat, or increase it, while genuinely degrading. Flat
+skill with lead time is what a reader takes for long-range predictive
+content.</blockquote>
 
 <p>We hit this pattern in a working forecasting engine and could not tell,
 with persistence as the only baseline, whether it was real skill or a seasonal
@@ -520,9 +536,9 @@ artefact. This work adds the baseline that discriminates, and audits
 
 <div class="facts">
   <div class="fact p"><span class="v">{sp1:.3f} &rarr; {sp30:.3f}</span>
-    <span class="k">median skill vs. persistence, 1 d &rarr; 30 d (rises)</span></div>
+    <span class="k">median skill vs. persistence, 1 d &rarr; 30 d &mdash; unchanged</span></div>
   <div class="fact c"><span class="v">{sc1:.3f} &rarr; {sc30:.3f}</span>
-    <span class="k">median skill vs. climatology, 1 d &rarr; 30 d (falls)</span></div>
+    <span class="k">median skill vs. climatology, 1 d &rarr; 30 d &mdash; collapses</span></div>
   <div class="fact"><span class="v">{flattered}</span>
     <span class="k">models that beat persistence but lose to climatology</span></div>
   <div class="fact"><span class="v">{lose_pers}</span>
@@ -579,16 +595,25 @@ that favours the model.</div>
 
 <h2>Results</h2>
 
-<p>Median skill against persistence rises from <strong>{sp1:.3f}</strong> at
-one day to <strong>{sp30:.3f}</strong> at thirty. Over the same range, median
-skill against climatology falls from <strong>{sc1:.3f}</strong> to
-<strong>{sc30:.3f}</strong>. The two baselines license opposite statements
-about the same models.</p>
+<p>Median skill against persistence is <strong>{sp1:.3f}</strong> at one day
+and <strong>{sp30:.3f}</strong> at thirty &mdash; essentially unchanged, having
+dipped to {sp3:.3f} and {sp7:.3f} in between. Read alone, that says the models
+are as good at a month as at a day, which for a forecasting system would be
+remarkable.</p>
+
+<p>Over exactly the same range, median skill against climatology falls
+monotonically: <strong>{sc1:.3f}</strong>, {sc3:.3f}, {sc7:.3f},
+<strong>{sc30:.3f}</strong>. It declines with horizon for
+<strong>{falling} of {n_vars}</strong> variables without exception. By thirty
+days the median model has fallen <em>below</em> the seasonal cycle, and
+<strong>{clim_neg_30} of {n_vars}</strong> variables lose to it outright &mdash;
+against {pers_neg_30} that lose to persistence.</p>
 
 <p>The sharpest cases are the <strong>{flattered}</strong> model&ndash;horizon
-combinations that beat persistence while losing to climatology outright. Under
-a single-baseline convention every one of them would be reported as a
-success.</p>
+combinations that beat persistence while losing to climatology. Under a
+single-baseline convention every one of them reads as a success, when the
+correct call is to ship the climatology instead: cheaper to compute, cheaper to
+serve, and more accurate.</p>
 
 <figure class="bleed">
   <div class="plate">{table}</div>

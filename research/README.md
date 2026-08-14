@@ -5,10 +5,23 @@ on why persistence alone is an insufficient baseline for statistical ocean
 forecasting.
 
 **Claim.** Persistence error grows with forecast horizon; a seasonal cycle's
-does not. So a model that has learned nothing but the time of year shows skill
-against persistence that *increases* with horizon — the signature normally read
-as a strong long-range forecaster. Reporting persistence alone therefore fails
-in the direction that flatters the model.
+does not. So the persistence-referenced score of a model that has learned
+nothing but the time of year stays flat, or rises, while the model genuinely
+degrades. Reporting persistence alone therefore fails in the direction that
+flatters the model.
+
+**What the audit found** (13 variables × 4 horizons × 24 sites):
+
+| median skill | h=1 | h=3 | h=7 | h=30 |
+| --- | --- | --- | --- | --- |
+| vs. persistence | +0.272 | +0.154 | +0.151 | **+0.273** |
+| vs. climatology | +0.958 | +0.729 | +0.410 | **−0.023** |
+
+Persistence says the models are as good at a month as at a day. Climatology
+says the median model has fallen *below the seasonal cycle* by then — and
+climatology skill declines with horizon for **13 of 13** variables, without
+exception. Eleven model–horizon combinations beat persistence while losing to
+climatology; under a persistence-only convention every one reads as a success.
 
 ## Layout
 
