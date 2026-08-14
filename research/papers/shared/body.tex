@@ -46,18 +46,23 @@ while losing to climatology outright.
 
 \begin{enumerate}\itemsep2pt
 \item A \textbf{two-baseline skill audit} over \NVars{} operational ocean
-variables $\times$ 4 horizons $\times$ \NSites{} global sites (\NModels{}
-models), scoring every model against both persistence and a
+variables $\times$ 4 horizons $\times$ \NSites{} regime-stratified sites
+(\NModels{} models), scoring every model against both persistence and a
 leakage-controlled day-of-year climatology. The two baselines order the same
 models differently, and the disagreement is a systematic function of horizon
 rather than noise.
-\item A \textbf{diagnosis of the horizon--skill inversion}, separating genuine
-long-range skill from a seasonal artefact, and identifying the variables for
-which a climatology --- cheaper to compute and to serve --- is the rational
-operational choice.
+\item A \textbf{feature ablation that separates the two questions} the
+comparison is easily confused between. Losing to climatology does \emph{not}
+imply seasonal skill: of the \NFlattered{} models that beat persistence and
+lose to climatology, \NFlatteredNonSeasonal{} retain their skill with every
+calendar feature removed, while the most seasonally dependent variable in the
+set comfortably \emph{beats} climatology. Diagnosing mechanism needs an
+ablation; the baseline comparison answers a different question.
 \item \textbf{Leave-one-site-out spatial validation} blocked in space and time
 simultaneously (\NLosoFits{} held-out fits), testing the assumption that
-licenses serving a globally pooled model at arbitrary coordinates.
+licenses serving a pooled model at coordinates it was not fitted on --- and
+finding that transfer is partial, with the median skill falling roughly
+threefold.
 \item \textbf{Negative results reported in full}, including \NLoseToPers{}
 model--horizon combinations that lose to persistence outright. These identify
 a class of high-inertia variables for which the approach is contraindicated.
@@ -171,12 +176,20 @@ decoded by adding the model output to the anchor $y(t)$. For circular
 variables (wave direction) the target is the signed angular change wrapped to
 $(-180\degree, 180\degree]$ and decoding is modulo $360\degree$.
 
-\para{Globally pooled models}
+\para{Pooled models, and what ``pooled'' does and does not mean}
 One model per (variable, horizon) is fitted across all \NSites{} sites jointly,
 with site coordinates and depth as features, rather than one model per site.
-This is what allows the framework to score arbitrary coordinates rather than
-only the sites it was fitted on --- and it is the assumption
-Section~\ref{sec:loso} tests directly.
+We call this \emph{pooled} rather than \emph{global}, and the distinction is
+worth stating explicitly because the two are easy to conflate.
+
+Pooling is a modelling choice: it lets one model be evaluated at a coordinate
+it was not fitted on, which is what makes the spatial question in
+Section~\ref{sec:loso} askable at all. It is \emph{not} a claim of global
+coverage. \NSites{} sites do not sample the world ocean; they were selected to
+span distinct dynamical regimes (Section~4.1), which makes them a
+regime-stratified sample rather than a representative one. Any statement here
+about behaviour at unseen coordinates is therefore evidence about \emph{these}
+regimes, and Section~\ref{sec:loso} reports how far even that extends.
 
 \subsection{Baselines}
 
@@ -321,13 +334,6 @@ $S_{\mathrm{c}}$ columns shows it is systematic.}
 
 \subsection{What survives the seasonal cycle}
 
-The divergence does not mean every model is purely seasonal. At \SI{1}{\day}
-every variable beats climatology comfortably, several by more than 0.9, and at
-\SI{30}{\day} \NLoseClimThirty{} of \NVars{} lose to it --- meaning the
-remaining six still carry information the seasonal cycle does not, even a month
-out. Water temperature is the clearest of these, holding $S_{\mathrm{clim}}$
-positive at every horizon tested.
-
 The consequential cases are the \NLoseToClim{} model--horizon combinations with
 $S_{\mathrm{clim}} < 0$ while $S_{\mathrm{pers}} > 0$. These models beat the
 last observed value and lose to the seasonal cycle. Under the reporting
@@ -336,12 +342,96 @@ presented as a success --- and for each, the correct operational decision is to
 ship the climatology instead, which is cheaper to compute, cheaper to serve,
 and more accurate.
 
-The general reading is that long-horizon skill measured against persistence is
-substantially, and for some variables entirely, seasonal; only the climatology
-comparison separates the components. The horizon at which $S_{\mathrm{clim}}$
-crosses zero is a per-variable property worth reporting in its own right: it is
-the lead time beyond which the model stops being a forecast and becomes a
-seasonal lookup.
+It is tempting to conclude from this that the models' long-horizon skill
+\emph{is} seasonal --- that they have learned little beyond the time of year.
+That inference does not follow, and Section~\ref{sec:ablation} shows it is
+mostly wrong.
+
+\subsection{Is the long-horizon skill seasonal? A feature ablation}
+\label{sec:ablation}
+
+Losing to climatology shows a model is \emph{no better than} the seasonal
+cycle. It does not show the model's skill \emph{comes from} the seasonal cycle.
+Those are different claims, and only the second is an explanation. We test it
+directly with three arms over the same \NAblationPairs{} variable--horizon
+pairs, sharing identical rows, folds and hyperparameters, differing only in the
+feature set:
+
+\begin{itemize}\itemsep2pt
+\item \textbf{full} --- every feature the shipped model uses.
+\item \textbf{no calendar} --- the same, minus day-of-year, month, week and
+their sine/cosine encodings. If skill survives this, it was not seasonal.
+\item \textbf{calendar only} --- calendar plus static site descriptors, and
+nothing else: no lags, no rolling statistics, no trends, and not the raw
+contemporaneous value $y(t)$ either. This is the ceiling on a purely seasonal
+model within this framework.
+\end{itemize}
+
+The exclusion of $y(t)$ from the third arm matters. The feature builder retains
+it deliberately --- it is the strongest short-horizon predictor available ---
+so an arm that merely zeroed the lag lists would still contain it, and would be
+a persistence model wearing a seasonal label.
+
+\begin{wfigure}[tb]
+\centering
+\includegraphics[width=\linewidth]{fig_ablation.pdf}
+\caption{(a) Skill with the full feature set against skill with every calendar
+feature removed; points on the diagonal lost nothing. (b) The fraction of skill
+attributable to the calendar, against skill versus climatology. If losing to
+climatology indicated seasonal skill, the points left of zero would sit high.
+They do not.}
+\label{fig:ablation}
+\end{wfigure}
+
+\para{Removing the calendar costs very little}
+At \SI{30}{\day} the median model retains \FracSkillNoCalThirty{} of its skill
+with no calendar information at all, and \NSurviveNoCalThirty{} of
+\NPositiveThirty{} variables still beat persistence without it. At
+\SI{1}{\day} the median retention is 0.97.
+
+\para{A purely seasonal model is not competitive}
+The calendar-only arm beats persistence in just \NSeasonalOnlyPositive{} of
+\NAblationPairs{} cases, with a median skill of \MedSeasonalOnly{}. Calendar
+and location alone cannot forecast these variables.
+
+\para{The models that lose to climatology are not the seasonal ones}
+This is the result that overturns the natural reading. Of the \NFlattered{}
+model--horizon combinations that beat persistence while losing to climatology,
+\NFlatteredNonSeasonal{} remain positive against persistence with the calendar
+removed, retaining a median \FracFlatteredRetained{} of their skill. Their
+skill is not seasonal in origin. They are simply not as accurate as the
+seasonal cycle --- which is a statement about the climatology's strength, not
+about what the model learned.
+
+Conversely, of the \NSeasonalDominated{} cases where the calendar does carry
+more than half the skill, \NSeasonalDominatedBeatClim{} \emph{beat} climatology.
+The clearest genuine seasonal case is water temperature at \SI{30}{\day}:
+removing the calendar drops it from \WTFull{} to \WTNoCal{} (a
+\WTCalShare{} share), and the calendar-only arm reaches \WTSeasonalOnly{} on
+its own --- yet its skill against climatology is \WTSkillC{}, comfortably
+positive. A reader applying the climatology test alone would have classified
+this variable as the healthy one.
+
+\para{Consequence for practice}
+$S_{\mathrm{clim}}$ and seasonal dependence are close to orthogonal here
+(Fig.~\ref{fig:ablation}b). Comparing against climatology answers ``should I
+ship this model, or the climatology?'' --- an operational question, and the
+comparison answers it correctly. It does not answer ``what has this model
+learned?''. Answering that needs an ablation, which costs one extra training
+run per configuration and is the only one of our three diagnostics that
+addresses mechanism at all. Table~\ref{tab:ablation} reports all three arms.
+
+\begin{table}[tb]
+\centering
+\caption{Skill against persistence under each feature arm at \SI{30}{\day},
+with skill against climatology for reference. Bold marks the cases where
+removing the calendar destroys more than half the skill --- the genuinely
+seasonal ones, which are a minority and are mostly \emph{not} the ones that
+lose to climatology.}
+\label{tab:ablation}
+\tabscale
+\input{../shared/generated/table_ablation}
+\end{table}
 
 \subsection{Where the framework fails}
 
@@ -364,10 +454,10 @@ places, which is the strongest available argument for reporting both.
 \subsection{Spatial transfer: leave-one-site-out}
 \label{sec:loso}
 
-Serving a globally pooled model at arbitrary coordinates rests on an assumption
-that is rarely tested: that the model generalises to ocean it never saw during
-training, rather than interpolating among its training sites. We test this
-directly. For each variable, horizon and site, we refit on the remaining
+Serving a pooled model at coordinates it was not fitted on rests on an
+assumption that is rarely tested: that the model generalises to ocean it never
+saw during training, rather than interpolating among its training sites. We
+test this directly. For each variable, horizon and site, we refit on the remaining
 \(\NSites - 1\) sites and score on the held-out one (\NLosoFits{} fits).
 
 The split is blocked in space \emph{and} time. Training uses the earlier 80\%
@@ -451,9 +541,21 @@ would not reveal.}
 \para{Report both baselines}
 Persistence and climatology are individually cheap and jointly diagnostic, and
 their disagreement carries information neither provides alone. A model that
-beats persistence at long range while losing to climatology has not learned to
-forecast; it has learned what month it is. That failure mode is invisible under
-a single-baseline convention, and it fails in the flattering direction.
+beats persistence at long range while losing to climatology is one a
+persistence-only convention would report as a success, when the cheaper
+baseline is more accurate. That is a real and consequential failure mode, and
+it fails in the flattering direction.
+
+\para{But do not over-read the climatology comparison}
+We initially read those cases as evidence that the models had learned little
+beyond the time of year. The ablation in Section~\ref{sec:ablation} shows that
+reading is wrong for \NFlatteredNonSeasonal{} of the \NFlattered{} cases it was
+proposed to explain: their skill survives the calendar being removed. Losing to
+climatology is a statement about the \emph{baseline's} strength, not about the
+model's mechanism. We report this because the incorrect inference is the
+natural one, it is rhetorically attractive, and nothing in a two-baseline
+comparison rules it out --- which is precisely why a third diagnostic is
+needed.
 
 \para{Baseline choice interacts with horizon, so single-horizon evaluation
 hides it} The divergence in Fig.~\ref{fig:skill} is only visible across
@@ -469,11 +571,26 @@ comparisons. A more expressive architecture evaluated against persistence alone
 at a single horizon would produce a number that is neither comparable to these
 nor obviously more informative.
 
-\para{Pooling across sites is defensible but should be reported as such}
-The leave-one-site-out results support serving a globally pooled model at
-arbitrary coordinates, with the caveat that pooled metrics overstate
-performance at unseen locations, and that the overstatement is largest exactly
-in the energetic regions users are most likely to care about.
+\para{Pooling across sites is defensible, within limits that should be stated}
+The leave-one-site-out results support serving a pooled model at coordinates it
+was not fitted on --- but only just, and only within the regimes sampled here.
+A median held-out skill of \MedLosoSeven{} against \MedPooledSeven{} pooled,
+with \LosoPositiveShare{}\% of held-out sites retaining positive skill, is
+evidence of partial transfer, not of a model that can be pointed anywhere.
+Two qualifications follow, and neither is rhetorical.
+
+First, the pooled figure \emph{is} the number a deployed system would quote,
+and it overstates what a user selecting an unsampled location should expect ---
+by roughly a factor of three at \SI{7}{\day} in the median. Reporting the
+held-out figure instead is the honest choice.
+
+Second, \NSites{} sites spanning selected regimes cannot establish behaviour
+over the world ocean, and we do not claim it. What the experiment establishes
+is that transfer degrades, that the degradation is largest in the dynamically
+energetic regions users are most likely to care about, and that the direction
+of the error is optimistic. Extending this to a genuine statement about global
+coverage would need a site set an order of magnitude larger, drawn to represent
+rather than to stratify.
 
 \section{Limitations}
 \label{sec:limitations}
@@ -495,6 +612,22 @@ in the archive at the snapshot date. Others were excluded on data availability,
 not on their results. The criterion was applied before any model was scored, so
 it does not select on outcome, but the set is not a random sample of ocean
 variables --- it is skewed toward well-observed operational products.
+
+\para{Spatial coverage, and what ``pooled'' is not}
+\NSites{} sites are not a sample of the world ocean. They were chosen to span
+distinct dynamical regimes --- western boundary currents, eastern boundary
+upwelling systems, subtropical gyres, marginal seas, the Southern Ocean ---
+which makes them regime-stratified rather than representative, and deliberately
+over-weights energetic regions relative to their true area. Two consequences
+follow. Aggregate statistics across sites are averages over regimes, not
+area-weighted ocean averages, and should not be read as the latter. And the
+leave-one-site-out result establishes that transfer degrades \emph{between
+these regimes}; it does not establish behaviour at an arbitrary point on the
+globe, which would need a site set an order of magnitude larger drawn to
+represent rather than to stratify. We use ``pooled'' throughout for the
+modelling choice of fitting one model across sites, and avoid ``global'',
+precisely because the two are easy to conflate and only the first is
+established here.
 
 \para{Reanalysis as ground truth}
 The ``observations'' are operational analysis products, not in-situ
@@ -529,10 +662,20 @@ declining with horizon for \NFallingClim{} of \NVars{} variables without
 exception. \NLoseToClim{} model--horizon combinations beat persistence while
 losing to the seasonal cycle outright.
 
-We also find that globally pooled models do transfer to sites they never saw,
-with \LosoPositiveShare{}\% of held-out sites retaining positive skill at
-\SI{7}{\day}, but at a real cost that pooled metrics conceal, concentrated in
-dynamically energetic regions.
+The natural explanation for those cases --- that the models had learned little
+beyond the time of year --- is one we proposed and then had to withdraw. A
+feature ablation shows \NFlatteredNonSeasonal{} of the \NFlattered{} keep their
+skill with the calendar removed, and that the most seasonally dependent
+variable in the study beats climatology rather than losing to it. Two baselines
+tell you which forecast to ship; they do not tell you what the model learned,
+and we could not have established the difference without the third experiment.
+
+We also find that pooled models transfer only partially to sites they never
+saw: \LosoPositiveShare{}\% of held-out sites retain positive skill at
+\SI{7}{\day}, but the median falls from \MedPooledSeven{} to
+\MedLosoSeven{} --- a cost pooled metrics conceal, concentrated in dynamically
+energetic regions. Across \NSites{} regime-stratified sites this is evidence
+about those regimes, not about the world ocean.
 
 The recommendation is cheap to adopt: report both baselines, across more than
 one horizon, and report the cases where the baseline wins.

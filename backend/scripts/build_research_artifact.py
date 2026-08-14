@@ -200,6 +200,41 @@ def mermaid(name: str) -> str:
 # --------------------------------------------------------------------------
 
 
+
+def _ablation_facts() -> dict:
+    """Numbers from the seasonality ablation, or dashes if it has not been run.
+
+    Kept separate so the page still builds before the ablation exists; the
+    fields render as placeholders rather than crashing the generator.
+    """
+    path = DATA / "ablation.json"
+    if not path.exists():
+        return {"n_ablation": "--", "nocal_retained": "--", "seasonal_dominated": "--",
+                "seasonal_beat_clim": "--", "seasonal_only_pos": "--",
+                "wt_share": "--", "wt_seasonal": "--", "wt_skill_c": "--"}
+    frame = pd.DataFrame(json.loads(path.read_text()))
+    wide = frame.pivot_table(index=["variable", "horizon"], columns="arm",
+                            values="skill_p").reset_index()
+    wide = wide.merge(frame[frame["arm"] == "full"][["variable", "horizon", "skill_c"]],
+                      on=["variable", "horizon"])
+    wide["cal_share"] = ((wide["full"] - wide["no_calendar"])
+                         / wide["full"].where(wide["full"] > 0))
+    flattered = wide[wide["skill_c"] < 0]
+    seasonal = wide[wide["cal_share"] > 0.5]
+    water = wide[(wide["variable"] == "water_temperature") & (wide["horizon"] == 30)]
+    row = water.iloc[0] if len(water) else None
+    return {
+        "n_ablation": len(wide),
+        "nocal_retained": int((flattered["no_calendar"] > 0).sum()),
+        "seasonal_dominated": len(seasonal),
+        "seasonal_beat_clim": int((seasonal["skill_c"] > 0).sum()),
+        "seasonal_only_pos": int((wide["seasonal_only"] > 0).sum()),
+        "wt_share": f"{row['cal_share']:.0%}" if row is not None else "--",
+        "wt_seasonal": f"{row['seasonal_only']:+.3f}" if row is not None else "--",
+        "wt_skill_c": f"{row['skill_c']:+.3f}" if row is not None else "--",
+    }
+
+
 def build() -> None:
     main, loso, meta = load()
 
@@ -227,6 +262,7 @@ def build() -> None:
         "sc3": float(main[main["horizon"] == 3]["skill_c"].median()),
         "sc7": float(main[main["horizon"] == 7]["skill_c"].median()),
         "clim_neg_30": int((at30["skill_c"] < 0).sum()),
+        **_ablation_facts(),
         "pers_neg_30": int((at30["skill_p"] < 0).sum()),
         "falling": sum(
             1
@@ -636,6 +672,50 @@ climatology. Some subsurface variables lose to persistence while beating
 climatology by a wide margin; some wave variables do the reverse. That the two
 baselines fail in different places is the strongest available argument for
 reporting both.</p>
+
+<h2>But is that skill actually seasonal?</h2>
+
+<p>The obvious reading of those {flattered} cases is that the models learned
+little beyond the time of year. It is a tempting inference, it is what an
+earlier draft of this work claimed &mdash; and it is wrong.</p>
+
+<p>Losing to climatology shows a model is <em>no better than</em> the seasonal
+cycle. It does not show its skill <em>comes from</em> the seasonal cycle. So we
+tested it: three arms over the same variable&ndash;horizon pairs, identical
+rows, folds and hyperparameters, differing only in features. The third arm gets
+calendar and location only &mdash; no lags, no rolling statistics, and
+critically not the raw contemporaneous value either, since keeping that would
+make it a persistence model wearing a seasonal label.</p>
+
+<div class="facts">
+  <div class="fact p"><span class="v">{nocal_retained}</span>
+    <span class="k">of the {flattered} keep their skill with every calendar
+    feature removed</span></div>
+  <div class="fact c"><span class="v">{seasonal_beat_clim}</span>
+    <span class="k">of the {seasonal_dominated} genuinely seasonal cases
+    <em>beat</em> climatology</span></div>
+  <div class="fact"><span class="v">{seasonal_only_pos}/{n_ablation}</span>
+    <span class="k">cases where calendar + location alone beats
+    persistence</span></div>
+</div>
+
+<p>So the models that lose to climatology are, with one exception, <strong>not
+the seasonal ones</strong>. Their skill survives the calendar being deleted.
+They are simply less accurate than the seasonal cycle &mdash; a fact about the
+baseline's strength, not about what the model learned.</p>
+
+<p>The converse fails too. The most calendar-dependent variable here is water
+temperature at 30 days: it loses {wt_share} of its skill without the calendar
+and reaches {wt_seasonal} from calendar and location alone &mdash; yet it
+<em>beats</em> climatology at {wt_skill_c}. Anyone applying only the climatology
+test would have marked it the healthy one.</p>
+
+<div class="caveat"><strong>Two baselines tell you which forecast to ship. They
+do not tell you what the model learned.</strong> Those are separate questions,
+and the second needs an ablation &mdash; one extra training run per
+configuration. We report this because the incorrect inference is the natural
+one, it is rhetorically attractive, and nothing in a two-baseline comparison
+rules it out.</div>
 
 <h2>Does it transfer to ocean it never saw?</h2>
 

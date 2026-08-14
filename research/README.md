@@ -24,6 +24,17 @@ climatology skill declines with horizon for **13 of 13** variables, without
 exception. Eleven model–horizon combinations beat persistence while losing to
 climatology; under a persistence-only convention every one reads as a success.
 
+**And the obvious explanation for those eleven is wrong.** A three-arm feature
+ablation shows **10 of the 11 keep their skill when every calendar feature is
+removed**, while the most calendar-dependent variable in the study (water
+temperature at 30 days — 68% of its skill is calendar-borne) comfortably
+*beats* climatology. Losing to climatology reports the **baseline's strength**,
+not the model's mechanism. Diagnosing mechanism needs the ablation; two
+baselines cannot do it.
+
+An earlier draft claimed these models had "learned what month it is." The
+experiment retracted it.
+
 ---
 
 ## Layout
@@ -41,6 +52,8 @@ research/
     point_series.parquet   988,872 cleaned observations (3.1 MB)
     sites.csv              the 24 evaluation sites
     variables.json         per-variable configuration and metadata
+    results/               experiment output (792 KB) so notebook 04 runs
+                           from a clone; backend/models/ is untracked
   papers/
     springer/main.{tex,pdf}   Springer LNCS build (single column)
     ieee/main.{tex,pdf}       IEEE conference build (two column)
@@ -62,7 +75,7 @@ reads `research/data/`, which is committed.
 | `01_data_and_eda` | The 13 variables, 24 sites and their coverage; seasonal structure; autocorrelation, which identifies where persistence will be hard to beat. |
 | `02_feature_engineering` | The ~59 features and their families; cyclical calendar encoding; the leakage discipline; and the delta-vs-level target comparison the framework turns on. |
 | `03_baselines_and_models` | Both baselines; why the climatology window is ±15 days; the circular mean; a direct measurement of what fitting a baseline on the evaluation period costs; and an end-to-end three-way comparison. |
-| `04_results_and_transfer` | All 52 models against both baselines; the 11 flattered cases; the 5 outright failures; and the leave-one-site-out transfer results. |
+| `04_results_and_transfer` | All 52 models against both baselines; the 11 flattered cases; the 5 outright failures; the **seasonality ablation** that retracts the seasonal explanation; and the leave-one-site-out transfer results. |
 
 ```bash
 cd research/notebooks
@@ -103,6 +116,9 @@ cd backend
 
 # 1. Both experiments (~87 min; runs offline from the history cache)
 .venv/bin/python scripts/run_paper_experiments.py --all
+
+# 1b. The seasonality ablation (~40 min): full / no-calendar / calendar-only
+.venv/bin/python scripts/run_seasonality_ablation.py --all
 
 # 2. The notebook dataset (only needed if the experiments' inputs changed)
 .venv/bin/python scripts/export_research_dataset.py

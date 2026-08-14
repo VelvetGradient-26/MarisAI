@@ -509,6 +509,141 @@ def table_variables(main: pd.DataFrame) -> None:
     (OUT / "table_variables.tex").write_text("\n".join(lines))
 
 
+def load_ablation() -> pd.DataFrame | None:
+    """The three-arm seasonality ablation, wide by arm.
+
+    `cal_share` is the fraction of a model's skill that disappears when the
+    calendar features are removed -- the direct measure of how seasonal its
+    skill is. Defined only where the full model has positive skill, because the
+    ratio is meaningless when the denominator is at or below zero.
+    """
+    path = DATA / "ablation.json"
+    if not path.exists():
+        return None
+    frame = pd.DataFrame(json.loads(path.read_text()))
+    wide = frame.pivot_table(
+        index=["variable", "horizon"], columns="arm", values="skill_p"
+    ).reset_index()
+    climatology = frame[frame["arm"] == "full"][["variable", "horizon", "skill_c"]]
+    wide = wide.merge(climatology, on=["variable", "horizon"])
+    wide["cal_share"] = (
+        (wide["full"] - wide["no_calendar"]) / wide["full"].where(wide["full"] > 0)
+    )
+    return wide
+
+
+def table_ablation(ablation: pd.DataFrame) -> None:
+    """Skill under each feature arm, at the longest horizon.
+
+    Long horizon only: this is where the seasonal explanation was proposed, and
+    a four-horizon version of a nine-column table is unreadable in two columns.
+    """
+    lines = [
+        r"\begin{tabular}{l rrr r}",
+        r"\toprule",
+        r"Variable & Full & No calendar & Calendar only & $S_{\mathrm{clim}}$ \\",
+        r"\midrule",
+    ]
+    subset = ablation[ablation["horizon"] == 30].sort_values("variable")
+    for _, row in subset.iterrows():
+        no_cal = _number(row["no_calendar"])
+        # Bold where removing the calendar destroys the skill -- the genuine
+        # seasonal cases, which are the minority.
+        if pd.notna(row["cal_share"]) and row["cal_share"] > 0.5:
+            no_cal = rf"\textbf{{{no_cal}}}"
+        lines.append(
+            f"{pretty(row['variable'])} & {_number(row['full'])} & {no_cal} & "
+            f"{_number(row['seasonal_only'])} & {_number(row['skill_c'])} \\\\"
+        )
+    lines += [r"\bottomrule", r"\end{tabular}"]
+    (OUT / "table_ablation.tex").write_text("\n".join(lines))
+
+
+def figure_ablation(ablation: pd.DataFrame) -> None:
+    """Two panels: what the calendar is worth, and whether S_clim detects it."""
+    figure, axes = plt.subplots(1, 2, figsize=(7.2, 3.2))
+
+    axis = axes[0]
+    for horizon, marker in zip(HORIZONS, ("o", "^", "s", "D")):
+        subset = ablation[ablation["horizon"] == horizon]
+        axis.scatter(
+            subset["full"], subset["no_calendar"], marker=marker, s=26,
+            facecolor=PERSISTENCE, edgecolor="white", linewidth=0.5,
+            zorder=3, label=f"h = {horizon} d",
+        )
+    limits = (-0.35, 0.65)
+    axis.plot(limits, limits, color=INK, linewidth=0.7, linestyle=(0, (4, 3)), zorder=1)
+    axis.axhline(0, color=MUTED, linewidth=0.5)
+    axis.axvline(0, color=MUTED, linewidth=0.5)
+    axis.set(xlim=limits, ylim=limits, xlabel="skill, full feature set",
+             ylabel="skill, calendar removed")
+    axis.set_title("(a) Most skill survives the calendar", loc="left", pad=6)
+    axis.legend(fontsize=6.5, loc="upper left")
+    axis.grid(zorder=0)
+
+    # (b) the claim the paper originally made, tested directly.
+    axis = axes[1]
+    usable = ablation.dropna(subset=["cal_share"])
+    usable = usable[usable["full"] > 0.05]
+    axis.axhline(0.5, color=CLIMATOLOGY, linewidth=0.8, linestyle=(0, (4, 3)), zorder=1)
+    axis.axvline(0, color=INK, linewidth=0.8, linestyle=(0, (4, 3)), zorder=1)
+    axis.scatter(
+        usable["skill_c"], usable["cal_share"].clip(-0.2, 1.2), s=30,
+        facecolor=CLIMATOLOGY, edgecolor="white", linewidth=0.5, zorder=3,
+    )
+    axis.annotate("seasonally dominated", (0.62, 0.53), fontsize=6.5,
+                  color=CLIMATOLOGY, va="bottom", ha="right")
+    axis.annotate("loses to\nclimatology", (-0.02, 1.12), fontsize=6.5,
+                  color=INK, ha="right", va="top")
+    axis.set(xlabel="skill vs. climatology", ylabel="fraction of skill from calendar",
+             ylim=(-0.25, 1.25))
+    axis.set_title("(b) $S_\\mathrm{clim}$ does not identify it", loc="left", pad=6)
+    axis.grid(zorder=0)
+
+    figure.tight_layout()
+    figure.savefig(OUT / "fig_ablation.pdf")
+    plt.close(figure)
+
+
+def ablation_macros(ablation: pd.DataFrame) -> dict[str, str]:
+    at30 = ablation[ablation["horizon"] == 30]
+    positive30 = at30[at30["full"] > 0]
+    seasonal = ablation[ablation["cal_share"] > 0.5]
+    flattered = ablation[ablation["skill_c"] < 0]
+    seasonal_only_positive = int((ablation["seasonal_only"] > 0).sum())
+    water = ablation[
+        (ablation["variable"] == "water_temperature") & (ablation["horizon"] == 30)
+    ]
+
+    values = {
+        "NAblationPairs": str(len(ablation)),
+        "FracSkillNoCalThirty": _number(
+            float((positive30["no_calendar"] / positive30["full"]).median()), 2
+        ),
+        "NSurviveNoCalThirty": str(int((positive30["no_calendar"] > 0).sum())),
+        "NPositiveThirty": str(len(positive30)),
+        "NSeasonalOnlyPositive": str(seasonal_only_positive),
+        "MedSeasonalOnly": _number(float(ablation["seasonal_only"].median())),
+        "NFlattered": str(len(flattered)),
+        "NFlatteredNonSeasonal": str(int((flattered["cal_share"] <= 0.5).sum())),
+        "FracFlatteredRetained": _number(
+            float((flattered["no_calendar"] / flattered["full"]).median()), 2
+        ),
+        "NSeasonalDominated": str(len(seasonal)),
+        "NSeasonalDominatedBeatClim": str(int((seasonal["skill_c"] > 0).sum())),
+    }
+    if len(water):
+        row = water.iloc[0]
+        values |= {
+            "WTFull": _number(row["full"]),
+            "WTNoCal": _number(row["no_calendar"]),
+            "WTSeasonalOnly": _number(row["seasonal_only"]),
+            "WTSkillC": _number(row["skill_c"]),
+            "WTCalShare": _number(float(row["cal_share"]), 2),
+        }
+    return values
+
+
 def macros(main: pd.DataFrame, loso: pd.DataFrame, meta: dict) -> None:
     """Numbers the prose quotes, as macros, so the text cannot drift."""
     at30 = main[main["horizon"] == 30]
@@ -565,6 +700,10 @@ def macros(main: pd.DataFrame, loso: pd.DataFrame, meta: dict) -> None:
             float((loso7["skill_score"] > 0).mean()) * 100.0, 1
         ),
     }
+    ablation = load_ablation()
+    if ablation is not None:
+        values |= ablation_macros(ablation)
+
     lines = [rf"\newcommand{{\{key}}}{{{value}}}" for key, value in values.items()]
     (OUT / "macros.tex").write_text("\n".join(lines) + "\n")
     print(json.dumps(values, indent=2))
@@ -585,6 +724,12 @@ def main_entry() -> None:
     table_main(main)
     table_skill_compact(main)
     table_variables(main)
+
+    ablation = load_ablation()
+    if ablation is not None:
+        figure_ablation(ablation)
+        table_ablation(ablation)
+        print(f"ablation: {len(ablation)} variable-horizon pairs")
     macros(main, loso, meta)
     print(f"wrote assets to {OUT}")
 

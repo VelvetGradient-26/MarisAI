@@ -467,6 +467,50 @@ climatology by a wide margin; some wave variables do the reverse. That the two
 baselines fail in different places is the strongest available argument for
 reporting both.</p>
 
+<h2>But is that skill actually seasonal?</h2>
+
+<p>The obvious reading of those 11 cases is that the models learned
+little beyond the time of year. It is a tempting inference, it is what an
+earlier draft of this work claimed &mdash; and it is wrong.</p>
+
+<p>Losing to climatology shows a model is <em>no better than</em> the seasonal
+cycle. It does not show its skill <em>comes from</em> the seasonal cycle. So we
+tested it: three arms over the same variable&ndash;horizon pairs, identical
+rows, folds and hyperparameters, differing only in features. The third arm gets
+calendar and location only &mdash; no lags, no rolling statistics, and
+critically not the raw contemporaneous value either, since keeping that would
+make it a persistence model wearing a seasonal label.</p>
+
+<div class="facts">
+  <div class="fact p"><span class="v">10</span>
+    <span class="k">of the 11 keep their skill with every calendar
+    feature removed</span></div>
+  <div class="fact c"><span class="v">5</span>
+    <span class="k">of the 6 genuinely seasonal cases
+    <em>beat</em> climatology</span></div>
+  <div class="fact"><span class="v">3/52</span>
+    <span class="k">cases where calendar + location alone beats
+    persistence</span></div>
+</div>
+
+<p>So the models that lose to climatology are, with one exception, <strong>not
+the seasonal ones</strong>. Their skill survives the calendar being deleted.
+They are simply less accurate than the seasonal cycle &mdash; a fact about the
+baseline's strength, not about what the model learned.</p>
+
+<p>The converse fails too. The most calendar-dependent variable here is water
+temperature at 30 days: it loses 68% of its skill without the calendar
+and reaches +0.281 from calendar and location alone &mdash; yet it
+<em>beats</em> climatology at +0.187. Anyone applying only the climatology
+test would have marked it the healthy one.</p>
+
+<div class="caveat"><strong>Two baselines tell you which forecast to ship. They
+do not tell you what the model learned.</strong> Those are separate questions,
+and the second needs an ablation &mdash; one extra training run per
+configuration. We report this because the incorrect inference is the natural
+one, it is rhetorically attractive, and nothing in a two-baseline comparison
+rules it out.</div>
+
 <h2>Does it transfer to ocean it never saw?</h2>
 
 <p>Serving one globally pooled model at arbitrary coordinates rests on an
@@ -508,20 +552,23 @@ flowchart TB
     Q1 --&gt;|no| N1[&quot;Do not deploy.&lt;br/&gt;Persistence is cheaper and better.&lt;br/&gt;Typical of high-inertia variables whose&lt;br/&gt;autocorrelation time exceeds the horizon.&quot;]
     Q1 --&gt;|yes| Q2{&quot;S_clim &gt; 0 ?&lt;br/&gt;beats the seasonal cycle&quot;}
 
-    Q2 --&gt;|no| N2[&quot;Seasonal artefact.&lt;br/&gt;The model has learned what month it is.&lt;br/&gt;Ship the climatology instead — it is cheaper&lt;br/&gt;to compute, cheaper to serve, and better.&lt;br/&gt;Invisible if only S_pers is reported.&quot;]
-    Q2 --&gt;|yes| Q3{&quot;Does S_clim hold up&lt;br/&gt;as the horizon grows ?&quot;}
+    Q2 --&gt;|no| N2[&quot;Ship the climatology instead.&lt;br/&gt;It is cheaper to compute, cheaper to serve,&lt;br/&gt;and more accurate. Invisible if only S_pers&lt;br/&gt;is reported.&lt;br/&gt;Note: this does NOT mean the model is&lt;br/&gt;merely seasonal — see the ablation branch.&quot;]
+    Q2 --&gt;|yes| N4[&quot;Beats both baselines.&lt;br/&gt;Information beyond both the present state&lt;br/&gt;and the seasonal cycle.&quot;]
 
-    Q3 --&gt;|&quot;falls toward 0&quot;| N3[&quot;Partly seasonal.&lt;br/&gt;Genuine skill at short range, decaying to a&lt;br/&gt;seasonal lookup at long range. Report the&lt;br/&gt;horizon at which it crosses.&quot;]
-    Q3 --&gt;|&quot;stays positive&quot;| N4[&quot;Genuine forecast skill.&lt;br/&gt;Information beyond both the present state&lt;br/&gt;and the seasonal cycle.&quot;]
+    N2 --&gt; Q3
+    N4 --&gt; Q3
+    Q3{&quot;Mechanism: how much skill&lt;br/&gt;survives removing calendar features ?&quot;}
+    Q3 --&gt;|&quot;most of it&quot;| N3[&quot;Skill is not seasonal.&lt;br/&gt;Whatever the model found, the calendar&lt;br/&gt;is not carrying it. Typical even among&lt;br/&gt;models that lose to climatology.&quot;]
+    Q3 --&gt;|&quot;little of it&quot;| N7[&quot;Seasonally dominated.&lt;br/&gt;A day-of-year lookup reproduces most of&lt;br/&gt;the skill. Can occur even when the model&lt;br/&gt;beats climatology, so S_clim will not&lt;br/&gt;reveal it.&quot;]
 
     N4 --&gt; Q4{&quot;Does it transfer to&lt;br/&gt;a held-out site ?&quot;}
     Q4 --&gt;|no| N5[&quot;Interpolation, not transfer.&lt;br/&gt;Pooled metrics overstate what a user&lt;br/&gt;clicking unseen ocean will get.&lt;br/&gt;Restrict to trained sites, or say so.&quot;]
-    Q4 --&gt;|yes| N6[&quot;Deployable at arbitrary coordinates.&lt;br/&gt;Report the held-out figure, not the&lt;br/&gt;pooled one, as the expected skill.&quot;]
+    Q4 --&gt;|yes| N6[&quot;Transfers within the sampled regimes.&lt;br/&gt;Report the held-out figure, not the pooled&lt;br/&gt;one, as the expected skill — and do not&lt;br/&gt;extrapolate beyond those regimes.&quot;]
 
     classDef bad fill:#fdf0e6,stroke:#d1611f,stroke-width:2px,color:#1a1a1a
     classDef good fill:#e8eef5,stroke:#1f6fb2,stroke-width:2px,color:#1a1a1a
-    class N1,N2,N5 bad
-    class N4,N6 good
+    class N1,N5,N7 bad
+    class N4,N6,N3 good
 </pre></div>
   <figcaption>Interpreting the two skill scores together.</figcaption>
 </figure>
