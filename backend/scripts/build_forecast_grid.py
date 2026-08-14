@@ -52,7 +52,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from forecasting import ForecastingError, progress  # noqa: E402
 from forecasting.grid_history import ungriddable_reason  # noqa: E402
-from forecasting.grid_history import GridRequest, fetch_stack  # noqa: E402
+from forecasting.grid_history import GridRequest, warm  # noqa: E402
 from forecasting.grid_predictor import (  # noqa: E402
     build_forecast_grid,
     grid_path,
@@ -165,8 +165,9 @@ async def _warm_shared_fetches(plan: dict[str, list[int]], resolution: float) ->
     whole-globe physics fetch, 35 minutes, for one different field. Across a
     26-variable build that is most of a day of refetching the same products.
 
-    So the union is requested up front, grouped by the window each variable would
-    have asked for — the window comes from `grid_predictor.grid_request`, not
+    So the union is warmed up front — one provider at a time, since warming does
+    not need them co-resident and holding all thirteen is what put a previous run
+    into swap — grouped by the window each variable would have asked for — the window comes from `grid_predictor.grid_request`, not
     from a copy of its arithmetic here, because a planner whose window drifts
     from the real one warms a cache nothing then hits and the only symptom is
     that the build is slow.
@@ -190,7 +191,7 @@ async def _warm_shared_fetches(plan: dict[str, list[int]], resolution: float) ->
             f"{', '.join(sorted(codes))}"
         )
         try:
-            await fetch_stack(
+            await warm(
                 GridRequest(
                     codes=tuple(sorted(codes)),
                     start_date=date.fromisoformat(start),

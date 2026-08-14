@@ -181,3 +181,68 @@ def test_a_provider_that_recovers_on_the_second_attempt_is_not_failed(monkeypatc
 
     assert calls["n"] == 2
     assert set(result.data_vars) == {"uo"}
+
+
+def test_warming_holds_one_provider_at_a_time(monkeypatch):
+    """Why `warm` exists rather than reusing `fetch_stack`.
+
+    `fetch_stack` returns a stack holding every provider's dataset at once,
+    because a build needs them together to slice a cell. Warming does not — each
+    is written to disk and then useless in memory. Doing it through `fetch_stack`
+    reached 13 GB resident on an 8 GB machine, and the concurrency limit does not
+    help: it bounds how many are *fetching*, not how many stay alive after.
+    """
+    import asyncio
+
+    live: list[str] = []
+    peak = {"n": 0}
+
+    async def _fetch(provider_key, _spec, fields, _request):
+        live.append(provider_key)
+        peak["n"] = max(peak["n"], len(live))
+        await asyncio.sleep(0)
+        live.remove(provider_key)
+        return _dataset(list(fields))
+
+    monkeypatch.setattr(grid_history, "_fetch_with_timeout", _fetch)
+
+    warmed = asyncio.run(
+        grid_history.warm(
+            GridRequest(
+                codes=("sea_surface_temperature", "significant_wave_height", "ocean_depth"),
+                start_date=date(2026, 6, 29),
+                end_date=date(2026, 8, 13),
+                resolution_deg=1.0,
+            )
+        )
+    )
+
+    assert len(warmed) > 1, "the test needs several providers to be meaningful"
+    assert peak["n"] == 1, f"{peak['n']} providers were alive at once; warming must hold one"
+
+
+def test_a_provider_that_fails_to_warm_does_not_fail_the_run(monkeypatch):
+    """Warming is an optimisation. The real build fetches and reports properly on
+    whatever is missing, so a failure here must degrade to a log line."""
+    import asyncio
+
+    async def _explode(provider_key, _spec, _fields, _request):
+        if provider_key == "gebco":
+            raise RuntimeError("ERDDAP is flapping")
+        return _dataset(["thetao"])
+
+    monkeypatch.setattr(grid_history, "_fetch_with_timeout", _explode)
+
+    warmed = asyncio.run(
+        grid_history.warm(
+            GridRequest(
+                codes=("sea_surface_temperature", "ocean_depth"),
+                start_date=date(2026, 6, 29),
+                end_date=date(2026, 8, 13),
+                resolution_deg=1.0,
+            )
+        )
+    )
+
+    assert "gebco" not in warmed
+    assert "copernicus_physics" in warmed

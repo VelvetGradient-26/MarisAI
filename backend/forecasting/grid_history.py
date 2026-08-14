@@ -79,6 +79,7 @@ absorb it silently.
 from __future__ import annotations
 
 import asyncio
+import gc
 import hashlib
 import json
 import logging
@@ -502,6 +503,68 @@ async def _fetch_with_timeout(
             await asyncio.sleep(_RETRY_BACKOFF_SECONDS)
 
     raise GridHistoryError(f"global fetch for {provider_key} failed")
+
+
+async def warm(request: GridRequest) -> list[str]:
+    """Fill the fetch cache for `request`, holding one provider at a time.
+
+    Deliberately *not* `fetch_stack`, and the difference is the whole point.
+    `fetch_stack` returns a `GridStack` that holds every provider's dataset at
+    once, because a build genuinely needs them together to slice a cell. Warming
+    does not: each dataset is written to disk and immediately useless in memory.
+
+    Measured the hard way on 2026-08-14. A 13-provider warm through `fetch_stack`
+    reached **13 GB resident on an 8 GB machine**, and the concurrency limit did
+    not save it — that bounds how many are *fetching*, while the stack keeps
+    every one of them alive afterwards. Sequentially, peak is one provider.
+
+    It is also slower in wall-clock, and that is the right trade here: the warm
+    pass runs once for a build measured in hours, and swapping is not a
+    performance cost but a correctness one, since it is what a fetch hangs
+    behind.
+
+    Returns the provider keys warmed. A provider that fails is logged and
+    skipped — warming must never fail the run it exists to speed up, and the
+    real build will fetch (and properly report on) whatever is missing.
+    """
+    try:
+        variables = resolve_variables(list(request.codes))
+    except ValueError as exc:
+        raise GridHistoryError(str(exc)) from exc
+
+    griddable = {
+        code: info
+        for code, info in variables.items()
+        if info.provider is not None and info.provider not in _UNGRIDDABLE_PROVIDERS
+    }
+    provider_keys = sorted({info.provider for info in griddable.values() if info.provider})
+
+    warmed: list[str] = []
+    with progress.counter(
+        description="warming fetch cache", total=len(provider_keys), unit="provider"
+    ) as bar:
+        for key in provider_keys:
+            spec = catalog.get(key)
+            try:
+                dataset = await _fetch_with_timeout(
+                    key, spec, _needed_fields(griddable, key), request
+                )
+            except Exception as exc:  # noqa: BLE001 - warming is an optimisation
+                logger.warning(f"could not warm {key}: {exc}")
+                bar.update(1)
+                continue
+
+            warmed.append(key)
+            # Explicit, not left to refcounting. `dataset` is the only reference
+            # to a multi-gigabyte array and the next iteration allocates another
+            # before this frame ends; on a machine already in swap the overlap is
+            # exactly what must not happen.
+            dataset.close()
+            del dataset
+            gc.collect()
+            bar.update(1)
+
+    return warmed
 
 
 async def fetch_stack(request: GridRequest) -> GridStack:
