@@ -1,0 +1,241 @@
+/* Page tokens alias the shared palette in styles/tokens.css; both themes come
+   from `data-theme` on <html>. Same per-page convention as download.css and
+   contact.css — the page reads --cmp-*, and only tokens.css chooses a colour. */
+.compare-page {
+  --cmp-bg: var(--ma-bg);
+  --cmp-card-bg: var(--ma-surface);
+  --cmp-border: var(--ma-border);
+  --cmp-text: var(--ma-text);
+  --cmp-muted: var(--ma-muted);
+  --cmp-accent: var(--ma-accent);
+  --cmp-hover-bg: var(--ma-hover-bg);
+  /* The delta ramp does not invert between themes: warmer/higher stays warm.
+     Only the tint darkens for a light background, the same rule the dashboard's
+     alert ramp follows. */
+  --cmp-up: #f97316;
+  --cmp-down: #38bdf8;
+
+  min-height: 100vh;
+  padding: calc(var(--navbar-h, 64px) + 32px) 24px 64px;
+  background: var(--cmp-bg);
+  color: var(--cmp-text);
+  font-family: var(--ma-font-ui);
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+.compare-page--light {
+  --cmp-up: #c2410c;
+  --cmp-down: #0369a1;
+}
+
+.compare-shell {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.compare-header h1 {
+  margin: 0 0 10px;
+  font-size: var(--ma-text-2xl);
+}
+
+.compare-header p {
+  margin: 0 0 28px;
+  max-width: 68ch;
+  color: var(--cmp-muted);
+  line-height: 1.6;
+}
+
+/* --- inputs ------------------------------------------------------------- */
+
+.compare-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.compare-point {
+  display: flex;
+  gap: 12px;
+  border: 1px solid var(--cmp-border);
+  border-radius: 12px;
+  padding: 12px 16px 16px;
+  background: var(--cmp-card-bg);
+}
+
+.compare-point legend {
+  padding: 0 6px;
+  color: var(--cmp-muted);
+  font-size: var(--ma-text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.compare-point label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--ma-text-xs);
+  color: var(--cmp-muted);
+}
+
+.compare-point input {
+  width: 8.5rem;
+  border: 1px solid var(--cmp-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--cmp-bg);
+  color: var(--cmp-text);
+  font: inherit;
+  font-size: var(--ma-text-sm);
+}
+
+.compare-point input:focus-visible {
+  outline: 2px solid var(--cmp-accent);
+  outline-offset: 1px;
+}
+
+.compare-run {
+  border: 1px solid var(--cmp-accent);
+  border-radius: 10px;
+  padding: 12px 24px;
+  background: transparent;
+  color: var(--cmp-accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.compare-run:hover:not(:disabled) {
+  background: var(--cmp-hover-bg);
+}
+
+.compare-run:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.compare-error {
+  border: 1px solid var(--cmp-up);
+  border-radius: 10px;
+  padding: 12px 16px;
+  color: var(--cmp-up);
+}
+
+.compare-legend {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 20px;
+  color: var(--cmp-muted);
+  font-size: var(--ma-text-sm);
+}
+
+.compare-legend b {
+  color: var(--cmp-accent);
+}
+
+/* --- sections ----------------------------------------------------------- */
+
+.compare-section {
+  margin-bottom: 28px;
+  border: 1px solid var(--cmp-border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  background: var(--cmp-card-bg);
+}
+
+.compare-section h2 {
+  margin: 0 0 12px;
+  font-size: var(--ma-text-lg);
+}
+
+.compare-section--empty p {
+  margin: 0;
+  color: var(--cmp-muted);
+  font-size: var(--ma-text-sm);
+  line-height: 1.6;
+}
+
+/* Wide tables scroll inside their own container; the page body never scrolls
+   sideways. */
+.compare-table-scroll {
+  overflow-x: auto;
+}
+
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--ma-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.compare-table th,
+.compare-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--cmp-border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.compare-table thead th {
+  color: var(--cmp-muted);
+  font-size: var(--ma-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.compare-table tbody th {
+  font-weight: 500;
+  white-space: normal;
+}
+
+.compare-table tbody tr:last-child th,
+.compare-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.compare-horizon {
+  color: var(--cmp-muted);
+  font-size: var(--ma-text-xs);
+}
+
+.compare-delta--up {
+  color: var(--cmp-up);
+}
+
+.compare-delta--down {
+  color: var(--cmp-down);
+}
+
+.compare-percent {
+  color: var(--cmp-muted);
+  font-size: var(--ma-text-xs);
+}
+
+/* An em dash, not a zero. A blank delta means "not comparable", and a 0 there
+   would assert the two points are identical in that field. */
+.compare-absent {
+  color: var(--cmp-muted);
+  opacity: 0.7;
+}
+
+.compare-note {
+  margin: 12px 0 0;
+  color: var(--cmp-muted);
+  font-size: var(--ma-text-xs);
+  line-height: 1.6;
+}
+
+.compare-note--asymmetry {
+  color: var(--cmp-up);
+}
+
+.compare-footnote {
+  max-width: 72ch;
+  color: var(--cmp-muted);
+  font-size: var(--ma-text-xs);
+  line-height: 1.6;
+}
