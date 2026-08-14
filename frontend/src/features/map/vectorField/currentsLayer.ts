@@ -1,5 +1,10 @@
 import { VectorFieldParticleLayer } from './VectorFieldParticleLayer';
-import { CURRENT_SPEED_COLOR_STOPS, STOKES_DRIFT_COLOR_STOPS } from './colorRamp';
+import {
+  CURRENT_SPEED_COLOR_STOPS,
+  DRIFT_SPEED_COLOR_STOPS,
+  STOKES_DRIFT_COLOR_STOPS,
+} from './colorRamp';
+import { driftFieldTextureUrl, fetchDriftMeta } from '../api/drift';
 import { currentsFieldTextureUrl, fetchCurrentsMeta } from '../api/currents';
 import {
   currentsDepthFieldTextureUrl,
@@ -125,6 +130,37 @@ export function createCurrentsDepthParticleLayer(
       fieldTextureUrl: currentsDepthFieldTextureUrl(depthM),
       fetchMeta: fetchCurrentsDepthMeta(depthM),
       colorStops: CURRENT_SPEED_COLOR_STOPS,
+      visualSpeedScale: CURRENTS_VISUAL_SPEED_SCALE,
+    },
+    initialOpacity
+  );
+}
+
+/**
+ * The combined drift field — current + Stokes drift + wind leeway.
+ *
+ * Same engine, same visual speed scale as the three fields it sums, so it can be
+ * switched against any of them and read at the same pace. What separates it is
+ * the ramp: green, where currents are amber and Stokes drift violet. See
+ * `colorRamp.ts` for why that is a hue rather than a second rainbow.
+ *
+ * `alpha` is baked into the texture URL rather than applied client-side, because
+ * the sum happens where the three grids are — the browser never holds more than
+ * one field. Changing the preset therefore means a new layer instance, which is
+ * why `driftLayerId` keys on it: switching object type must download a new
+ * texture, not reinterpret the current one.
+ */
+export function createDriftParticleLayer(
+  id: string,
+  alpha: number,
+  initialOpacity: number
+): CustomVectorFieldLayer {
+  return new VectorFieldParticleLayer(
+    id,
+    {
+      fieldTextureUrl: driftFieldTextureUrl(alpha),
+      fetchMeta: fetchDriftMeta(alpha),
+      colorStops: DRIFT_SPEED_COLOR_STOPS,
       visualSpeedScale: CURRENTS_VISUAL_SPEED_SCALE,
     },
     initialOpacity

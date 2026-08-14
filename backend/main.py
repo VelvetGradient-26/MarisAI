@@ -29,7 +29,7 @@ from services import (
     ndbc,
     ocean_state,
 )
-from services import currents_depth, stokes_drift
+from services import currents_depth, drift, stokes_drift
 from services.copernicus_currents import refresh_currents_cache
 from services.copernicus_sst import refresh_sst_cache
 from services.copernicus_wind import refresh_wind_cache
@@ -52,13 +52,23 @@ async def lifespan(_app: FastAPI):
     # finishes, SST/wind endpoints report "not yet available" (see
     # CopernicusSstError/CopernicusWindError) instead of erroring.
     asyncio.create_task(refresh_sst_cache())
-    asyncio.create_task(refresh_wind_cache())
-    asyncio.create_task(refresh_currents_cache())
-    # Stokes drift and the depth-resolved currents, on the same fire-and-forget
-    # footing. Depth warms only the levels someone has opened (plus two on the
-    # schedule) — six whole-globe fetches per cycle for levels nobody is looking
-    # at is most of the cost of the feature for none of its value.
-    asyncio.create_task(stokes_drift.refresh_cache())
+    # Wind, surface currents and Stokes drift warm together and then compose the
+    # combined drift field, which is summed from all three. Gathered rather than
+    # created separately so the compose can be chained onto them: it needs every
+    # term present, and the alternative — a scheduled compose that finds a cold
+    # cache — leaves the drift layer unavailable for a full interval after boot
+    # for no reason. The three still fetch concurrently, exactly as before.
+    async def _warm_flow_fields() -> None:
+        await asyncio.gather(
+            refresh_wind_cache(), refresh_currents_cache(), stokes_drift.refresh_cache()
+        )
+        await drift.refresh_cache()
+
+    asyncio.create_task(_warm_flow_fields())
+    # The depth-resolved currents, on the same fire-and-forget footing. Depth
+    # warms only the levels someone has opened (plus two on the schedule) — six
+    # whole-globe fetches per cycle for levels nobody is looking at is most of
+    # the cost of the feature for none of its value.
     asyncio.create_task(currents_depth.refresh_cache())
 
     # The dashboard's caches, on the same fire-and-forget footing. Each
@@ -85,6 +95,14 @@ async def lifespan(_app: FastAPI):
     )
     scheduler.add_job(
         currents_depth.refresh_cache, "interval", hours=currents_depth.REFRESH_INTERVAL_HOURS
+    )
+    # The combined drift field recomposes from the three caches above rather
+    # than fetching anything, so it is cheap and matched to the fastest of them.
+    # Slightly offset from the hour by running on its own interval: composing
+    # while a term is mid-refresh is harmless (it reads whatever is cached) and
+    # the next cycle picks the new timestep up.
+    scheduler.add_job(
+        drift.refresh_cache, "interval", hours=drift.REFRESH_INTERVAL_HOURS
     )
     scheduler.add_job(
         ndbc.refresh_cache, "interval", minutes=ndbc.REFRESH_INTERVAL_MINUTES

@@ -7,6 +7,7 @@ import { createWindParticleLayer } from '../vectorField/windLayer';
 import {
   createCurrentsDepthParticleLayer,
   createCurrentsParticleLayer,
+  createDriftParticleLayer,
   createStokesParticleLayer,
 } from '../vectorField/currentsLayer';
 
@@ -171,6 +172,31 @@ const CURRENTS_DEPTH_LEVELS = [50, 100, 200, 500, 1000];
 
 function currentsDepthLayerId(depth: number): string {
   return `currents-${depth}m`;
+}
+
+/**
+ * The combined drift field, one layer per drifting object.
+ *
+ * Mirrors `LEEWAY_PRESETS` in `services/drift.py`. Duplicated here rather than
+ * fetched, and that is a narrower claim than it looks: the *layer list* has to
+ * exist at module scope, because the registry is a static description the picker
+ * renders before any request is made. The authoritative coefficients still come
+ * from `/api/ocean/drift/presets`, and every number below travels to the backend
+ * as `alpha` — so a revised coefficient changes the field this layer draws, and
+ * only the label here would need catching up.
+ *
+ * Three, not five: the picker already carries four flow layers, and the useful
+ * span is "water only" against "something with real freeboard". The middle
+ * coefficients are reachable through the API for anyone who needs them.
+ */
+const DRIFT_PRESETS = [
+  { key: 'water_only', alpha: 0, name: 'Drift — water only' },
+  { key: 'person_in_water', alpha: 0.035, name: 'Drift — person in water' },
+  { key: 'life_raft', alpha: 0.06, name: 'Drift — life raft (no drogue)' },
+];
+
+function driftLayerId(presetKey: string): string {
+  return `drift-${presetKey.replace(/_/g, '-')}`;
 }
 
 function bloomRiskLayerId(horizon: number): string {
@@ -773,6 +799,62 @@ export const layerRegistry: LayerDescriptor[] = [
         { offset: 0.5, color: '#ffd47a' },
         { offset: 0.75, color: '#ffeab8' },
         { offset: 1, color: '#fff6e0' },
+      ],
+    },
+  })),
+
+  // The combined drift field — current + Stokes drift + wind leeway.
+  //
+  // The three fields above answer "what is the water doing"; this one answers
+  // "where would something floating here end up going", which is the question
+  // behind search and rescue, spill response and larval transport, and which
+  // none of them answers alone. It exists as its own layer rather than
+  // replacing them for the reason the Stokes layer already records: a layer
+  // that only ever showed the sum could not say which term put the object
+  // there, and the terms routinely disagree in direction.
+  //
+  // One layer per object, because the wind coefficient is a property of the
+  // *object* rather than of the ocean — a swamped hull and an undrogued raft in
+  // the same water take measurably different tracks. Switching object downloads
+  // a different texture; the sum happens server-side.
+  //
+  // What this is NOT is a trajectory. Every particle advects against a single
+  // snapshot, so it shows where the water is going now everywhere — not where
+  // one object will be in 48 hours, which needs a time-indexed stack and an
+  // uncertainty envelope. See TODO.md §7.
+  ...DRIFT_PRESETS.map((preset) => ({
+    id: driftLayerId(preset.key),
+    name: preset.name,
+    category: 'flow' as const,
+    type: 'custom' as const,
+    attribution:
+      `Copernicus Marine Service — surface currents (uo/vo, hourly) + Stokes drift ` +
+      `(VSDX/VSDY, 3-hourly) + ${(preset.alpha * 100).toFixed(1)}% of the L4 wind blend ` +
+      `as leeway. INSTANTANEOUS DRIFT VELOCITY, not a trajectory: particles advect ` +
+      `against one snapshot, so this is not a forecast of where an object will be. The ` +
+      `leeway coefficient is approximate and carries no divergence angle — a real search ` +
+      `plan needs an ensemble, not one vector. Direction is the direction the water ` +
+      `carries toward.`,
+    defaultOpacity: 0.9,
+    defaultVisible: false,
+    createLayer: (id: string) => createDriftParticleLayer(id, preset.alpha, 0.9),
+    legend: {
+      type: 'gradient' as const,
+      unit: 'm/s',
+      min: 0,
+      // 2.5 rather than currents' 2.0: the terms add rather than averaging, so
+      // a boundary current under a gale goes past where that ramp ends.
+      max: 2.5,
+      // Matches DRIFT_SPEED_COLOR_STOPS in vectorField/colorRamp.ts. Single hue
+      // at 150°, the fourth *structure* rather than a fourth palette.
+      stops: [
+        { offset: 0, color: '#29ae6b' },
+        { offset: 0.04, color: '#33cc80' },
+        { offset: 0.1, color: '#60d299' },
+        { offset: 0.2, color: '#8ed7b2' },
+        { offset: 0.4, color: '#badecc' },
+        { offset: 0.68, color: '#dceae3' },
+        { offset: 1, color: '#f4f6f5' },
       ],
     },
   })),

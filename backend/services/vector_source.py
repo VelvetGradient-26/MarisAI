@@ -92,6 +92,33 @@ class VectorSourceSpec:
     error_type: type[VectorSourceError] = VectorSourceError
 
 
+@dataclass(frozen=True)
+class VectorSnapshot:
+    """One field's cached grid, for a consumer that combines several of them.
+
+    `services/drift.py` is the reason this exists: a drift field is
+    `current + Stokes + alpha * wind`, which needs three fields' *values*, not
+    three textures. The grids here are the downsampled ones the texture was
+    encoded from, so the summed field and the drawn field cannot disagree about
+    what the data was.
+
+    The interpolators come along because the three sources are not on one grid —
+    the wind product is 0.25 degrees over -90 to 90 while the physics and wave
+    products are 0.083 over -80 to 90 — so a consumer has to resample the others
+    onto whichever it chooses as its base.
+    """
+
+    key: str
+    lat: np.ndarray
+    lon: np.ndarray
+    u: np.ndarray
+    v: np.ndarray
+    u_interp: RegularGridInterpolator
+    v_interp: RegularGridInterpolator
+    lon_min: float
+    timestamp: datetime
+
+
 @dataclass
 class _Cache:
     u_interp: RegularGridInterpolator
@@ -249,6 +276,21 @@ class VectorSource:
 
     def is_available(self) -> bool:
         return self._cache is not None
+
+    def snapshot(self) -> VectorSnapshot:
+        """This field's cached grid. Raises the field's own error if it is cold."""
+        cache = self._require()
+        return VectorSnapshot(
+            key=self.spec.key,
+            lat=cache.texture.lat,
+            lon=cache.texture.lon,
+            u=cache.texture.u_grid,
+            v=cache.texture.v_grid,
+            u_interp=cache.u_interp,
+            v_interp=cache.v_interp,
+            lon_min=cache.lon_min,
+            timestamp=cache.timestamp,
+        )
 
     def meta(self) -> dict[str, Any]:
         cache = self._require()

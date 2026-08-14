@@ -139,3 +139,38 @@ export const STOKES_DRIFT_COLOR_STOPS: ColorStop[] = [
   { value: 0.75, color: [232, 212, 250] }, // #e8d4fa
   { value: 1.0, color: [247, 240, 255] }, // #f7f0ff — storm sea
 ];
+
+/**
+ * Combined drift — the fourth field, and therefore the fourth *structure*.
+ *
+ * Wind cycles hues, currents never leave amber, Stokes drift never leaves
+ * violet, and this never leaves green (hue locked at 150°). Four single-hue
+ * ramps against one rainbow is still legible in a way four rainbows would not
+ * be, and all four layers live in the stackable `flow` group and are meant to
+ * be switched between rather than memorised.
+ *
+ * Measured against the Abyss basemap's near-black ocean (#030f1e): lightness
+ * rises 0.318 → 0.917 with no reversal, and the darkest stop clears **6.75:1**
+ * — comfortably above the 3:1 floor the currents and Stokes ramps hold. Green
+ * is the one remaining hue that is far from both amber and violet at the dark
+ * end, where the map actually lives: the darkest stop sits 156 RGB from the
+ * nearest amber stop and 146 from the nearest violet one.
+ *
+ * The same caveat the Stokes ramp records applies and for the same reason: all
+ * three sequential ramps end near white, so at their extreme tops they
+ * converge. That only bites where two fields are simultaneously at maximum,
+ * which is a storm over a boundary current.
+ *
+ * The scale reaches 2.5 rather than currents' 2.0 because this field is a sum:
+ * the three terms add rather than averaging, so a boundary current under a gale
+ * with a raft's leeway goes past where the currents ramp ends.
+ */
+export const DRIFT_SPEED_COLOR_STOPS: ColorStop[] = [
+  { value: 0, color: [41, 174, 107] }, // #29ae6b — slack water, still visible
+  { value: 0.1, color: [51, 204, 128] }, // #33cc80
+  { value: 0.25, color: [96, 210, 153] }, // #60d299
+  { value: 0.5, color: [142, 215, 178] }, // #8ed7b2
+  { value: 1.0, color: [186, 222, 204] }, // #badecc
+  { value: 1.7, color: [220, 234, 227] }, // #dceae3
+  { value: 2.5, color: [244, 246, 245] }, // #f4f6f5 — current + sea + gale
+];

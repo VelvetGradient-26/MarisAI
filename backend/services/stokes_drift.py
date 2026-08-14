@@ -102,3 +102,8 @@ def get_point(latitude: float, longitude: float) -> dict[str, Any]:
 
 def get_field_png() -> bytes:
     return _source.field_png()
+
+
+def snapshot():
+    """This field's cached grid, for `services/drift.py`."""
+    return _source.snapshot()

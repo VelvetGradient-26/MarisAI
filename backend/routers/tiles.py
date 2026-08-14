@@ -9,10 +9,12 @@ from services import (
     copernicus_sst,
     copernicus_wind,
     currents_depth,
+    drift,
     stokes_drift,
 )
 from services.copernicus_currents import CopernicusCurrentsError
 from services.currents_depth import CurrentsDepthError
+from services.drift import DriftError
 from services.stokes_drift import StokesDriftError
 from services.copernicus_wind import CopernicusWindError
 from services.gfw import GfwError, fetch_tile
@@ -79,6 +81,30 @@ async def get_stokes_field():
     try:
         png_bytes = await asyncio.to_thread(stokes_drift.get_field_png)
     except StokesDriftError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(content=png_bytes, media_type="image/png")
+
+
+@router.get("/drift/field.png")
+async def get_drift_field(
+    alpha: float | None = Query(None, ge=0.0, le=0.15),
+    preset: str | None = Query(None),
+):
+    """The combined drift field — current + Stokes + leeway — as one texture.
+
+    Parameterised on the leeway coefficient because that coefficient is a
+    property of the drifting object rather than of the ocean, so there is no
+    single correct field to serve. Encoding is per-alpha and cached; the two
+    water terms are composed once per refresh and reused across every alpha.
+    """
+    try:
+        resolved = drift.resolve_alpha(alpha, preset)
+    except DriftError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    try:
+        png_bytes = await asyncio.to_thread(drift.get_field_png, resolved)
+    except DriftError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return Response(content=png_bytes, media_type="image/png")
 
