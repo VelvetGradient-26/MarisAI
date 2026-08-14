@@ -117,3 +117,67 @@ def test_a_corrupt_entry_is_discarded_rather_than_raising():
 
     assert grid_history._cache_get(PROVIDER, ["uo", "zos"], request, 12, TTL) is None
     assert not (grid_history.CACHE_DIR / f"{key}.nc").exists()
+
+
+# --------------------------------------------------------------------------
+# The hang guard
+# --------------------------------------------------------------------------
+
+
+def test_a_provider_that_goes_silent_is_abandoned_rather_than_waited_on(monkeypatch):
+    """The failure that cost 11 hours on 2026-08-14.
+
+    A `--all` build completed 9 of 13 providers and then stopped: 41 sockets to
+    Copernicus in CLOSE_WAIT, the remote having closed them, the client waiting
+    on dead sockets. Nothing raised, nothing logged, the process stayed alive.
+    An error can be retried; silence cannot be noticed, which is why a timeout
+    is a different guarantee from a retry and why both paths need one.
+    """
+    import asyncio
+
+    monkeypatch.setattr(grid_history, "_FETCH_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(grid_history, "_FETCH_ATTEMPTS", 2)
+    monkeypatch.setattr(grid_history, "_RETRY_BACKOFF_SECONDS", 0.0)
+
+    async def _never_returns(*_args, **_kwargs):
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(grid_history, "_fetch_provider", _never_returns)
+
+    async def _run():
+        return await grid_history._fetch_with_timeout(
+            PROVIDER, grid_history.catalog.get(PROVIDER), ["uo"], _request()
+        )
+
+    with pytest.raises(grid_history.GridHistoryError, match="stopped responding"):
+        asyncio.run(asyncio.wait_for(_run(), timeout=10))
+
+
+def test_a_provider_that_recovers_on_the_second_attempt_is_not_failed(monkeypatch):
+    """One retry, because a transient stall is common and a whole-globe refetch
+    is expensive enough that giving up on the first is the wrong trade."""
+    import asyncio
+
+    monkeypatch.setattr(grid_history, "_FETCH_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(grid_history, "_FETCH_ATTEMPTS", 2)
+    monkeypatch.setattr(grid_history, "_RETRY_BACKOFF_SECONDS", 0.0)
+
+    calls = {"n": 0}
+
+    async def _slow_then_fine(*_args, **_kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            await asyncio.sleep(3600)
+        return _dataset(["uo"])
+
+    monkeypatch.setattr(grid_history, "_fetch_provider", _slow_then_fine)
+
+    async def _run():
+        return await grid_history._fetch_with_timeout(
+            PROVIDER, grid_history.catalog.get(PROVIDER), ["uo"], _request()
+        )
+
+    result = asyncio.run(asyncio.wait_for(_run(), timeout=10))
+
+    assert calls["n"] == 2
+    assert set(result.data_vars) == {"uo"}

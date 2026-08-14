@@ -104,6 +104,38 @@ CACHE_DIR = Path(__file__).resolve().parent / ".cache" / "grid"
 _FIELD_TTL = timedelta(hours=6)
 _STATIC_TTL = timedelta(days=90)
 
+# Hard ceiling on one provider fetch, and the retry around it. The same guard
+# `history._fetch_with_retry` has carried since a point fetch hung for 98
+# minutes — and the same failure, observed here on 2026-08-14: a whole-grid
+# `--all` build sat for **11 hours** having completed 9 of 13 providers, with
+# 41 sockets to Copernicus in CLOSE_WAIT. The remote had closed them; the client
+# was waiting on dead sockets and would have waited forever. Nothing raised,
+# nothing logged, the process was alive at 13 GB RSS, and the progress bar last
+# repainted four minutes into the run.
+#
+# That is the entire point of a timeout as distinct from a retry: an error can
+# be retried, but silence cannot be noticed. This module having grown from the
+# point path without inheriting its guard is exactly how the same bug gets paid
+# for twice.
+#
+# Much larger than the point path's 300s, because these are legitimately long:
+# a whole-globe hourly product over a 45-day window is ~1080 timestep reads and
+# was measured at ~35 minutes. The ceiling is set to catch a hang, not to police
+# a slow fetch.
+_FETCH_TIMEOUT_SECONDS = 3600.0
+_FETCH_ATTEMPTS = 2
+_RETRY_BACKOFF_SECONDS = 10.0
+
+# How many providers may be in flight at once.
+#
+# Each one holds a whole-globe, multi-timestep array while it loads, so this is
+# a memory ceiling rather than a politeness one. Unbounded, a 13-provider warm
+# fetch reached **13 GB RSS** on a 9 GB machine (measured 2026-08-14) and drove
+# it into swap — which is very likely what turned a slow fetch into the hang the
+# timeout above now catches. Three keeps peak near a few GB while still
+# overlapping the long Copernicus reads with the short ERDDAP ones.
+_MAX_CONCURRENT_FETCHES = 3
+
 # Providers with no global gridded form. Open-Meteo is a point API billed per
 # grid point (`ProviderSpec.max_points = 900`), so a global field would be tens
 # of thousands of HTTP requests for one covariate.
@@ -431,6 +463,47 @@ async def _fetch_provider(
     return dataset
 
 
+async def _fetch_with_timeout(
+    provider_key: str,
+    spec: ProviderSpec,
+    fields: list[str],
+    request: GridRequest,
+) -> xr.Dataset:
+    """One provider's global field, bounded in time and retried once.
+
+    Per-provider rather than around the whole gather, for the reason
+    `history._fetch_with_retry` gives: retrying the group would re-issue the
+    slow Copernicus reads to work around a fast ERDDAP blip. The coroutine is
+    rebuilt per attempt, since an awaitable that has already raised cannot be
+    awaited again.
+    """
+    for attempt in range(_FETCH_ATTEMPTS):
+        try:
+            return await asyncio.wait_for(
+                _fetch_provider(provider_key, spec, fields, request),
+                timeout=_FETCH_TIMEOUT_SECONDS,
+            )
+        except TimeoutError as exc:
+            # Named separately so the log says "stopped responding" rather than
+            # reporting the empty string a bare TimeoutError stringifies to,
+            # which reads like a bug in this code rather than in the network.
+            logger.warning(
+                f"global fetch for {provider_key} stopped responding after "
+                f"{_FETCH_TIMEOUT_SECONDS / 60:.0f} min "
+                f"(attempt {attempt + 1}/{_FETCH_ATTEMPTS})"
+            )
+            if attempt == _FETCH_ATTEMPTS - 1:
+                raise GridHistoryError(
+                    f"global fetch for {provider_key} stopped responding "
+                    f"({_FETCH_TIMEOUT_SECONDS / 60:.0f} min timeout, "
+                    f"{_FETCH_ATTEMPTS} attempts). The provider accepted the "
+                    "connection and then went silent; this is not a data error."
+                ) from exc
+            await asyncio.sleep(_RETRY_BACKOFF_SECONDS)
+
+    raise GridHistoryError(f"global fetch for {provider_key} failed")
+
+
 async def fetch_stack(request: GridRequest) -> GridStack:
     """Global fields for every griddable code in `request`.
 
@@ -469,10 +542,13 @@ async def fetch_stack(request: GridRequest) -> GridStack:
         description="global fetch", total=len(provider_keys), unit="provider"
     ) as bar:
 
+        limit = asyncio.Semaphore(_MAX_CONCURRENT_FETCHES)
+
         async def _tracked(key: str) -> xr.Dataset:
-            dataset = await _fetch_provider(
-                key, specs[key], _needed_fields(griddable, key), request
-            )
+            async with limit:
+                dataset = await _fetch_with_timeout(
+                    key, specs[key], _needed_fields(griddable, key), request
+                )
             bar.update(1)
             return dataset
 
