@@ -269,3 +269,99 @@ export interface MultiTrendsResponse {
   longitude: number;
   series: Record<string, TrendSeries>;
 }
+
+/** `/api/dashboard/data-quality` — what the platform holds and how good it is.
+ *
+ * The standing companion to `HealthResponse`: that one is "is the feed up
+ * right now", this one is "what is in the feed, at what resolution, over what
+ * period, and how well does the model trained on it score".
+ */
+
+export type ModelGrade = 'strong' | 'good' | 'fair' | 'poor' | 'unknown';
+
+export type CacheHealth = ProviderHealth | 'not_cached';
+
+export interface DatasetVariable {
+  code: string;
+  label: string;
+  unit: string;
+  category: string;
+  available: boolean;
+  depth_resolved: boolean;
+  circular: boolean;
+  derived: boolean;
+}
+
+export interface DatasetEntry {
+  key: string;
+  source_label: string;
+  licence: string;
+  grid_spacing_deg: number;
+  cadence: string;
+  steps_per_day: number;
+  coverage_start: string | null;
+  time_varying: boolean;
+  forecast_horizon_days: number | null;
+  max_points: number | null;
+  variable_count: number;
+  variables: DatasetVariable[];
+  cache: {
+    available: boolean;
+    last_sync: string | null;
+    health: CacheHealth;
+    unavailable_reason: string | null;
+  };
+}
+
+export interface ModelEntry {
+  variable: string;
+  label?: string;
+  unit?: string | null;
+  horizon: number;
+  available: boolean;
+  unavailable_reason: string | null;
+  model_type?: string | null;
+  target_mode?: string | null;
+  trained_at?: string | null;
+  training_rows?: number | null;
+  training_started?: string | null;
+  training_ended?: string | null;
+  feature_count?: number | null;
+  covariates?: string[];
+  skill_score?: number | null;
+  rmse?: number | null;
+  mae?: number | null;
+  r2?: number | null;
+  persistence_rmse?: number | null;
+  n_folds?: number;
+  negative_folds?: number;
+  fold_skill_min?: number | null;
+  fold_skill_max?: number | null;
+  grade?: ModelGrade;
+  points_used?: number;
+  points_skipped?: number;
+  confidence_level?: number | null;
+}
+
+export interface CoverageReport {
+  variables_total: number;
+  variables_served: number;
+  variables_unavailable: { code: string; label: string }[];
+  variables_configured_for_forecast: number;
+  variables_trained: number;
+  models_trained: number;
+  variables_gridded: number;
+  configured_but_untrained: string[];
+  trained_but_ungridded: string[];
+  trained_but_ungriddable: { code: string; reason: string }[];
+  grid_error: string | null;
+  config_error: string | null;
+}
+
+export interface DataQualityResponse {
+  datasets: DatasetEntry[];
+  models: ModelEntry[];
+  coverage: CoverageReport;
+  model_summary: Record<ModelGrade, number>;
+  generated_at: string;
+}

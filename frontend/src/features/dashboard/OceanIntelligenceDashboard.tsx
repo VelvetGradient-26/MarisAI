@@ -22,6 +22,7 @@ import { formatClockDate, formatClockTime } from '../../utils/formatTime';
 import { AiInsights } from './components/AiInsights';
 import { AlertsPanel } from './components/AlertsPanel';
 import { DashboardMap } from './components/DashboardMap';
+import { DataQualityPanel } from './components/DataQualityPanel';
 import { HealthPanel } from './components/HealthPanel';
 import { KpiCard, KpiGrid } from './components/KpiCard';
 import { LiveFeed } from './components/LiveFeed';
@@ -354,6 +355,17 @@ export function OceanIntelligenceDashboard() {
           </div>
           <div className="max-h-[460px] min-h-[300px]">
             <HealthPanel />
+          </div>
+        </section>
+
+        {/* --- Section 9: data quality ---
+            Full width rather than a third column beside the two above: this
+            one carries a dataset table and a 114-model grid, and squeezing it
+            into a half-width panel is what made the model cards unreadable at
+            the tablet breakpoint. */}
+        <section aria-label="Data quality" className="mt-3">
+          <div className="max-h-[560px] min-h-[360px]">
+            <DataQualityPanel />
           </div>
         </section>
 

@@ -13,7 +13,7 @@ product's coverage) is a 4xx, and only a wholly unavailable aggregate is 503.
 
 from fastapi import APIRouter, HTTPException, Query
 
-from services.dashboard import alerts, health, live, summary, trends
+from services.dashboard import alerts, data_quality, health, live, summary, trends
 from services.dashboard.trends import TrendsError
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -54,6 +54,25 @@ async def get_alerts():
 async def get_health():
     """Per-provider connection, latency and freshness."""
     return health.build()
+
+
+@router.get("/data-quality")
+async def get_data_quality():
+    """Datasets, model scores and pipeline coverage.
+
+    The standing companion to `/health`: that one answers "is the feed up right
+    now", this one answers "what is in the feed and how good is it". Always
+    200 — an unreadable model artifact or a missing grid directory is reported
+    as an unavailable *item*, since a data-quality panel that goes blank when
+    one thing is wrong cannot report that one thing is wrong.
+    """
+    return data_quality.build()
+
+
+@router.get("/data-quality/models")
+async def get_model_health():
+    """Just the model table, for the metric pages' model-health section."""
+    return {"models": data_quality.models()}
 
 
 @router.get("/satellites")
