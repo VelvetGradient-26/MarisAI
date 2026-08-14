@@ -534,16 +534,39 @@ prose is a generated macro rather than a typed figure &mdash; rerunning the
 experiments updates the manuscript.</p>
 
 <table class="files">
-<tr><th>research/springer/main.pdf</th><td>Springer LNCS format
+<tr><th>papers/springer/main.pdf</th><td>Springer LNCS format
   (<code>llncs</code>, single column)</td></tr>
-<tr><th>research/ieee/main.pdf</th><td>IEEE conference format
+<tr><th>papers/ieee/main.pdf</th><td>IEEE conference format
   (<code>IEEEtran</code>, two column)</td></tr>
-<tr><th>research/shared/body.tex</th><td>the manuscript body, shared verbatim
+<tr><th>papers/shared/body.tex</th><td>the manuscript body, shared verbatim
   by both builds</td></tr>
-<tr><th>research/shared/diagrams/</th><td>Mermaid sources &mdash; the same
+<tr><th>papers/shared/diagrams/</th><td>Mermaid sources &mdash; the same
   files render to PDF for the papers and inline on this page</td></tr>
-<tr><th>research/shared/generated/</th><td>figures, LaTeX tables and the
+<tr><th>papers/shared/generated/</th><td>figures, LaTeX tables and the
   number macros, all generated from the experiment output</td></tr>
+</table>
+
+<h2>Reproducing it</h2>
+
+<p>Four notebooks run the whole study end to end, in order. They need
+<strong>no credentials and no network</strong> &mdash; the cleaned observations
+they read are committed to <code>research/data/</code>. They import the shipped
+implementation rather than reimplementing it, so what they demonstrate is what
+the experiments ran.</p>
+
+<table class="files">
+<tr><th>01_data_and_eda</th><td>the variables, sites and coverage; seasonal
+  structure; autocorrelation, which identifies where persistence will be hard
+  to beat</td></tr>
+<tr><th>02_feature_engineering</th><td>the ~59 features; cyclical calendar
+  encoding; the leakage checks; and the delta-vs-level comparison the framework
+  turns on</td></tr>
+<tr><th>03_baselines_and_models</th><td>both baselines; why the climatology
+  window is &plusmn;15 days; the circular mean; and a direct measurement of
+  what fitting a baseline on the evaluation period costs</td></tr>
+<tr><th>04_results_and_transfer</th><td>all 52 models against both baselines;
+  the flattered cases; the outright failures; and the held-out-site
+  results</td></tr>
 </table>
 
 <h3>Rebuilding</h3>

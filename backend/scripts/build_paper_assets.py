@@ -25,7 +25,7 @@ import pandas as pd  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "models" / "forecasting" / "_reports" / "paper"
-OUT = ROOT.parent / "research" / "shared" / "generated"
+OUT = ROOT.parent / "research" / "papers" / "shared" / "generated"
 
 # Validated with the dataviz palette checker (light surface): CVD separation
 # dE 21.7 protan / 29.9 tritan, normal-vision 29.8, both >= 3:1 on white.
