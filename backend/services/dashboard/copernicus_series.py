@@ -50,6 +50,33 @@ _SEAWATER_HEAT_CAPACITY = 3985.0  # J/(kg*K)
 # The standard reference depth for "upper ocean heat content".
 OHC_REFERENCE_DEPTH_M = 700.0
 
+# The shallower layers, offered beside it.
+#
+# 0-700 m is the reference depth for climate-scale heat *storage*, and it is the
+# wrong layer for most of what a marine user asks. Cyclone intensification draws
+# on the heat available to be mixed upward within days, which is the top ~100 m;
+# a marine heatwave is a near-surface phenomenon; and the mixed layer is where
+# the biology is. Those signals are real in 0-50 m and largely averaged away by
+# the 600 m of near-constant deep water beneath them.
+#
+# Each layer is a separate series rather than a depth parameter on one, so a
+# chart can show two layers together — which is the comparison worth making,
+# since surface warming with no change at 700 m and warming through the whole
+# column are different events that a single number cannot distinguish.
+OHC_LAYERS_M: tuple[float, ...] = (50.0, 100.0, 200.0, OHC_REFERENCE_DEPTH_M)
+
+
+def ohc_key(depth_m: float) -> str:
+    """Series key for one heat-content layer.
+
+    The reference depth keeps the bare `ocean_heat_content` key it shipped with,
+    rather than becoming `ocean_heat_content_700m` — renaming it would break
+    every stored chart selection and the dashboard's own references for no gain.
+    """
+    if depth_m == OHC_REFERENCE_DEPTH_M:
+        return "ocean_heat_content"
+    return f"ocean_heat_content_{depth_m:.0f}m"
+
 # A degree of padding around the requested point. The grid is 0.083deg
 # (physics) or 0.25deg (BGC), so a window this size always contains at least
 # one cell without pulling a meaningful amount of extra data.
@@ -81,6 +108,7 @@ class SeriesSpec:
     mode: Literal["surface", "ohc"] = "surface"
     maximum_depth: float | None = 1.0
     decimals: int = 4
+    label: str | None = None
 
 
 SERIES: dict[str, SeriesSpec] = {
@@ -105,15 +133,26 @@ SERIES: dict[str, SeriesSpec] = {
             coverage_start=date(2022, 6, 1),
             decimals=3,
         ),
-        SeriesSpec(
-            key="ocean_heat_content",
-            dataset_id=THETAO_DEPTH_DATASET_ID,
-            variables=("thetao",),
-            unit="GJ/m²",
-            coverage_start=date(2022, 6, 1),
-            mode="ohc",
-            maximum_depth=OHC_REFERENCE_DEPTH_M,
-            decimals=2,
+        # Ocean heat content, one series per layer. The 0-700 m one keeps the
+        # bare key it has always had, so existing chart configurations and the
+        # dashboard's own references resolve unchanged; the shallower layers are
+        # suffixed. Same rule the forecasting artifacts follow for regions.
+        *(
+            SeriesSpec(
+                key=ohc_key(depth),
+                label=f"Ocean Heat Content (0-{depth:.0f} m)",
+                dataset_id=THETAO_DEPTH_DATASET_ID,
+                variables=("thetao",),
+                unit="GJ/m²",
+                coverage_start=date(2022, 6, 1),
+                mode="ohc",
+                maximum_depth=depth,
+                # Shallow layers are an order of magnitude smaller than 0-700 m
+                # (a 50 m column is ~5 GJ/m² against ~2,900), so two decimals
+                # would quantise the very series the layer exists to resolve.
+                decimals=2 if depth >= 200 else 3,
+            )
+            for depth in OHC_LAYERS_M
         ),
     )
 }
@@ -172,6 +211,21 @@ def _integrate_heat_content(
     Trapezoidal integration over the model's own (unevenly spaced) levels.
     Levels below the seafloor are NaN, so the integral runs over the valid
     part of the column and returns None if that is too thin to be meaningful.
+
+    **The column is closed at the surface.** The shallowest model level sits at
+    ~0.494 m, so integrating the levels as they come leaves the top half-metre
+    out. That is a rounding error against 700 m and about 1% of a 50 m layer —
+    which is the scale of the signal the shallow layers exist to show. The
+    surface value is carried up to depth 0, which is the standard treatment and
+    is safe here because the top levels are inside the mixed layer by
+    construction.
+
+    **The bottom is the model's, not the requested depth.** Copernicus returns
+    the levels within the server-side `maximum_depth` bound, so a 50 m layer
+    integrates to whichever level is nearest under 50 m. The depth axis is fixed
+    for the product, so every point and every timestep integrates to the same
+    level — a series is internally comparable, and the exact bottom is named in
+    the chart's source line rather than implied by the label.
     """
     valid = np.isfinite(temperatures)
     if valid.sum() < 2:
@@ -179,6 +233,10 @@ def _integrate_heat_content(
 
     profile = temperatures[valid]
     levels = depths[valid]
+
+    if levels[0] > 0.0:
+        profile = np.concatenate([profile[:1], profile])
+        levels = np.concatenate([[0.0], levels])
     joules = _SEAWATER_DENSITY * _SEAWATER_HEAT_CAPACITY * np.trapezoid(profile, levels)
     return float(joules / 1e9)
 
