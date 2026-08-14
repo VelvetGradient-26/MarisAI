@@ -1,0 +1,519 @@
+% ---------------------------------------------------------------------------
+% The manuscript body, shared verbatim by the Springer (LNCS) and IEEE
+% (IEEEtran) builds. Nothing class-specific may appear in this file.
+%
+% Each wrapper defines, before \input-ing this:
+%   \wfigure / \endwfigure   a figure spanning the full text width
+%                            (`figure` in one-column LNCS, `figure*` in
+%                             two-column IEEEtran)
+%   \wtable  / \endwtable    the same for tables
+%   \tabscale                the font size command tables are set at
+% ---------------------------------------------------------------------------
+
+\section{Introduction}
+
+An ocean forecast is useful only relative to the cheapest thing one could have
+done instead. In operational oceanography that reference is almost always
+\emph{persistence}: predict that tomorrow equals today. Persistence is a
+famously hard baseline on autocorrelated geophysical series, and a model that
+beats it is normally taken to have learned something.
+
+This paper argues that persistence alone cannot support that inference, and
+that the way it fails is systematically misleading rather than merely noisy.
+
+The argument is structural. Persistence error grows with the forecast horizon,
+because the ocean decorrelates from its present state. The error of a
+\emph{seasonal climatology} does not: knowing that it is February is exactly as
+informative thirty days ahead as it is one day ahead. A skill score computed
+against persistence therefore has a denominator that inflates with horizon
+while the numerator of a purely seasonal model does not. The consequence is
+that a model which has learned nothing beyond the annual cycle will display
+skill against persistence that \emph{increases} with horizon --- precisely the
+pattern a reader interprets as a model with genuine long-range predictive
+content.
+
+We encountered this pattern empirically. In a framework trained across
+\NVars{} ocean variables, skill against persistence rose with horizon for
+\NRising{} of them. Whether that reflected real forecast skill or a seasonal
+artefact was, with persistence as the only baseline, unanswerable. This paper
+resolves it by adding the baseline that discriminates, and finds that both
+readings are present in the same set of models --- including
+\NLoseToClim{} model--horizon combinations that beat persistence while losing
+to climatology outright.
+
+\subsection{Contributions}
+
+\begin{enumerate}\itemsep2pt
+\item A \textbf{two-baseline skill audit} over \NVars{} operational ocean
+variables $\times$ 4 horizons $\times$ \NSites{} global sites (\NModels{}
+models), scoring every model against both persistence and a
+leakage-controlled day-of-year climatology. The two baselines order the same
+models differently, and the disagreement is a systematic function of horizon
+rather than noise.
+\item A \textbf{diagnosis of the horizon--skill inversion}, separating genuine
+long-range skill from a seasonal artefact, and identifying the variables for
+which a climatology --- cheaper to compute and to serve --- is the rational
+operational choice.
+\item \textbf{Leave-one-site-out spatial validation} blocked in space and time
+simultaneously (\NLosoFits{} held-out fits), testing the assumption that
+licenses serving a globally pooled model at arbitrary coordinates.
+\item \textbf{Negative results reported in full}, including \NLoseToPers{}
+model--horizon combinations that lose to persistence outright. These identify
+a class of high-inertia variables for which the approach is contraindicated.
+\item A \textbf{practical decision procedure} (Fig.~\ref{fig:interpretation})
+mapping the pair $(S_{\mathrm{pers}}, S_{\mathrm{clim}})$ to a deployment
+recommendation.
+\end{enumerate}
+
+\section{Related Work}
+
+Skill scores relative to a reference forecast are standard in numerical weather
+prediction, and are conventionally reported against climatology, persistence,
+or both \citep{jolliffe2012,murphy1988}. The concern raised here is not that
+climatology is unknown as a baseline --- it is long-established in NWP --- but
+that in the recent machine-learning-for-ocean literature persistence is
+frequently the sole reference, and the specific interaction between baseline
+choice and forecast horizon is rarely made explicit.
+
+Data-driven ocean and atmospheric forecasting has moved rapidly from
+convolutional recurrent architectures for sea surface temperature
+\citep{shi2015convlstm} to global neural weather models
+\citep{pathak2022fourcastnet,lam2023graphcast}. Evaluation practice has not
+kept pace uniformly: gains are often reported for a single variable at a single
+horizon against a single baseline. Our contribution is orthogonal to
+architecture. We deliberately hold the model class fixed --- gradient-boosted
+trees, one configuration, no variable-specific code --- so that variation in
+the results is attributable to the variable, the horizon and the baseline
+rather than to model tuning.
+
+The leakage discipline we adopt for the climatology follows standard practice
+in ecological and environmental modelling, where fitting any component of a
+baseline or label definition on the evaluation period is a known and
+consequential error \citep{roberts2017cv}. Our spatial validation follows the
+same literature's argument against random $k$-fold splits on spatially
+autocorrelated data.
+
+\section{System Architecture}
+
+Figure~\ref{fig:architecture} shows the framework. It is deliberately uniform:
+one acquisition path, one feature builder and one model class serve every
+variable, and nothing in the pipeline branches on which variable it is
+training. Adding a variable is a configuration entry, not a code change. This
+uniformity is what makes a cross-variable audit meaningful --- differences in
+the results cannot be attributed to differences in the implementation.
+
+\begin{figure}[tb]
+\centering
+\includegraphics[width=0.82\linewidth]{architecture.pdf}
+\caption{Framework architecture. One acquisition path, one feature builder and
+one model class serve all \NVars{} variables. The three predictors at the
+bottom are scored on identical rows. The contribution of this paper is
+shaded: the climatology baseline and the second skill score it makes
+possible.}
+\label{fig:architecture}
+\end{figure}
+
+\section{Data and Methods}
+
+\subsection{Variables and sites}
+
+We study \NVars{} ocean variables spanning physics, surface waves and
+biogeochemistry (Table~\ref{tab:variables}), all drawn from operational
+products: Copernicus Marine Service analysis and forecast fields for the
+physical and biogeochemical variables, and the same provider's wave products
+for the wave variables. Variables were included on the criterion that a
+complete \NSites{}-site history was available in our archive at the snapshot
+date --- a data-availability criterion applied before any model was scored,
+discussed further in Section~\ref{sec:limitations}.
+
+Each variable is sampled at \NSites{} sites chosen to span the major ocean
+basins and dynamical regimes: western boundary currents (Gulf Stream, Kuroshio,
+Agulhas), eastern boundary upwelling systems (Peru, Benguela, Canary),
+subtropical gyres, marginal and shelf seas, and the Southern Ocean. Site
+locations are shown in Fig.~\ref{fig:sitemap}. The record spans 2024-06-11 to
+2026-08-09 at daily resolution.
+
+\begin{table}[tb]
+\centering
+\caption{The \NVars{} variables audited. ``Feature rows'' is the pooled count
+across all \NSites{} sites after feature construction and target alignment.}
+\label{tab:variables}
+\tabscale
+\input{../shared/generated/table_variables}
+\end{table}
+
+\subsection{Forecast framework}
+
+For a target variable $y$ at horizon $h$, features at time $t$ comprise lagged
+values of $y$ and its covariates at lags $\{1,3,7,14,30\}$~days; rolling mean,
+standard deviation, minimum and maximum over windows of $\{7,14,30\}$~days;
+first differences; linear trend coefficients over $\{7,30\}$~days; calendar and
+cyclical encodings of day of year; and static site descriptors (latitude,
+longitude, ocean depth, basin). All rolling windows close at $t$ inclusive,
+which is safe because $h \geq 1$ is enforced. Exactly one forward shift exists
+in the pipeline, in target construction.
+
+Models are LightGBM regressors \citep{ke2017lightgbm} with fixed
+hyperparameters across all variables and horizons (400 trees, learning rate
+0.05, 31 leaves). No per-variable tuning was performed: tuning would confound
+the cross-variable comparison that is the point of the audit.
+
+\para{Delta targets}
+Models regress on the \emph{change} $y(t+h) - y(t)$ rather than the level
+$y(t+h)$. A regression tree partitions feature space into piecewise-constant
+regions and therefore cannot represent the identity function
+$y(t+h) = y(t)$ --- which is exactly what persistence is. Fitted on levels, the
+framework scored worse than persistence at every horizon tested. Under a delta
+target persistence becomes the constant zero function, which a tree represents
+exactly, and the same data and features yield positive skill. Predictions are
+decoded by adding the model output to the anchor $y(t)$. For circular
+variables (wave direction) the target is the signed angular change wrapped to
+$(-180\degree, 180\degree]$ and decoding is modulo $360\degree$.
+
+\para{Globally pooled models}
+One model per (variable, horizon) is fitted across all \NSites{} sites jointly,
+with site coordinates and depth as features, rather than one model per site.
+This is what allows the framework to score arbitrary coordinates rather than
+only the sites it was fitted on --- and it is the assumption
+Section~\ref{sec:loso} tests directly.
+
+\subsection{Baselines}
+
+\para{Persistence}
+$\hat{y}_{\text{pers}}(t+h) = y(t)$, the last observed value at feature time.
+This is also the anchor of the delta target, so a delta model that outputs
+zero \emph{is} persistence exactly.
+
+\para{Climatology}
+For each site $s$ and day of year $d$, the climatology is the mean of all
+training observations at that site whose day of year falls within
+$\pm\ClimWindow$ days of $d$, treating the year as circular so that 31
+December neighbours 1 January:
+%
+\begin{equation}
+\hat{y}_{\text{clim}}(s, d) = \frac{1}{|W(d)|}\sum_{t \in W(d)} y_s(t),
+\end{equation}
+%
+where $W(d) = \{t : \delta(\mathrm{doy}(t), d) \leq \ClimWindow\}$ and $\delta$
+is circular day-of-year distance. The window is necessary
+rather than cosmetic: the record is roughly 2.2 years, so a bare
+(site, day-of-year) mean would average two samples and be mostly noise --- a
+strawman the model would beat for the wrong reason. A $\pm\ClimWindow$-day
+window pools approximately 60 samples per estimate. For circular variables the
+mean is the circular mean, computed via $\operatorname{atan2}$ of the mean sine
+and cosine; the arithmetic mean of $359\degree$ and $1\degree$ is $180\degree$,
+which would make the baseline point in exactly the wrong direction.
+
+\para{Leakage control}
+The climatology is refitted \emph{inside every cross-validation fold} on that
+fold's training rows only (shaded in Fig.~\ref{fig:dataflow}). Fitting a
+climatology once over the full record would leak the evaluation period into the
+baseline's own definition, flattering the baseline and understating the model
+--- an error in the ``safe'' direction, and therefore one that is easy to leave
+in place. Fit and application are implemented as two separate functions so that
+fitting on the wrong rows requires deliberate effort, and the discipline is
+enforced by a unit test that shifts the second year of a synthetic series by a
+known constant and asserts the baseline's error on that period recovers the
+shift.
+
+\subsection{Validation}
+
+Figure~\ref{fig:dataflow} shows both experiments end to end.
+
+\para{Rolling-origin cross-validation}
+Five expanding-window folds, ordered in time, with an embargo gap equal to the
+forecast horizon between each training window and its test window --- a
+training row within $h$ days of the test window shares its target period.
+Random $k$-fold splitting is never used. The pooled multi-site frame is sorted
+by time so that a fold boundary separates \emph{dates}, and no site's future
+can leak into another site's past.
+
+\para{Skill score}
+For a reference forecast $r$,
+%
+\begin{equation}
+S_r = 1 - \frac{\mathrm{RMSE}_{\text{model}}^2}{\mathrm{RMSE}_{r}^2},
+\end{equation}
+%
+so $S_r > 0$ means the model beats reference $r$, $S_r = 0$ is parity, and
+$S_r < 0$ means the reference is better. We report $S_{\mathrm{pers}}$ and
+$S_{\mathrm{clim}}$ for every model. Where the climatology cannot answer for
+some test rows (a day of year no site in the training fold observed), both
+model and baseline are scored on the intersection, and the reduced count is
+reported rather than the rows being silently dropped.
+
+\begin{wfigure}[tb]
+\centering
+\includegraphics[width=0.95\linewidth]{dataflow.pdf}
+\caption{Experiment data flow. A pinned \texttt{as\_of} snapshot makes every
+provider request cache-stable, so the experiments are reproducible and run
+offline. Shaded boxes are the two places a baseline is fitted, and both are
+fitted strictly inside the fold they are scored in.}
+\label{fig:dataflow}
+\end{wfigure}
+
+\subsection{Reproducibility}
+
+All experiments run from a fixed archival snapshot (\AsOf{}), pinned so that
+window boundaries --- and therefore every cached provider request --- are
+identical across reruns. Without this pinning each rerun re-requests the record
+from upstream providers and, because those providers intermittently return
+partial responses, occasionally scores a slightly different dataset, making two
+runs of the same experiment non-comparable. Every figure and table cell in this
+paper is generated programmatically from the experiment output; no number is
+transcribed by hand.
+
+\section{Results}
+
+\subsection{The two baselines disagree, and disagree with horizon}
+
+Figure~\ref{fig:skill} is the central result. For each variable it plots skill
+against persistence and skill against climatology as a function of horizon.
+
+\begin{wfigure}[tb]
+\centering
+\includegraphics[width=\linewidth]{fig_skill_by_horizon.pdf}
+\caption{Skill against two baselines, by forecast horizon, for each of the
+\NVars{} variables. Skill against persistence (blue circles) and against
+climatology (orange squares) move in \emph{opposite} directions with horizon
+for most variables. The dashed line is parity; points below it mean the
+baseline wins. A reader given only the blue curve would conclude these models
+improve with lead time.}
+\label{fig:skill}
+\end{wfigure}
+
+The two curves systematically diverge. Median skill against persistence rises
+from \MedSkillPOne{} at \SI{1}{\day} to \MedSkillPThirty{} at \SI{30}{\day},
+while median skill against climatology falls from \MedSkillCOne{} to
+\MedSkillCThirty{} over the same range. This is the structural prediction of
+Section~1 realised in data: persistence becomes easy to beat as the horizon
+grows because the ocean decorrelates from its present state, while climatology
+becomes \emph{harder} to beat because the seasonal cycle is an increasing share
+of what remains predictable.
+
+The practical consequence is that the two baselines license opposite statements
+about the same models. Reported against persistence alone, this framework
+appears to improve with lead time. Reported against climatology alone, it
+appears to degrade toward the seasonal cycle. Both are true; neither is
+complete. Per-variable skill scores are given in Table~\ref{tab:skill}, and the
+full error decomposition in the appendix table.
+
+\begin{wtable}[tb]
+\centering
+\caption{Skill against persistence ($S_{\mathrm{p}}$) and against climatology
+($S_{\mathrm{c}}$) at each horizon. Bold marks a negative score --- the
+baseline winning. Reading across a row shows the divergence; reading down the
+$S_{\mathrm{c}}$ columns shows it is systematic.}
+\label{tab:skill}
+\tabscale
+\input{../shared/generated/table_skill_compact}
+\end{wtable}
+
+\subsection{What survives the seasonal cycle}
+
+The inversion does not mean every model is purely seasonal. At \SI{30}{\day},
+skill against climatology remains positive for most variables, meaning they
+carry information the seasonal cycle does not. But \NLoseToClim{}
+model--horizon combinations have $S_{\mathrm{clim}} < 0$ while
+$S_{\mathrm{pers}} > 0$: these models beat the last observed value and lose to
+the seasonal cycle. Under the reporting convention this literature most often
+uses, they would be presented as successes.
+
+The correct reading is that long-horizon skill measured against persistence is
+substantially --- and for some variables entirely --- seasonal, and only the
+climatology comparison separates the two components. Variables whose
+$S_{\mathrm{clim}}$ approaches or crosses zero at long range are those for
+which the model has effectively reduced to a seasonal lookup, and for which a
+climatology would be the rational operational choice.
+
+\subsection{Where the framework fails}
+
+\NLoseToPers{} model--horizon combinations have $S_{\mathrm{pers}} < 0$: the
+model is worse than doing nothing. These concentrate in the high-inertia
+subsurface variables, and the pattern is physically coherent. For a variable
+whose autocorrelation time greatly exceeds the forecast horizon, persistence is
+close to optimal and the residual the delta model is asked to predict is close
+to pure noise; fitting it adds variance without adding signal. This is a
+property of the variable rather than a defect of the implementation, and it is
+useful precisely because it is predictable in advance from the autocorrelation
+structure --- it identifies where this class of model should not be deployed at
+all.
+
+Notably these are not the same variables that fail against climatology. Some
+subsurface variables lose to persistence while beating climatology by a wide
+margin; some wave variables do the reverse. The two baselines fail in different
+places, which is the strongest available argument for reporting both.
+
+\subsection{Spatial transfer: leave-one-site-out}
+\label{sec:loso}
+
+Serving a globally pooled model at arbitrary coordinates rests on an assumption
+that is rarely tested: that the model generalises to ocean it never saw during
+training, rather than interpolating among its training sites. We test this
+directly. For each variable, horizon and site, we refit on the remaining
+\(\NSites - 1\) sites and score on the held-out one (\NLosoFits{} fits).
+
+The split is blocked in space \emph{and} time. Training uses the earlier 80\%
+of the record at the 23 retained sites; testing uses the later 20\% at the
+held-out site. A purely spatial hold-out would leave the model trained on the
+same dates it is tested on, measuring interpolation across a shared period
+rather than transfer. The climatology baseline is held to the same standard: it
+is fitted only on the 23 training sites, so for the held-out site it falls back
+to the nearest fitted site by great-circle distance --- the spatial analogue of
+what the model itself is being asked to do.
+
+\begin{wfigure}[tb]
+\centering
+\includegraphics[width=\linewidth]{fig_loso.pdf}
+\caption{Leave-one-site-out transfer. (a) Skill at each held-out site
+(\SI{7}{\day}); each dot is one site scored by a model that never saw it.
+(b) Pooled skill at sites seen in training against median skill at held-out
+sites; the dashed line is equality, and points below it are the cost of
+spatial extrapolation.}
+\label{fig:loso}
+\end{wfigure}
+
+Transfer is real but costs skill. At \SI{7}{\day}, median skill at held-out
+sites is \MedLosoSeven{} against \MedPooledSeven{} pooled, and
+\LosoPositiveShare{}\% of held-out site-fits retain positive skill. That the
+majority remain positive supports serving the pooled model at unseen
+coordinates; that the median falls means the pooled figure overstates what a
+user clicking on open ocean should expect, and a deployed system should say so.
+Per-variable summaries are in Table~\ref{tab:loso}.
+
+\begin{wtable}[tb]
+\centering
+\caption{Leave-one-site-out results. ``Med.'' is the median skill against
+persistence across the \NSites{} held-out sites; $n^{+}$ counts sites retaining
+positive skill. Bold marks a negative median --- a variable that does not
+transfer.}
+\label{tab:loso}
+\tabscale
+\input{../shared/generated/table_loso_compact}
+\end{wtable}
+
+\begin{wfigure}[tb]
+\centering
+\includegraphics[width=\linewidth]{fig_site_map.pdf}
+\caption{The \NSites{} evaluation sites, coloured by median skill across
+variables when that site is held out entirely (\SI{7}{\day}). Blue indicates
+the model transfers there; red indicates persistence wins. The colour bar is
+clipped at a robust bound so that one catastrophic failure does not compress
+the rest of the scale.}
+\label{fig:sitemap}
+\end{wfigure}
+
+Figure~\ref{fig:sitemap} shows transfer is not spatially uniform. Sites in
+dynamically energetic regions --- western boundary currents and upwelling
+systems --- are systematically harder to predict from elsewhere, the expected
+result: their variability is driven by mesoscale processes with short
+decorrelation scales that a model fitted on distant sites cannot resolve.
+
+\section{Discussion}
+
+\subsection{A decision procedure}
+
+Figure~\ref{fig:interpretation} states the practical consequence of these
+results as a procedure. The pair $(S_{\mathrm{pers}}, S_{\mathrm{clim}})$,
+evaluated across more than one horizon and checked against a held-out site,
+maps onto a small number of clearly distinguishable recommendations --- three
+of which are ``do not deploy this model'' for reasons that a single baseline
+cannot surface.
+
+\begin{figure}[tb]
+\centering
+\includegraphics[width=0.92\linewidth]{interpretation.pdf}
+\caption{Interpreting the two skill scores together. Three of the six terminal
+states are negative recommendations that reporting $S_{\mathrm{pers}}$ alone
+would not reveal.}
+\label{fig:interpretation}
+\end{figure}
+
+\subsection{Implications}
+
+\para{Report both baselines}
+Persistence and climatology are individually cheap and jointly diagnostic, and
+their disagreement carries information neither provides alone. A model that
+beats persistence at long range while losing to climatology has not learned to
+forecast; it has learned what month it is. That failure mode is invisible under
+a single-baseline convention, and it fails in the flattering direction.
+
+\para{Baseline choice interacts with horizon, so single-horizon evaluation
+hides it} The divergence in Fig.~\ref{fig:skill} is only visible across
+horizons. A paper reporting one horizon --- however carefully --- can report a
+number that is correct and still leave the reader unable to tell which of two
+very different models produced it.
+
+\para{Architecture is not the lever these results point to}
+We held the model class fixed deliberately. Nothing here argues that
+gradient-boosted trees are the right architecture; the results argue that
+\emph{evaluation} is currently the binding constraint on interpreting such
+comparisons. A more expressive architecture evaluated against persistence alone
+at a single horizon would produce a number that is neither comparable to these
+nor obviously more informative.
+
+\para{Pooling across sites is defensible but should be reported as such}
+The leave-one-site-out results support serving a globally pooled model at
+arbitrary coordinates, with the caveat that pooled metrics overstate
+performance at unseen locations, and that the overstatement is largest exactly
+in the energetic regions users are most likely to care about.
+
+\section{Limitations}
+\label{sec:limitations}
+
+\para{Record length}
+The archive spans roughly 2.2 years. This is the most consequential limitation
+and it bears directly on the central comparison: a climatology estimated from
+two annual cycles is weakly constrained, and the $\pm\ClimWindow$-day window is
+what makes it a serious baseline rather than a noisy one. A longer record would
+strengthen the climatology and, we expect, \emph{reduce} the measured
+$S_{\mathrm{clim}}$ --- our headline comparison is therefore conservative in
+the direction that favours the model, and the qualitative conclusion is
+unlikely to reverse. It also means we cannot separate the seasonal cycle from
+interannual variability.
+
+\para{Variable coverage}
+The \NVars{} variables reported are those with complete \NSites{}-site coverage
+in the archive at the snapshot date. Others were excluded on data availability,
+not on their results. The criterion was applied before any model was scored, so
+it does not select on outcome, but the set is not a random sample of ocean
+variables --- it is skewed toward well-observed operational products.
+
+\para{Reanalysis as ground truth}
+The ``observations'' are operational analysis products, not in-situ
+measurements. They are themselves model output constrained by assimilated
+observations, so our scores measure agreement with an analysis rather than with
+the ocean. This is standard for work at this spatial coverage, but it bounds
+what the results can claim, particularly in sparsely observed regions where the
+analysis is least constrained.
+
+\para{Circular variables are modelled linearly}
+Wave direction is decoded circularly and scored with circular error, but the
+underlying regression treats the wrapped delta as a linear target: a veer of
+$5\degree$ across north trains as $-355\degree$. The principled fix ---
+predicting vector components and deriving the angle --- is not applied here,
+and the direction results should be read with that caveat.
+
+\para{Fixed hyperparameters}
+No per-variable tuning was performed. This is necessary for the cross-variable
+comparison but means every individual model is likely below its own achievable
+ceiling. The audit measures the framework as configured, not the best
+attainable skill per variable.
+
+\section{Conclusion}
+
+Skill against persistence and skill against climatology are not interchangeable
+summaries of the same quantity, and the difference between them is not noise:
+it is a systematic function of forecast horizon that can invert the qualitative
+conclusion. Across \NVars{} ocean variables, \NSites{} sites and four horizons,
+median skill against persistence rises with lead time while median skill
+against climatology falls, and \NLoseToClim{} model--horizon combinations beat
+persistence while losing to the seasonal cycle outright.
+
+We also find that globally pooled models do transfer to sites they never saw,
+with \LosoPositiveShare{}\% of held-out sites retaining positive skill at
+\SI{7}{\day}, but at a real cost that pooled metrics conceal, concentrated in
+dynamically energetic regions.
+
+The recommendation is cheap to adopt: report both baselines, across more than
+one horizon, and report the cases where the baseline wins.

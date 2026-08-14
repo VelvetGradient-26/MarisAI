@@ -151,6 +151,7 @@ def compute_metrics(
     *,
     circular: bool = False,
     baseline: Sequence[float] | np.ndarray | None = None,
+    climatology: Sequence[float] | np.ndarray | None = None,
 ) -> dict[str, float | None]:
     """MAE, RMSE, MAPE, R2 and directional accuracy.
 
@@ -158,6 +159,13 @@ def compute_metrics(
     caller has it. The skill score against persistence is the number that
     actually says whether the model is worth running: an RMSE of 0.4 degC on
     SST sounds good until persistence scores 0.38.
+
+    `climatology` is the seasonal-cycle forecast for the same rows, and it is
+    the baseline persistence cannot substitute for. Persistence decays with
+    horizon and a seasonal cycle does not, so skill measured only against
+    persistence *rises* with horizon for a model that has learned nothing but
+    the time of year. Reporting both separates "forecasts" from "knows what
+    month it is". See `forecasting/climatology.py`.
     """
     # Bound to fresh names rather than reassigning the parameters: the inputs
     # are typed as a sequence *or* an array, and rebinding them to arrays makes
@@ -211,6 +219,30 @@ def compute_metrics(
         metrics["skill_score"] = (
             round(1.0 - (rmse**2) / (base_rmse**2), 5) if base_rmse > 0 else None
         )
+
+    if climatology is not None:
+        clim = np.asarray(climatology, dtype="float64")[valid]
+        usable_clim = np.isfinite(clim)
+        # Scored on the rows the climatology could actually answer for, and
+        # the count is reported alongside — silently dropping rows would make
+        # the two skill scores describe different samples while looking
+        # directly comparable.
+        if usable_clim.sum() > 0:
+            clim_error = (
+                _circular_error(truth[usable_clim], clim[usable_clim])
+                if circular
+                else clim[usable_clim] - truth[usable_clim]
+            )
+            clim_rmse = float(np.sqrt(np.mean(clim_error**2)))
+            model_error = error[usable_clim]
+            model_rmse_here = float(np.sqrt(np.mean(model_error**2)))
+            metrics["climatology_rmse"] = round(clim_rmse, 5)
+            metrics["climatology_n"] = int(usable_clim.sum())
+            metrics["skill_vs_climatology"] = (
+                round(1.0 - (model_rmse_here**2) / (clim_rmse**2), 5)
+                if clim_rmse > 0
+                else None
+            )
 
     return metrics
 
@@ -273,6 +305,13 @@ class ValidationResult:
 
 FitPredict = Callable[[pd.DataFrame, pd.Series, pd.DataFrame], np.ndarray]
 
+# Given one fold's (train positions, test positions), return the climatology's
+# prediction for the test rows. A callable rather than a precomputed array so
+# the fit is forced to happen *inside* the fold, on training rows only — a
+# climatology fitted once over the whole frame would leak the evaluation
+# period into the baseline's own definition.
+ClimatologyFold = Callable[[np.ndarray, np.ndarray], np.ndarray]
+
 
 def cross_validate(
     features: pd.DataFrame,
@@ -284,6 +323,7 @@ def cross_validate(
     config: ValidationConfig | None = None,
     circular: bool = False,
     persistence: pd.Series | None = None,
+    climatology_fit: ClimatologyFold | None = None,
 ) -> ValidationResult:
     """Rolling-origin CV, returning pooled metrics, per-fold metrics and residuals.
 
@@ -307,6 +347,7 @@ def cross_validate(
     all_actual: list[np.ndarray] = []
     all_predicted: list[np.ndarray] = []
     all_baseline: list[np.ndarray] = []
+    all_climatology: list[np.ndarray] = []
     all_timestamps: list[np.ndarray] = []
     folds: list[dict[str, Any]] = []
 
@@ -328,9 +369,22 @@ def cross_validate(
             else None
         )
 
+        clim = None
+        if climatology_fit is not None:
+            try:
+                clim = np.asarray(
+                    climatology_fit(split.train, split.test), dtype="float64"
+                )
+            except Exception as exc:  # noqa: BLE001 - a baseline must not kill a fold
+                logger.warning(f"fold {split.name} climatology failed: {exc}")
+
         try:
             fold_metrics = compute_metrics(
-                y_test.to_numpy(dtype="float64"), predicted, circular=circular, baseline=base
+                y_test.to_numpy(dtype="float64"),
+                predicted,
+                circular=circular,
+                baseline=base,
+                climatology=clim,
             )
         except EvaluationError:
             continue
@@ -343,6 +397,14 @@ def cross_validate(
         )
         if base is not None:
             all_baseline.append(base)
+        # NaN-filled when a fold produced no climatology, so the pooled array
+        # stays row-aligned with the pooled actuals; `compute_metrics` scores
+        # only the finite entries and reports how many there were.
+        all_climatology.append(
+            clim
+            if clim is not None and len(clim) == len(predicted)
+            else np.full(len(predicted), np.nan)
+        )
 
     if not folds:
         raise EvaluationError("every cross-validation fold failed to produce a score")
@@ -350,8 +412,19 @@ def cross_validate(
     actual = np.concatenate(all_actual)
     predicted = np.concatenate(all_predicted)
     baseline = np.concatenate(all_baseline) if all_baseline else None
+    pooled_climatology = None
+    if all_climatology:
+        candidate = np.concatenate(all_climatology)
+        if np.isfinite(candidate).any():
+            pooled_climatology = candidate
 
-    metrics = compute_metrics(actual, predicted, circular=circular, baseline=baseline)
+    metrics = compute_metrics(
+        actual,
+        predicted,
+        circular=circular,
+        baseline=baseline,
+        climatology=pooled_climatology,
+    )
     residuals = (
         _circular_error(actual, predicted) if circular else predicted - actual
     )

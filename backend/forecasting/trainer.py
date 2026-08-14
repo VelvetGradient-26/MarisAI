@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -204,13 +204,20 @@ async def _point_features(
     horizon: int,
     history_days: int,
     resolution: Resolution,
+    as_of: date | None = None,
 ) -> pd.DataFrame | None:
     """Build one location's feature rows, or None if its history is unusable."""
     codes = fetch_codes(variable)
     features_config = config.features_for(key)
     training = config.training_for(key)
 
-    end = datetime.now(UTC).date()
+    # `as_of` pins the snapshot the window is measured back from. Production
+    # training leaves it None and gets "now", which is what a shipped model
+    # wants. An offline experiment pins it so the window — and therefore the
+    # history cache key — is identical across reruns on different days;
+    # without it every rerun refetches two years from twenty-four points and
+    # scores a slightly different dataset, which makes two runs incomparable.
+    end = as_of or datetime.now(UTC).date()
     # The extra lookback is what keeps the earliest usable row from having a
     # third of its features NaN — see FeatureConfig.max_lookback_days.
     #
@@ -278,6 +285,7 @@ async def assemble_training_set(
     config: ForecastingConfig | None = None,
     *,
     points: list[tuple[str, float, float]] | None = None,
+    as_of: date | None = None,
 ) -> tuple[pd.DataFrame, list[str], list[str], list[str], list[dict[str, str]]]:
     """Fetch and featurise every training point, concatenated into one frame.
 
@@ -307,7 +315,7 @@ async def assemble_training_set(
         try:
             frame = await _point_features(
                 variable, config, key, latitude, longitude, horizon,
-                training.history_days, resolution,
+                training.history_days, resolution, as_of,
             )
             return name, frame, None
         except (HistoryError, ForecastingError) as exc:

@@ -30,6 +30,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -232,6 +233,23 @@ def _disk_path(key: str) -> Path:
     return CACHE_DIR / f"{key}.parquet"
 
 
+def frozen_cache() -> bool:
+    """Whether to serve disk cache entries regardless of age.
+
+    The TTL exists because a *live* request asks for a window ending "now",
+    and yesterday's answer to that question is stale by construction. An
+    offline experiment is the opposite case: it pins `as_of`, so the window is
+    a closed historical interval that upstream cannot revise. Re-fetching it
+    yields the same bytes at the cost of ~700s per variable, and — because the
+    providers flap — occasionally yields *fewer* points, which silently makes
+    two runs of the same experiment incomparable.
+
+    Off by default and set only by the experiment scripts, so no serving path
+    can inherit it.
+    """
+    return os.environ.get("MARISAI_FROZEN_HISTORY_CACHE") == "1"
+
+
 def _disk_get(key: str) -> pd.DataFrame | None:
     path = _disk_path(key)
     if not path.exists():
@@ -239,7 +257,7 @@ def _disk_get(key: str) -> pd.DataFrame | None:
     age = datetime.now(UTC) - datetime.fromtimestamp(
         path.stat().st_mtime, tz=UTC
     )
-    if age > _DISK_TTL:
+    if age > _DISK_TTL and not frozen_cache():
         return None
     try:
         return pd.read_parquet(path)

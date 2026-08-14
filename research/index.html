@@ -1,0 +1,569 @@
+<title>Rising Skill, Falling Skill</title>
+<style>
+  /* Palette from bathymetric chart convention: deep-water ink, a cool
+     chart ground, and the two series hues as the only accents. Both series
+     colours are validated for colour-vision deficiency separation
+     (dE 21.7 protan) and carry >=3:1 on either ground. */
+  :root {
+    --ground: #f4f7f8;
+    --plate: #ffffff;
+    --ink: #10202a;
+    --ink-2: #3d5560;
+    --ink-3: #6b8390;
+    --rule: #cbd8dd;
+    --rule-2: #e3ecef;
+    --persistence: #1f6fb2;
+    --climatology: #c2571a;
+    --neg: #a8341a;
+    --serif: "Iowan Old Style", "Charter", "Palatino Linotype", Palatino,
+             "Book Antiqua", Georgia, serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --measure: 66ch;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0c1519;
+      --plate: #131f25;
+      --ink: #e3edf1;
+      --ink-2: #a5bcc5;
+      --ink-3: #7794a0;
+      --rule: #294049;
+      --rule-2: #1d2f36;
+      --persistence: #5aa9e6;
+      --climatology: #f0894a;
+      --neg: #ff8b6b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0c1519;
+    --plate: #131f25;
+    --ink: #e3edf1;
+    --ink-2: #a5bcc5;
+    --ink-3: #7794a0;
+    --rule: #294049;
+    --rule-2: #1d2f36;
+    --persistence: #5aa9e6;
+    --climatology: #f0894a;
+    --neg: #ff8b6b;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 18px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 78rem;
+    margin: 0 auto;
+    padding: 0 1.5rem 6rem;
+    display: grid;
+    grid-template-columns: 1fr min(var(--measure), 100%) 1fr;
+  }
+  .wrap > * { grid-column: 2; }
+  .bleed { grid-column: 1 / -1; }
+
+  h1, h2, h3 { text-wrap: balance; line-height: 1.2; font-weight: 600; }
+  h1 { font-size: clamp(2rem, 5vw, 3.1rem); margin: 0 0 .6rem; letter-spacing: -.015em; }
+  h2 { font-size: 1.6rem; margin: 3.4rem 0 .3rem; }
+  h3 { font-size: 1.16rem; margin: 2rem 0 .2rem; }
+  p { margin: .85rem 0; }
+  a { color: var(--persistence); }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 1.1rem;
+  }
+  /* A hairline above each section, like a depth contour on a chart: it marks
+     a boundary, which is the only thing it is there to do. */
+  h2::before {
+    content: "";
+    display: block;
+    border-top: 1px solid var(--rule);
+    margin-bottom: 1.5rem;
+  }
+  header { padding: 5rem 0 0; }
+  .standfirst {
+    font-size: 1.28rem;
+    line-height: 1.5;
+    color: var(--ink-2);
+    margin: 0 0 2rem;
+    text-wrap: pretty;
+  }
+  .byline {
+    font-family: var(--mono);
+    font-size: .78rem;
+    color: var(--ink-3);
+    border-top: 1px solid var(--rule);
+    padding-top: .9rem;
+    margin-top: 2rem;
+  }
+
+  figure { margin: 2.2rem 0; }
+  figcaption {
+    font-size: .84rem;
+    line-height: 1.5;
+    color: var(--ink-3);
+    margin-top: .7rem;
+    max-width: var(--measure);
+  }
+  .plate {
+    background: var(--plate);
+    border: 1px solid var(--rule);
+    padding: 1.4rem;
+    overflow-x: auto;
+  }
+  .hero-svg { width: 100%; height: auto; display: block; }
+  .grid { stroke: var(--rule-2); stroke-width: 1; }
+  .grid.zero { stroke: var(--ink-3); stroke-dasharray: 4 3; }
+  .tick { font-family: var(--mono); font-size: 11px; fill: var(--ink-3); }
+  .axistitle { font-family: var(--mono); font-size: 11px; fill: var(--ink-3); }
+  .serieslabel { font-family: var(--mono); font-size: 12.5px; font-weight: 600; }
+  .ta-end { text-anchor: end; }
+  .ta-mid { text-anchor: middle; }
+
+  /* Mermaid renders with a light theme baked into each .mmd, so the plate it
+     sits on stays light in both page themes — the way a figure plate in a
+     printed journal does. Reversing it per-theme would need two diagram
+     sources, which is exactly the drift this setup avoids. */
+  .diagram { background: #ffffff; border: 1px solid var(--rule); padding: 1.2rem; overflow-x: auto; }
+  .diagram pre.mermaid { margin: 0; text-align: center; }
+
+  table.results {
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: .76rem;
+    font-variant-numeric: tabular-nums;
+    width: 100%;
+    background: var(--plate);
+  }
+  table.results th, table.results td {
+    padding: .42rem .55rem;
+    border-bottom: 1px solid var(--rule-2);
+    text-align: left;
+    white-space: nowrap;
+  }
+  table.results thead tr:first-child td, table.results thead tr:first-child th {
+    border-bottom: none;
+  }
+  table.results thead th {
+    color: var(--ink-3);
+    font-weight: 600;
+    border-bottom: 1px solid var(--rule);
+  }
+  table.results thead tr:first-child th {
+    text-align: center;
+    border-left: 1px solid var(--rule-2);
+  }
+  table.results tbody th { font-weight: 500; color: var(--ink); }
+  .num { text-align: right !important; }
+  .neg { color: var(--neg); font-weight: 600; }
+
+  .facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    margin: 2rem 0;
+  }
+  .fact { background: var(--plate); padding: 1rem 1.1rem; }
+  .fact .v {
+    font-family: var(--mono);
+    font-size: 1.5rem;
+    font-variant-numeric: tabular-nums;
+    display: block;
+    line-height: 1.1;
+  }
+  .fact .k {
+    font-size: .78rem;
+    color: var(--ink-3);
+    display: block;
+    margin-top: .35rem;
+    line-height: 1.35;
+  }
+  .fact.p .v { color: var(--persistence); }
+  .fact.c .v { color: var(--climatology); }
+
+  blockquote {
+    margin: 2rem 0;
+    padding-left: 1.3rem;
+    border-left: 3px solid var(--climatology);
+    font-size: 1.15rem;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+  code { font-family: var(--mono); font-size: .86em; }
+  .files {
+    font-family: var(--mono);
+    font-size: .82rem;
+    border-collapse: collapse;
+    width: 100%;
+    background: var(--plate);
+  }
+  .files th, .files td {
+    padding: .5rem .6rem;
+    border-bottom: 1px solid var(--rule-2);
+    text-align: left;
+    vertical-align: top;
+  }
+  .files th { color: var(--ink-3); font-weight: 600; white-space: nowrap; }
+  .caveat {
+    font-size: .92rem;
+    color: var(--ink-2);
+    background: var(--plate);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--ink-3);
+    padding: 1rem 1.2rem;
+    margin: 2rem 0;
+  }
+  ol.steps { padding-left: 1.3rem; }
+  ol.steps li { margin: .6rem 0; }
+  @media (max-width: 40rem) {
+    body { font-size: 17px; }
+    .wrap { padding: 0 1.1rem 4rem; }
+  }
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">Forecast verification &middot; 7 ocean variables &middot; 24 sites</p>
+  <h1>Rising skill, falling skill</h1>
+  <p class="standfirst">Ocean forecasts are almost always scored against
+  persistence. That single baseline fails in the one direction that flatters
+  the model &mdash; and the failure grows with forecast horizon, which is
+  exactly where people read success.</p>
+</header>
+
+<figure class="bleed">
+  <div class="plate"><svg viewBox="0 0 720 340" role="img" aria-label="Median skill against persistence rises with forecast horizon while median skill against climatology falls; the two lines cross." class="hero-svg"><line x1="62" y1="254.3" x2="694" y2="254.3" class="grid zero"/><text x="50" y="258.3" class="tick ta-end">0.00</text><line x1="62" y1="198.3" x2="694" y2="198.3" class="grid"/><text x="50" y="202.3" class="tick ta-end">0.25</text><line x1="62" y1="142.2" x2="694" y2="142.2" class="grid"/><text x="50" y="146.2" class="tick ta-end">0.50</text><line x1="62" y1="86.1" x2="694" y2="86.1" class="grid"/><text x="50" y="90.1" class="tick ta-end">0.75</text><line x1="62" y1="30.0" x2="694" y2="30.0" class="grid"/><text x="50" y="34.0" class="tick ta-end">1.00</text><text x="62.0" y="314" class="tick ta-mid">1 d</text><text x="266.1" y="314" class="tick ta-mid">3 d</text><text x="423.6" y="314" class="tick ta-mid">7 d</text><text x="694.0" y="314" class="tick ta-mid">30 d</text><path d="M62.0,202.7 L266.1,229.3 L423.6,220.6 L694.0,169.2" fill="none" stroke="#1f6fb2" stroke-width="2.5"/><circle cx="62.0" cy="202.7" r="4.5" fill="#1f6fb2" stroke="var(--plate)" stroke-width="1.5"/><circle cx="266.1" cy="229.3" r="4.5" fill="#1f6fb2" stroke="var(--plate)" stroke-width="1.5"/><circle cx="423.6" cy="220.6" r="4.5" fill="#1f6fb2" stroke="var(--plate)" stroke-width="1.5"/><circle cx="694.0" cy="169.2" r="4.5" fill="#1f6fb2" stroke="var(--plate)" stroke-width="1.5"/><text x="684.0" y="155.2" class="serieslabel ta-end" fill="#1f6fb2">vs. persistence</text><path d="M62.0,124.1 L266.1,243.8 L423.6,260.1 L694.0,266.7" fill="none" stroke="#d1611f" stroke-width="2.5"/><circle cx="62.0" cy="124.1" r="4.5" fill="#d1611f" stroke="var(--plate)" stroke-width="1.5"/><circle cx="266.1" cy="243.8" r="4.5" fill="#d1611f" stroke="var(--plate)" stroke-width="1.5"/><circle cx="423.6" cy="260.1" r="4.5" fill="#d1611f" stroke="var(--plate)" stroke-width="1.5"/><circle cx="694.0" cy="266.7" r="4.5" fill="#d1611f" stroke="var(--plate)" stroke-width="1.5"/><text x="684.0" y="252.7" class="serieslabel ta-end" fill="#d1611f">vs. climatology</text><text x="50" y="18" class="axistitle ta-end">skill</text></svg></div>
+  <figcaption>Median skill across 7 ocean variables, against two
+  baselines. Persistence decays with lead time; a seasonal cycle does not. So
+  the same models look like they improve with horizon and like they decay
+  toward a seasonal lookup &mdash; depending only on which baseline is
+  reported.</figcaption>
+</figure>
+
+<p class="byline">Deepak Krishna &middot; MarisAI &middot; snapshot 2026-08-10</p>
+
+<h2>The argument</h2>
+
+<p>Persistence &mdash; predict that tomorrow equals today &mdash; is a hard
+baseline on autocorrelated geophysical series, and beating it is normally read
+as evidence that a model learned something. The problem is structural rather
+than statistical.</p>
+
+<p>Persistence error <em>grows</em> with the forecast horizon, because the
+ocean decorrelates from its present state. The error of a seasonal climatology
+does not: knowing that it is February is exactly as informative thirty days
+ahead as it is one day ahead. A skill score against persistence therefore has a
+denominator that inflates with horizon while a purely seasonal model's numerator
+stays put.</p>
+
+<blockquote>A model that has learned nothing but the time of year will show
+skill against persistence that <em>increases</em> with horizon &mdash; the
+signature normally read as a strong long-range forecaster.</blockquote>
+
+<p>We hit this pattern in a working forecasting engine and could not tell,
+with persistence as the only baseline, whether it was real skill or a seasonal
+artefact. This work adds the baseline that discriminates, and audits
+28 models to find out.</p>
+
+<div class="facts">
+  <div class="fact p"><span class="v">0.230 &rarr; 0.379</span>
+    <span class="k">median skill vs. persistence, 1 d &rarr; 30 d (rises)</span></div>
+  <div class="fact c"><span class="v">0.580 &rarr; -0.055</span>
+    <span class="k">median skill vs. climatology, 1 d &rarr; 30 d (falls)</span></div>
+  <div class="fact"><span class="v">9</span>
+    <span class="k">models that beat persistence but lose to climatology</span></div>
+  <div class="fact"><span class="v">5</span>
+    <span class="k">models worse than doing nothing at all</span></div>
+</div>
+
+<h2>How the framework is built</h2>
+
+<p>One acquisition path, one feature builder and one model class serve every
+variable; nothing in the pipeline branches on which variable it is training.
+That uniformity is what makes a cross-variable audit meaningful &mdash;
+differences in the results cannot be blamed on differences in the
+implementation.</p>
+
+<figure class="bleed">
+  <div class="diagram"><pre class="mermaid">%%{init: {&#x27;theme&#x27;:&#x27;base&#x27;,&#x27;themeVariables&#x27;:{&#x27;fontFamily&#x27;:&#x27;Helvetica, Arial, sans-serif&#x27;,&#x27;fontSize&#x27;:&#x27;15px&#x27;,&#x27;primaryColor&#x27;:&#x27;#e8eef5&#x27;,&#x27;primaryTextColor&#x27;:&#x27;#1a1a1a&#x27;,&#x27;primaryBorderColor&#x27;:&#x27;#1f6fb2&#x27;,&#x27;lineColor&#x27;:&#x27;#4a4a4a&#x27;}}}%%
+%% Deliberately no subgraphs: this mermaid release does not honour
+%% `direction LR` inside one, which stacks sibling nodes vertically and turns
+%% the figure into an unusable 1:4 column. Parallel branches off a shared
+%% parent lay out side by side on their own, which is the shape wanted here.
+flowchart TB
+    CMEMS[&quot;&lt;b&gt;Copernicus Marine&lt;/b&gt;&lt;br/&gt;physics · waves · biogeochemistry&quot;]
+    BATHY[&quot;&lt;b&gt;GEBCO bathymetry&lt;/b&gt;&lt;br/&gt;ERDDAP griddap&quot;]
+
+    ACQ[&quot;&lt;b&gt;Acquisition&lt;/b&gt; — variable registry to provider,&lt;br/&gt;retrying async fetch, 300 s per-attempt bound&quot;]
+    CACHE[(&quot;&lt;b&gt;History cache&lt;/b&gt; — parquet, keyed by codes · lat/lon · window&lt;br/&gt;pinned to a fixed &lt;i&gt;as_of&lt;/i&gt; snapshot for reproducibility&quot;)]
+
+    FEAT[&quot;&lt;b&gt;Feature construction&lt;/b&gt; — identical for every variable&lt;br/&gt;clean and reindex · lags 1–30 d · rolling mean/sd/min/max&lt;br/&gt;differences · trends · calendar · static site descriptors&quot;]
+    TGT[&quot;&lt;b&gt;Delta target&lt;/b&gt;   y(t+h) − y(t)&lt;br/&gt;&lt;i&gt;a regression tree cannot represent the identity function,&lt;br/&gt;which is exactly what persistence is&lt;/i&gt;&quot;]
+
+    LGBM[&quot;&lt;b&gt;LightGBM&lt;/b&gt;&lt;br/&gt;one model per variable × horizon,&lt;br/&gt;pooled across all 24 sites&quot;]
+    PERS[&quot;&lt;b&gt;Persistence&lt;/b&gt;&lt;br/&gt;ŷ = y(t)&lt;br/&gt;&lt;i&gt;no fit required&lt;/i&gt;&quot;]
+    CLIM[&quot;&lt;b&gt;Climatology&lt;/b&gt;&lt;br/&gt;per-site day-of-year, ±15 d&lt;br/&gt;&lt;i&gt;fitted on training rows only&lt;/i&gt;&quot;]
+
+    SKILL[&quot;&lt;b&gt;Skill scores&lt;/b&gt;, on identical rows&lt;br/&gt;S_pers = 1 − RMSE² / RMSE²_pers      S_clim = 1 − RMSE² / RMSE²_clim&quot;]
+
+    CMEMS --&gt; ACQ
+    BATHY --&gt; ACQ
+    ACQ &lt;--&gt; CACHE
+    CACHE --&gt; FEAT --&gt; TGT
+    TGT --&gt; LGBM --&gt; SKILL
+    TGT --&gt; PERS --&gt; SKILL
+    TGT --&gt; CLIM --&gt; SKILL
+
+    classDef contribution fill:#fdf0e6,stroke:#d1611f,stroke-width:2.5px,color:#1a1a1a
+    class CLIM,SKILL contribution
+</pre></div>
+  <figcaption>Framework architecture. The three predictors at the bottom are
+  scored on identical rows. Shaded: the climatology baseline and the second
+  skill score it makes possible.</figcaption>
+</figure>
+
+<h3>Why the model predicts change, not level</h3>
+
+<p>A regression tree partitions feature space into piecewise-constant regions,
+so it cannot represent the identity function <code>y(t+h) = y(t)</code> &mdash;
+which is exactly what persistence is. Fitted on levels, the framework scored
+worse than persistence at <em>every</em> horizon. Fitted on the change,
+persistence becomes the constant zero function, which a tree represents
+exactly, and the same data and features yield positive skill.</p>
+
+<h2>How the experiments are run</h2>
+
+<p>The climatology is a per-site day-of-year mean over a &plusmn;15-day
+circular window, and it is refitted <em>inside every cross-validation fold</em>
+on that fold's training rows only. Fitting it once over the whole record would
+leak the evaluation period into the baseline's own definition &mdash;
+flattering the baseline, understating the model. That is an error in the safe
+direction, which is why it is easy to leave in place.</p>
+
+<figure class="bleed">
+  <div class="diagram"><pre class="mermaid">%%{init: {&#x27;theme&#x27;:&#x27;base&#x27;,&#x27;themeVariables&#x27;:{&#x27;fontFamily&#x27;:&#x27;Helvetica, Arial, sans-serif&#x27;,&#x27;fontSize&#x27;:&#x27;14px&#x27;,&#x27;primaryColor&#x27;:&#x27;#e8eef5&#x27;,&#x27;primaryTextColor&#x27;:&#x27;#1a1a1a&#x27;,&#x27;primaryBorderColor&#x27;:&#x27;#1f6fb2&#x27;,&#x27;lineColor&#x27;:&#x27;#4a4a4a&#x27;}}}%%
+flowchart LR
+    START([&quot;as_of = 2026-08-10&lt;br/&gt;pinned snapshot&quot;]) --&gt; ASM
+
+    subgraph ASM[&quot;Per variable × horizon&quot;]
+        direction TB
+        A1[&quot;Assemble 24 sites&lt;br/&gt;from frozen cache&quot;]
+        A2[&quot;Pooled frame,&lt;br/&gt;sorted by date&quot;]
+        A1 --&gt; A2
+    end
+
+    ASM --&gt; E1
+    ASM --&gt; E2
+
+    subgraph E1[&quot;Experiment 1 — three-way baselines&quot;]
+        direction TB
+        R1[&quot;Rolling-origin CV&lt;br/&gt;5 expanding folds&quot;]
+        R2[&quot;Embargo gap = h&lt;br/&gt;between train and test&quot;]
+        R3{&quot;For each fold&quot;}
+        R4[&quot;Fit LightGBM&lt;br/&gt;on train rows&quot;]
+        R5[&quot;Fit climatology&lt;br/&gt;on train rows ONLY&quot;]
+        R6[&quot;Persistence&lt;br/&gt;needs no fit&quot;]
+        R7[&quot;Score all three&lt;br/&gt;on the test rows&quot;]
+        R1 --&gt; R2 --&gt; R3
+        R3 --&gt; R4 --&gt; R7
+        R3 --&gt; R5 --&gt; R7
+        R3 --&gt; R6 --&gt; R7
+    end
+
+    subgraph E2[&quot;Experiment 2 — leave-one-site-out&quot;]
+        direction TB
+        L1{&quot;For each of 24 sites&quot;}
+        L2[&quot;Train: other 23 sites,&lt;br/&gt;earlier 80% of record&quot;]
+        L3[&quot;Test: held-out site,&lt;br/&gt;later 20% of record&quot;]
+        L4[&quot;Climatology fitted on&lt;br/&gt;the same 23 sites;&lt;br/&gt;nearest-site fallback&quot;]
+        L5[&quot;Score held-out site&quot;]
+        L1 --&gt; L2 --&gt; L5
+        L1 --&gt; L3 --&gt; L5
+        L1 --&gt; L4 --&gt; L5
+    end
+
+    E1 --&gt; OUT1[(&quot;baselines.json&quot;)]
+    E2 --&gt; OUT2[(&quot;loso.json&quot;)]
+    OUT1 --&gt; ASSET
+    OUT2 --&gt; ASSET
+    ASSET[&quot;build_paper_assets.py&quot;] --&gt; FIG[&quot;Figures&lt;br/&gt;PDF&quot;]
+    ASSET --&gt; TAB[&quot;Tables&lt;br/&gt;.tex&quot;]
+    ASSET --&gt; MAC[&quot;macros.tex&lt;br/&gt;every number in the prose&quot;]
+    FIG --&gt; PAPER[&quot;Manuscript&quot;]
+    TAB --&gt; PAPER
+    MAC --&gt; PAPER
+
+    classDef leak fill:#fdf0e6,stroke:#d1611f,stroke-width:2px,color:#1a1a1a
+    class R5,L4 leak
+</pre></div>
+  <figcaption>Both experiments end to end. Shaded boxes are the two places a
+  baseline is fitted; both are fitted strictly inside the fold they are scored
+  in.</figcaption>
+</figure>
+
+<div class="caveat"><strong>The window is not cosmetic.</strong> The record
+spans about 2.2 years, so a bare day-of-year mean would average two samples
+and be mostly noise &mdash; a strawman the model beats for the wrong reason.
+A &plusmn;15-day window pools roughly 60 samples per estimate, which is
+what makes this a baseline worth losing to. A longer record would strengthen
+the climatology further, so this comparison is conservative in the direction
+that favours the model.</div>
+
+<h2>Results</h2>
+
+<p>Median skill against persistence rises from <strong>0.230</strong> at
+one day to <strong>0.379</strong> at thirty. Over the same range, median
+skill against climatology falls from <strong>0.580</strong> to
+<strong>-0.055</strong>. The two baselines license opposite statements
+about the same models.</p>
+
+<p>The sharpest cases are the <strong>9</strong> model&ndash;horizon
+combinations that beat persistence while losing to climatology outright. Under
+a single-baseline convention every one of them would be reported as a
+success.</p>
+
+<figure class="bleed">
+  <div class="plate"><table class="results">
+<thead>
+<tr><td></td><th colspan="2">h = 1 d</th><th colspan="2">h = 3 d</th><th colspan="2">h = 7 d</th><th colspan="2">h = 30 d</th></tr>
+<tr><th scope="col">Variable</th><th class="num">S<sub>p</sub></th><th class="num">S<sub>c</sub></th><th class="num">S<sub>p</sub></th><th class="num">S<sub>c</sub></th><th class="num">S<sub>p</sub></th><th class="num">S<sub>c</sub></th><th class="num">S<sub>p</sub></th><th class="num">S<sub>c</sub></th></tr>
+</thead>
+<tbody><tr><th scope="row">bottom temperature</th><td class="num">0.253</td><td class="num">0.992</td><td class="num neg">-0.033</td><td class="num">0.935</td><td class="num neg">-0.032</td><td class="num">0.823</td><td class="num neg">-0.109</td><td class="num">0.502</td></tr><tr><th scope="row">maximum wave height</th><td class="num">0.249</td><td class="num">0.572</td><td class="num">0.327</td><td class="num">0.047</td><td class="num">0.362</td><td class="num neg">-0.042</td><td class="num">0.386</td><td class="num neg">-0.100</td></tr><tr><th scope="row">mean wave period</th><td class="num">0.230</td><td class="num">0.561</td><td class="num">0.310</td><td class="num">0.043</td><td class="num">0.374</td><td class="num neg">-0.026</td><td class="num">0.429</td><td class="num neg">-0.055</td></tr><tr><th scope="row">significant wave height</th><td class="num">0.272</td><td class="num">0.580</td><td class="num">0.331</td><td class="num">0.045</td><td class="num">0.360</td><td class="num neg">-0.044</td><td class="num">0.379</td><td class="num neg">-0.108</td></tr><tr><th scope="row">water salinity</th><td class="num">0.050</td><td class="num">0.958</td><td class="num neg">-0.168</td><td class="num">0.753</td><td class="num neg">-0.089</td><td class="num">0.480</td><td class="num">0.100</td><td class="num neg">-0.023</td></tr><tr><th scope="row">water temperature</th><td class="num">0.075</td><td class="num">0.958</td><td class="num">0.009</td><td class="num">0.817</td><td class="num">0.139</td><td class="num">0.633</td><td class="num">0.430</td><td class="num">0.187</td></tr><tr><th scope="row">wave direction</th><td class="num">0.090</td><td class="num">0.445</td><td class="num">0.112</td><td class="num">0.029</td><td class="num">0.151</td><td class="num neg">-0.157</td><td class="num">0.163</td><td class="num neg">-0.254</td></tr></tbody>
+</table></div>
+  <figcaption>Skill against persistence (S<sub>p</sub>) and against climatology
+  (S<sub>c</sub>) at each horizon. Red marks a negative score &mdash; the
+  baseline winning. Reading across a row shows the divergence; reading down the
+  S<sub>c</sub> columns shows it is systematic rather than incidental.</figcaption>
+</figure>
+
+<h3>The two baselines fail in different places</h3>
+
+<p><strong>5</strong> model&ndash;horizon combinations are worse than
+doing nothing at all. These concentrate in high-inertia subsurface variables,
+and the pattern is physically coherent: when a variable's autocorrelation time
+greatly exceeds the horizon, persistence is near-optimal and the residual is
+close to pure noise, so fitting it adds variance without adding signal.</p>
+
+<p>Crucially these are <em>not</em> the same variables that fail against
+climatology. Some subsurface variables lose to persistence while beating
+climatology by a wide margin; some wave variables do the reverse. That the two
+baselines fail in different places is the strongest available argument for
+reporting both.</p>
+
+<h2>Does it transfer to ocean it never saw?</h2>
+
+<p>Serving one globally pooled model at arbitrary coordinates rests on an
+assumption that is rarely tested. We tested it directly: 672 fits, each
+training on 23 sites and scoring the 24th, blocked in space <em>and</em> time
+&mdash; the model trains on the earlier 80% of the record at the retained
+sites and is scored on the later 20% at the held-out one.</p>
+
+<div class="facts">
+  <div class="fact p"><span class="v">0.151</span>
+    <span class="k">median skill at sites seen in training (7 d)</span></div>
+  <div class="fact c"><span class="v">0.109</span>
+    <span class="k">median skill at held-out sites (7 d)</span></div>
+  <div class="fact"><span class="v">65%</span>
+    <span class="k">held-out sites that keep positive skill</span></div>
+  <div class="fact"><span class="v">672</span>
+    <span class="k">held-out fits</span></div>
+</div>
+
+<p>Transfer is real but it costs skill, and the cost is concentrated in
+dynamically energetic regions &mdash; western boundary currents and upwelling
+systems, whose variability is driven by mesoscale processes a model fitted on
+distant sites cannot resolve. The majority staying positive supports serving
+the pooled model at unseen coordinates; the falling median means the pooled
+figure overstates what a user clicking on open ocean should expect, and a
+deployed system should say so.</p>
+
+<h2>What to do with two numbers</h2>
+
+<p>Taken together the pair maps onto a small set of clearly distinguishable
+recommendations &mdash; three of which are &ldquo;do not deploy this
+model&rdquo; for reasons a single baseline cannot surface.</p>
+
+<figure class="bleed">
+  <div class="diagram"><pre class="mermaid">%%{init: {&#x27;theme&#x27;:&#x27;base&#x27;,&#x27;themeVariables&#x27;:{&#x27;fontFamily&#x27;:&#x27;Helvetica, Arial, sans-serif&#x27;,&#x27;fontSize&#x27;:&#x27;14px&#x27;,&#x27;primaryColor&#x27;:&#x27;#e8eef5&#x27;,&#x27;primaryTextColor&#x27;:&#x27;#1a1a1a&#x27;,&#x27;primaryBorderColor&#x27;:&#x27;#1f6fb2&#x27;,&#x27;lineColor&#x27;:&#x27;#4a4a4a&#x27;}}}%%
+flowchart TB
+    Q1{&quot;S_pers &gt; 0 ?&lt;br/&gt;&lt;i&gt;beats the last observed value&lt;/i&gt;&quot;}
+
+    Q1 --&gt;|no| N1[&quot;&lt;b&gt;Do not deploy.&lt;/b&gt;&lt;br/&gt;Persistence is cheaper and better.&lt;br/&gt;Typical of high-inertia variables whose&lt;br/&gt;autocorrelation time exceeds the horizon.&quot;]
+    Q1 --&gt;|yes| Q2{&quot;S_clim &gt; 0 ?&lt;br/&gt;&lt;i&gt;beats the seasonal cycle&lt;/i&gt;&quot;}
+
+    Q2 --&gt;|no| N2[&quot;&lt;b&gt;Seasonal artefact.&lt;/b&gt;&lt;br/&gt;The model has learned what month it is.&lt;br/&gt;Ship the climatology instead — it is cheaper&lt;br/&gt;to compute, cheaper to serve, and better.&lt;br/&gt;Invisible if only S_pers is reported.&quot;]
+    Q2 --&gt;|yes| Q3{&quot;Does S_clim hold up&lt;br/&gt;as the horizon grows ?&quot;}
+
+    Q3 --&gt;|&quot;falls toward 0&quot;| N3[&quot;&lt;b&gt;Partly seasonal.&lt;/b&gt;&lt;br/&gt;Genuine skill at short range, decaying to a&lt;br/&gt;seasonal lookup at long range. Report the&lt;br/&gt;horizon at which it crosses.&quot;]
+    Q3 --&gt;|&quot;stays positive&quot;| N4[&quot;&lt;b&gt;Genuine forecast skill.&lt;/b&gt;&lt;br/&gt;Information beyond both the present state&lt;br/&gt;and the seasonal cycle.&quot;]
+
+    N4 --&gt; Q4{&quot;Does it transfer to&lt;br/&gt;a held-out site ?&quot;}
+    Q4 --&gt;|no| N5[&quot;&lt;b&gt;Interpolation, not transfer.&lt;/b&gt;&lt;br/&gt;Pooled metrics overstate what a user&lt;br/&gt;clicking unseen ocean will get.&lt;br/&gt;Restrict to trained sites, or say so.&quot;]
+    Q4 --&gt;|yes| N6[&quot;&lt;b&gt;Deployable at arbitrary coordinates.&lt;/b&gt;&lt;br/&gt;Report the held-out figure, not the&lt;br/&gt;pooled one, as the expected skill.&quot;]
+
+    classDef bad fill:#fdf0e6,stroke:#d1611f,stroke-width:2px,color:#1a1a1a
+    classDef good fill:#e8eef5,stroke:#1f6fb2,stroke-width:2px,color:#1a1a1a
+    class N1,N2,N5 bad
+    class N4,N6 good
+</pre></div>
+  <figcaption>Interpreting the two skill scores together.</figcaption>
+</figure>
+
+<h2>The papers</h2>
+
+<p>The manuscript is typeset for both major conference families from one
+shared body, so the two cannot drift apart. Every experimental number in the
+prose is a generated macro rather than a typed figure &mdash; rerunning the
+experiments updates the manuscript.</p>
+
+<table class="files">
+<tr><th>research/springer/main.pdf</th><td>Springer LNCS format
+  (<code>llncs</code>, single column)</td></tr>
+<tr><th>research/ieee/main.pdf</th><td>IEEE conference format
+  (<code>IEEEtran</code>, two column)</td></tr>
+<tr><th>research/shared/body.tex</th><td>the manuscript body, shared verbatim
+  by both builds</td></tr>
+<tr><th>research/shared/diagrams/</th><td>Mermaid sources &mdash; the same
+  files render to PDF for the papers and inline on this page</td></tr>
+<tr><th>research/shared/generated/</th><td>figures, LaTeX tables and the
+  number macros, all generated from the experiment output</td></tr>
+</table>
+
+<h3>Rebuilding</h3>
+<ol class="steps">
+<li>Run both experiments:
+  <code>python scripts/run_paper_experiments.py --all</code></li>
+<li>Regenerate figures, tables and macros:
+  <code>python scripts/build_paper_assets.py</code></li>
+<li>Compile either format:
+  <code>tectonic -X compile main.tex --outdir .</code></li>
+</ol>
+
+<h2>What this does not claim</h2>
+
+<p>The record is about 2.2 years, so the seasonal cycle cannot be separated
+from interannual variability. The &ldquo;observations&rdquo; are operational
+analysis products &mdash; themselves model output constrained by assimilated
+data &mdash; so these scores measure agreement with an analysis, not with the
+ocean. The 7 variables are those with complete 24-site coverage
+in the archive at the snapshot date, a criterion applied before any model was
+scored. Hyperparameters are fixed across all variables, so no individual model
+is at its own ceiling. And wave direction is decoded circularly but still
+regressed linearly, so a veer across north trains as a near-full reversal.</p>
+
+<p class="byline">Experiments pinned to snapshot 2026-08-10 &middot;
+28 models &middot; 672 held-out fits &middot; climatology window
+&plusmn;15 days</p>
+</div>
