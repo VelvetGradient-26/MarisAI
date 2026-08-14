@@ -58,7 +58,7 @@ that flatters the model. Persistence decays with forecast horizon while a
 seasonal cycle does not, so the persistence-referenced score of a model that
 has learned nothing but the time of year stays flat, or rises, while the model
 genuinely degrades. We audit \NVars{} operational ocean variables across
-\NSites{} globally distributed sites and four horizons
+\NSites{} regime-stratified sites and four horizons
 (\SIrange{1}{30}{\day}), using one gradient-boosted framework with no
 variable-specific code, and score every model against both persistence and a
 leakage-controlled day-of-year climatology. Median skill against persistence is
@@ -71,12 +71,18 @@ the same range median skill against climatology falls monotonically from
 against \NLosePersThirty{} that lose to persistence. The two baselines
 therefore support opposite conclusions about the same predictions, and
 \NLoseToClim{} model--horizon combinations beat persistence while losing to
-climatology. We further
-test whether these globally pooled models transfer to locations they never saw,
-using leave-one-site-out validation blocked in space and time simultaneously
-(\NLosoFits{} held-out fits). Transfer is real but costly: median held-out
-skill at \SI{7}{\day} is \MedLosoSeven{} against \MedPooledSeven{} pooled, with
-\LosoPositiveShare{}\% of held-out sites retaining positive skill. We report
+climatology. A three-arm feature ablation then shows that the natural
+explanation for those cases is wrong: \NFlatteredNonSeasonal{} of the
+\NFlattered{} retain their skill when every calendar feature is removed, while
+the most seasonally dependent variable in the set comfortably \emph{beats}
+climatology. Losing to climatology therefore reports the baseline's strength,
+not the model's mechanism; diagnosing the latter needs an ablation. We further
+test whether these pooled models transfer to locations they never saw, using
+leave-one-site-out validation blocked in space and time simultaneously
+(\NLosoFits{} held-out fits). Transfer is only partial: median held-out skill
+at \SI{7}{\day} falls to \MedLosoSeven{} from \MedPooledSeven{} pooled --- a
+roughly threefold drop --- with \LosoPositiveShare{}\% of held-out sites
+retaining positive skill. We report
 \NLoseToPers{} model--horizon combinations that lose to persistence, and argue
 that reporting both baselines across multiple horizons should be a minimum
 standard for this class of work.

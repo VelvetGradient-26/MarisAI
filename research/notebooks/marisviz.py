@@ -37,8 +37,18 @@ RESEARCH = NOTEBOOKS.parent
 REPO = RESEARCH.parent
 BACKEND = REPO / "backend"
 DATA = RESEARCH / "data"
-RESULTS = BACKEND / "models" / "forecasting" / "_reports" / "paper"
 FIGURES = NOTEBOOKS / "figures"
+
+# The experiment output, committed. `backend/models/` is where the experiment
+# scripts *write*, but it is untracked working state -- a fresh clone has no
+# such directory, and notebook 04 would fail on it. The committed copy under
+# `research/data/results/` is what the notebooks read, so all four run from a
+# clone with no credentials and no prior run. `backend/models/` is preferred
+# when it exists, so that re-running an experiment is reflected immediately
+# without a copy step.
+_LIVE_RESULTS = BACKEND / "models" / "forecasting" / "_reports" / "paper"
+_SHIPPED_RESULTS = DATA / "results"
+RESULTS = _LIVE_RESULTS if (_LIVE_RESULTS / "baselines.json").exists() else _SHIPPED_RESULTS
 
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
