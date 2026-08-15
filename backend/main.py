@@ -7,6 +7,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from app.core.config import settings
+from app.core.logging import configure_logging
+from app.core.middleware import RequestContextMiddleware
+
+# Before any other import that logs. Most of this backend's log calls go through
+# stdlib `logging`, which nothing configured until now — see app/core/logging.py
+# for what that cost. Calling it at import rather than in `lifespan` is
+# deliberate: module-level code in the routers below logs during import, and a
+# lifespan hook runs far too late to catch it.
+configure_logging(level=settings.LOG_LEVEL, json_logs=settings.LOG_JSON)
+
 from forecasting.api import router as forecasting_router
 from routers.brief import router as brief_router
 from routers.chat import router as chat_router
@@ -23,13 +33,15 @@ from routers.vessels import router as vessels_router
 from services import (
     ais,
     crw,
+    currents_depth,
+    drift,
     forecast_tiles,
     forecast_warm,
     gibs,
     ndbc,
     ocean_state,
+    stokes_drift,
 )
-from services import currents_depth, drift, stokes_drift
 from services.copernicus_currents import refresh_currents_cache
 from services.copernicus_sst import refresh_sst_cache
 from services.copernicus_wind import refresh_wind_cache
@@ -154,6 +166,15 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="MarisAI Backend", lifespan=lifespan)
+
+# Registered before CORS, which — verified, not assumed — puts CORS *outside*
+# this: Starlette's `add_middleware` inserts at the head of the list and the
+# stack is built in reverse, so the last one added ends up outermost.
+#
+# That is the order we want. A CORS preflight is answered by CORSMiddleware
+# without ever reaching here, so OPTIONS requests produce no access line and
+# consume no request id, while every real request still passes through.
+app.add_middleware(RequestContextMiddleware)
 
 # An explicit origin list, not ["*"]. `allow_credentials` is kept on despite
 # session cookies having gone with authentication (see docs/AUTH_REMOVAL.md),

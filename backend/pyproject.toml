@@ -129,6 +129,11 @@ select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "TID"]
 ignore = ["E501", "SIM103", "TID252"]
 
 [tool.ruff.per-file-ignores]
+# `configure_logging()` runs between the import blocks, which is E402 by
+# construction and is the whole point: router modules log while being imported,
+# so configuring after them — or from the lifespan hook — is too late to catch
+# it. See app/core/logging.py for what the unconfigured state cost.
+"main.py" = ["E402"]
 # `X` / `X_train` / `X_test` for a feature matrix is the universal convention
 # in ML code (scikit-learn's own signatures use it), and the capital is
 # meaningful: uppercase is the matrix, lowercase `y` the target vector.

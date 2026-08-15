@@ -73,6 +73,19 @@ class Settings(BaseSettings):
     # runs — this only removes the thundering herd at startup.
     FORECAST_GRID_REFRESH_ON_BOOT: bool = True
 
+    # Logging. See app/core/logging.py — until it existed, nothing in the server
+    # process configured logging at all and INFO from 31 stdlib-logging modules
+    # was discarded at source.
+    #
+    # DEBUG is genuinely usable here rather than a firehose, because the noisy
+    # third parties (httpx, copernicusmarine, botocore, s3fs) are pinned to
+    # WARNING independently of this setting.
+    LOG_LEVEL: str = "INFO"
+    # One JSON object per line instead of the human format. For a deployment
+    # that ships logs somewhere that parses them; off by default because the
+    # normal reader here is a terminal.
+    LOG_JSON: bool = False
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",
