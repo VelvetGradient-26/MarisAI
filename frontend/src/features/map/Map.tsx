@@ -4,6 +4,7 @@ import { MapManagerContext } from './hooks/MapManagerContext';
 import { useSelectedLocationRealtimeData } from './hooks/useSelectedLocationRealtimeData';
 import { useSelectedLocationMarker } from './hooks/useSelectedLocationMarker';
 import { useSelectedLocationFocus } from './hooks/useSelectedLocationFocus';
+import { useGlobeClickRecenter } from './hooks/useGlobeClickRecenter';
 import { useLiveVessels } from './hooks/useLiveVessels';
 import { useForecastGridLayers } from './hooks/useForecastGridLayers';
 import { useForecastVectorLayers } from './hooks/useForecastVectorLayers';
@@ -24,6 +25,9 @@ export function Map({ children }: MapProps) {
   useSelectedLocationRealtimeData();
   useSelectedLocationMarker(manager, ready);
   useSelectedLocationFocus(manager, ready);
+  // Rotation only, globe only, and only for a click out toward the limb — see
+  // the hook for why it narrows rather than reverses the rule above.
+  useGlobeClickRecenter(manager, ready);
   const vessels = useLiveVessels(manager, ready);
   // Registered at runtime rather than from `layerRegistry`: a forecast layer
   // exists only where a model has been trained and its grid built.
