@@ -15,6 +15,8 @@ import { Hab } from './Hab';
 import { Habitat } from './Habitat';
 import { Limits } from './Limits';
 import { Metrics } from './Metrics';
+import { OceanConventions } from './OceanConventions';
+import { OceanFields } from './OceanFields';
 import { Overview } from './Overview';
 import { Primer } from './Primer';
 import { Problems } from './Problems';
@@ -181,6 +183,20 @@ export const CHAPTERS: Chapter[] = [
     title: 'Limitations & what comes next',
     group: 'Machine learning',
     Component: Limits,
+  },
+  {
+    id: 'ocean-fields',
+    label: 'The fields',
+    title: 'The fields, and where they come from',
+    group: 'Ocean & atmosphere',
+    Component: OceanFields,
+  },
+  {
+    id: 'ocean-conventions',
+    label: 'Directions & colour',
+    title: 'Directions, colour & how to read a layer',
+    group: 'Ocean & atmosphere',
+    Component: OceanConventions,
   },
 ];
 
