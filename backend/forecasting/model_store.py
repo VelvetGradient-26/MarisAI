@@ -196,6 +196,97 @@ def load(variable: str, horizon: int, root: Path | None = None) -> ModelArtifact
     )
 
 
+@dataclass(frozen=True)
+class ModelDescription:
+    """An artifact's JSON, without its booster.
+
+    Deliberately not a `ModelArtifact` with `model=None`: the distinction is
+    the whole point. Everything that only *describes* a model — the models
+    catalog, the data-quality panel, anything counting what is trained — reads
+    this, and unpickling is reserved for code that will actually predict.
+
+    `summary()` used to go through `load()`, which unpickles. Describing all
+    115 shipped models therefore deserialised 115 LightGBM boosters to read
+    four numbers out of a JSON file beside them.
+    """
+
+    variable: str
+    horizon: int
+    metadata: dict[str, Any]
+    metrics: dict[str, Any]
+    feature_columns: list[str]
+
+    @property
+    def validation_metrics(self) -> dict[str, Any]:
+        return dict(self.metrics.get("validation", {}).get("metrics", {}))
+
+    @property
+    def folds(self) -> list[dict[str, Any]]:
+        return list(self.metrics.get("validation", {}).get("folds", []))
+
+    @property
+    def negative_folds(self) -> int:
+        """Folds whose skill score is at or below zero.
+
+        The shipping bar in TODO.md §2 is *overall skill > 0 **and** at most
+        one of five folds negative*, and the second clause is the one that
+        matters: six rejected horizons printed `beats persistence` on the
+        aggregate. Anything reporting model health that shows only the mean is
+        showing the number that would have shipped them.
+        """
+        return sum(
+            1
+            for fold in self.folds
+            if isinstance(fold.get("skill_score"), (int, float))
+            and fold["skill_score"] <= 0
+        )
+
+
+def describe(variable: str, horizon: int, root: Path | None = None) -> ModelDescription:
+    """Read an artifact's JSON only — no `model.pkl`, no unpickling.
+
+    Raises the same errors as `load()` for the same reasons, so callers that
+    only describe models get identical 404/500 behaviour.
+    """
+    directory = model_dir(variable, horizon, root)
+
+    # Keyed on the booster's presence, not on the JSON's: a directory holding
+    # metadata but no model is a failed or interrupted save, and reporting it
+    # as a trained model is exactly the "partial success" failure mode TODO.md
+    # §2 flags as the more dangerous one.
+    if not (directory / MODEL_FILE).exists():
+        raise ModelNotTrainedError(
+            f"no trained model for {variable!r} at horizon {horizon}. "
+            f"Train it with: python scripts/train_forecasting.py "
+            f"--variable {variable} --horizons {horizon}"
+        )
+
+    try:
+        metadata = json.loads((directory / METADATA_FILE).read_text())
+        metrics = json.loads((directory / METRICS_FILE).read_text())
+        features = json.loads((directory / FEATURES_FILE).read_text())
+    except Exception as exc:  # noqa: BLE001 - json raises several types
+        raise ModelStoreError(
+            f"model artifact for {variable!r} h{horizon} at {directory} is unreadable: {exc}"
+        ) from exc
+
+    stored_version = metadata.get("artifact_version")
+    if stored_version != ARTIFACT_VERSION:
+        raise ModelStoreError(
+            f"model artifact for {variable!r} h{horizon} was written by format "
+            f"version {stored_version}, this build expects {ARTIFACT_VERSION}. "
+            f"Retrain it."
+        )
+
+    return ModelDescription(
+        variable=variable,
+        horizon=horizon,
+        metadata=metadata,
+        metrics=metrics,
+        feature_columns=list(features["feature_columns"]),
+    )
+
+
 def list_trained(root: Path | None = None) -> dict[str, list[int]]:
     """Every variable with at least one trained horizon, and which.
 
@@ -235,25 +326,29 @@ def summary(root: Path | None = None) -> list[dict[str, Any]]:
     for variable, horizons in list_trained(root).items():
         for horizon in horizons:
             try:
-                artifact = load(variable, horizon, root)
+                described = describe(variable, horizon, root)
             except ModelStoreError as exc:
                 entries.append(
                     {"variable": variable, "horizon": horizon, "error": str(exc)}
                 )
                 continue
-            metrics = artifact.metrics.get("validation", {}).get("metrics", {})
+            metrics = described.validation_metrics
             entries.append(
                 {
                     "variable": variable,
                     "horizon": horizon,
-                    "version": artifact.version,
-                    "trained_at": artifact.metadata.get("trained_at"),
-                    "training_rows": artifact.metadata.get("training_rows"),
-                    "n_features": len(artifact.feature_columns),
+                    "version": str(described.metadata.get("version", "unknown")),
+                    "trained_at": described.metadata.get("trained_at"),
+                    "training_rows": described.metadata.get("training_rows"),
+                    "n_features": len(described.feature_columns),
                     "mae": metrics.get("mae"),
                     "rmse": metrics.get("rmse"),
                     "r2": metrics.get("r2"),
                     "skill_score": metrics.get("skill_score"),
+                    # Never report the aggregate alone — see
+                    # ModelDescription.negative_folds.
+                    "n_folds": len(described.folds),
+                    "negative_folds": described.negative_folds,
                 }
             )
     return entries

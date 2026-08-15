@@ -31,7 +31,7 @@ carried as data.
 from __future__ import annotations
 
 import io
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 from PIL import Image
@@ -53,6 +53,19 @@ class FieldTexture:
     lon_east: float
     lat_south: float
     lat_north: float
+
+    # The downsampled arrays the PNG was made from, kept rather than recomputed.
+    #
+    # They exist for `services/drift.py`, which sums three live fields and needs
+    # them on one grid. Recomputing them would mean re-block-meaning three
+    # full-resolution global arrays every time the drift field recomposes, and
+    # re-deriving a grid that the encoder had already produced is exactly how
+    # two copies of "the field" drift apart. `compare=False` because a frozen
+    # dataclass's generated `__eq__` cannot compare arrays.
+    u_grid: np.ndarray = field(compare=False, repr=False, default_factory=lambda: np.empty((0, 0)))
+    v_grid: np.ndarray = field(compare=False, repr=False, default_factory=lambda: np.empty((0, 0)))
+    lat: np.ndarray = field(compare=False, repr=False, default_factory=lambda: np.empty(0))
+    lon: np.ndarray = field(compare=False, repr=False, default_factory=lambda: np.empty(0))
 
     def bounds(self) -> dict[str, float]:
         return {
@@ -191,4 +204,8 @@ def encode(
         lon_east=lon_east,
         lat_south=lat_south,
         lat_north=lat_north,
+        u_grid=u_small,
+        v_grid=v_small,
+        lat=lat_small,
+        lon=lon_small,
     )

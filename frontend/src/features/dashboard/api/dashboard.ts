@@ -7,6 +7,7 @@
 
 import type {
   AlertsResponse,
+  DataQualityResponse,
   HealthResponse,
   LiveResponse,
   MultiTrendsResponse,
@@ -45,6 +46,10 @@ export function fetchSummary(signal?: AbortSignal): Promise<SummaryResponse> {
 
 export function fetchAlerts(signal?: AbortSignal): Promise<AlertsResponse> {
   return getJson<AlertsResponse>(url('/api/dashboard/alerts'), signal);
+}
+
+export function fetchDataQuality(signal?: AbortSignal): Promise<DataQualityResponse> {
+  return getJson<DataQualityResponse>(url('/api/dashboard/data-quality'), signal);
 }
 
 export function fetchHealth(signal?: AbortSignal): Promise<HealthResponse> {

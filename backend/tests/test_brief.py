@@ -41,8 +41,16 @@ def offline(monkeypatch):
 
         raise BathymetryError("offline")
 
+    async def _no_biodiversity(*_args, **_kwargs):
+        from services.biodiversity import BiodiversityError
+
+        raise BiodiversityError("offline")
+
     monkeypatch.setattr(brief_service, "get_realtime_ocean_conditions", _no_conditions)
     monkeypatch.setattr(brief_service, "get_elevation", _no_bathymetry)
+    # OBIS is the one section built from a live upstream rather than a cache or
+    # a grid file, so an unstubbed one would reach the network from a test.
+    monkeypatch.setattr(brief_service.biodiversity, "at_point", _no_biodiversity)
 
 
 def test_a_brief_out_of_range_is_refused_rather_than_guessed():
@@ -57,7 +65,15 @@ def test_every_section_is_present_even_when_nothing_can_be_reached(offline):
     brief = _run(brief_service.build_brief(9.5, 75.0))
 
     sections = _sections(brief)
-    assert set(sections) == {"location", "conditions", "flow", "forecast", "habitat", "bloom"}
+    assert set(sections) == {
+        "location",
+        "conditions",
+        "flow",
+        "forecast",
+        "habitat",
+        "bloom",
+        "biodiversity",
+    }
     for key, section in sections.items():
         if not section["available"]:
             assert section.get("unavailable_reason"), f"{key} is absent without saying why"

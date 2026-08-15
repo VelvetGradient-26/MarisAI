@@ -17,6 +17,7 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchAlerts,
+  fetchDataQuality,
   fetchHealth,
   fetchLive,
   fetchSatellites,
@@ -35,6 +36,10 @@ export const REFRESH = {
   summary: 5 * MINUTE,
   health: 5 * MINUTE,
   satellites: 15 * MINUTE,
+  // Derived from files on disk — model artifacts and grid exports — which
+  // change only when a training run or a grid build finishes. Polling this at
+  // the health cadence would re-read an identical report 12 times an hour.
+  dataQuality: 30 * MINUTE,
 } as const;
 
 export function useSummary() {
@@ -61,6 +66,15 @@ export function useHealth() {
     queryFn: ({ signal }) => fetchHealth(signal),
     refetchInterval: REFRESH.health,
     staleTime: REFRESH.health / 2,
+  });
+}
+
+export function useDataQuality() {
+  return useQuery({
+    queryKey: ['dashboard', 'data-quality'],
+    queryFn: ({ signal }) => fetchDataQuality(signal),
+    refetchInterval: REFRESH.dataQuality,
+    staleTime: REFRESH.dataQuality / 2,
   });
 }
 

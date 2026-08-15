@@ -31,7 +31,7 @@ from scipy.interpolate import RegularGridInterpolator
 from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 
 from app.core.config import settings
-from services import vector_field
+from services import vector_field, vector_source
 
 DATASET_ID = "cmems_obs-wind_glo_phy_nrt_l4_0.125deg_PT1H"
 SOURCE_LABEL = "Copernicus Marine Service (WIND_GLO_PHY_L4_NRT_012_004)"
@@ -360,3 +360,32 @@ def get_point(latitude: float, longitude: float) -> dict[str, Any]:
 def get_field_png() -> bytes:
     cache = _require_cache()
     return cache.texture.png
+
+
+def snapshot() -> vector_source.VectorSnapshot:
+    """This field's cached grid, in the shape `services/drift.py` consumes.
+
+    The one thing this module shares with the `vector_source`-backed fields.
+    It is *not* a step toward migrating wind onto `VectorSource`: the
+    candidate-timestep probe above is genuinely specific to an L4 blend that
+    publishes a day of empty placeholders, which is why that migration was
+    declined when currents and Stokes drift were factored out.
+
+    A caller summing this with a current is summing **components**, which is
+    convention-free: `eastward_wind` is the eastward component of the wind
+    velocity whether the bearing is later reported as "from" or "toward". Only
+    `get_point`'s reported direction carries the meteorological convention, and
+    a consumer that summed *bearings* would have every arrow backwards.
+    """
+    cache = _require_cache()
+    return vector_source.VectorSnapshot(
+        key="wind",
+        lat=cache.texture.lat,
+        lon=cache.texture.lon,
+        u=cache.texture.u_grid,
+        v=cache.texture.v_grid,
+        u_interp=cache.u_interp,
+        v_interp=cache.v_interp,
+        lon_min=cache.lon_min,
+        timestamp=cache.timestamp,
+    )

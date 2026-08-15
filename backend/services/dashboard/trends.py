@@ -190,14 +190,28 @@ TRENDS: dict[str, TrendSpec] = {
             daily_param="so",
             coverage_start=copernicus_series.SERIES["sea_surface_salinity"].coverage_start,
         ),
-        TrendSpec(
-            key="ocean_heat_content",
-            label="Ocean Heat Content",
-            unit="GJ/m²",
-            api="copernicus",
-            hourly_param=None,
-            daily_param="thetao",
-            coverage_start=copernicus_series.SERIES["ocean_heat_content"].coverage_start,
+        # Ocean heat content, one chart per layer.
+        #
+        # 0-700 m is the climate reference depth and is the one that shipped
+        # first, but it is not the layer most marine questions are about: what
+        # feeds a cyclone, or shows up as a marine heatwave, is the heat in the
+        # top ~100 m, and 600 m of near-constant deep water underneath averages
+        # that signal away. Offering the layers side by side is what lets a
+        # reader tell surface warming from warming through the column — two
+        # different events that one number cannot separate.
+        *(
+            TrendSpec(
+                key=copernicus_series.ohc_key(depth),
+                label=f"Ocean Heat Content (0-{depth:.0f} m)",
+                unit="GJ/m²",
+                api="copernicus",
+                hourly_param=None,
+                daily_param="thetao",
+                coverage_start=copernicus_series.SERIES[
+                    copernicus_series.ohc_key(depth)
+                ].coverage_start,
+            )
+            for depth in copernicus_series.OHC_LAYERS_M
         ),
     )
 }
@@ -304,9 +318,16 @@ async def _copernicus_series(
     except copernicus_series.CopernicusSeriesError as exc:
         raise TrendsError(str(exc)) from exc
 
+    series_spec = copernicus_series.SERIES[spec.key]
     detail = "surface"
-    if spec.key == "ocean_heat_content":
-        detail = f"integrated 0-{copernicus_series.OHC_REFERENCE_DEPTH_M:.0f} m"
+    if series_spec.mode == "ohc":
+        # The bound, and honesty about what it means: Copernicus returns the
+        # model levels within it, so the integral closes at the deepest level
+        # under the bound rather than exactly at it.
+        detail = (
+            f"integrated 0-{series_spec.maximum_depth:.0f} m, to the nearest model "
+            "level within that bound"
+        )
 
     return {
         "variable": spec.key,

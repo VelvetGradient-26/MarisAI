@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 
 from services import brief as brief_service
 from services import brief_pdf
+from services import compare as compare_service
 from services.brief import BriefError
 
 router = APIRouter(prefix="/api/brief", tags=["brief"])
@@ -45,3 +46,22 @@ async def get_brief_pdf(
         # does with two of these is compare them.
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/compare")
+async def get_compare(
+    lat_a: float = Query(..., ge=-90, le=90),
+    lon_a: float = Query(..., ge=-180, le=180),
+    lat_b: float = Query(..., ge=-90, le=90),
+    lon_b: float = Query(..., ge=-180, le=180),
+):
+    """Two coordinates aligned row by row, with deltas where they are defined.
+
+    Under `/api/brief` rather than a prefix of its own because it is a view over
+    the brief — same services, same sections, same disclaimers — and a second
+    prefix would imply a second source of these numbers.
+    """
+    try:
+        return await compare_service.compare_points(lat_a, lon_a, lat_b, lon_b)
+    except BriefError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

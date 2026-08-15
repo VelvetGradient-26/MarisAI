@@ -7,6 +7,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from app.core.config import settings
+from app.core.logging import configure_logging
+from app.core.middleware import RequestContextMiddleware
+
+# Before any other import that logs. Most of this backend's log calls go through
+# stdlib `logging`, which nothing configured until now — see app/core/logging.py
+# for what that cost. Calling it at import rather than in `lifespan` is
+# deliberate: module-level code in the routers below logs during import, and a
+# lifespan hook runs far too late to catch it.
+configure_logging(level=settings.LOG_LEVEL, json_logs=settings.LOG_JSON)
+
 from forecasting.api import router as forecasting_router
 from routers.brief import router as brief_router
 from routers.chat import router as chat_router
@@ -23,13 +33,15 @@ from routers.vessels import router as vessels_router
 from services import (
     ais,
     crw,
+    currents_depth,
+    drift,
     forecast_tiles,
     forecast_warm,
     gibs,
     ndbc,
     ocean_state,
+    stokes_drift,
 )
-from services import currents_depth, stokes_drift
 from services.copernicus_currents import refresh_currents_cache
 from services.copernicus_sst import refresh_sst_cache
 from services.copernicus_wind import refresh_wind_cache
@@ -52,13 +64,23 @@ async def lifespan(_app: FastAPI):
     # finishes, SST/wind endpoints report "not yet available" (see
     # CopernicusSstError/CopernicusWindError) instead of erroring.
     asyncio.create_task(refresh_sst_cache())
-    asyncio.create_task(refresh_wind_cache())
-    asyncio.create_task(refresh_currents_cache())
-    # Stokes drift and the depth-resolved currents, on the same fire-and-forget
-    # footing. Depth warms only the levels someone has opened (plus two on the
-    # schedule) — six whole-globe fetches per cycle for levels nobody is looking
-    # at is most of the cost of the feature for none of its value.
-    asyncio.create_task(stokes_drift.refresh_cache())
+    # Wind, surface currents and Stokes drift warm together and then compose the
+    # combined drift field, which is summed from all three. Gathered rather than
+    # created separately so the compose can be chained onto them: it needs every
+    # term present, and the alternative — a scheduled compose that finds a cold
+    # cache — leaves the drift layer unavailable for a full interval after boot
+    # for no reason. The three still fetch concurrently, exactly as before.
+    async def _warm_flow_fields() -> None:
+        await asyncio.gather(
+            refresh_wind_cache(), refresh_currents_cache(), stokes_drift.refresh_cache()
+        )
+        await drift.refresh_cache()
+
+    asyncio.create_task(_warm_flow_fields())
+    # The depth-resolved currents, on the same fire-and-forget footing. Depth
+    # warms only the levels someone has opened (plus two on the schedule) — six
+    # whole-globe fetches per cycle for levels nobody is looking at is most of
+    # the cost of the feature for none of its value.
     asyncio.create_task(currents_depth.refresh_cache())
 
     # The dashboard's caches, on the same fire-and-forget footing. Each
@@ -85,6 +107,14 @@ async def lifespan(_app: FastAPI):
     )
     scheduler.add_job(
         currents_depth.refresh_cache, "interval", hours=currents_depth.REFRESH_INTERVAL_HOURS
+    )
+    # The combined drift field recomposes from the three caches above rather
+    # than fetching anything, so it is cheap and matched to the fastest of them.
+    # Slightly offset from the hour by running on its own interval: composing
+    # while a term is mid-refresh is harmless (it reads whatever is cached) and
+    # the next cycle picks the new timestep up.
+    scheduler.add_job(
+        drift.refresh_cache, "interval", hours=drift.REFRESH_INTERVAL_HOURS
     )
     scheduler.add_job(
         ndbc.refresh_cache, "interval", minutes=ndbc.REFRESH_INTERVAL_MINUTES
@@ -136,6 +166,15 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="MarisAI Backend", lifespan=lifespan)
+
+# Registered before CORS, which — verified, not assumed — puts CORS *outside*
+# this: Starlette's `add_middleware` inserts at the head of the list and the
+# stack is built in reverse, so the last one added ends up outermost.
+#
+# That is the order we want. A CORS preflight is answered by CORSMiddleware
+# without ever reaching here, so OPTIONS requests produce no access line and
+# consume no request id, while every real request still passes through.
+app.add_middleware(RequestContextMiddleware)
 
 # An explicit origin list, not ["*"]. `allow_credentials` is kept on despite
 # session cookies having gone with authentication (see docs/AUTH_REMOVAL.md),

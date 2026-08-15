@@ -42,7 +42,7 @@ class ProviderStatus:
     notes: str | None = None
 
 
-def _timestamp_health(fetched_at: str | None, stale_after_s: float) -> str:
+def timestamp_health(fetched_at: str | None, stale_after_s: float) -> str:
     if fetched_at is None:
         return "down"
     try:
@@ -196,7 +196,7 @@ def build() -> dict[str, Any]:
 
         connected = bool(result.get("connected"))
         health_state = (
-            _timestamp_health(result.get("last_sync"), provider.stale_after_s)
+            timestamp_health(result.get("last_sync"), provider.stale_after_s)
             if connected
             else "down"
         )

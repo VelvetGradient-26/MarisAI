@@ -38,7 +38,7 @@ from langchain_core.messages import (
 )
 
 from app.core.config import settings
-from services.chat import store
+from services.chat import catalog_context, store
 from services.chat.tools import Ledger, build_tools
 
 logger = logging.getLogger(__name__)
@@ -85,6 +85,16 @@ warnings. Never imply an official warning exists.
 5. Coverage is genuinely uneven. Habitat models cover the North Indian Ocean and \
 bloom models the Arabian Sea. Outside those, say so rather than extrapolating.
 6. Keep it tight — a few sentences unless more is asked for. Always name units."""
+
+
+# The dataset catalog is appended to the prompt rather than served by a tenth
+# tool, for two reasons recorded in TODO.md §4 and §6: the tool surface is
+# already at nine against a 5-8 guideline and every tool is a prompt the model
+# can get wrong, and 36 records fit in a single prompt anyway. Appending to
+# `_SYSTEM_PROMPT` itself — rather than adding a second constant — is what
+# keeps the grounding checker correct, since both `shown` blocks below list
+# `_SYSTEM_PROMPT` by name and would not pick up a sibling.
+_SYSTEM_PROMPT = f"{_SYSTEM_PROMPT}\n\n{catalog_context.CATALOG_PROMPT}"
 
 
 class ChatError(RuntimeError):
@@ -152,6 +162,39 @@ def _model() -> Any:
 # correct answers teaches people to ignore the one that matters.
 _NUMBER = re.compile(r"-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?")
 
+# The same numbers, but only where they are *quantities* rather than digits
+# living inside an identifier. A digit run *preceded* by a letter, underscore
+# or dot is part of a name, not a measurement.
+#
+# Only the leading side is guarded, and that is deliberate rather than
+# incomplete. Every identifier here segments before its digits —
+# `..._BGC_001_028`, `WIND_GLO_PHY_L4_NRT_012_004`, `GEBCO_2021` — so the
+# lookbehind alone rejects all of them. Guarding the *trailing* side as well
+# was tried and broke three existing tests immediately: it rejects "30d" and
+# "72E", which are exactly the unit-suffixed quantities the checker already
+# had to learn not to cry wolf about (a user's own "10N 72E" coordinates, a
+# tool description's "'24h', '7d', '30d'"). A number followed by a letter is
+# usually a unit; a number preceded by one is usually a serial.
+#
+# This exists because the dataset catalog in the system prompt names real
+# product ids — `GLOBAL_ANALYSISFORECAST_BGC_001_028`,
+# `WIND_GLO_PHY_L4_NRT_012_004` — and every figure the model is *shown* becomes
+# a figure it is allowed to state. Read naively, `_001_028` contributes "1" and
+# "28" to the permitted set, so a fabricated "the water is 28.4 C" traced back
+# to a product code and passed the check. Verified: adding the catalog turned
+# `test_an_invented_number_is_reported_not_hidden` green, which is the exact
+# shape of silent weakening this checker exists to prevent — the banner keeps
+# working, it just stops firing.
+#
+# Applied to both sides deliberately. On the permitted side it stops ids
+# laundering numbers in; on the answer side it stops the model being accused of
+# inventing "028" when it correctly quotes a dataset id back.
+_QUANTITY = re.compile(rf"(?<![\w.])(?:{_NUMBER.pattern})")
+
+
+def _quantities(text: str) -> list[str]:
+    return [match.group(0) for match in _QUANTITY.finditer(text)]
+
 
 def _numeric(token: str) -> float:
     """`float()` for a token this module's regex can produce.
@@ -206,7 +249,7 @@ def _ungrounded_numbers(text: str, ledger: Ledger, said: str = "") -> list[str]:
     """
     block = ledger.as_text() + "\n" + said
     allowed: set[str] = set(_IGNORED)
-    for match in _NUMBER.findall(block):
+    for match in _quantities(block):
         allowed.add(match)
         allowed.add(match.lstrip("-"))
         # Also admit the ungrouped spelling: a tool reports 2048.0 and the
@@ -218,7 +261,7 @@ def _ungrounded_numbers(text: str, ledger: Ledger, said: str = "") -> list[str]:
             continue
 
     unsupported: list[str] = []
-    for match in _NUMBER.findall(text):
+    for match in _quantities(text):
         candidates = {match, match.lstrip("-"), match.replace(",", "")}
         try:
             candidates |= _renderings(_numeric(match))

@@ -188,3 +188,37 @@ body {
     background: var(--ma-input-bg);
   }
 }
+
+/* --------------------------------------------------------------------------
+   Scroll reveal
+   --------------------------------------------------------------------------
+   Pairs with `hooks/useReveal.ts`: the hook decides *when*, this decides what
+   it looks like. Split that way because the "when" is the part with the
+   production bug behind it (an IntersectionObserver that never fired), and it
+   should not be re-solved per page in CSS.
+
+   Transform and opacity only — both compositor properties, so a page revealing
+   several sections at once does not lay out repeatedly while scrolling.
+
+   No reduced-motion block is needed here: the global rule in tokens.css
+   collapses the duration, and the hook starts `revealed` true, so the element
+   is simply in its final state from the first paint. */
+.ma-reveal {
+  opacity: 0;
+  transform: translateY(var(--ma-reveal-shift));
+  transition:
+    opacity var(--ma-duration-slow) var(--ma-ease-out),
+    transform var(--ma-duration-slow) var(--ma-ease-out);
+  /* The element must not intercept clicks or be read out before it arrives —
+     but only while it is genuinely hidden, so this is lifted below. */
+  will-change: opacity, transform;
+}
+
+.ma-reveal.is-revealed {
+  opacity: 1;
+  transform: none;
+  /* Dropped once settled: a permanent `will-change` keeps a compositor layer
+     alive for every revealed section on the page, which on a long page costs
+     more than the animation saved. */
+  will-change: auto;
+}

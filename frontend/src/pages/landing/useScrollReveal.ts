@@ -22,61 +22,13 @@ function prefersReducedMotion(): boolean {
   );
 }
 
-/** True once `ref`'s element has entered the viewport. Never flips back —
- * an entrance that replays on every scroll past is a distraction, not a
- * flourish. */
-export function useReveal<T extends HTMLElement>(rootMargin = 0.15) {
-  const ref = useRef<T>(null);
-  const [revealed, setRevealed] = useState(() => prefersReducedMotion());
-
-  useEffect(() => {
-    if (revealed) return;
-    const element = ref.current;
-    if (!element) return;
-
-    let cancelled = false;
-    const check = () => {
-      if (cancelled) return;
-      const rect = element.getBoundingClientRect();
-      const viewport = window.innerHeight || 800;
-      // Reveal once the element's top edge has risen above the trigger line.
-      // A zero-height element (not laid out yet) is deliberately not counted.
-      if (rect.height > 0 && rect.top < viewport * (1 - rootMargin)) {
-        cancelled = true;
-        setRevealed(true);
-      }
-    };
-
-    const onScroll = rafThrottle(check);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll, { passive: true });
-
-    // Measure now, and again after layout settles — fonts and images shift
-    // geometry after first paint, and a section already on screen at load
-    // must not wait for a scroll that may never come.
-    check();
-    const settle = window.setTimeout(check, 120);
-
-    let observer: IntersectionObserver | undefined;
-    if ('IntersectionObserver' in window) {
-      observer = new IntersectionObserver(
-        (entries) => entries.some((e) => e.isIntersecting) && check(),
-        { rootMargin: `0px 0px -${Math.round(rootMargin * 100)}% 0px` },
-      );
-      observer.observe(element);
-    }
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(settle);
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', onScroll);
-      observer?.disconnect();
-    };
-  }, [revealed, rootMargin]);
-
-  return { ref, revealed };
-}
+/**
+ * Re-exported, not reimplemented. `useReveal` now lives in `hooks/useReveal.ts`
+ * so pages other than this one can use it; keeping the name importable from
+ * here means the landing page's own imports are unchanged and there is still
+ * exactly one implementation.
+ */
+export { useReveal } from '../../hooks/useReveal';
 
 /**
  * Normalised scroll progress across an element, from -1 (fully below the

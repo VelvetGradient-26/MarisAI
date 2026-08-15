@@ -35,8 +35,9 @@ from typing import Any
 
 from loguru import logger
 
-from services import copernicus_currents, forecast_tiles, predictions, stokes_drift
+from services import biodiversity, copernicus_currents, forecast_tiles, predictions, stokes_drift
 from services.bathymetry import BathymetryError, get_elevation
+from services.biodiversity import BiodiversityError
 from services.openmeteo import OpenMeteoError, get_realtime_ocean_conditions
 
 # Forecast variables a brief reports, in the order they are laid out. Not every
@@ -379,6 +380,77 @@ def _bloom_section(latitude: float, longitude: float) -> Section:
     )
 
 
+async def _biodiversity_section(latitude: float, longitude: float) -> Section:
+    """What has been recorded here, from OBIS.
+
+    The one section built from a *live* upstream rather than from a cache or a
+    grid file, so it is the one that can make a brief slow; it is gathered with
+    the rest rather than awaited in line for that reason.
+
+    The bias note is not optional and is not a footnote. These counts measure
+    survey effort — a well-studied bay outscores an unsurveyed one regardless of
+    what lives in either — and the habitat model in this same document exists
+    partly to correct that bias. Printing an uncorrected headline beside it
+    without saying so would be the one genuinely indefensible thing in the
+    brief.
+    """
+    try:
+        report = await biodiversity.at_point(latitude, longitude)
+    except BiodiversityError as exc:
+        return Section(
+            key="biodiversity",
+            title="Recorded biodiversity",
+            available=False,
+            unavailable_reason=f"OBIS could not be queried for this area ({exc})",
+        )
+
+    totals = report["totals"]
+    if not totals["records"]:
+        return Section(
+            key="biodiversity",
+            title="Recorded biodiversity",
+            available=False,
+            unavailable_reason=report.get(
+                "empty_reason", "no OBIS records within 0.5° of this point"
+            ),
+        )
+
+    box = report["search_box"]
+    rows = [
+        {"label": "Occurrence records", "value": f"{totals['records']:,}"},
+        {"label": "Species recorded", "value": f"{totals['species']:,}"},
+        {"label": "Ray-finned fish species", "value": f"{totals['fish_species']:,}"},
+        {"label": "Contributing datasets", "value": f"{totals['datasets']:,}"},
+    ]
+    if totals["first_year"] and totals["last_year"]:
+        rows.append(
+            {
+                "label": "Years covered",
+                "value": f"{totals['first_year']}–{totals['last_year']}",
+            }
+        )
+
+    top = [entry for entry in report["species"] if entry.get("scientific_name")][:5]
+    if top:
+        rows.append(
+            {
+                "label": "Most recorded taxa",
+                "value": ", ".join(entry["scientific_name"] for entry in top),
+            }
+        )
+
+    return Section(
+        key="biodiversity",
+        title="Recorded biodiversity",
+        available=True,
+        rows=rows,
+        note=(
+            f"Within a {box['radius_deg']:g}° box (~{box['approx_area_km2']:,} km²). "
+            + biodiversity.BIAS_NOTE
+        ),
+    )
+
+
 async def build_brief(latitude: float, longitude: float) -> dict[str, Any]:
     """Everything known about one coordinate, as ordered sections.
 
@@ -393,11 +465,13 @@ async def build_brief(latitude: float, longitude: float) -> dict[str, Any]:
     generated = datetime.now(UTC)
     location, conditions = await _location_section(latitude, longitude)
 
-    forecast, habitat, bloom, flow = await asyncio.gather(
+    forecast, habitat, bloom, flow, biology = await asyncio.gather(
         asyncio.to_thread(_forecast_section, latitude, longitude),
         asyncio.to_thread(_habitat_section, latitude, longitude, generated.month),
         asyncio.to_thread(_bloom_section, latitude, longitude),
         asyncio.to_thread(_flow_section, latitude, longitude),
+        # Already a coroutine — it is a live HTTP call, not a grid read.
+        _biodiversity_section(latitude, longitude),
     )
 
     sections = [
@@ -407,6 +481,11 @@ async def build_brief(latitude: float, longitude: float) -> dict[str, Any]:
         forecast,
         habitat,
         bloom,
+        # Last, deliberately. It is observation history rather than a condition
+        # or a prediction, and it is the section most likely to be misread as a
+        # richness measurement — so it sits after the model output it helps
+        # contextualise rather than above it.
+        biology,
     ]
 
     return {
