@@ -446,6 +446,133 @@ Recorded so these are not re-proposed:
 
 ---
 
+## 6. Platform, structure and presentation
+
+Requested 2026-08-14, worked 2026-08-15. Most of it shipped; what is left below
+is what is genuinely still open, with the measurement that made it a decision.
+
+Two of the nine conflicted with decisions already recorded here. Both were
+narrowed rather than reversed, and the narrowing is described where it landed.
+
+### 6.1-6.7 — shipped
+
+| | outcome |
+|---|---|
+| 6.1 observability | `app/core/logging.py` + `middleware.py`. See the finding below — it was not a feature request, it was a bug. |
+| 6.2 globe click | Rotates toward a clicked point out near the limb. Rotation only, globe only, past a screen-space threshold. |
+| 6.4 field documentation | Two chapters in a new "Ocean & atmosphere" docs group. |
+| 6.5 backend strays | `test.py` (0 bytes), `others/`, `dependencies/` gone; runtime state moved to `backend/data/`. |
+| 6.6 README | Rewritten. It described the product as "a single interactive map". |
+| 6.7 branches | 8 remote branches to 1. The prototype is preserved as tag `prototype-2026-07`. |
+
+**The observability finding is worth keeping even though the work is done.**
+Two logging systems had grown side by side — loguru in 13 modules, stdlib
+`logging` in 31 — and *nothing in the server process configured either*:
+
+    logging.getLogger("services.forecast_tiles").isEnabledFor(logging.INFO)  -> False
+    logging.getLogger().handlers                                             -> []
+
+So every `logger.info(...)` in 31 modules was discarded at source, including
+most of the forecasting engine and the whole chat agent, while `WARNING`+
+survived only through `logging.lastResort` as bare unformatted stderr text. The
+lesson generalises: **this codebase's silent failures need the log to be the
+mitigation**, since the caches are fire-and-forget tasks whose exceptions
+asyncio swallows. If a second logging library ever appears, it has to route into
+the configured one rather than sit beside it.
+
+### 6.5 — the part deliberately not done: regrouping `services/`
+
+Measured before deciding: the 31 flat modules under `services/` are referenced
+from **222 import sites** across routers, services, tests and scripts, several
+of them grouped `from services import (a, b, c)` blocks that would have to be
+split across whatever new packages they landed in.
+
+Against that cost, the taxonomy is genuinely arguable — `forecast_tiles` is as
+much delivery as it is a derived field — and CLAUDE.md currently documents the
+flat layout as the convention. A large, history-obscuring rename that imposes a
+debatable grouping over a documented one is a bad trade, so it was not done on
+momentum. If it is ever taken up: one mechanical commit, no behaviour change,
+prose updated in the same commit, and settle the taxonomy first.
+
+Likewise **`models/` was not renamed** despite genuinely colliding with
+`app/models/`. It holds 114 trained models and 8 grids, is untracked, and
+represents hours of training; the README's structure listing now disambiguates
+the two, which buys most of the clarity for none of the risk.
+
+### 6.3 / 6.8 — motion foundation shipped, application half open
+
+Shipped: a motion budget in `styles/tokens.css` (four durations named by what
+the motion is *for*, plus an entrance easing), `useReveal` promoted out of
+`pages/landing/` into `hooks/`, the `.ma-reveal` utility, and both applied to
+the compare page along with a real loading state.
+
+What is left is applying it, and the **no-go list is the important half** —
+all three were paid for once:
+
+- **Never wrap the `/map` route in a keyed animated wrapper.** A remount
+  destroys and rebuilds the MapLibre WebGL context and discards the layer state
+  `mapPreferencesStore` exists to preserve.
+- **No JS mount animation on dashboard panels.** `AnalyticsGrid`'s `LazyMount`
+  decides what to render by *measuring geometry*, and Recharts' entry animation
+  is already disabled for starting before `ResponsiveContainer` settled its
+  width. An animation that moves and rescales the thing being measured, as it is
+  measured, is the same hazard. Hover is safe.
+- **Reduced motion resolves to the finished state**, never to a faster
+  animation.
+
+Remaining targets, none of which touch the above: the dashboard's range-change
+transitions, the map's layer picker, and the metric pages' chart swaps.
+
+Also worth measuring before adding more JS: **native CSS scroll-driven
+animations** (`animation-timeline: view()`). They run off the main thread, need
+no library, and degrade to "already visible" where unsupported — which is the
+same resolution reduced motion already takes.
+
+### 6.9 "Awwwards-level UI/UX" — still open, and still a standard rather than a task
+
+The motion budget above is the first of its criteria. The rest needs deciding
+rather than doing, and it collides with three rules this codebase holds
+deliberately: no UI kit or CSS framework outside `features/dashboard/`; one
+place chooses a colour (`styles/tokens.css` exists because seven private
+palettes had drifted into four dark canvases and two accents); and reduced
+motion resolves to the finished state.
+
+It also collides with something more important than any of them: **this
+product's distinguishing property is that it never substitutes a number for
+missing data.** Award-site polish trends toward decorative confidence —
+skeletons implying data is coming when the cache is cold, animated counters on
+estimates, "94% confident" chips. The dashboard's three-way `ready` / `warming`
+/ `unavailable` and the refusal to invent a "Confidence: 91%" are the standard
+to hold; a redesign that softens them is a regression however good it looks.
+The compare page's loading state is the shape to copy: it says what is happening
+and why it takes time, and does not draw a ghost of a table whose shape is
+exactly what the request is still deciding.
+
+To make it actionable:
+
+- **Three surfaces carry the product**: the landing page, `/map`, `/dashboard`.
+  Everything else can follow.
+- **Criteria, not vibes**: one type scale used everywhere (the tokens exist —
+  audit for literals that bypass them); a real empty / loading / error state for
+  every panel, since that is where this app is unusually honest and unusually
+  plain; contrast floors that the map ramps already meet (>=3:1 against the
+  Abyss basemap, >=2:1 for the hatched unforecastable mark) applied to the
+  chrome too.
+
+### Still unverified in a browser
+
+The globe recentre, the drift layers and the particle animations have never
+been *seen*. Browser tabs driven from the agent harness are always hidden, so
+`requestAnimationFrame` never fires, the map never initialises and every
+animation freezes — a limitation of the harness, not evidence of a problem.
+One human look at `/map` covers all of them, and should also check several
+particle systems running at once on a mid-range GPU: there are now seven
+possible flow layers, each an independent `requestAnimationFrame` +
+`map.redraw()` loop with its own trail framebuffers, and nothing coordinates
+them.
+
+---
+
 ## Bugs and correctness
 
 ### Circular variables — the modelling half is still open
