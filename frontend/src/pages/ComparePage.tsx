@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useReveal } from '../hooks/useReveal';
 import { useThemeStore } from '../store/themeStore';
 import {
   fetchComparison,
@@ -91,6 +92,16 @@ export function ComparePage() {
 
         {status === 'error' && <p className="compare-error">{error}</p>}
 
+        {status === 'loading' && !result && (
+          // `data-motion="essential"` is the documented opt-out in tokens.css:
+          // an indeterminate spinner frozen by the reduced-motion rule reads as
+          // *hung* rather than as calm, so it slows rather than stopping.
+          <p className="compare-loading" data-motion="essential" role="status">
+            Building both briefs — each fans out over several providers, so this
+            takes a few seconds.
+          </p>
+        )}
+
         {result && (
           <>
             <div className="compare-legend">
@@ -151,11 +162,20 @@ function PointFields({
 }
 
 function SectionTable({ section }: { section: CompareSection }) {
+  // Sections stack down a long page and arrive together after one request, so
+  // they reveal on scroll rather than all animating at once on load — which
+  // would be a page-wide flourish nobody reads, and would fire before the
+  // tables below the fold have been looked at.
+  const { ref, revealed } = useReveal<HTMLElement>();
+
   if (!section.available) {
     // Unavailable at both points. Which is itself an answer, and it says why —
     // the same rule the dashboard holds for every panel.
     return (
-      <section className="compare-section compare-section--empty">
+      <section
+        ref={ref}
+        className={`compare-section compare-section--empty ma-reveal${revealed ? ' is-revealed' : ''}`}
+      >
         <h2>{section.title}</h2>
         <p>{section.a_unavailable_reason ?? section.b_unavailable_reason ?? 'No data.'}</p>
       </section>
@@ -163,7 +183,10 @@ function SectionTable({ section }: { section: CompareSection }) {
   }
 
   return (
-    <section className="compare-section">
+    <section
+      ref={ref}
+      className={`compare-section ma-reveal${revealed ? ' is-revealed' : ''}`}
+    >
       <h2>{section.title}</h2>
       <div className="compare-table-scroll">
         <table className="compare-table">

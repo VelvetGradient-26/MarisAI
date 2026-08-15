@@ -20,7 +20,9 @@
   background: var(--cmp-bg);
   color: var(--cmp-text);
   font-family: var(--ma-font-ui);
-  transition: background 0.3s ease, color 0.3s ease;
+  transition:
+    background var(--ma-duration-slow) var(--ma-ease),
+    color var(--ma-duration-slow) var(--ma-ease);
 }
 
 .compare-page--light {
@@ -105,11 +107,20 @@
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition:
+    background var(--ma-duration-fast) var(--ma-ease),
+    border-color var(--ma-duration-fast) var(--ma-ease),
+    transform var(--ma-duration-instant) var(--ma-ease);
 }
 
 .compare-run:hover:not(:disabled) {
   background: var(--cmp-hover-bg);
+}
+
+/* A press is the one moment the user is definitely looking at this element, so
+   it gets the instant step rather than the hover step. */
+.compare-run:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .compare-run:disabled {
@@ -238,4 +249,38 @@
   color: var(--cmp-muted);
   font-size: var(--ma-text-xs);
   line-height: 1.6;
+}
+
+/* --- loading -------------------------------------------------------------
+   A real state, not a skeleton of the table that is coming. A comparison is two
+   point briefs fanned out over several providers, so it genuinely takes a few
+   seconds — and a shimmering ghost table would be asserting a shape we do not
+   yet know (which sections will be available at these two coordinates is
+   exactly what the request answers). */
+.compare-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--cmp-border);
+  border-radius: 14px;
+  padding: 20px;
+  background: var(--cmp-card-bg);
+  color: var(--cmp-muted);
+  font-size: var(--ma-text-sm);
+}
+
+.compare-loading::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--cmp-border);
+  border-top-color: var(--cmp-accent);
+  border-radius: 50%;
+  animation: compare-spin 0.8s linear infinite;
+}
+
+@keyframes compare-spin {
+  to {
+    transform: rotate(1turn);
+  }
 }

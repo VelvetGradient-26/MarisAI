@@ -114,9 +114,41 @@
   --ma-text-2xl: clamp(1.7rem, 3.2vw, 2.125rem); /* h1 on a content page */
   --ma-text-3xl: clamp(2.25rem, 5.4vw, 4rem); /* hero */
 
-  /* --- motion ---------------------------------------------------------- */
+  /* --- motion ------------------------------------------------------------
+     A budget, not a palette. Durations were two values (`--ma-duration` and
+     whatever each component invented), which is how a page ends up with a
+     120ms hover next to a 400ms one doing the same job. Four steps, chosen by
+     what the motion is *for* rather than by how they look:
+
+       instant   a state flip the user caused and is already looking at —
+                 checkbox, toggle, focus ring. Long enough to avoid a jump,
+                 short enough to feel like the click did it.
+       fast      hover and small affordances. The default.
+       base      something appearing or leaving: a panel, a tooltip, a row.
+       slow      something that moves a meaningful distance across the screen,
+                 or a scroll-triggered entrance, where a fast move reads as a
+                 flicker rather than as an arrival.
+
+     Anything slower than `slow` belongs to the map camera, which is measured
+     in its own module because it is animating geography rather than UI.
+
+     Easings: `--ma-ease` stays the standard both-ends curve. `--ma-ease-out`
+     is for anything entering — it decelerates into place, which is what makes
+     an entrance read as arriving rather than as being thrown. `--ma-ease-in`
+     is for leaving, and is deliberately rare: most exits should be `out` too,
+     because the user has already moved on. */
   --ma-ease: cubic-bezier(0.4, 0, 0.2, 1);
-  --ma-duration: 0.2s;
+  --ma-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ma-ease-in: cubic-bezier(0.4, 0, 1, 1);
+
+  --ma-duration-instant: 0.09s;
+  --ma-duration-fast: 0.15s;
+  --ma-duration: 0.2s; /* base; kept as the bare name, which existing CSS uses */
+  --ma-duration-slow: 0.42s;
+
+  /* How far a revealing element travels before settling. Small on purpose:
+     entrance animations that move a long way turn a page into a carousel. */
+  --ma-reveal-shift: 14px;
 }
 
 :root[data-theme='light'] {
