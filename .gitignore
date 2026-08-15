@@ -249,7 +249,9 @@ test.py
 Artifacts/
 
 # Feedback submissions (real user emails/messages, not for version control)
-backend/feedback_log.jsonl
+# Runtime state the backend writes to its own tree (feedback log, and
+# anything else that follows it). Source root stays source.
+backend/data/
 
 # Forecasting engine artifacts (backend/forecasting/, backend/models/).
 # Trained models are regenerated with `scripts/train_forecasting.py` and are
