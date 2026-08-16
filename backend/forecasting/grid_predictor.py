@@ -148,6 +148,14 @@ def _cell_features(
     # known — the count depends on the variable's covariates, so it cannot be
     # derived up front without duplicating `build_features`' own logic.
     columns: list[str] | None = None
+    # Every column the first cell produced, numeric or not. The comparison
+    # below has to be against this rather than against `columns`, because
+    # `columns` is deliberately the *numeric* subset: the feature frame always
+    # carries a `timestamp` column that is dropped by design, so testing rows
+    # against `columns` reported all 64,440 cells of a real build as carrying
+    # unknown columns — a warning that says "investigate before trusting the
+    # grid" and fires on every correct build is one nobody reads.
+    first_cell_columns: set[str] = set()
     values: np.ndarray | None = None
     anchors = np.empty(len(cells), dtype="float64")
     latitude_indices = np.empty(len(cells), dtype="int32")
@@ -230,6 +238,7 @@ def _cell_features(
                 # allocated a fresh Index for all 42,499 iterations and cost
                 # ~5% of the loop's wall clock for a value that never changes.
                 columns_index = pd.Index(columns)
+                first_cell_columns = set(matrix.frame.columns)
                 values = np.empty((len(cells), len(columns)), dtype="float64")
 
             row = matrix.frame.iloc[-1]
@@ -240,7 +249,7 @@ def _cell_features(
                 # that, so reindex onto the established order (missing -> NaN,
                 # which LightGBM handles) and count anything genuinely new
                 # rather than passing over it without a word.
-                if not set(row.index) <= set(columns):
+                if not set(row.index) <= first_cell_columns:
                     unseen_columns += 1
                 row = row.reindex(columns_index)
 
