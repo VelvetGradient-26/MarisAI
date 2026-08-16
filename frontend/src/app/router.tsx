@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { AnchorHTMLAttributes, MouseEvent, ReactNode } from 'react';
+import type { ComponentPropsWithRef, MouseEvent, ReactNode } from 'react';
 import { rafThrottle } from '../utils/rafThrottle';
 import { RouterContext, useAppRouter } from './routerContext';
 
@@ -149,7 +149,12 @@ export function Link({
   to,
   onClick,
   ...props
-}: Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'href'> & { to: string }) {
+  // `ComponentPropsWithRef` rather than `AnchorHTMLAttributes` so a caller can
+  // hand this a ref and have it land on the underlying `<a>`. In React 19 a
+  // function component receives `ref` as an ordinary prop, so the existing
+  // spread already forwards it — only the type was in the way. `useMagnetic`
+  // is the first caller that needs it.
+}: Omit<ComponentPropsWithRef<'a'>, 'href'> & { to: string }) {
   const { navigate } = useAppRouter();
 
   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {

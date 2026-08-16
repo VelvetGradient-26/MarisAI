@@ -56,13 +56,116 @@
   padding: 0 24px;
 }
 
+/* --------------------------------------------------------------------------
+   Condensed state
+   --------------------------------------------------------------------------
+   The bar starts nearly weightless and gains its edge on the first scroll.
+
+   The reason is that the two jobs conflict. Sitting over a page's own hero the
+   navbar has nothing behind it to separate from, so a solid background and a
+   hard border read as a heavy strip pasted over the artwork. Once content is
+   passing *under* it, that same background and border are what stop the page
+   from appearing to run through the type. Rather than pick one, the bar has
+   both states — see `useScrolledPastTop` in Navbar.tsx for the threshold and
+   why the listener only re-renders twice.
+
+   `--navbar-h` is deliberately unchanged between the two. Every page in the
+   app offsets its content by `calc(var(--navbar-h, 64px) + …)`, and animating
+   it would reflow all of them on every scroll — a shrinking navbar is a
+   pleasant three seconds and a permanent layout cost. Only the paint moves. */
+.navbar:not(.is-scrolled):not(.navbar--overlay) {
+  --nav-bg: transparent;
+  border-bottom-color: transparent;
+  backdrop-filter: none;
+}
+
+/* **The overlay bar never goes weightless, and the map is why.** The condensed
+   state is keyed on scroll position, and the map route has no document scroll
+   at all — so it would sit permanently in the transparent state with the globe
+   running directly under the links. Measured: over the Abyss basemap's ocean
+   the labels were legible, over its landmasses and the SST raster they were
+   not, which is the worst kind of failure because it depends on where the
+   camera happens to be.
+
+   It is also the right rule rather than a patch. Transparency at the top is
+   only correct when there is nothing behind the bar yet; on an overlay there
+   is always something behind it, from the first frame. */
+
+.navbar.is-scrolled {
+  box-shadow: 0 1px 24px rgba(0, 0, 0, 0.28);
+}
+
+.navbar--light.is-scrolled {
+  box-shadow: 0 1px 20px rgba(15, 30, 30, 0.06);
+}
+
 .navbar__logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
   flex-shrink: 0;
   color: var(--nav-primary);
   font-size: 19px;
   font-weight: 700;
   letter-spacing: -0.02em;
   text-decoration: none;
+}
+
+/* --------------------------------------------------------------------------
+   Brand mark
+   --------------------------------------------------------------------------
+   Three contour lines that draw themselves in on load and redraw on hover.
+   `pathLength="1"` is set on the paths in Navbar.tsx precisely so this offset
+   is 1 for all three — the lines are different lengths and would otherwise
+   draw at three different speeds from one shared keyframe. */
+.navbar__mark {
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.navbar__mark-line {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: navbar-mark-draw 1.1s var(--ma-ease-out) forwards;
+}
+
+.navbar__logo:hover .navbar__mark-line {
+  /* Re-running an animation needs a different name, not a reset — the
+     `forwards` fill above leaves the element in its end state and replaying
+     the same keyframe is a no-op. */
+  animation: navbar-mark-redraw 0.9s var(--ma-ease-out);
+}
+
+@keyframes navbar-mark-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes navbar-mark-redraw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.navbar__logo-text {
+  /* Tightened one step past the app's heading tracking: the wordmark is the
+     only place in the product where the type is doing identity work rather
+     than reading work, and it can afford to be set closer than a heading. */
+  letter-spacing: -0.035em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navbar__mark-line {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .navbar__logo:hover .navbar__mark-line {
+    animation: none;
+  }
 }
 
 .navbar__links {
@@ -74,6 +177,10 @@
 }
 
 .navbar__links a {
+  /* Not inline: the desktop label is a block-level clipping box (see the label
+     roll below), and a block child inside an inline box generates anonymous
+     boxes that the border below no longer wraps correctly. */
+  display: inline-block;
   border-bottom: 1px solid transparent;
   color: var(--nav-text);
   font-size: 11px;
@@ -101,6 +208,52 @@
 .navbar__links--mobile a.is-active,
 .navbar__links--mobile a:hover {
   border-color: var(--nav-primary);
+}
+
+/* --------------------------------------------------------------------------
+   Label roll
+   --------------------------------------------------------------------------
+   Each nav label is rendered twice, stacked vertically inside a box the height
+   of one line, and the pair translates up by exactly 100% on hover. The
+   incoming copy is identical, so what the eye reads is one word rolling over
+   in place.
+
+   Why a duplicate rather than animating the single label: a word that slides
+   up and out leaves an empty slot for the duration, and a word that slides up
+   and back is a bounce. The second face is what makes the movement continuous
+   — the label is never absent, and the motion has somewhere to go.
+
+   `1.6em` of line height rather than `1em` because these are uppercase labels
+   with letter-spacing, and a box exactly one em tall clips the cap height on
+   the incoming copy at some font sizes. The extra is absorbed by the negative
+   margin so the bar's layout is unchanged. */
+.navbar__label {
+  display: block;
+  height: 1.6em;
+  margin: -0.3em 0;
+  overflow: hidden;
+}
+
+.navbar__label-face {
+  display: block;
+  height: 1.6em;
+  line-height: 1.6em;
+  transition: transform var(--ma-duration) var(--ma-ease-out);
+}
+
+.navbar__links--desktop a:hover .navbar__label-face,
+.navbar__links--desktop a:focus-visible .navbar__label-face {
+  transform: translateY(-100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navbar__label-face {
+    transition: none;
+  }
+  .navbar__links--desktop a:hover .navbar__label-face,
+  .navbar__links--desktop a:focus-visible .navbar__label-face {
+    transform: none;
+  }
 }
 
 /* Positioning context for the indicator. `inline-flex` so the slot is exactly
