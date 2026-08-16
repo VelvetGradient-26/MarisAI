@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Cursor, Grain, Preloader, ScrollRail, SmoothScroll } from '../components/craft';
 import { Navbar } from '../components/Navbar';
+import { RouteLoading } from '../components/RouteLoading';
 import { Toaster } from '../components/Toaster';
 import { DashboardPage } from '../pages/DashboardPage';
 import { LandingPage } from '../pages/LandingPage';
@@ -158,63 +159,63 @@ function normalizePath(pathname: string): string {
 function renderPage(pathname: string) {
   if (pathname === '/map') {
     return (
-      <Suspense fallback={<div className="app-route-loading">Loading ocean map…</div>}>
+      <Suspense fallback={<RouteLoading label="Loading ocean map…" />}>
         <MapView />
       </Suspense>
     );
   }
   if (pathname === '/download') {
     return (
-      <Suspense fallback={<div className="app-route-loading">Loading downloader…</div>}>
+      <Suspense fallback={<RouteLoading label="Loading downloader…" />}>
         <DownloadPage />
       </Suspense>
     );
   }
   if (pathname === '/docs') {
     return (
-      <Suspense fallback={<div className="app-route-loading">Loading docs…</div>}>
+      <Suspense fallback={<RouteLoading label="Loading docs…" />}>
         <DocsPage />
       </Suspense>
     );
   }
   if (pathname === '/feedback') {
     return (
-      <Suspense fallback={<div className="app-route-loading">Loading feedback form…</div>}>
+      <Suspense fallback={<RouteLoading label="Loading feedback form…" />}>
         <FeedbackPage />
       </Suspense>
     );
   }
   if (pathname === '/contact') {
     return (
-      <Suspense fallback={<div className="app-route-loading">Loading…</div>}>
+      <Suspense fallback={<RouteLoading label="Loading…" />}>
         <ContactPage />
       </Suspense>
     );
   }
   if (pathname === '/assistant') {
     return (
-      <Suspense fallback={<div className="app-route-loading">Loading assistant…</div>}>
+      <Suspense fallback={<RouteLoading label="Loading assistant…" />}>
         <ChatPage />
       </Suspense>
     );
   }
   if (pathname === '/compare') {
     return (
-      <Suspense fallback={<div className="app-route-loading">Loading comparison…</div>}>
+      <Suspense fallback={<RouteLoading label="Loading comparison…" />}>
         <ComparePage />
       </Suspense>
     );
   }
   if (pathname === '/dashboard') {
     return (
-      <Suspense fallback={<div className="app-route-loading">Loading ocean intelligence…</div>}>
+      <Suspense fallback={<RouteLoading label="Loading ocean intelligence…" />}>
         <OceanIntelligenceDashboard />
       </Suspense>
     );
   }
   if (pathname === '/dashboard/metrics') {
     return (
-      <Suspense fallback={<div className="app-route-loading">Loading metrics…</div>}>
+      <Suspense fallback={<RouteLoading label="Loading metrics…" />}>
         <MetricsIndexPage />
       </Suspense>
     );
@@ -230,7 +231,7 @@ function renderPage(pathname: string) {
     );
     if (variableKey && !variableKey.includes('/')) {
       return (
-        <Suspense fallback={<div className="app-route-loading">Loading metric…</div>}>
+        <Suspense fallback={<RouteLoading label="Loading metric…" />}>
           <MetricIntelligencePage variableKey={variableKey} />
         </Suspense>
       );

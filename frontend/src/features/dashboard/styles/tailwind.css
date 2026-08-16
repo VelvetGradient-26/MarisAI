@@ -387,3 +387,191 @@
 .oid-panel:active {
   transform: translateY(0) translateZ(0);
 }
+
+/* --------------------------------------------------------------------------
+   Scan channel
+   --------------------------------------------------------------------------
+   The dashboard's half of the loading treatment described in `index.css`. Same
+   idea, `--oid-*` tokens: a dark track with an accent floor, and a narrow band
+   passing along it.
+
+   Kept in step with `.ma-skeleton` by hand, as the two live in different
+   theming worlds and a shared class would have to reach across the Tailwind
+   boundary this feature exists to keep clean. If the timing changes in one,
+   change it in the other — a dashboard panel and the analytics page below it
+   are on screen together.
+
+   The row is `overflow: hidden` so the band is clipped to the rounded track;
+   without it the gradient squares off the corners on its way past. */
+.oid-scanline {
+  position: relative;
+  overflow: hidden;
+  background: var(--oid-track);
+  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--oid-accent) 55%, transparent);
+}
+
+/* Alphas kept in step with `.ma-skeleton` in index.css — see the note there on
+   why the first, subtler pass had to be strengthened. Slightly lower at the
+   peak than the app-wide one, because a dashboard panel is a lighter surface
+   than the near-black page ground and the same alpha reads hotter on it. */
+.oid-scanline__pass {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--oid-accent) 24%, transparent) 30%,
+    color-mix(in oklab, var(--oid-accent) 58%, transparent) 50%,
+    color-mix(in oklab, var(--oid-accent) 24%, transparent) 70%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: oid-scan 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes oid-scan {
+  0% {
+    transform: translateX(-100%);
+  }
+  /* Holds at the end of the pass, so the sweeps read as discrete rather than
+     as one continuous wash — 12% of the cycle, matching `.ma-skeleton`, which
+     carries the note on why the hold is short. */
+  88%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oid-scanline__pass {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Markdown inside a panel
+   --------------------------------------------------------------------------
+   `components/Markdown` emits `.md-*` classes, and the only stylesheet that
+   dressed them was `pages/chat.css` — which is loaded on the chat route and
+   nowhere else. So the AI-insights panel rendered structurally correct
+   markup with no margins, no list indent and no code background.
+
+   These are scoped under `.oid-md` rather than added to the shared `.md-*`
+   rules for two reasons. The chat rules are written against `--chat-*`
+   tokens and this panel is themed with `--oid-*`, so they are not the same
+   declarations; and equal-specificity duplicates of `.md-p` in two
+   stylesheets would be resolved by import order, which is exactly the kind of
+   coupling the per-feature convention exists to avoid.
+
+   Sized down from the chat's settings throughout: this is a 12.5px panel in a
+   dashboard grid, not a reading column. */
+.oid-md > :first-child {
+  margin-top: 0;
+}
+
+.oid-md > :last-child {
+  margin-bottom: 0;
+}
+
+.oid-md .md-p {
+  margin: 0 0 0.7em;
+}
+
+.oid-md .md-h {
+  margin: 1em 0 0.4em;
+  font-size: 1em;
+  font-weight: 600;
+  color: var(--oid-text-strong);
+}
+
+/* `list-style` is restored explicitly, because `.oid-root ul { list-style: none }`
+   in this file's `@layer base` block strips it — correct for the dashboard's
+   own lists, which are all layout, and wrong for prose. Without this the
+   model's bullet list rendered as indented paragraphs, which is a different
+   claim about the content than the model made. */
+.oid-md .md-list {
+  margin: 0 0 0.7em;
+  padding-left: 1.15em;
+  list-style: disc outside;
+}
+
+.oid-md ol.md-list {
+  list-style: decimal outside;
+}
+
+.oid-md .md-list li {
+  margin: 0.25em 0;
+}
+
+.oid-md .md-list li::marker {
+  color: var(--oid-accent);
+}
+
+.oid-md strong {
+  font-weight: 600;
+  color: var(--oid-text-strong);
+}
+
+.oid-md a {
+  color: var(--oid-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.oid-md .md-code {
+  padding: 0.1em 0.36em;
+  border-radius: 5px;
+  background: var(--oid-track);
+  font-size: 0.9em;
+  /* Break long identifiers rather than widening the panel past its grid
+     column — a dashboard cell has no room to negotiate. */
+  overflow-wrap: anywhere;
+}
+
+.oid-md .md-pre {
+  margin: 0 0 0.7em;
+  padding: 8px 10px;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: var(--oid-track);
+  font-size: 0.85em;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.oid-md .md-pre code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+}
+
+.oid-md .md-quote {
+  margin: 0 0 0.7em;
+  padding-left: 0.75em;
+  border-left: 2px solid var(--oid-border);
+  color: var(--oid-text-muted);
+}
+
+.oid-md .md-table-wrap {
+  margin: 0 0 0.7em;
+  overflow-x: auto;
+}
+
+.oid-md .md-table {
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+.oid-md .md-table th,
+.oid-md .md-table td {
+  padding: 5px 9px;
+  border: 1px solid var(--oid-border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.oid-md .md-table th {
+  background: var(--oid-track);
+  font-weight: 600;
+}
