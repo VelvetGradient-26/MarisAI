@@ -15,10 +15,44 @@
  * colour fields never are.
  */
 
-import { createForecastCurrentsParticleLayer } from '../vectorField/currentsLayer';
-import { CURRENT_SPEED_COLOR_STOPS } from '../vectorField/colorRamp';
+import {
+  createForecastVectorParticleLayer,
+  CURRENTS_VISUAL,
+} from '../vectorField/currentsLayer';
+import { WIND_SPEED_COLOR_STOPS } from '../vectorField/colorRamp';
+import type { ColorStop } from '../vectorField/colorRamp';
 import type { CustomLayerDescriptor, LayerLegend } from '../types';
 import type { ForecastVectorEntry, ForecastVectorMode } from '../api/forecastVectors';
+
+/**
+ * How each pair is drawn: the same ramp and pace as its *live* counterpart.
+ *
+ * A forecast field exists to be compared against the observation it was
+ * launched from, so the two must be visually identical — any difference the eye
+ * catches has to be the ocean's, not the renderer's. Keyed on the backend's
+ * pair key, with currents' values imported rather than restated.
+ *
+ * This map is why `wind_u`/`wind_v` going live was not purely a training run.
+ * Before it, every forecast pair was drawn as currents: an 8 m/s wind field on
+ * a ramp whose domain ends at 2 m/s renders as one flat top colour, and at
+ * currents' 12000 speed scale it advects ~265 px/s. Both look like a working
+ * layer.
+ */
+const PAIR_VISUALS: Record<string, { colorStops: ColorStop[]; visualSpeedScale?: number }> = {
+  currents: CURRENTS_VISUAL,
+  // No `visualSpeedScale`: wind is the engine's 1800 default, which is what the
+  // live wind layer uses by omitting it too.
+  wind: { colorStops: WIND_SPEED_COLOR_STOPS },
+};
+
+/** Currents' identity is the fallback for a pair this file has not been taught
+ *  yet — it is the conservative choice for another *ocean* field, and the
+ *  legend still reads the entry's own unit and maximum. A new pair with a
+ *  genuinely different scale (waves) should get an entry above rather than
+ *  inherit this. */
+function visualFor(key: string) {
+  return PAIR_VISUALS[key] ?? CURRENTS_VISUAL;
+}
 
 export function forecastVectorLayerId(
   key: string,
@@ -28,9 +62,13 @@ export function forecastVectorLayerId(
   return `forecast-vector-${key}-h${horizon}-${mode}`;
 }
 
-/** Matches CURRENT_SPEED_COLOR_STOPS, as offsets on the legend's own 0..max
- *  domain. Derived from the stops rather than restated, so the two cannot
- *  drift the way the raster ramps in `forecastLayers.ts` can. */
+/** The legend reads the *same* stops the particles are coloured by, as offsets
+ *  on the legend's own 0..max domain. Derived from the stops rather than
+ *  restated, so the two cannot drift the way the raster ramps in
+ *  `forecastLayers.ts` can — and taken from `visualFor` rather than from
+ *  currents, or a wind layer would be drawn on one ramp and explained by
+ *  another. Offsets are clamped: a ramp whose top stop sits above the pair's
+ *  legend maximum would otherwise emit an offset past 1. */
 function legendFor(entry: ForecastVectorEntry): LayerLegend {
   const max = entry.speed_max_legend;
   return {
@@ -38,8 +76,8 @@ function legendFor(entry: ForecastVectorEntry): LayerLegend {
     unit: entry.unit,
     min: 0,
     max,
-    stops: CURRENT_SPEED_COLOR_STOPS.map((stop) => ({
-      offset: max > 0 ? stop.value / max : 0,
+    stops: visualFor(entry.key).colorStops.map((stop) => ({
+      offset: max > 0 ? Math.min(1, stop.value / max) : 0,
       color: `rgb(${stop.color[0]},${stop.color[1]},${stop.color[2]})`,
     })),
   };
@@ -75,8 +113,11 @@ function attributionFor(
     `${entry.v_variable} forecast as separate components and composed into a vector here.` +
     `${skill} Grid is ${entry.resolution_deg}°, anchored on observations from ` +
     `${entry.observation_date ?? 'an unknown date'}, built ` +
-    `${entry.generated_at ?? 'at an unknown time'}. Particles flow toward the direction of ` +
-    `travel (oceanographic convention).${missing}`
+    `${entry.generated_at ?? 'at an unknown time'}. Particles always flow the way the field ` +
+    `travels; this field is *named* for where it ` +
+    `${entry.direction_convention === 'from' ? 'comes from (meteorological convention, so a ' +
+      '"westerly" blows toward the east)' : 'travels toward (oceanographic convention)'}` +
+    `.${missing}`
   );
 }
 
@@ -94,7 +135,7 @@ export function forecastVectorLayers(entry: ForecastVectorEntry): CustomLayerDes
     defaultOpacity: 0.9,
     defaultVisible: false,
     createLayer: (id: string) =>
-      createForecastCurrentsParticleLayer(id, entry.key, horizon, 'forecast', 0.9),
+      createForecastVectorParticleLayer(id, entry.key, horizon, 'forecast', 0.9, visualFor(entry.key)),
     legend: legendFor(entry),
   }));
 
@@ -111,7 +152,7 @@ export function forecastVectorLayers(entry: ForecastVectorEntry): CustomLayerDes
     defaultOpacity: 0.9,
     defaultVisible: false,
     createLayer: (id: string) =>
-      createForecastCurrentsParticleLayer(id, entry.key, firstHorizon, 'anchor', 0.9),
+      createForecastVectorParticleLayer(id, entry.key, firstHorizon, 'anchor', 0.9, visualFor(entry.key)),
     legend: legendFor(entry),
   });
 

@@ -4,6 +4,7 @@ import {
   DRIFT_SPEED_COLOR_STOPS,
   STOKES_DRIFT_COLOR_STOPS,
 } from './colorRamp';
+import type { ColorStop } from './colorRamp';
 import { driftFieldTextureUrl, fetchDriftMeta } from '../api/drift';
 import { currentsFieldTextureUrl, fetchCurrentsMeta } from '../api/currents';
 import {
@@ -53,34 +54,51 @@ export function createCurrentsParticleLayer(
 }
 
 /**
- * The forecast instantiation: the same engine, the same ramp and the same
- * speed scale, over a texture composed from the `current_u`/`current_v`
- * forecast grids instead of from an observation.
+ * The forecast instantiation: the same engine over a texture composed from a
+ * pair of forecast grids instead of from an observation.
  *
- * Deliberately identical in every visual respect to the live layer. A forecast
- * flow that animated at a different pace or on a different colour scale could
- * not be compared against the live one, and comparison is the only thing
- * anyone wants from it — the layer name and its attribution carry the "this is
- * a model, not an observation" distinction, not the rendering.
+ * **Each forecast field is drawn exactly like its live counterpart**, and that
+ * is the whole rule here. A forecast flow that animated at a different pace or
+ * on a different colour scale could not be compared against the live one, and
+ * comparison is the only thing anyone wants from it — the layer name and its
+ * attribution carry the "model, not observation" distinction, not the
+ * rendering.
+ *
+ * Which is why the ramp and speed scale are *arguments* rather than currents'
+ * constants, and this function is no longer named for currents. It was written
+ * when `current_u`/`current_v` were the only trained pair, and when `wind_u`/
+ * `wind_v` arrived it would have drawn forecast wind on the amber currents ramp
+ * (whose domain tops out at 2 m/s, so every cell of an 8 m/s wind field renders
+ * the same top colour) at currents' 12000 speed scale (which puts that wind at
+ * ~265 px/s — a smear). Both failures animate convincingly, which is why the
+ * visual identity now travels with the field.
  */
-export function createForecastCurrentsParticleLayer(
+export function createForecastVectorParticleLayer(
   id: string,
   key: string,
   horizon: number,
   mode: ForecastVectorMode,
-  initialOpacity: number
+  initialOpacity: number,
+  visual: { colorStops: ColorStop[]; visualSpeedScale?: number }
 ): CustomVectorFieldLayer {
   return new VectorFieldParticleLayer(
     id,
     {
       fieldTextureUrl: forecastVectorFieldTextureUrl(key, horizon, mode),
       fetchMeta: fetchForecastVectorMeta(key, horizon, mode),
-      colorStops: CURRENT_SPEED_COLOR_STOPS,
-      visualSpeedScale: CURRENTS_VISUAL_SPEED_SCALE,
+      colorStops: visual.colorStops,
+      visualSpeedScale: visual.visualSpeedScale,
     },
     initialOpacity
   );
 }
+
+/** The live currents' own visual identity, exported so a forecast currents
+ *  layer is drawn from the same two values rather than from a copy of them. */
+export const CURRENTS_VISUAL = {
+  colorStops: CURRENT_SPEED_COLOR_STOPS,
+  visualSpeedScale: CURRENTS_VISUAL_SPEED_SCALE,
+} as const;
 
 /**
  * Stokes drift — the wave-induced transport, on the same engine.

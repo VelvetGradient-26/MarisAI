@@ -17,19 +17,25 @@ variables, and `available()` reports a pair only when both grids are on disk
 `current_v` would animate confidently in the wrong direction, which is worse
 than an absent layer.
 
-**Why only currents today, and what it would take to add wind.** Ocean currents
-are configured as two directly-forecast components, `current_u` and
-`current_v`, which is exactly what a particle field needs. Wind is configured
-as `wind_speed` + `wind_direction` — both griddable, but direction is a
-*circular* quantity, and every operation between here and the screen (the
-model's own regression on the level, the grid's bilinear resample, the
-particle engine's texture interpolation) is linear. Averaging 359deg and 1deg
-gives 180deg, the exact opposite heading, so a wind particle field composed
-from those two grids would flow backwards along every wrap. The fix is to
-configure `wind_u`/`wind_v` as forecast variables in their own right — the
-downloader's Copernicus wind provider already serves `eastward_wind`/
-`northward_wind`, so it is two registry entries, two YAML blocks and two
-training runs, not a new integration.
+**A pair is always two forecast *components*, never a forecast bearing.** Ocean
+currents were the first pair because `current_u`/`current_v` are directly
+forecast, which is exactly what a particle field needs. Wind was configured as
+`wind_speed` + `wind_direction` — both griddable, but direction is a *circular*
+quantity, and every operation between here and the screen (the model's own
+regression on the level, the grid's bilinear resample, the particle engine's
+texture interpolation) is linear. Averaging 359deg and 1deg gives 180deg, the
+exact opposite heading, so a wind field composed from those two grids would have
+flowed backwards along every wrap. So `wind_u`/`wind_v` were configured as
+forecast variables in their own right over the downloader's Copernicus
+`eastward_wind`/`northward_wind` — two registry entries, two YAML blocks and two
+training runs, not a new integration. Any future pair goes the same way.
+
+**The visual identity belongs to the pair, and lives on the frontend.** Each
+forecast field is drawn exactly like its *live* counterpart, because comparison
+is the only thing anyone wants from it — see `PAIR_VISUALS` in
+`layers/forecastVectorLayers.ts`. `direction_convention` below is served for the
+same reason: the two conventions are 180deg apart and a layer that picks the
+wrong one looks entirely plausible.
 """
 
 from __future__ import annotations
@@ -82,11 +88,12 @@ PAIRS: dict[str, VectorPair] = {
         speed_max_legend=2.0,
         direction_convention="toward",
     ),
-    # Registered before its grids exist, deliberately. `catalog()` reports a
-    # pair with an explicit reason when a component is missing, and the frontend
-    # hook logs that — which is a better answer than a layer that silently does
-    # not exist while two trained models sit on disk. It becomes a live layer
-    # the moment `wind_u`/`wind_v` are trained and built; no frontend edit.
+    # Registered here before its grids existed, deliberately — and it became a
+    # live layer the moment `wind_u`/`wind_v` were trained and built, with no
+    # frontend edit. `catalog()` reports a pair with an explicit reason while a
+    # component is missing, which is a better answer than a layer that silently
+    # does not exist while two trained models sit on disk. Register the next
+    # pair the same way round.
     #
     # 25 m/s is a strong gale, chosen as a legend top the same way currents'
     # 2.0 m/s was: high enough that a storm is not clipped flat, low enough that
