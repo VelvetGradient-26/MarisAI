@@ -18,15 +18,17 @@ input would pass the parity test while proving nothing.
 
 from __future__ import annotations
 
+import logging
+import os
 import threading
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
 
-from forecasting import grid_predictor, predictor
+from forecasting import grid_history, grid_predictor, predictor
 from forecasting.config import get_config
 from forecasting.grid_history import GridStack, output_grid
 from forecasting.grid_predictor import build_forecast_grid
@@ -91,21 +93,38 @@ def stack() -> GridStack:
 
     physics = xr.Dataset(
         {
-            "thetao": (("time", "latitude", "longitude"), _field(times, latitudes, longitudes, 20.0, 4.0, 1)),
-            "so": (("time", "latitude", "longitude"), _field(times, latitudes, longitudes, 35.0, 0.5, 2)),
+            "thetao": (
+                ("time", "latitude", "longitude"),
+                _field(times, latitudes, longitudes, 20.0, 4.0, 1),
+            ),
+            "so": (
+                ("time", "latitude", "longitude"),
+                _field(times, latitudes, longitudes, 35.0, 0.5, 2),
+            ),
         },
         coords={"time": times, "latitude": latitudes, "longitude": longitudes},
     )
     wind = xr.Dataset(
         {
-            "eastward_wind": (("time", "latitude", "longitude"), _field(times, latitudes, longitudes, 3.0, 2.0, 3)),
-            "northward_wind": (("time", "latitude", "longitude"), _field(times, latitudes, longitudes, -2.0, 2.0, 4)),
+            "eastward_wind": (
+                ("time", "latitude", "longitude"),
+                _field(times, latitudes, longitudes, 3.0, 2.0, 3),
+            ),
+            "northward_wind": (
+                ("time", "latitude", "longitude"),
+                _field(times, latitudes, longitudes, -2.0, 2.0, 4),
+            ),
         },
         coords={"time": times, "latitude": latitudes, "longitude": longitudes},
     )
     rng = np.random.default_rng(5)
     depth = xr.Dataset(
-        {"ocean_depth": (("latitude", "longitude"), rng.uniform(20.0, 5000.0, (len(latitudes), len(longitudes))))},
+        {
+            "ocean_depth": (
+                ("latitude", "longitude"),
+                rng.uniform(20.0, 5000.0, (len(latitudes), len(longitudes))),
+            )
+        },
         coords={"latitude": latitudes, "longitude": longitudes},
     )
 
@@ -116,7 +135,10 @@ def stack() -> GridStack:
 
     return GridStack(
         providers={
-            catalog.PROVIDER_COPERNICUS_PHYSICS: (catalog.get(catalog.PROVIDER_COPERNICUS_PHYSICS), physics),
+            catalog.PROVIDER_COPERNICUS_PHYSICS: (
+                catalog.get(catalog.PROVIDER_COPERNICUS_PHYSICS),
+                physics,
+            ),
             catalog.PROVIDER_COPERNICUS_WIND: (catalog.get(catalog.PROVIDER_COPERNICUS_WIND), wind),
             catalog.PROVIDER_GEBCO: (catalog.get(catalog.PROVIDER_GEBCO), depth),
         },
@@ -251,7 +273,10 @@ async def test_anchor_grid_is_the_last_observation(stack, model_root, monkeypatc
     """The anchor a delta decodes from must be the cell's own latest value."""
     monkeypatch.setattr(grid_predictor, "fetch_stack", _stack_returning(stack))
     grid = await build_forecast_grid(
-        VARIABLE, [HORIZON], resolution_deg=RESOLUTION_DEG, root=model_root,
+        VARIABLE,
+        [HORIZON],
+        resolution_deg=RESOLUTION_DEG,
+        root=model_root,
         end_date=date(2026, 6, 30),
     )
 
@@ -297,7 +322,10 @@ async def test_the_cell_loop_does_not_run_on_the_event_loop(stack, model_root, m
     monkeypatch.setattr(grid_predictor, "_score_stack", recording)
 
     await build_forecast_grid(
-        VARIABLE, [HORIZON], resolution_deg=RESOLUTION_DEG, root=model_root,
+        VARIABLE,
+        [HORIZON],
+        resolution_deg=RESOLUTION_DEG,
+        root=model_root,
         end_date=date(2026, 6, 30),
     )
 
@@ -318,10 +346,39 @@ async def test_missing_covariates_are_recorded_not_hidden(stack, model_root, mon
     """
     monkeypatch.setattr(grid_predictor, "fetch_stack", _stack_returning(stack))
     grid = await build_forecast_grid(
-        VARIABLE, [HORIZON], resolution_deg=RESOLUTION_DEG, root=model_root,
+        VARIABLE,
+        [HORIZON],
+        resolution_deg=RESOLUTION_DEG,
+        root=model_root,
         end_date=date(2026, 6, 30),
     )
     assert "air_temperature" in grid.attrs["missing_covariates"]
+
+
+@pytest.mark.asyncio
+async def test_a_correct_build_does_not_warn_about_unknown_columns(
+    stack, model_root, monkeypatch, caplog
+):
+    """The schema warning must fire on schema drift, and only on schema drift.
+
+    It used to fire on *every* cell of every build — 64,440 of 64,440 on a real
+    wind_u grid, and 648 of 648 here — because rows were tested against the
+    numeric column subset while every feature frame also carries the
+    `timestamp` column that subset deliberately excludes. A warning reading
+    "investigate before trusting the grid" that appears on every correct build
+    is one nobody reads, which is the same cry-wolf failure the assistant's
+    grounding checker was fixed for.
+    """
+    monkeypatch.setattr(grid_predictor, "fetch_stack", _stack_returning(stack))
+    with caplog.at_level(logging.WARNING, logger="forecasting.grid_predictor"):
+        await build_forecast_grid(
+            VARIABLE,
+            [HORIZON],
+            resolution_deg=RESOLUTION_DEG,
+            root=model_root,
+            end_date=date(2026, 6, 30),
+        )
+    assert not any("absent from the first" in record.message for record in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -344,7 +401,10 @@ async def test_cells_without_a_recent_observation_are_dropped(stack, model_root,
     monkeypatch.setattr(grid_predictor, "fetch_stack", _stack_returning(stack))
     with pytest.raises(grid_predictor.GridPredictionError):
         await build_forecast_grid(
-            VARIABLE, [HORIZON], resolution_deg=RESOLUTION_DEG, root=model_root,
+            VARIABLE,
+            [HORIZON],
+            resolution_deg=RESOLUTION_DEG,
+            root=model_root,
             end_date=date(2026, 6, 30),
         )
 
@@ -390,9 +450,9 @@ def _write_tile_grid(
     """
     latitudes = np.arange(-89.0, 90.0, 2.0)
     longitudes = np.arange(-179.0, 180.0, 2.0)
-    anchor = np.tile(
-        np.linspace(0.0, 30.0, len(latitudes))[:, None], (1, len(longitudes))
-    ).astype("float32")
+    anchor = np.tile(np.linspace(0.0, 30.0, len(latitudes))[:, None], (1, len(longitudes))).astype(
+        "float32"
+    )
 
     forecast = anchor + forecast_offset
     if unforecastable:
@@ -515,7 +575,7 @@ def test_change_tile_separates_warming_from_cooling(tmp_path):
 
 
 def test_unforecastable_water_does_not_render_as_an_extreme_value(tmp_path):
-    """"No forecast here" and "the strongest cooling on the scale" must differ.
+    """ "No forecast here" and "the strongest cooling on the scale" must differ.
 
     Measured, not assumed: every ramp this module uses bottoms out near black,
     and the map's default basemap is a near-black ocean (#030f1e). At the
@@ -539,7 +599,9 @@ def test_unforecastable_water_does_not_render_as_an_extreme_value(tmp_path):
     _write_tile_grid(coldest, forecast_offset=-10.0)
     forecast_tiles.clear_cache()
 
-    marked = _decode(forecast_tiles.tile_or_placeholder(VARIABLE, HORIZON, "change", 0, 0, 0, blank))
+    marked = _decode(
+        forecast_tiles.tile_or_placeholder(VARIABLE, HORIZON, "change", 0, 0, 0, blank)
+    )
     forecast_tiles.clear_cache()
     extreme = _decode(
         forecast_tiles.tile_or_placeholder(VARIABLE, HORIZON, "change", 0, 0, 0, coldest)
@@ -684,3 +746,114 @@ def _point_fetch_from(stack: GridStack):
         )
 
     return _fetch
+
+
+# --------------------------------------------------------------------------
+# Fetch-cache eviction
+# --------------------------------------------------------------------------
+#
+# The cache had no eviction and accumulated 9.6 GB, 8.16 GB of it unreachable
+# (measured 2026-08-16). The leak is structural rather than a bad branch: a
+# scope key carries the date window, so a build with a fresh window orphans
+# yesterday's entries, and `_cache_get` only ever globs the scope it wants.
+# Nothing looks at a dead scope, so nothing can delete it.
+
+
+def _touch(path, age_hours: float) -> None:
+    """A cache file of a given age. Size is real so `freed` has something to add."""
+    path.write_bytes(b"\0" * 1024)
+    stamp = (datetime.now(UTC) - timedelta(hours=age_hours)).timestamp()
+    os.utime(path, (stamp, stamp))
+
+
+@pytest.fixture
+def cache_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(grid_history, "CACHE_DIR", tmp_path)
+    return tmp_path
+
+
+def _request() -> grid_history.GridRequest:
+    return grid_history.GridRequest(
+        codes=("sea_surface_temperature",),
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 2, 1),
+    )
+
+
+def test_sweep_drops_stale_field_entries_and_keeps_fresh_ones(cache_dir):
+    request = _request()
+    scope = grid_history._scope_key(catalog.PROVIDER_COPERNICUS_PHYSICS, request, 12)
+
+    stale = cache_dir / f"{scope}-aaaaaaaaaaaa.nc"
+    fresh = cache_dir / f"{scope}-bbbbbbbbbbbb.nc"
+    _touch(stale, age_hours=227)  # the real age observed on disk
+    _touch(fresh, age_hours=1)
+
+    assert grid_history.sweep_cache(request) == 1
+    assert not stale.exists()
+    assert fresh.exists()
+
+
+def test_sweep_reaches_orphaned_scopes(cache_dir):
+    """The whole point: an entry whose scope will never be requested again.
+
+    `_cache_get` would never glob this file, which is why age alone has to be
+    the test rather than membership of a live scope.
+    """
+    dead = _request()
+    live = grid_history.GridRequest(
+        codes=("sea_surface_temperature",),
+        start_date=date(2026, 3, 1),
+        end_date=date(2026, 4, 1),
+    )
+    orphan_scope = grid_history._scope_key(catalog.PROVIDER_COPERNICUS_PHYSICS, dead, 12)
+    orphan = cache_dir / f"{orphan_scope}-cccccccccccc.nc"
+    _touch(orphan, age_hours=48)
+
+    assert grid_history.sweep_cache(live) == 1
+    assert not orphan.exists()
+
+
+def test_sweep_honours_the_static_ttl_for_bathymetry(cache_dir):
+    """GEBCO is time-invariant, so a week-old entry is still perfectly good.
+
+    Sweeping it at the field TTL would refetch a global grid that cannot have
+    changed — the exact cost `_scope_key` drops the date window to avoid.
+    """
+    request = _request()
+    gebco_scope = grid_history._scope_key(catalog.PROVIDER_GEBCO, request, 1)
+    physics_scope = grid_history._scope_key(catalog.PROVIDER_COPERNICUS_PHYSICS, request, 12)
+
+    bathymetry = cache_dir / f"{gebco_scope}-dddddddddddd.nc"
+    field = cache_dir / f"{physics_scope}-eeeeeeeeeeee.nc"
+    _touch(bathymetry, age_hours=24 * 7)
+    _touch(field, age_hours=24 * 7)
+
+    assert grid_history.sweep_cache(request) == 1
+    assert bathymetry.exists()
+    assert not field.exists()
+
+    # ...but not forever. Past 90 days it goes like anything else.
+    _touch(bathymetry, age_hours=24 * 120)
+    assert grid_history.sweep_cache(request) == 1
+    assert not bathymetry.exists()
+
+
+def test_sweep_removes_torn_writes(cache_dir):
+    """A `.tmp` from a crashed `_cache_put` matches no glob in this module.
+
+    Neither `_cache_get` nor `clear_cache` looks at `*.nc.tmp`, so without the
+    sweep a torn write is permanent.
+    """
+    request = _request()
+    scope = grid_history._scope_key(catalog.PROVIDER_COPERNICUS_PHYSICS, request, 12)
+    torn = cache_dir / f"{scope}-ffffffffffff.nc.tmp"
+    _touch(torn, age_hours=48)
+
+    assert grid_history.sweep_cache(request) == 1
+    assert not torn.exists()
+
+
+def test_sweep_is_quiet_on_a_missing_directory(tmp_path, monkeypatch):
+    monkeypatch.setattr(grid_history, "CACHE_DIR", tmp_path / "absent")
+    assert grid_history.sweep_cache(_request()) == 0

@@ -29,29 +29,25 @@ Three things about this module are load-bearing:
 
   The cheap alternative — the daily depth-resolved datasets
   (`cmems_mod_glo_phy-thetao_anfc_0.083deg_P1D-m` and its salinity/current
-  twins) at 45 timesteps instead of 1080 — is still open, but **neither half of
-  the case for it stands as it was originally recorded**:
+  twins) at 45 timesteps instead of 1080 — was measured through this path on
+  2026-08-15 and **rejected**, on grounds other than cost:
 
-  * The correctness objection is **gone**. It was that the merge in
-    `build_dataframe` would inner-join hourly wind against a daily axis and
-    collapse wind speed from a 24-hour mean to one instantaneous value.
-    `cleaning.py` now aggregates each provider to the requested cadence
-    *before* the merge, so a mixed-cadence request means a real daily mean per
-    provider. (That was never grid-specific: the point path had the same defect
-    and 13 configured variables were training on it.)
-  * The **~40x speedup is not supported by measurement**, and the figures once
-    quoted here (1.05s and 0.60s per timestep) were not measured through this
-    fetch path. Probed 2026-08-10, one global surface field strided to 1deg:
-    hourly physics **34-46s/timestep**, daily thetao **84-104s/timestep** — the
-    daily product was ~2.5x *slower* per read, because those datasets carry 50
-    depth levels and a geo-series chunk brings the whole depth column for a
-    surface field. Fewer timesteps at ~2.5x each is still a large net win on
-    paper (45 x ~98s vs 1080 x ~39s), but a probe reading a lazy array directly
-    is not the real path, and neither number reconciles with the ~35 min a full
-    SST grid actually takes. **Re-measure through `copernicus.fetch_global`,
-    with a server-side depth bound on the daily datasets, before swapping
-    anything** — the depth bound is the same trap `machine_learning/` documents,
-    where omitting it turned a 15-minute-plus fetch into ~60s.
+  * **Both halves of the old case were wrong.** The correctness objection (a
+    daily axis collapsing hourly wind to an instantaneous value) is gone —
+    `cleaning.py` now aggregates per provider *before* the merge. And the cost
+    numbers reversed under a proper measurement: hourly is **0.89s/timestep**
+    (not 34-46s), so a 45-day window is ~16 min rather than ~35; daily,
+    depth-bounded, is **1.16s/timestep** (not 84-104s), so ~0.9 min. Daily is
+    ~18x cheaper here, not ~40x, and hourly is affordable. A 2-day probe of the
+    same daily read gives 3.89s/timestep — per-request overhead dominates a
+    short window, which is how the earlier probe inverted the ranking.
+  * **The depth bound is worth 2.2x** on the 50-level datasets (8.63s/timestep
+    without it against 3.89 with, same window). Same trap `machine_learning/`
+    documents.
+  * **It is rejected anyway**, because the swap would cost `Resolution.hourly`
+    for the seven variables on `copernicus_physics` — a shipped downloader
+    capability — turn one provider into three, and force a retrain of every
+    variable carrying SST/salinity/currents as a covariate. See TODO.md §2.
 
   Note also that the *merged* daily product `cmems_mod_glo_phy_anfc_0.083deg
   _P1D-m` is not the substitute: it carries `zos`/`tob`/`sob`/`mlotst` and sea
@@ -81,6 +77,7 @@ from __future__ import annotations
 import asyncio
 import gc
 import hashlib
+import itertools
 import json
 import logging
 from dataclasses import dataclass, field
@@ -217,7 +214,9 @@ class GridStack:
     start_date: date
     sources: list[str] = field(default_factory=list)
 
-    def slice_point(self, latitude: float, longitude: float) -> dict[str, tuple[ProviderSpec, xr.Dataset]]:
+    def slice_point(
+        self, latitude: float, longitude: float
+    ) -> dict[str, tuple[ProviderSpec, xr.Dataset]]:
         """One cell, shaped like `history._fetch_frame`'s fetch result.
 
         Nearest-selection per provider, matching what the point path does after
@@ -376,6 +375,71 @@ def _cache_put(key: str, dataset: xr.Dataset) -> None:
         logger.warning(f"could not cache grid to {path.name}: {exc}")
 
 
+def sweep_cache(request: GridRequest) -> int:
+    """Delete entries too old for anything to reuse. Returns how many went.
+
+    **This directory had no eviction at all**, and why that went unnoticed for so
+    long is the useful part. `_read_cached` *rejects* a stale entry but only
+    unlinks a corrupt one, and `_cache_get` globs a single scope — so the two
+    places that touch a stale file both decline to remove it. Worse, a scope
+    carries the date window (`_scope_key`), so every build with a fresh window
+    mints new scopes and orphans yesterday's, which are then never globbed again
+    and so never even *considered*. The garbage is invisible to the cache by
+    construction, not by oversight in one branch.
+
+    Measured on 2026-08-16: 9.6 GB here, **8.16 GB of it unreachable** by the
+    code that wrote it, with entries 227 hours old against a 6-hour TTL. It
+    refills at roughly 1.5 GB per build day.
+
+    Eviction hangs off the write path rather than the read path because writing
+    is what *produces* the garbage — a new-scope entry is precisely the event
+    that strands an old one. Sweeping on read would scan a directory dozens of
+    times per build and still never look at a dead scope.
+
+    The TTL is per provider and a filename is a hash, so entries are classified
+    by scope prefix rather than by opening every NetCDF to ask. Only
+    non-time-varying providers get `_STATIC_TTL`, and today that is GEBCO alone —
+    whose scope drops the date window *and* the stride, making it a single
+    constant and the `stride` argument below genuinely unread. If a static
+    provider that does key on stride is ever added, its other-stride entries get
+    swept at the field TTL: one refetch, never a wrong answer.
+    """
+    if not CACHE_DIR.exists():
+        return 0
+
+    static_prefixes = {
+        _scope_key(key, request, 1)
+        for key, spec in catalog.PROVIDERS.items()
+        if not spec.time_varying
+    }
+
+    now = datetime.now(UTC)
+    removed = 0
+    freed = 0
+    for path in itertools.chain(CACHE_DIR.glob("*.nc"), CACHE_DIR.glob("*.nc.tmp")):
+        # A `.tmp` is a torn write from a crashed `_cache_put`. It is never
+        # readable and no glob here or in `clear_cache` matches it, so it would
+        # otherwise sit forever; the field TTL is far longer than any write.
+        if path.suffix == ".tmp":
+            ttl = _FIELD_TTL
+        else:
+            scope = path.stem.split("-", 1)[0]
+            ttl = _STATIC_TTL if scope in static_prefixes else _FIELD_TTL
+        try:
+            stat = path.stat()
+        except OSError:  # vanished under us — a concurrent sweep is fine
+            continue
+        if now - datetime.fromtimestamp(stat.st_mtime, tz=UTC) <= ttl:
+            continue
+        path.unlink(missing_ok=True)
+        removed += 1
+        freed += stat.st_size
+
+    if removed:
+        logger.info(f"swept {removed} stale grid cache entries ({freed / 2**30:.2f} GB)")
+    return removed
+
+
 def clear_cache() -> int:
     """Drop every cached global field. Returns how many files were removed."""
     if not CACHE_DIR.exists():
@@ -443,9 +507,7 @@ async def _fetch_provider(
     else:
         resolved = catalog.copernicus_dataset(provider_key)
         if resolved is None:
-            raise GridHistoryError(
-                f"provider {provider_key!r} has no global gridded fetch path"
-            )
+            raise GridHistoryError(f"provider {provider_key!r} has no global gridded fetch path")
         dataset_id, depth_mode = resolved
         logger.info(
             f"fetching global {provider_key} ({', '.join(fields)}) "
@@ -461,6 +523,13 @@ async def _fetch_provider(
         )
 
     _cache_put(key, dataset)
+    # After the write, not before: this entry may be the one that orphans an
+    # older scope, and sweeping first would leave that one behind for a whole
+    # build. Never allowed to fail a fetch that has already succeeded.
+    try:
+        sweep_cache(request)
+    except Exception as exc:  # noqa: BLE001 - eviction is housekeeping
+        logger.warning(f"could not sweep the grid cache: {exc}")
     return dataset
 
 
@@ -604,7 +673,6 @@ async def fetch_stack(request: GridRequest) -> GridStack:
     with progress.counter(
         description="global fetch", total=len(provider_keys), unit="provider"
     ) as bar:
-
         limit = asyncio.Semaphore(_MAX_CONCURRENT_FETCHES)
 
         async def _tracked(key: str) -> xr.Dataset:
@@ -632,8 +700,7 @@ async def fetch_stack(request: GridRequest) -> GridStack:
 
     return GridStack(
         providers={
-            key: (specs[key], dataset)
-            for key, dataset in zip(provider_keys, datasets, strict=True)
+            key: (specs[key], dataset) for key, dataset in zip(provider_keys, datasets, strict=True)
         },
         variables=griddable,
         ungriddable=tuple(sorted(ungriddable)),
