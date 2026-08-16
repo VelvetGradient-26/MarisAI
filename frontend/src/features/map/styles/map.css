@@ -1017,14 +1017,15 @@ body,
   color: var(--ocean-muted);
 }
 
-/* --- Live AIS vessels -------------------------------------------------- */
+/* --- Map hover tooltips ------------------------------------------------ */
 
-/* Hover tooltip. Positioned in JS from the pointer's screen coords (see
+/* Shared by the live-vessel and eddy layers: one appearance, defined once.
+   Hover tooltip. Positioned in JS from the pointer's screen coords (see
    VesselTooltip's edge-flip), so left/top are set inline and only the
    appearance lives here. pointer-events:none matters — the tooltip sits
    under the cursor, and without it the mouseleave fires the instant the
    tooltip appears, which flickers it on and off. */
-.vessel-tooltip {
+.map-tooltip {
   position: absolute;
   z-index: 7;
   pointer-events: none;
@@ -1037,7 +1038,7 @@ body,
   box-shadow: var(--ocean-shadow);
 }
 
-.vessel-tooltip__header {
+.map-tooltip__header {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1046,51 +1047,51 @@ body,
   border-bottom: 1px dashed var(--ocean-border);
 }
 
-.vessel-tooltip__name {
+.map-tooltip__name {
   color: var(--ocean-accent);
   font-weight: 600;
   font-size: 13px;
   word-break: break-word;
 }
 
-.vessel-tooltip__type {
+.map-tooltip__type {
   color: var(--ocean-muted);
   font-size: 11px;
 }
 
-.vessel-tooltip__rows {
+.map-tooltip__rows {
   display: flex;
   flex-direction: column;
   gap: 3px;
   margin: 0;
 }
 
-.vessel-tooltip__row {
+.map-tooltip__row {
   display: flex;
   align-items: baseline;
   gap: 10px;
 }
 
-.vessel-tooltip__row dt {
+.map-tooltip__row dt {
   color: var(--ocean-muted);
   flex-shrink: 0;
 }
 
-.vessel-tooltip__row dd {
+.map-tooltip__row dd {
   margin: 0 0 0 auto;
   text-align: right;
   word-break: break-word;
 }
 
-.vessel-tooltip__pending,
-.vessel-tooltip__footer {
+.map-tooltip__pending,
+.map-tooltip__footer {
   margin: 7px 0 0;
   color: var(--ocean-muted);
   font-size: 10px;
   line-height: 1.35;
 }
 
-.vessel-tooltip__pending {
+.map-tooltip__pending {
   padding-top: 6px;
   border-top: 1px dashed var(--ocean-border);
 }
@@ -1147,9 +1148,107 @@ body,
 /* A live feed's pulsing dot is decoration, not information — the text
    beside it already says the same thing. */
 @media (prefers-reduced-motion: reduce) {
-  .vessel-feed-status__dot--live {
+  .vessel-feed-status__dot--live,
+  .eddy-status__dot--live {
     animation: none;
   }
+}
+
+/* --- Eddy detection status --------------------------------------------- */
+
+/* Same chip as the vessel feed's, one row higher so both can be on at once
+   without either covering the other — the two layers are independent and a
+   reader may well want ships over eddies. */
+.eddy-status {
+  position: absolute;
+  bottom: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: var(--ocean-text);
+  font: 12px/1.4 var(--ocean-font-mono);
+}
+
+.eddy-status--unavailable {
+  color: var(--ocean-muted);
+}
+
+.eddy-status__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ocean-muted);
+  flex-shrink: 0;
+}
+
+.eddy-status__dot--live {
+  background: #5eead4;
+  box-shadow: 0 0 0 0 rgba(94, 234, 212, 0.6);
+  animation: eddy-status-pulse 2.4s ease-out infinite;
+}
+
+.eddy-status__note {
+  color: var(--ocean-muted);
+  font-size: 10px;
+}
+
+@keyframes eddy-status-pulse {
+  70% { box-shadow: 0 0 0 7px rgba(94, 234, 212, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(94, 234, 212, 0); }
+}
+
+/* --- eDNA sampling coverage status -------------------------------------- */
+
+/* The third chip in the same bottom-centre stack, one row above the eddy one,
+   so all three layers can be on at once without any of them covering another.
+   Its dot does not pulse: the other two chips report a live feed, and this one
+   reports OBIS holdings that change on a release cadence of weeks. A pulsing
+   dot would assert a liveness this layer does not have. */
+.edna-status {
+  position: absolute;
+  bottom: 88px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: var(--ocean-text);
+  font: 12px/1.4 var(--ocean-font-mono);
+}
+
+.edna-status--unavailable {
+  color: var(--ocean-muted);
+}
+
+.edna-status__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ocean-muted);
+  flex-shrink: 0;
+}
+
+/* Matches the layer's darkest ramp stop, so the chip is recognisably the same
+   layer as the violet cells on the map. */
+.edna-status__dot--live {
+  background: #a855f7;
+}
+
+.edna-status__note {
+  color: var(--ocean-muted);
+  font-size: 10px;
 }
 
 /* --------------------------------------------------------------------------
@@ -1280,6 +1379,34 @@ body,
   /* Hidden rather than shrunk: it repeats what the coordinate chip already
      shows, and it is the only bottom-row item that cannot be made narrower. */
   .vessel-feed-status__note {
+    display: none;
+  }
+
+  /* Follows the vessel chip to the right edge, still one row above it. */
+  .eddy-status {
+    bottom: 74px;
+    left: auto;
+    right: 8px;
+    transform: none;
+    padding: 5px 9px;
+    font-size: 11px;
+  }
+
+  /* Third row up, same right edge. */
+  .edna-status {
+    bottom: 104px;
+    left: auto;
+    right: 8px;
+    transform: none;
+    padding: 5px 9px;
+    font-size: 11px;
+  }
+
+  /* The chip's headline is the cell count; the coverage percentage and the
+     detection total are what a narrow screen has to give up. Unlike the vessel
+     note this is a real loss, so the percentage moves into the layer panel's
+     attribution rather than disappearing from the product. */
+  .edna-status__note {
     display: none;
   }
 

@@ -35,7 +35,14 @@ from typing import Any
 
 from loguru import logger
 
-from services import biodiversity, copernicus_currents, forecast_tiles, predictions, stokes_drift
+from services import (
+    biodiversity,
+    copernicus_currents,
+    eddies,
+    forecast_tiles,
+    predictions,
+    stokes_drift,
+)
 from services.bathymetry import BathymetryError, get_elevation
 from services.biodiversity import BiodiversityError
 from services.openmeteo import OpenMeteoError, get_realtime_ocean_conditions
@@ -242,14 +249,40 @@ def _flow_section(latitude: float, longitude: float) -> Section:
                 "takes a few minutes"
             ),
         )
+    # What the water is *doing* here, as opposed to which way it is going. A
+    # point inside an eddy has a circulation, a retention time and a distinct
+    # water mass that a bare velocity vector does not reveal — and a point well
+    # outside every detection is a real answer too, so the distance is reported
+    # rather than the row omitted.
+    try:
+        closest = eddies.nearest(latitude, longitude)
+    except eddies.EddyError:
+        closest = None
+    if closest is not None:
+        if closest["inside"]:
+            article = "an" if closest["polarity"].startswith("a") else "a"
+            value = (
+                f"inside {article} {closest['polarity']} eddy, "
+                f"{closest['radius_km']:g} km equivalent radius"
+            )
+        else:
+            value = (
+                f"nearest detected eddy {closest['distance_km']:g} km away "
+                f"({closest['polarity']}, {closest['radius_km']:g} km)"
+            )
+        rows.append({"label": "Eddies", "value": value})
+
     return Section(
         key="flow",
         title="Water movement",
         available=True,
         rows=rows,
         note=(
-            "A floating object is carried by the sum of these two, not by the current "
-            "alone. Directions are the direction the water travels toward."
+            "A floating object is carried by the sum of the current and the Stokes "
+            "drift, not by the current alone. Directions are the direction the water "
+            "travels toward. Eddies are detected from the current field by the "
+            "Okubo-Weiss method and are not tracked, so none of them has an age; the "
+            "radius is the equivalent radius of the rotating core."
         ),
     )
 

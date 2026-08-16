@@ -6,10 +6,16 @@ import { useSelectedLocationMarker } from './hooks/useSelectedLocationMarker';
 import { useSelectedLocationFocus } from './hooks/useSelectedLocationFocus';
 import { useGlobeClickRecenter } from './hooks/useGlobeClickRecenter';
 import { useLiveVessels } from './hooks/useLiveVessels';
+import { useEddies } from './hooks/useEddies';
+import { useEdnaCoverage } from './hooks/useEdnaCoverage';
 import { useForecastGridLayers } from './hooks/useForecastGridLayers';
 import { useForecastVectorLayers } from './hooks/useForecastVectorLayers';
 import { VesselTooltip } from './VesselTooltip';
 import { VesselFeedStatus } from './VesselFeedStatus';
+import { EddyTooltip } from './EddyTooltip';
+import { EddyDetectionStatus } from './EddyDetectionStatus';
+import { EdnaTooltip } from './EdnaTooltip';
+import { EdnaCoverageStatus } from './EdnaCoverageStatus';
 
 interface MapProps {
   children?: ReactNode;
@@ -29,6 +35,8 @@ export function Map({ children }: MapProps) {
   // the hook for why it narrows rather than reverses the rule above.
   useGlobeClickRecenter(manager, ready);
   const vessels = useLiveVessels(manager, ready);
+  const eddies = useEddies(manager, ready);
+  const edna = useEdnaCoverage(manager, ready);
   // Registered at runtime rather than from `layerRegistry`: a forecast layer
   // exists only where a model has been trained and its grid built.
   useForecastGridLayers(manager, ready);
@@ -43,6 +51,10 @@ export function Map({ children }: MapProps) {
           rather than by a child reaching for the manager itself. */}
       {ready && <VesselFeedStatus state={vessels} />}
       {ready && vessels.hovered && <VesselTooltip hovered={vessels.hovered} />}
+      {ready && <EddyDetectionStatus state={eddies} />}
+      {ready && eddies.hovered && <EddyTooltip hovered={eddies.hovered} />}
+      {ready && <EdnaCoverageStatus state={edna} />}
+      {ready && edna.hovered && <EdnaTooltip hovered={edna.hovered} />}
     </div>
   );
 }

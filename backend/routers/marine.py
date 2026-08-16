@@ -7,6 +7,8 @@ from services import (
     copernicus_wind,
     currents_depth,
     drift,
+    eddies,
+    edna,
     stokes_drift,
 )
 from services.bathymetry import BathymetryError, get_elevation
@@ -134,6 +136,108 @@ async def get_biodiversity(
     try:
         return await biodiversity.at_point(lat, lon, radius_deg=radius_deg, limit=limit)
     except biodiversity.BiodiversityError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/eddies")
+async def get_eddies(
+    bbox: str | None = Query(
+        None,
+        description="Optional south,west,north,east. East < west crosses the antimeridian.",
+    ),
+    polarity: str | None = Query(None, description="cyclonic | anticyclonic"),
+    min_radius_km: float | None = Query(None, gt=0),
+    limit: int = Query(eddies.DEFAULT_LIMIT, ge=1, le=eddies.MAX_LIMIT),
+):
+    """Rotating features detected in the live surface-current field.
+
+    503 rather than 502 on a cold detector: this reads a cache *this* server
+    warms, so an unavailable answer is ours to explain, unlike the OBIS call
+    above. A malformed bbox or polarity is the caller's, hence 422.
+    """
+    if polarity is not None and polarity not in ("cyclonic", "anticyclonic"):
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown polarity {polarity!r}; expected 'cyclonic' or 'anticyclonic'",
+        )
+
+    parsed: tuple[float, float, float, float] | None = None
+    if bbox is not None:
+        try:
+            south, west, north, east = (float(part) for part in bbox.split(","))
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail="bbox must be four comma-separated numbers: south,west,north,east",
+            ) from exc
+        if south > north:
+            raise HTTPException(
+                status_code=422, detail="bbox south must not be north of bbox north"
+            )
+        parsed = (south, west, north, east)
+
+    try:
+        return eddies.get_eddies(
+            bbox=parsed,
+            polarity=polarity,
+            min_radius_km=min_radius_km,
+            limit=limit,
+        )
+    except eddies.EddyError as exc:
+        # Everything the caller could have got wrong was rejected above, so
+        # anything reaching here is a cold or unusable currents cache.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/edna/coverage")
+async def get_edna_coverage(
+    precision: int = Query(
+        edna.DEFAULT_PRECISION,
+        ge=edna.MIN_PRECISION,
+        le=edna.MAX_PRECISION,
+        description="OBIS grid precision; cell size is 360/2^(precision+5) degrees.",
+    ),
+    bbox: str | None = Query(None, description="Optional south,west,north,east."),
+):
+    """Where the ocean has been sampled for environmental DNA.
+
+    502, not 503: this is a live OBIS call rather than a cache this server warms,
+    so an outage belongs to the provider — the same split as `/biodiversity`
+    above and the opposite of `/eddies`. A malformed bbox is the caller's, hence
+    422, and it is rejected before the service is called.
+    """
+    parsed: tuple[float, float, float, float] | None = None
+    if bbox is not None:
+        try:
+            south, west, north, east = (float(part) for part in bbox.split(","))
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail="bbox must be four comma-separated numbers: south,west,north,east",
+            ) from exc
+        if south > north:
+            raise HTTPException(
+                status_code=422, detail="bbox south must not be north of bbox north"
+            )
+        parsed = (south, west, north, east)
+
+    try:
+        return await edna.coverage(precision=precision, bbox=parsed)
+    except edna.EdnaError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/edna/point")
+async def get_edna_point(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    radius_deg: float = Query(0.5, gt=0, le=5.0),
+    limit: int = Query(25, ge=1, le=100),
+):
+    """Molecular sampling near a point, beside the conventional record total."""
+    try:
+        return await edna.at_point(lat, lon, radius_deg=radius_deg, limit=limit)
+    except edna.EdnaError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 

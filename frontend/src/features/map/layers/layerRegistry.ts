@@ -395,6 +395,201 @@ const vesselRadius = (scale: number) => [
  * Only the core is hit-tested (`interactiveLayerIndices`); hovering the
  * outer halo would trigger a popup from well outside the vessel.
  */
+/**
+ * Detected mesoscale eddies, drawn at their real size.
+ *
+ * Two colours and no ramp, because polarity is the only categorical thing a
+ * detection carries: teal for cyclonic (rotating with the planet — cold-core
+ * and upwelling in the northern hemisphere), amber for anticyclonic. Both
+ * clear 3:1 against the Abyss basemap's near-black ocean, the same floor the
+ * forecast ramps are held to.
+ *
+ * The ring is drawn at the eddy's *equivalent* radius rather than as a
+ * fixed-pixel symbol: the size is a measurement, and a dot that stayed the
+ * same at every zoom would assert something the detector never said. It is
+ * round by construction — the equivalent radius of the region where rotation
+ * beats strain — and is not the feature's real outline, which is why the
+ * attribution says so and the centre dot is what gets hit-tested.
+ */
+const EDDY_COLOR = [
+  'match',
+  ['get', 'polarity'],
+  'cyclonic',
+  '#5eead4',
+  'anticyclonic',
+  '#fb923c',
+  '#94a3b8',
+];
+
+function eddyLayer(): GeoJsonLayerDescriptor {
+  return {
+    id: 'eddies',
+    name: 'Eddies (detected)',
+    // 'flow', not 'ai': this is a diagnostic computed from the observed
+    // current field, not model output. Filing it under "AI (Experimental)"
+    // would label an observation as an inference, which is the one direction
+    // this codebase never rounds in.
+    category: 'flow',
+    type: 'geojson',
+    attribution:
+      'Mesoscale eddies detected from the live Copernicus surface-current field by the ' +
+      'Okubo-Weiss method (W < -0.2σ), which finds water where rotation beats strain. ' +
+      'Detection only — features are not tracked between refreshes, so none of them has an ' +
+      'age or a trajectory. The ring is the equivalent radius of the detected core, not the ' +
+      'feature outline. The threshold is relative to the variance of the field, so this is a ' +
+      'consistent detector rather than an eddy census; features smaller than the ~0.25° grid ' +
+      'can resolve are absent rather than zero, the equatorial band within 5° is excluded ' +
+      'because polarity has no meaning where the Coriolis parameter vanishes, and nearshore ' +
+      'eddies are under-detected where the derivative meets the land mask.',
+    defaultOpacity: 0.9,
+    defaultVisible: false,
+    interactiveLayerIndices: [2],
+    paintLayers: (opacity: number) => [
+      {
+        type: 'fill',
+        filter: ['==', ['geometry-type'], 'Polygon'],
+        paint: { 'fill-color': EDDY_COLOR, 'fill-opacity': 0.12 * opacity },
+      },
+      {
+        type: 'line',
+        filter: ['==', ['geometry-type'], 'Polygon'],
+        paint: {
+          'line-color': EDDY_COLOR,
+          'line-width': 1.4,
+          'line-opacity': 0.85 * opacity,
+        },
+      },
+      {
+        type: 'circle',
+        filter: ['==', ['geometry-type'], 'Point'],
+        paint: {
+          'circle-color': EDDY_COLOR,
+          'circle-radius': 3,
+          'circle-opacity': opacity,
+          'circle-stroke-width': 0.6,
+          'circle-stroke-color': 'rgba(2,12,27,0.85)',
+          'circle-stroke-opacity': opacity,
+        },
+      },
+    ],
+    legend: {
+      type: 'categories',
+      unit: 'rotation',
+      categories: [
+        {
+          label: 'Cyclonic',
+          range: 'with the planet’s rotation',
+          color: '#5eead4',
+        },
+        {
+          label: 'Anticyclonic',
+          range: 'against it',
+          color: '#fb923c',
+        },
+      ],
+    },
+  };
+}
+
+/**
+ * Where the ocean has been sampled for environmental DNA.
+ *
+ * THE EMPTY MAP IS THE DATA. Every other layer in this registry is a field —
+ * SST, currents, the forecast grids — defined across the whole ocean. This one
+ * is defined in about 1,500 geohash cells worldwide — 27,286 km2, well under
+ * a hundredth of one percent of the ocean, and smaller than Belgium. A reader
+ * arriving from the SST layer will read the blankness
+ * as a failed load, so the status chip states the coverage rather than waiting
+ * to be asked, and the attribution leads with it.
+ *
+ * THE RAMP IS LOGARITHMIC AND ITS DOMAIN IS FIXED. Occupied cells span more
+ * than six orders of magnitude — 1 record in the quietest, 4,353,873 in the
+ * busiest, which is the Australian Microbiome program's water off Sydney. On a
+ * linear ramp the planet is black around one bright pixel. The domain is
+ * hardcoded to 0-6.5 in log10 rather than normalised against whatever is
+ * loaded, so a cell keeps its colour as you zoom and the legend below can name
+ * real numbers; today's maximum sits just past the top stop and clamps.
+ *
+ * VIOLET, BECAUSE IT IS NOT A MEASUREMENT OF THE OCEAN. The physical layers
+ * have spent the spectrum — wind's rainbow, currents' amber, the eddy pair's
+ * teal and amber, the forecast ramps' viridis and diverging blues. This is
+ * effort, not a property of the water, and it should not look like one. Every
+ * stop clears 3:1 against the Abyss basemap's near-black ocean (the darkest,
+ * #7c3aed, measures 3.38:1) — the same floor the forecast ramps are held to.
+ */
+const EDNA_COLOR = [
+  'interpolate',
+  ['linear'],
+  ['get', 'log_records'],
+  0,
+  '#7c3aed',
+  2,
+  '#a855f7',
+  4,
+  '#d8b4fe',
+  6.5,
+  '#fce7f3',
+];
+
+function ednaCoverageLayer(): GeoJsonLayerDescriptor {
+  return {
+    id: 'edna-coverage',
+    name: 'eDNA Sampling Coverage',
+    // 'reference', not 'ocean' or 'ai': this is context about how the ocean was
+    // observed, in the same sense as EEZ boundaries and vessel traffic. It is
+    // not a field of the water and nothing here was modelled.
+    category: 'reference',
+    type: 'geojson',
+    attribution:
+      'Environmental-DNA sampling effort, from OBIS records carrying the Darwin Core ' +
+      'DNADerivedData extension. THIS LAYER IS ALMOST ENTIRELY EMPTY AND THAT IS THE ' +
+      'DATA: on the finest grid, molecular sampling of the world ocean covers about ' +
+      '27,000 km² — under a hundredth of one percent of the sea surface, an area smaller ' +
+      'than Belgium — and the blank areas are water nobody has sequenced. Coverage read ' +
+      'off a coarser grid looks far larger only because each cell credits one water ' +
+      'sample with everything around it. ' +
+      'Colour is detections per cell on a LOGARITHMIC scale — the busiest cell holds ' +
+      'millions and the quietest holds one. A detection is recovered genetic material, not ' +
+      'a sighting: eDNA drifts on currents, degrades over hours to days, is amplified ' +
+      'through primers that favour some taxa over others, and is named only where a ' +
+      'reference sequence exists. Counts are taxon-detections rather than samples, so a ' +
+      'microbial dataset returns thousands per bottle where a fish survey returns a ' +
+      'handful, and the two are not comparable. Absence of colour means nobody sampled ' +
+      'there — never that nothing lives there.',
+    defaultOpacity: 0.85,
+    defaultVisible: false,
+    interactiveLayerIndices: [0],
+    paintLayers: (opacity: number) => [
+      {
+        type: 'fill',
+        paint: { 'fill-color': EDNA_COLOR, 'fill-opacity': 0.62 * opacity },
+      },
+      {
+        // An outline, because at the finer precisions a cell is a few pixels
+        // across at the zoom it appears at — a bare fill of a 0.04 deg cell is
+        // invisible against a dark basemap, and this layer's whole job is to
+        // show that a lone sample exists in an otherwise blank ocean.
+        type: 'line',
+        paint: {
+          'line-color': EDNA_COLOR,
+          'line-width': 0.8,
+          'line-opacity': 0.9 * opacity,
+        },
+      },
+    ],
+    legend: {
+      type: 'categories',
+      unit: 'detections per cell (log scale)',
+      categories: [
+        { label: '1 – 100', range: 'a study passed through', color: '#7c3aed' },
+        { label: '100 – 10k', range: 'repeat sampling', color: '#a855f7' },
+        { label: '10k – 1M', range: 'a monitoring programme', color: '#d8b4fe' },
+        { label: '1M+', range: 'a time-series station', color: '#fce7f3' },
+      ],
+    },
+  };
+}
+
 function liveVesselLayer(): GeoJsonLayerDescriptor {
   return {
     id: 'live-vessels',
@@ -942,4 +1137,10 @@ export const layerRegistry: LayerDescriptor[] = [
   ...habitatLayers(),
   ...bloomRiskLayers(),
   liveVesselLayer(),
+  // Filed with the flow layers rather than with the AI ones — see the
+  // descriptor. It sits here in source order only because it is the newest.
+  eddyLayer(),
+  // Filed with the reference layers: sampling effort is context about how the
+  // ocean was observed, not a property of the water.
+  ednaCoverageLayer(),
 ];
