@@ -2,7 +2,9 @@ import { lazy, Suspense, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { Cursor, Grain, Preloader, ScrollRail, SmoothScroll } from '../components/craft';
 import { Navbar } from '../components/Navbar';
+import { RouteLoading } from '../components/RouteLoading';
 import { Toaster } from '../components/Toaster';
 import { DashboardPage } from '../pages/DashboardPage';
 import { LandingPage } from '../pages/LandingPage';
@@ -68,16 +70,42 @@ export function App() {
   }, [dark]);
 
   const route = normalizePath(pathname);
+  // The map is a single full-bleed viewport that owns the wheel gesture (it is
+  // the camera's zoom), whose content is a live canvas, and which communicates
+  // through the native cursor (grab / grabbing / crosshair). All four craft
+  // surfaces below are therefore off there, each for its own stated reason —
+  // see SmoothScroll, ScrollRail, Grain and Cursor. The preloader is the
+  // exception: it precedes any route.
+  const isMap = route === '/map';
+  const scrolls = !isMap;
+
+  useEffect(() => {
+    // The map route needs `html, body, #root { height: 100% }` to be exactly
+    // that; Lenis relaxes it to `auto` via the class it stamps on <html>, and
+    // although the component removes the class on unmount, the stamp and the
+    // route change land in the same commit. Clearing it here as well makes the
+    // ordering irrelevant rather than lucky.
+    if (!scrolls) document.documentElement.classList.remove('lenis', 'lenis-smooth');
+  }, [scrolls]);
 
   return (
     <>
-      <Navbar overlay={route === '/map'} />
+      {/* Mounted before anything else so the curtain is already painted when
+          the first page renders behind it. */}
+      <Preloader />
+      <SmoothScroll enabled={scrolls} />
+      <Navbar overlay={isMap} />
+      {scrolls ? <ScrollRail /> : null}
       {/* Keyed on the route so a failure on one page clears when you navigate
           away, instead of latching for the rest of the session. The navbar
           sits outside so there is always a way out of a broken page. */}
       <ErrorBoundary resetKey={route}>
         <RouteTransition route={route}>{renderPage(route)}</RouteTransition>
       </ErrorBoundary>
+      {scrolls ? <Grain /> : null}
+      {/* Last, and outside the boundary. The cursor must survive a page crash —
+          a broken page the pointer has vanished from is unrecoverable. */}
+      <Cursor enabled={!isMap} />
       {/* Outside the boundary: a toast reporting that something failed has to
           outlive the page that failed. */}
       <Toaster />
@@ -131,63 +159,63 @@ function normalizePath(pathname: string): string {
 function renderPage(pathname: string) {
   if (pathname === '/map') {
     return (
-      <Suspense fallback={<div className="app-route-loading">Loading ocean map…</div>}>
+      <Suspense fallback={<RouteLoading label="Loading ocean map…" />}>
         <MapView />
       </Suspense>
     );
   }
   if (pathname === '/download') {
     return (
-      <Suspense fallback={<div className="app-route-loading">Loading downloader…</div>}>
+      <Suspense fallback={<RouteLoading label="Loading downloader…" />}>
         <DownloadPage />
       </Suspense>
     );
   }
   if (pathname === '/docs') {
     return (
-      <Suspense fallback={<div className="app-route-loading">Loading docs…</div>}>
+      <Suspense fallback={<RouteLoading label="Loading docs…" />}>
         <DocsPage />
       </Suspense>
     );
   }
   if (pathname === '/feedback') {
     return (
-      <Suspense fallback={<div className="app-route-loading">Loading feedback form…</div>}>
+      <Suspense fallback={<RouteLoading label="Loading feedback form…" />}>
         <FeedbackPage />
       </Suspense>
     );
   }
   if (pathname === '/contact') {
     return (
-      <Suspense fallback={<div className="app-route-loading">Loading…</div>}>
+      <Suspense fallback={<RouteLoading label="Loading…" />}>
         <ContactPage />
       </Suspense>
     );
   }
   if (pathname === '/assistant') {
     return (
-      <Suspense fallback={<div className="app-route-loading">Loading assistant…</div>}>
+      <Suspense fallback={<RouteLoading label="Loading assistant…" />}>
         <ChatPage />
       </Suspense>
     );
   }
   if (pathname === '/compare') {
     return (
-      <Suspense fallback={<div className="app-route-loading">Loading comparison…</div>}>
+      <Suspense fallback={<RouteLoading label="Loading comparison…" />}>
         <ComparePage />
       </Suspense>
     );
   }
   if (pathname === '/dashboard') {
     return (
-      <Suspense fallback={<div className="app-route-loading">Loading ocean intelligence…</div>}>
+      <Suspense fallback={<RouteLoading label="Loading ocean intelligence…" />}>
         <OceanIntelligenceDashboard />
       </Suspense>
     );
   }
   if (pathname === '/dashboard/metrics') {
     return (
-      <Suspense fallback={<div className="app-route-loading">Loading metrics…</div>}>
+      <Suspense fallback={<RouteLoading label="Loading metrics…" />}>
         <MetricsIndexPage />
       </Suspense>
     );
@@ -203,7 +231,7 @@ function renderPage(pathname: string) {
     );
     if (variableKey && !variableKey.includes('/')) {
       return (
-        <Suspense fallback={<div className="app-route-loading">Loading metric…</div>}>
+        <Suspense fallback={<RouteLoading label="Loading metric…" />}>
           <MetricIntelligencePage variableKey={variableKey} />
         </Suspense>
       );

@@ -4,7 +4,7 @@ import { MapManagerContext } from './hooks/MapManagerContext';
 import { useSelectedLocationRealtimeData } from './hooks/useSelectedLocationRealtimeData';
 import { useSelectedLocationMarker } from './hooks/useSelectedLocationMarker';
 import { useSelectedLocationFocus } from './hooks/useSelectedLocationFocus';
-import { useGlobeClickRecenter } from './hooks/useGlobeClickRecenter';
+import { useClickDive } from './hooks/useClickDive';
 import { useLiveVessels } from './hooks/useLiveVessels';
 import { useEddies } from './hooks/useEddies';
 import { useEdnaCoverage } from './hooks/useEdnaCoverage';
@@ -31,9 +31,11 @@ export function Map({ children }: MapProps) {
   useSelectedLocationRealtimeData();
   useSelectedLocationMarker(manager, ready);
   useSelectedLocationFocus(manager, ready);
-  // Rotation only, globe only, and only for a click out toward the limb — see
-  // the hook for why it narrows rather than reverses the rule above.
-  useGlobeClickRecenter(manager, ready);
+  // Clicking a point descends onto it, on both the flat map and the globe.
+  // This replaces `useGlobeClickRecenter`, which rotated only; see the hook
+  // for how it answers the "do not yank the camera" objection rather than
+  // ignoring it.
+  useClickDive(manager, ready);
   const vessels = useLiveVessels(manager, ready);
   const eddies = useEddies(manager, ready);
   const edna = useEdnaCoverage(manager, ready);

@@ -101,6 +101,94 @@ body,
   inset: 0;
 }
 
+/* --------------------------------------------------------------------------
+   Dive reticle
+   --------------------------------------------------------------------------
+   The lock-on mark that contracts onto a clicked point while the camera
+   descends (see hooks/useClickDive.ts, which creates and reprojects it).
+
+   Three rings on one element, all drawn with `box-shadow` spread rather than
+   as separate nodes: the element itself is being transformed every frame to
+   track the geography, so anything nested inside it would inherit that
+   transform and need its own compensating one. One node, one transform, and
+   the rings come free.
+
+   The contraction is the point. It starts wide enough to read as "acquiring"
+   at the moment of the click and closes to the size of the pin that is
+   already there, so the flourish resolves into the persistent marker rather
+   than into nothing. */
+.map-dive-reticle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  width: 22px;
+  height: 22px;
+  /* The camera is mid-flight underneath and the pin will land here — the mark
+     must never eat the click that follows it. */
+  pointer-events: none;
+  border: 1px solid var(--ma-accent);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--ma-accent) 22%, transparent),
+    0 0 18px 2px color-mix(in srgb, var(--ma-accent) 26%, transparent);
+  animation: map-dive-lock 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+/* The crosshair arms. A ring alone reads as a pulse; the arms are what make it
+   read as a sight being laid on something. They are inset from the ring rather
+   than crossing it, so the mark stays legible over a bright SST raster. */
+.map-dive-reticle::before,
+.map-dive-reticle::after {
+  content: '';
+  position: absolute;
+  background: var(--ma-accent);
+}
+
+.map-dive-reticle::before {
+  top: 50%;
+  left: -14px;
+  right: -14px;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+.map-dive-reticle::after {
+  left: 50%;
+  top: -14px;
+  bottom: -14px;
+  width: 1px;
+  transform: translateX(-50%);
+}
+
+@keyframes map-dive-lock {
+  0% {
+    /* `scale` is composed *after* the JS-written translate on the same
+       property, so this keyframe cannot set `transform` itself — it would
+       overwrite the tracking. `scale` is a separate property in modern CSS
+       precisely for this case. */
+    scale: 4.2;
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.95;
+  }
+  /* Lands and holds for a beat before fading, so the eye has something to
+     arrive at rather than watching the mark evaporate mid-descent. */
+  70% {
+    scale: 1;
+    opacity: 0.85;
+  }
+  100% {
+    scale: 1;
+    opacity: 0;
+  }
+}
+
+/* Reduced motion never creates the element at all (the hook returns before
+   building it), so there is no resting state to define here. */
+
 /* The shared Navbar floats above the map as an overlay (map-root stays
    100vh, full-bleed underneath) — MapLibre's own built-in top-corner
    controls need the same offset the custom panels above get, or the

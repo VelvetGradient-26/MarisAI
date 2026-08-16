@@ -1140,3 +1140,372 @@
     transform: none;
   }
 }
+
+/* ==========================================================================
+   Craft pass
+   ==========================================================================
+   Everything below was added in one pass over the landing page, and each block
+   says what problem it solves. The rule the pass follows: this page's job is
+   to make a research platform look like one at a glance, so every addition
+   either raises the *information density of the impression* (the live pill,
+   the ticker, the section index) or raises the *quality of the touch* (the
+   button sheen, the card edge, the magnetic pull). Nothing was added because
+   it was fashionable, and nothing here illustrates.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Live pill
+   --------------------------------------------------------------------------
+   Replaces the hero's plain eyebrow. Mono type over a pulsing dot is the
+   cheapest way to say "this is reading from something right now" before the
+   visitor has scrolled at all — and here it is true, which is the only reason
+   it is allowed to be said.
+
+   The dot is two elements: a solid core and a ring that expands and fades. One
+   element cannot do both, because the pulse has to leave the core behind
+   rather than take it along. */
+.lp-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 1.75rem;
+  padding: 0.4rem 0.95rem 0.4rem 0.7rem;
+  border: 1px solid var(--lp-rule);
+  border-radius: 980px;
+  background: var(--lp-card);
+  backdrop-filter: blur(10px);
+  font-family: var(--lp-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lp-muted);
+}
+
+.lp-live__dot {
+  position: relative;
+  display: block;
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--ma-good);
+}
+
+.lp-live__dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--ma-good);
+  animation: lp-live-pulse 2.4s var(--ma-ease-out) infinite;
+}
+
+@keyframes lp-live-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  /* Ends well before the cycle does, so there is a beat of stillness between
+     pulses. A continuously expanding ring reads as a loading spinner. */
+  70%,
+  100% {
+    transform: scale(3.2);
+    opacity: 0;
+  }
+}
+
+.lp-live__sep {
+  color: var(--lp-faint);
+}
+
+.lp-live strong {
+  font-weight: 500;
+  color: var(--lp-accent);
+}
+
+/* --------------------------------------------------------------------------
+   Section index
+   --------------------------------------------------------------------------
+   A monospaced ordinal in front of every eyebrow. Small, and it does a lot:
+   it turns seven stacked sections into a numbered sequence, which is what
+   makes a long page read as a document someone edited rather than as a scroll
+   of blocks. It also gives the eyebrow line an internal hierarchy instead of
+   one flat run of uppercase mono.
+
+   The rule between number and label is the number's own pseudo-element, so the
+   markup stays two elements rather than three. */
+.lp-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.lp-eyebrow__index {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+  color: var(--lp-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.lp-eyebrow__index::after {
+  content: '';
+  width: 2.25rem;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.5;
+}
+
+/* --------------------------------------------------------------------------
+   Buttons
+   --------------------------------------------------------------------------
+   Two changes, both about the press rather than the look at rest.
+
+   A sheen sweeps across on hover: a gradient pseudo-element travelling left to
+   right once per hover, clipped to the pill. Not a permanent animation — a
+   button that shimmers on its own is asking for attention it has not earned.
+   On the ghost variant the sheen is the accent at low alpha rather than white,
+   because white over a transparent button only lightens the page behind it.
+
+   The lift also grew a shadow. `translateY(-1px)` on its own is a movement
+   with no cause; a shadow deepening with it is the same movement with a
+   reason, and it costs one property.
+
+   `--mag-x`/`--mag-y` are in the transform so `useMagnetic` composes with the
+   hover lift instead of overwriting it (see hooks/useMagnetic.ts). */
+.lp-button {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  transform: translate3d(var(--mag-x, 0px), var(--mag-y, 0px), 0);
+  transition:
+    transform var(--ma-duration) var(--ma-ease-out),
+    background var(--ma-duration) var(--ma-ease),
+    border-color var(--ma-duration) var(--ma-ease),
+    box-shadow var(--ma-duration) var(--ma-ease);
+}
+
+.lp-button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.35) 50%,
+    transparent 80%
+  );
+  transform: translateX(-100%);
+  transition: transform 0.65s var(--ma-ease-out);
+}
+
+.lp-button:hover::before {
+  transform: translateX(100%);
+}
+
+.lp-button--ghost::before {
+  background: linear-gradient(100deg, transparent 20%, var(--lp-accent-soft) 50%, transparent 80%);
+}
+
+.lp-button:hover {
+  transform: translate3d(var(--mag-x, 0px), calc(var(--mag-y, 0px) - 2px), 0);
+}
+
+.lp-button--primary:hover {
+  box-shadow: 0 10px 30px -8px color-mix(in srgb, var(--lp-accent) 55%, transparent);
+}
+
+/* The arrow leads the button. Small enough to be felt rather than seen, which
+   is the difference between a control that responds and one that performs. */
+.lp-button svg {
+  transition: transform var(--ma-duration) var(--ma-ease-out);
+}
+
+.lp-button:hover svg {
+  transform: translateX(3px);
+}
+
+/* --------------------------------------------------------------------------
+   Ticker
+   --------------------------------------------------------------------------
+   A marquee of variables the platform actually serves, directly under the four
+   headline metrics.
+
+   It exists because the metrics answer "how many" and nothing on the page
+   answered "of what". A number without its nouns is a claim; the same number
+   with thirty of its nouns sliding past is evidence. It is also the only
+   horizontal motion on a page that is otherwise entirely vertical, which keeps
+   four screens of stacked sections from reading as one texture.
+
+   Every entry is a real registry key. If one leaves the backend it should
+   leave here, exactly like every other figure on this page. */
+.lp-ticker {
+  border-bottom: 1px solid var(--lp-rule-soft);
+  padding: clamp(1.1rem, 3vh, 1.8rem) 0;
+}
+
+.lp-ticker__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 1.5rem;
+  font-family: var(--lp-font-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.02em;
+  color: var(--lp-faint);
+  white-space: nowrap;
+}
+
+.lp-ticker__item::after {
+  content: '';
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--lp-accent);
+  opacity: 0.45;
+}
+
+.lp-ticker__unit {
+  color: var(--lp-accent);
+  opacity: 0.85;
+}
+
+/* --------------------------------------------------------------------------
+   Metric hairlines
+   --------------------------------------------------------------------------
+   Each headline number gets a rule above it that draws in from the left as the
+   row reveals, staggered across the four. The row already had a border top and
+   bottom; this is the same line made to *arrive* rather than to be there,
+   which is what ties the count-up to the layout instead of leaving a number
+   animating inside a static box. */
+.lp-metric {
+  position: relative;
+  padding-top: 1.4rem;
+}
+
+.lp-metric::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: var(--lp-accent);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform 0.9s var(--ma-ease-out);
+}
+
+.lp-metrics.is-in .lp-metric::before {
+  transform: scaleX(1);
+}
+
+.lp-metric:nth-child(2)::before {
+  transition-delay: 0.09s;
+}
+.lp-metric:nth-child(3)::before {
+  transition-delay: 0.18s;
+}
+.lp-metric:nth-child(4)::before {
+  transition-delay: 0.27s;
+}
+
+/* --------------------------------------------------------------------------
+   Surface cards
+   --------------------------------------------------------------------------
+   A pointer-tracked wash behind the card, and a gradient hairline that lights
+   along its top edge.
+
+   The edge is a pseudo-element rather than an animated `border-color`, because
+   what should light is a *gradient* — brightest under the pointer, fading to
+   nothing across the card — and a border cannot hold one. Animating the real
+   border gives a uniform ring instead, which reads as a selected state rather
+   than as a highlight.
+
+   Both read `--px`/`--py`, written by the card's pointer handler, and both
+   fall back to the card's centre so a keyboard-focused card still lights. */
+.lp-surface {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.lp-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0;
+  background: radial-gradient(
+    380px circle at var(--px, 50%) var(--py, 0%),
+    var(--lp-accent-soft),
+    transparent 65%
+  );
+  transition: opacity var(--ma-duration-slow) var(--ma-ease);
+}
+
+.lp-surface:hover::before,
+.lp-surface:focus-visible::before {
+  opacity: 1;
+}
+
+.lp-surface::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--lp-accent) var(--px, 50%), transparent);
+  opacity: 0;
+  transition: opacity var(--ma-duration) var(--ma-ease);
+}
+
+.lp-surface:hover::after,
+.lp-surface:focus-visible::after {
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------------------
+   Kinetic headings
+   --------------------------------------------------------------------------
+   `text-wrap: balance` is applied here rather than to headings generally,
+   because a masked heading is the one place an orphaned last word is
+   unmissable: it arrives alone, half a second after the line it belongs to. */
+.lp-h2,
+.lp-closing__title {
+  text-wrap: balance;
+}
+
+/* --------------------------------------------------------------------------
+   Reduced motion additions
+   --------------------------------------------------------------------------
+   This pass's own moving parts, resolved to their end states. The live dot
+   stops entirely rather than slowing — it is decorative, and the word beside
+   it already carries the meaning. */
+@media (prefers-reduced-motion: reduce) {
+  .lp-live__dot::after {
+    animation: none;
+    opacity: 0;
+  }
+
+  .lp-metric::before {
+    transform: scaleX(1);
+    transition: none;
+  }
+
+  .lp-button::before {
+    display: none;
+  }
+
+  .lp-button:hover svg {
+    transform: none;
+  }
+
+  .lp-surface::before,
+  .lp-surface::after {
+    transition: none;
+  }
+}

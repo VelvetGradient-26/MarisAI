@@ -78,15 +78,36 @@ export function PanelHeader({
 }
 
 /** Skeleton shown while a section's first request is in flight. */
+/**
+ * The panel-level loading placeholder.
+ *
+ * **Each row is a scan channel, not a pulsing block.** The rows used to fade
+ * their whole opacity up and down together, which is the most generic loading
+ * idiom there is and — worse here — reads as the panel *flickering* rather
+ * than as it waiting. What replaces it is the same instrument metaphor the
+ * app-wide `.ma-skeleton` uses (see `index.css` for the full reasoning): a
+ * dark track with an accent floor, and a narrow band passing along it.
+ *
+ * The classes are `oid-scanline`/`oid-scanline__pass` in `styles/tailwind.css`
+ * rather than Tailwind utilities, because the band is a pseudo-element with a
+ * five-stop gradient and a hold in its keyframe — expressing that inline would
+ * be less legible than the CSS it compiles to, which is the line this feature
+ * already draws for the panel hover polish.
+ *
+ * The per-row delay stays: the rows are one placeholder, and passes that
+ * arrive together read as a single flashing block rather than as a set of
+ * channels being swept.
+ */
 export function PanelSkeleton({ rows = 3, className }: { rows?: number; className?: string }) {
   return (
     <div className={cn('space-y-2.5 p-4', className)} aria-hidden="true">
       {Array.from({ length: rows }).map((_, index) => (
-        <div
-          key={index}
-          className="h-9 animate-[var(--animate-shimmer)] rounded-lg bg-[color:var(--oid-track)]"
-          style={{ animationDelay: `${index * 120}ms` }}
-        />
+        <div key={index} className="oid-scanline h-9 rounded-lg">
+          <span
+            className="oid-scanline__pass"
+            style={{ animationDelay: `${index * 180}ms` }}
+          />
+        </div>
       ))}
     </div>
   );

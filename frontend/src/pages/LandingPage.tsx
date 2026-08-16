@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
-import type { ReactNode } from 'react';
+import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { ArrowRight, ArrowUpRight } from 'lucide-react';
 import { Link } from '../app/router';
+import { KineticText, Marquee } from '../components/craft';
+import { useMagnetic } from '../hooks/useMagnetic';
 import { useThemeStore } from '../store/themeStore';
 import { HeroField } from './landing/HeroField';
 import {
@@ -71,6 +73,7 @@ export function LandingPage() {
     <div className={`lp ${isDark ? 'lp--dark' : 'lp--light'}`}>
       <Hero dark={isDark} />
       <Metrics />
+      <Ticker />
       <Forecasting />
       <Coverage />
       <Platform />
@@ -79,6 +82,55 @@ export function LandingPage() {
       <Closing />
       <Footer />
     </div>
+  );
+}
+
+// --------------------------------------------------------------------------
+// Shared page furniture
+// --------------------------------------------------------------------------
+
+/**
+ * A numbered eyebrow.
+ *
+ * The ordinal is passed rather than derived, because the sections are separate
+ * components rendered in a fixed order and an auto-incrementing counter would
+ * mean either a context or an index prop threaded through every one of them —
+ * more machinery than the six literals it would replace. If a section is
+ * reordered, renumber it here; the numbers are part of the copy.
+ */
+function Eyebrow({ index, children }: { index: string; children: ReactNode }) {
+  return (
+    <p className="lp-eyebrow">
+      <span className="lp-eyebrow__index" aria-hidden="true">
+        {index}
+      </span>
+      {children}
+    </p>
+  );
+}
+
+/**
+ * A `Link` that leans toward the pointer.
+ *
+ * Separated from the buttons themselves so the pull is opt-in per call site.
+ * It is applied to the two primary calls to action and nowhere else: a page on
+ * which every control is magnetic is a page where none of them is, and the
+ * effect stops meaning "this is the thing to press".
+ */
+function MagneticLink({
+  to,
+  className,
+  children,
+}: {
+  to: string;
+  className: string;
+  children: ReactNode;
+}) {
+  const ref = useMagnetic<HTMLAnchorElement>();
+  return (
+    <Link ref={ref} to={to} className={className}>
+      {children}
+    </Link>
   );
 }
 
@@ -102,7 +154,21 @@ function Hero({ dark }: { dark: boolean }) {
           opacity: Math.max(0, 1 - Math.max(0, progress) * 1.6),
         }}
       >
-        <p className="lp-eyebrow lp-eyebrow--hero">Marine intelligence platform</p>
+        {/* A status pill rather than a plain eyebrow. Both figures in it are
+            the same constants the metrics row counts up to, so the sentence
+            cannot drift from the numbers a screen below it. */}
+        <p className="lp-live">
+          <span className="lp-live__dot" aria-hidden="true" />
+          Live
+          <span className="lp-live__sep" aria-hidden="true">
+            /
+          </span>
+          <strong>{PROVIDERS}</strong> providers
+          <span className="lp-live__sep" aria-hidden="true">
+            /
+          </span>
+          <strong>{TRAINED_MODELS}</strong> models
+        </p>
         {/* Two lines, two SplitText instances, because the component takes a
             flat string — a `<br />` inside it would be split into characters
             along with everything else.
@@ -129,13 +195,13 @@ function Hero({ dark }: { dark: boolean }) {
           pipelines for harmful algal blooms and fish habitat — in one platform.
         </p>
         <div className="lp-hero__actions">
-          <Link className="lp-button lp-button--primary" to="/map">
+          <MagneticLink className="lp-button lp-button--primary" to="/map">
             Open the map
             <ArrowRight size={16} />
-          </Link>
-          <Link className="lp-button lp-button--ghost" to="/dashboard">
+          </MagneticLink>
+          <MagneticLink className="lp-button lp-button--ghost" to="/dashboard">
             View the dashboard
-          </Link>
+          </MagneticLink>
         </div>
       </div>
       <div className="lp-hero__scroll" aria-hidden="true">
@@ -175,6 +241,58 @@ function Metric({ value, label, active }: { value: number; label: string; active
 }
 
 // --------------------------------------------------------------------------
+// Variable ticker
+// --------------------------------------------------------------------------
+
+/**
+ * Every entry is a real key from `services/download/registry.py`, with its
+ * real unit. The row exists to answer the question the metrics row leaves
+ * open — "{SERVED_VARIABLES} variables *of what*" — so a placeholder or a
+ * padded-out list would defeat its only purpose. If a variable leaves the
+ * registry it should leave this array, exactly like every other figure on this
+ * page.
+ *
+ * This is a subset, not the full 34: the ticker is a sample that reads at a
+ * glance, and a complete enumeration is what `/download` is for.
+ */
+const TICKER_VARIABLES: [string, string][] = [
+  ['sea_surface_temperature', '°C'],
+  ['chlorophyll', 'mg/m³'],
+  ['current_speed', 'm/s'],
+  ['wave_height', 'm'],
+  ['wind_speed', 'm/s'],
+  ['salinity', 'PSU'],
+  ['ocean_depth', 'm'],
+  ['dissolved_oxygen', 'mmol/m³'],
+  ['nitrate', 'mmol/m³'],
+  ['sea_level_anomaly', 'm'],
+  ['mixed_layer_depth', 'm'],
+  ['air_temperature', '°C'],
+  ['rainfall', 'mm'],
+  ['mean_wave_period', 's'],
+  ['phytoplankton', 'mmol/m³'],
+  ['ph', 'pH'],
+];
+
+function Ticker() {
+  return (
+    <Marquee
+      className="lp-ticker"
+      // Scaled to the item count so the row moves at a readable ~55 px/s
+      // regardless of how long this list grows.
+      durationSeconds={TICKER_VARIABLES.length * 3.5}
+    >
+      {TICKER_VARIABLES.map(([name, unit]) => (
+        <span key={name} className="lp-ticker__item">
+          {name}
+          <span className="lp-ticker__unit">{unit}</span>
+        </span>
+      ))}
+    </Marquee>
+  );
+}
+
+// --------------------------------------------------------------------------
 // Forecasting engine — the flagship
 // --------------------------------------------------------------------------
 
@@ -195,11 +313,15 @@ function Forecasting() {
     <section className="lp-section">
       <div ref={ref} className={`lp-feature ${revealed ? 'is-in' : ''}`}>
         <div className="lp-feature__copy">
-          <p className="lp-eyebrow">Forecasting engine</p>
+          <Eyebrow index="01">Forecasting engine</Eyebrow>
+          {/* The one heading that keeps its hard line break, because the two
+              halves are a parallel construction and letting them reflow turns
+              a rhetorical pair into a run-on. KineticText takes a flat string,
+              so this stays two instances — the same reason the hero does. */}
           <h2 className="lp-h2">
-            One framework.
+            <KineticText text="One framework." />
             <br />
-            Every variable.
+            <KineticText text="Every variable." delay={0.08} />
           </h2>
           <p className="lp-body">
             Adding a forecastable variable is a single YAML block and a training run — no
@@ -270,8 +392,8 @@ function Coverage() {
     <section className="lp-section lp-section--panel">
       <div ref={ref} className={`lp-coverage ${revealed ? 'is-in' : ''}`}>
         <div className="lp-coverage__head">
-          <p className="lp-eyebrow">Data layer</p>
-          <h2 className="lp-h2">Every variable traced to its source.</h2>
+          <Eyebrow index="02">Data layer</Eyebrow>
+          <KineticText as="h2" className="lp-h2" text="Every variable traced to its source." />
           <p className="lp-body lp-body--wide">
             {SERVED_VARIABLES} of 36 specified variables resolve to real data across{' '}
             {PROVIDERS} providers. Each carries its dataset, grid spacing, native cadence,
@@ -342,8 +464,8 @@ function Platform() {
     <section className="lp-section">
       <div ref={ref} className={`lp-surfaces ${revealed ? 'is-in' : ''}`}>
         <div className="lp-surfaces__head">
-          <p className="lp-eyebrow">Platform</p>
-          <h2 className="lp-h2">Four ways in.</h2>
+          <Eyebrow index="03">Platform</Eyebrow>
+          <KineticText as="h2" className="lp-h2" text="Four ways in." />
         </div>
         <div className="lp-surface-grid">
           {SURFACES.map((surface, index) => (
@@ -352,6 +474,23 @@ function Platform() {
               to={surface.to}
               className="lp-surface"
               style={{ transitionDelay: `${index * 80}ms` }}
+              // Feeds the card's wash and its top-edge highlight (see
+              // landing.css). Written straight to the element rather than held
+              // in state: this fires on every pointer move over a grid of four
+              // cards, and a setState per move would re-render the section —
+              // and the SVG glyph inside each card — dozens of times a second
+              // for something no React code reads.
+              onPointerMove={(event: ReactPointerEvent<HTMLAnchorElement>) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                event.currentTarget.style.setProperty(
+                  '--px',
+                  `${((event.clientX - rect.left) / rect.width) * 100}%`
+                );
+                event.currentTarget.style.setProperty(
+                  '--py',
+                  `${((event.clientY - rect.top) / rect.height) * 100}%`
+                );
+              }}
             >
               <span className="lp-glyph" aria-hidden="true">
                 {surface.glyph}
@@ -388,8 +527,8 @@ function Research() {
     <section className="lp-section lp-section--panel">
       <div ref={ref} className={`lp-research ${revealed ? 'is-in' : ''}`}>
         <div className="lp-research__head">
-          <p className="lp-eyebrow">Research pipelines</p>
-          <h2 className="lp-h2">Methodology that survives review.</h2>
+          <Eyebrow index="04">Research pipelines</Eyebrow>
+          <KineticText as="h2" className="lp-h2" text="Methodology that survives review." />
           <p className="lp-body lp-body--wide">
             Two offline pipelines share one Marine Data Fusion Layer: ingestion, regridding,
             a feature store, and a validation harness that refuses the shortcuts these
@@ -522,8 +661,8 @@ function Rigour() {
     <section className="lp-section">
       <div ref={ref} className={`lp-principles ${revealed ? 'is-in' : ''}`}>
         <div className="lp-principles__head">
-          <p className="lp-eyebrow">How it is built</p>
-          <h2 className="lp-h2">Honesty is a feature.</h2>
+          <Eyebrow index="05">How it is built</Eyebrow>
+          <KineticText as="h2" className="lp-h2" text="Honesty is a feature." />
         </div>
         <div className="lp-principle-grid">
           {PRINCIPLES.map((principle, index) => (
@@ -554,16 +693,16 @@ function Closing() {
     <section className="lp-section lp-section--closing">
       <ClosingBackdrop />
       <div ref={ref} className={`lp-closing ${revealed ? 'is-in' : ''}`}>
-        <h2 className="lp-closing__title">Start with the map.</h2>
+        <KineticText as="h2" className="lp-closing__title" text="Start with the map." />
         <p className="lp-body lp-body--wide">
           Sea surface temperature, chlorophyll, wind and forecast fields over live bathymetry
           — then follow any variable into its own intelligence page.
         </p>
         <div className="lp-hero__actions">
-          <Link className="lp-button lp-button--primary" to="/map">
+          <MagneticLink className="lp-button lp-button--primary" to="/map">
             Open the map
             <ArrowRight size={16} />
-          </Link>
+          </MagneticLink>
           <a
             className="lp-button lp-button--ghost"
             href={API_DOCS_URL}

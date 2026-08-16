@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
+import { Markdown } from '../../../components/Markdown';
 import { fetchRealtimeOceanData } from '../../map/api/realtimeOcean';
 import { generateOceanInsights } from '../../insights/api/generateInsights';
 import { cn } from '../lib/cn';
@@ -20,21 +21,13 @@ import { Panel, PanelEmpty, PanelHeader } from './Panel';
 
 type Status = 'idle' | 'loading' | 'success' | 'error';
 
-/** The model returns prose or a bullet list; both become clean lines. */
-function toLines(text: string): string[] {
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.replace(/^[\s*•-]+/, '').replace(/^\d+\.\s*/, '').trim())
-    .filter(Boolean);
-}
-
 export function AiInsights({
   location,
 }: {
   location: { latitude: number; longitude: number };
 }) {
   const [status, setStatus] = useState<Status>('idle');
-  const [lines, setLines] = useState<string[]>([]);
+  const [insights, setInsights] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -43,7 +36,7 @@ export function AiInsights({
   useEffect(() => {
     abortRef.current?.abort();
     setStatus('idle');
-    setLines([]);
+    setInsights('');
     setErrorMessage(null);
   }, [location.latitude, location.longitude]);
 
@@ -64,7 +57,7 @@ export function AiInsights({
       );
       const response = await generateOceanInsights(conditions, controller.signal);
       if (controller.signal.aborted) return;
-      setLines(toLines(response.insights));
+      setInsights(response.insights);
       setStatus('success');
     } catch (error: unknown) {
       if (controller.signal.aborted) return;
@@ -113,13 +106,21 @@ export function AiInsights({
         )}
 
         {status === 'loading' && (
+          // Text-shaped rather than block-shaped: ragged widths say "prose is
+          // coming", where four equal bars say "a table is coming". The
+          // channel treatment is the app's shared one — see `.oid-scanline`.
           <ul className="space-y-2.5" aria-busy="true">
             {[0, 1, 2, 3].map((row) => (
               <li
                 key={row}
-                className="h-3.5 animate-[var(--animate-shimmer)] rounded bg-[color:var(--oid-track)]"
-                style={{ width: `${92 - row * 11}%`, animationDelay: `${row * 130}ms` }}
-              />
+                className="oid-scanline h-3.5 rounded"
+                style={{ width: `${92 - row * 11}%` }}
+              >
+                <span
+                  className="oid-scanline__pass"
+                  style={{ animationDelay: `${row * 160}ms` }}
+                />
+              </li>
             ))}
           </ul>
         )}
@@ -134,27 +135,30 @@ export function AiInsights({
 
         <AnimatePresence>
           {status === 'success' && (
-            <motion.ul
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="space-y-2.5"
+            // **Rendered as Markdown, not as flattened lines.** This used to
+            // split the response on newlines and strip a leading bullet from
+            // each, which handled exactly one construct — the model also emits
+            // `**bold**`, headings and nested lists, and every one of those
+            // reached the panel as literal asterisks and hashes. The app
+            // already owns a renderer for precisely this subset
+            // (`components/Markdown`), built for the assistant's answers,
+            // which have the same provenance: model prose over tool results.
+            // It constructs React elements and never sets innerHTML, so
+            // untrusted text cannot become markup.
+            //
+            // The per-line entrance went with it. It was staggering *source
+            // lines*, which do not correspond to rendered blocks once lists
+            // and paragraphs are real elements — a four-item list arrived as
+            // one item. One fade on the whole block is honest about what it
+            // is animating.
+            <motion.div
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+              className="oid-md text-[12.5px] leading-relaxed text-[color:var(--oid-text)]"
             >
-              {lines.map((line, index) => (
-                <motion.li
-                  key={index}
-                  initial={{ opacity: 0, x: -6 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.07, duration: 0.3 }}
-                  className="flex gap-2.5 text-[12.5px] leading-relaxed text-[color:var(--oid-text)]"
-                >
-                  <span
-                    aria-hidden="true"
-                    className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-[color:var(--oid-accent-soft)]"
-                  />
-                  {line}
-                </motion.li>
-              ))}
-            </motion.ul>
+              <Markdown text={insights} />
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
