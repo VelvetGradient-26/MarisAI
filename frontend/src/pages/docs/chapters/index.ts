@@ -1,11 +1,15 @@
 import type { ComponentType } from 'react';
 
+import { Assistant } from './Assistant';
+import { Brief } from './Brief';
 import { DashboardAlerts } from './DashboardAlerts';
 import { DashboardCharts } from './DashboardCharts';
 import { DashboardMetrics } from './DashboardMetrics';
 import { DashboardOverview } from './DashboardOverview';
 import { DashboardSources } from './DashboardSources';
 import { Data } from './Data';
+import { Downloader } from './Downloader';
+import { Eddies } from './Eddies';
 import { Features } from './Features';
 import { ForecastEngine } from './ForecastEngine';
 import { ForecastMap } from './ForecastMap';
@@ -14,6 +18,7 @@ import { Fusion } from './Fusion';
 import { Hab } from './Hab';
 import { Habitat } from './Habitat';
 import { Limits } from './Limits';
+import { MapReading } from './MapReading';
 import { Metrics } from './Metrics';
 import { OceanConventions } from './OceanConventions';
 import { OceanFields } from './OceanFields';
@@ -44,6 +49,38 @@ export interface Chapter {
  * one-off page.
  */
 export const CHAPTERS: Chapter[] = [
+  // "Using the platform" leads, because the reading order is how to use the
+  // thing before how it was built — and because the first chapter is also where
+  // a bare `/docs` lands. Every chapter id is unchanged, so saved links to the
+  // chapters that used to come first still resolve.
+  {
+    id: 'map-reading',
+    label: 'Reading the map',
+    title: 'Reading the map',
+    group: 'Using the platform',
+    Component: MapReading,
+  },
+  {
+    id: 'brief',
+    label: 'Briefs & compare',
+    title: 'The point brief, and comparing two places',
+    group: 'Using the platform',
+    Component: Brief,
+  },
+  {
+    id: 'downloader',
+    label: 'Downloading data',
+    title: 'Downloading data',
+    group: 'Using the platform',
+    Component: Downloader,
+  },
+  {
+    id: 'assistant',
+    label: 'The assistant',
+    title: 'The assistant, and what "grounded" means',
+    group: 'Using the platform',
+    Component: Assistant,
+  },
   {
     id: 'dash-overview',
     label: 'Overview',
@@ -197,6 +234,13 @@ export const CHAPTERS: Chapter[] = [
     title: 'Directions, colour & how to read a layer',
     group: 'Ocean & atmosphere',
     Component: OceanConventions,
+  },
+  {
+    id: 'eddies',
+    label: 'Eddies',
+    title: 'Eddies, and what a detector is',
+    group: 'Ocean & atmosphere',
+    Component: Eddies,
   },
 ];
 

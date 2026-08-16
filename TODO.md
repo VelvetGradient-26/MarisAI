@@ -15,60 +15,135 @@ them if it has been a while.
 These are the shortest entries in the file and the largest fraction of what is
 actually blocking. Nothing here needs a design decision; each needs a run.
 
-### `wind_u` / `wind_v` training and grid builds — the biggest single unblock
+### `wind_u` / `wind_v` — trained 2026-08-15, grids building
 
-```bash
-python scripts/train_forecasting.py --variable wind_u
-python scripts/train_forecasting.py --variable wind_v
-python scripts/build_forecast_grid.py --variable wind_u
-python scripts/build_forecast_grid.py --variable wind_v
-```
+**Both variables now ship**, all four horizons each, every one clearing the bar
+(skill > 0 and ≤1 of 5 folds negative — read from `metrics.json`, not the
+aggregate line):
 
-Everything else is done: registry entries (from the Copernicus wind provider's
-`eastward_wind`/`northward_wind`, which it already served), YAML blocks carrying
-`wind_speed`'s covariates, and a `VectorPair` registered **before its grids
-exist, deliberately** — the catalog reports it with an explicit reason and the
-frontend hook logs that, which beats a layer silently not existing.
+| | h1 | h3 | h7 | h30 |
+| --- | --- | --- | --- | --- |
+| `wind_u` | +0.217 | +0.301 | +0.385 | +0.398 |
+| `wind_v` | +0.300 | +0.366 | +0.398 | +0.450 |
 
-Three separate features are waiting on this one run:
+0 of 5 folds negative at every horizon, on all 24 points.
+
+**The partial-success hazard fired again, exactly as this file predicts it
+will.** `wind_v` h1 first trained on **21 of 24 points** — Open-Meteo 429'd
+through all three retries for `gulf_of_mannar`, `south_pacific_gyre` and
+`north_sea`, and the run printed `beats persistence` regardless. Only h1 was
+affected; h3/h7/h30 had the warmed cache. Retraining h1 alone once the cache was
+warm took 19 seconds and restored all 24. **Read `skipped_points` in
+`metadata.json` after every run** — the aggregate line will not tell you.
+
+What is left is the grid builds. `wind_u`'s is built (2026-08-15: 64,440 ocean
+cells at 1°, 25 min) and `wind_v`'s is running. The Copernicus wind fetch was
+already cached from earlier `--all` runs, so both skip the ~35-minute fetch
+entirely and cost only the cell loop.
+
+**Both grids carry no covariates at all.** `pressure` and `air_temperature` are
+Open-Meteo, a point API with a 900-point cap, so no global field for them can
+exist; `missing_covariates` names both and the layer's attribution surfaces it.
+LightGBM routes an absent feature down its missing-value branch without
+complaint, so the map would otherwise look exactly as confident as a complete
+one.
+
+Still waiting on those grids:
 
 - **Forecast wind particles**, which cannot be composed from `wind_speed` +
   `wind_direction`: direction is circular while every step to the screen is
   linear, so a vector built from those two grids flows backwards along every
-  wrap through north.
+  wrap through north. The `VectorPair` is already registered **before its grids
+  exist, deliberately** — the catalog reports it with an explicit reason and the
+  frontend hook logs that, which beats a layer silently not existing.
 - **A forecast drift field.** The live one ships (§3); its wind term is
   observation-only until these exist.
 - **Upwelling detection** (§4), which needs Ekman transport, which needs wind
   *components* — a bearing cannot supply them.
 
-Apply the usual bar to the training log: skill > 0 **and** ≤1 of 5 folds
-negative, read from `metrics.json` rather than the aggregate line. The same move
-would make `wind_direction` a derived field rather than a trained one, which is
-the better answer for it anyway.
+**One thing the build turned up, now fixed.** `grid_predictor` warned
+`64440 cell(s) produced feature columns absent from the first scored cell …
+Investigate before trusting the grid` — on *every* cell of *every* build,
+including the synthetic test that proves grid/point parity. Rows were being
+tested against the *numeric* column subset while every feature frame also
+carries the `timestamp` column that subset deliberately drops. Nothing was ever
+wrong with any grid; the warning was the bug. Same cry-wolf failure class as the
+assistant's grounding regex, and now pinned by a test.
 
-### Retrain the 13 variables affected by the mixed-cadence merge
+The same move would make `wind_direction` a derived field rather than a trained
+one, which is the better answer for it anyway.
+
+### The 13 mixed-cadence variables — retrained 2026-08-15, and it changed almost nothing
 
 `cleaning.py::build_dataframe` merged providers and *then* resampled, so an
 hourly covariate paired with a daily target survived as its 00:00 sample
-standing in for a 24-hour mean. Fixed 2026-08-10 by reordering to **resolve
-codes → aggregate per provider → merge**; on a synthetic 3 °C diurnal cycle the
-old path returned **23.0 where the daily mean is 20.0** — wrong by the full
-amplitude, in the same direction, in every row, with nothing raised.
+standing in for a 24-hour mean. Fixed **2026-08-13** (commit `8625742`) by
+reordering to **resolve codes → aggregate per provider → merge**; on a synthetic
+3 °C diurnal cycle the old path returned **23.0 where the daily mean is 20.0** —
+wrong by the full amplitude, in the same direction, in every row, with nothing
+raised. Every shipped model predated that commit, so all 13 were genuinely
+stale.
 
-**13 of the 32 configured variables trained on this**: all five wave variables
-(3-hourly target against hourly wind), all seven biogeochemistry variables
-(daily target against hourly SST), the three depth-resolved ones and
-`sea_level_anomaly`. Nothing is *unsafe* about the shipped models — they are
-self-consistent, trained and served on the same features — but they are fitted
-on a covariate that misrepresents its own day.
+**The 13 are exactly those with more than one non-zero provider cadence**, which
+is worth recomputing rather than reading off a list (bathymetry is
+time-invariant and must be excluded or every variable looks mixed): the four
+*mixed* wave variables — `peak_wave_period` is single-cadence and is **not** one
+of them — plus `chlorophyll_a`, `nitrate`, `ph`, `dissolved_oxygen`,
+`primary_productivity`, the three depth-resolved ones and `sea_level_anomaly`.
 
-The built grids in that set should be rebuilt with the models, so the features
-change once. Settle the daily-product question below first for the same reason.
+**The result: skill moved by less than ±0.03 everywhere, in no consistent
+direction.**
+
+| variable | h1 | h3 | h7 | h30 |
+| --- | --- | --- | --- | --- |
+| `significant_wave_height` | −0.001 | −0.013 | +0.005 | +0.001 |
+| `maximum_wave_height` | −0.002 | −0.002 | +0.009 | −0.003 |
+| `mean_wave_period` | −0.001 | +0.002 | −0.005 | +0.000 |
+| `wave_direction` | +0.008 | +0.002 | −0.000 | +0.003 |
+| `chlorophyll_a` | +0.003 | −0.007 | +0.012 | −0.028 |
+| `nitrate` | +0.006 | +0.013 | −0.030 | −0.007 |
+
+All on 24/24 points, all still clearing the bar. **This does not make the fix
+wrong** — the old path provably misrepresented a daily mean by the full diurnal
+amplitude — but it does answer "how much was riding on it": on these series, the
+difference between a covariate's daily mean and its midnight sample does not
+propagate into forecast skill. Worth knowing before anyone budgets a retrain
+against a similar find again.
+
+**The rejections reproduced, which is the more interesting half.** A retrain
+trains every *configured* horizon and `train_forecasting.py` has no concept of
+rejection, so the batch silently resurrected six horizons that had been deleted
+on their own merits — and all six failed again, with the same signature:
+
+    bottom_temperature h3  -0.061  2/5 negative
+    bottom_temperature h7  -0.073  2/5 negative
+    bottom_temperature h30 -0.060  3/5 negative
+    water_salinity     h3  -0.131  4/5 negative
+    water_salinity     h7  -0.050  4/5 negative
+    water_temperature  h3  +0.018  2/5 negative
+    sea_level_anomaly  h30 +0.077  2/5 negative
+
+So the 2026-08-10 rejections were signal, not fold noise. **`scripts/apply_
+shipping_bar.py` now exists to make that check mechanical** — it reads
+`metrics.json` rather than the aggregate log line, and *moves* failures to
+`_rejected/<date>/` rather than deleting them, because the artifact is the
+evidence for the decision. Run it after every batch retrain; nothing else will
+catch a resurrected horizon.
+
+Two horizons legitimately return, having cleared the bar this time:
+**`nitrate` h3** (+0.103, 1/5 negative, against the +0.050 / 2-of-5 that got it
+deleted) and **`water_salinity` h30** (+0.120, 1/5 negative).
+
+Grids for these must be rebuilt so the map and the point API agree — only where
+the grid's mtime predates its model's `trained_at`, which is a smaller set than
+"all 13" because an `--all` run was building grids concurrently.
 
 ### Finish the `--all` forecast grid build
 
-**8 of the 26 griddable variables are built** (count the directory; do not quote
-a number from a document). 5 of the 31 trained variables can *never* be gridded
+**Count the directory; do not quote a number from a document** — it was 8 when
+this entry was written and 20 on 2026-08-15, and `--all` moves it again.
+`GET /api/dashboard/data-quality` reports it alongside the trained-model count.
+5 of the trained variables can *never* be gridded
 — Open-Meteo is a point API with a 900-point cap, and
 `grid_history.ungriddable_reason` already encodes this; extend it rather than
 working around it.
@@ -84,52 +159,126 @@ working around it.
   warms the union first: one fetch window covering 31 codes instead of 26
   separate fetches.
 
-### The four unrun HAB regions
+### The HAB regions — two of four run 2026-08-15, and the Arabian Sea is the hard one
 
-`config.HAB_REGIONS` holds five boxes — Arabian Sea, Bay of Bengal, Benguela,
-California Current, Baltic — and only the Arabian Sea control has data. One
-fetch each. Thresholds and climatology stay fitted **per region**: they define
-what counts as a bloom, and one region's distribution must not set another's
-labels.
+`california_current` and `benguela` are trained and shipped (~2h each);
+`baltic_sea` is running and `bay_of_bengal` is queued. Thresholds and
+climatology stay fitted **per region** — they define what counts as a bloom, and
+one region's distribution must not set another's labels.
 
-**HAB is multi-region rather than global on arithmetic**, not preference: the
+**Held-out, at the 80%-recall operating point:**
+
+| region | base rate | t+7 precision | t+7 PR-AUC | persistence | lift |
+| --- | --- | --- | --- | --- | --- |
+| arabian_sea (control) | 0.076 | 0.202 | 0.362 | 0.309 | +0.053 |
+| california_current | 0.266 | **0.844** | 0.884 | 0.808 | +0.076 |
+| benguela | 0.154 | 0.566 | 0.705 | 0.594 | +0.111 |
+
+**Read the base-rate column before the precision column.** California's t+7
+alert is right 84% of the time against the Arabian Sea's 20%, and almost all of
+that gap is *prevalence*: 27% of California cell-days carry a bloom label
+against the Arabian Sea's 7.6%. As a multiple over base rate the three regions
+are close (3.2x, 3.7x, 2.7x), and by lift over persistence the Arabian Sea is
+merely the weakest at long lead rather than an outlier.
+
+Both framings are needed and neither is the whole answer: **a user experiences
+precision** — four-in-five false alarms is unusable however good the lift — while
+**a modeller has to judge lift**, because a high base rate makes precision cheap.
+
+Consequence for the alerts item in §5: "**if alerts ship for HAB, they ship at
++3d**" was written from the Arabian Sea's numbers and should be **per region**
+rather than global. A +7d California alert at 0.844 precision is a defensible
+product; a +7d Arabian Sea alert at 0.202 is not.
+
+**HAB stays multi-region rather than global on arithmetic**, not preference: the
 same six years worldwide at 0.25° is ~1.6 billion rows and **~650 GB**, most of
-it open-ocean rows that are near-constant negatives.
+it open-ocean rows that are near-constant negatives. Disk is the live
+constraint — the two regions run so far took the machine from 21 GB free to
+13 GB, and the batch script stops rather than filling it.
 
-### Validate the global PFZ model on the *regional* holdout
+### The global PFZ model is **worse over the Indian Ocean** — measured 2026-08-15
 
-The code side is built (both pipelines take `--region`; the default region keeps
-its historic artifact names so the regional models remain the baseline). What
-has not been done is the comparison that matters: a global model that scores
-well on a global average can still be worse over the Indian Ocean, which is the
-region this platform exists for.
+Settled, and the answer is the one the item was worried about. Scored on
+**identical rows** (the regional model's own spatial-block holdout, 885 rows /
+167 presences):
+
+| | TSS | PR-AUC | ROC-AUC | Boyce |
+| --- | --- | --- | --- | --- |
+| regional model | **+0.798** | **+0.804** | **+0.945** | **+0.923** |
+| global model | +0.448 | +0.489 | +0.790 | +0.721 |
+
+Not close, and not a rounding difference: the global model loses 0.35 TSS on the
+water this platform exists for, despite training on 123,104 rows against the
+regional model's 1,902. **The regional models stay the baseline and the served
+artifact.** Going global buys ~170x the labels and spends it on the wrong ocean.
+
+Two things make the comparison trustworthy, and both had to be built —
+`scripts/validate_global_on_region.py`:
+
+- **The two shipped reports could not answer this.** Each model's holdout is its
+  own spatial block of its own store; two numbers from two different sets of
+  water are not a comparison.
+- **The shipped global model was trained on this water**, so scoring it directly
+  would have measured memorisation. The script refits the global ensemble with
+  the regional holdout's **spatial blocks** removed from the global training set
+  — blocks, not matching rows, because a global point 50 km from a held-out
+  regional point is the same water. 217 of 123,321 global rows fall in those 15
+  blocks, so the global model keeps essentially all its data and still loses.
+
+Worth keeping: the global ensemble's *members* disagree about how they fail —
+maxent holds Boyce at 0.938 (better than the regional ensemble's 0.923) while
+scoring TSS 0.449. It ranks this water plausibly and discriminates in it badly.
 
 ---
 
-## 2. Settle the daily-Copernicus question before the retrains
+## 2. The daily-Copernicus question — settled 2026-08-15: **do not swap**
 
-The ~40x cheaper daily products would change what every affected variable trains
-on, so this gates §1's retrains.
+Measured through `copernicus.fetch_global` (the real path, not a lazy array),
+one global surface field strided to 1°, on a 10-day window:
 
-- **Re-measure through the real fetch path.** Probed 2026-08-10 by reading one
-  global surface field strided to 1°: hourly physics **34–46 s/timestep**, daily
-  thetao **84–104 s/timestep** — the daily product is ~2.5x *slower per read*,
-  because those datasets carry 50 depth levels and a geo-series chunk brings the
-  whole depth column down for a surface field. 45 × ~98 s still beats 1080 × ~39
-  s on paper, but that probe read the lazy array directly rather than going
-  through `copernicus.fetch_global`, and neither figure reconciles with the ~35
-  min a real SST grid takes. Redo it through the real path **with a server-side
-  depth bound** (`minimum_depth`/`maximum_depth`) — the same omission
-  `machine_learning/` documents turning a 15-minute-plus fetch into ~60 s, and
-  possibly the entire discrepancy.
-- The 1.05 s / 0.60 s per-timestep figures previously recorded in
-  `grid_history.py` were **not** measured through this path. Do not trust them.
-- The *merged* daily product `cmems_mod_glo_phy_anfc_0.083deg_P1D-m` is **not**
-  the substitute — it carries `zos`/`tob`/`sob`/`mlotst` and sea ice but not
-  `thetao`/`so`/`uo`/`vo`. The per-variable daily datasets
-  (`...phy-thetao...`, `...phy-so...`, `...phy-cur...`, all 50-level) are.
-- The join half of the objection is **fixed** (see §1's retrain entry); only the
-  cost question is open.
+| | s/timestep | a 45-day grid window |
+| --- | --- | --- |
+| hourly physics (`PT1H-m`), thetao+so | **0.89** | 1080 reads = **15.9 min** |
+| daily thetao (`P1D-m`), depth-bounded | **1.16** | 45 reads = **0.9 min** |
+| daily thetao, *no* depth bound | 8.63 (2-day window) | 45 reads = 6 min |
+
+So the daily product is **~18x cheaper for a global window, not ~40x**, and the
+hourly path costs ~16 min rather than the ~35 min on record. **Every earlier
+figure in this section was wrong**, in both directions: hourly was recorded at
+34–46 s/timestep and is 0.89; daily was recorded as *slower per read* and is
+1.16. A short window is dominated by per-request overhead (the same daily read
+measured 3.89 s/timestep over 2 days and 1.16 over 10), which is how a probe
+produces a number that reverses the ranking. The depth-bound trap is real and
+confirmed: omitting it costs **2.2x** on a 50-level dataset.
+
+**The swap is still rejected, on grounds cost does not settle:**
+
+- **It would cost the downloader its hourly cadence.** `Resolution.hourly` is a
+  live API option, and the seven variables on `copernicus_physics` (SST, SSS,
+  SSH, all four current fields) can serve it only because their provider is
+  hourly. Repointing them at daily datasets removes a shipped capability to save
+  15 minutes on an offline job that runs twice a day behind a 6-hour cache.
+- **One provider would become three.** `thetao`, `so` and `cur` are separate
+  daily datasets, and "one provider == one upstream dataset" is what keeps
+  `catalog.py` honest about coverage windows.
+- **An hourly source aggregated by `cleaning.py` is strictly more informative
+  than a daily product**, now that aggregation happens per provider *before* the
+  merge. It can answer a daily question and an hourly one; the daily product can
+  only answer the daily one.
+- **It would force a full retrain, not a partial one.** Seven variables change
+  source, and everything carrying them as a covariate changes with them —
+  otherwise the grid path and the point path disagree, which is exactly the
+  train/serve skew `test_grid_matches_the_point_path` exists to prevent.
+
+Revisit only if the grid builder becomes fetch-bound again (it is not: the wind
+grids' fetch was a cache hit and the 25-minute cost was all cell loop), or if a
+*new* variable needs a daily-only field, where the daily dataset is simply its
+provider and none of the above applies.
+
+The merged daily product `cmems_mod_glo_phy_anfc_0.083deg_P1D-m` remains **not**
+the substitute — it carries `zos`/`tob`/`sob`/`mlotst` and sea ice but not
+`thetao`/`so`/`uo`/`vo` — and is already the provider for `bottom_temperature`
+and `bottom_salinity`, which is the shape of the "new variable" exception above.
 
 ---
 
@@ -221,15 +370,46 @@ obvious headline. The detectors that need no climatology come first.
 
 ### Detectors affordable now, because they need no climatology
 
-- **Eddy detection** from sea-level anomaly + currents. `sea_level_anomaly` is
-  trained and shipped (h1 +0.367, h3 +0.394, both 0/5 folds negative) and the
-  currents fields are live and gridded. Okubo-Weiss or the closed-SSH-contour
-  method identifies them; radius, polarity and intensity fall out of the same
-  pass. **Age and trajectory are a separate, harder half** — a frame-to-frame
-  assignment problem, where an eddy that flickers identity between timesteps
-  produces a "trajectory" that is an artefact of the matcher. Ship detection
-  first, tracking second, and validate tracking against a published eddy atlas
-  rather than against how plausible the tracks look.
+- **Eddy detection — the detection half shipped 2026-08-15.**
+  `services/eddies.py` + `GET /api/ocean/eddies` + an `Eddies (detected)` map
+  layer. Okubo-Weiss (W < −0.2σ) over the live surface-current cache, which
+  costs a numpy pass over a grid already resident rather than a second global
+  fetch — `sea_level_anomaly` exists as a *forecast* grid, which is the wrong
+  footing for a detector claiming to say what is happening now. Measured on the
+  live field: **2,097 features globally**, densest exactly where they should be
+  (Gulf Stream, Kuroshio at 35N/155E, Agulhas, the Somali Great Whirl at
+  11.8N/47.8E), median radius ~55 km, whole pass **0.1 s**.
+  - **The per-component loop is where the cost was**, and it is worth not
+    reintroducing: `np.nonzero(labels == index)` per feature rescans the whole
+    grid once per detection — ~2 billion comparisons at global scale, measured
+    **37 s**. Sorting the labelled cells once and slicing costs 0.1 s for a
+    bit-identical answer.
+  - **Age and trajectory are the separate, harder half, and are still open** — a
+    frame-to-frame assignment problem, where an eddy that flickers identity
+    between timesteps produces a "trajectory" that is an artefact of the matcher.
+    Validate tracking against a published eddy atlas rather than against how
+    plausible the tracks look. Nothing in the service holds state between
+    refreshes, deliberately, so tracking starts from a clean sheet.
+  - Known and documented rather than hidden: the OW threshold is relative to the
+    variance of the field in view, so this is a consistent detector and **not a
+    census**; the ~0.25° grid sets the smallest resolvable feature (submesoscale
+    is absent, not zero); the ±5° equatorial band is excluded because polarity is
+    meaningless where f vanishes; and the derivative stencil loses coastal cells
+    against the land mask, so nearshore eddies are under-detected. A strong jet
+    can also merge into one 245-cell "eddy" at the 300 km cap — the Somali
+    current does exactly this in the SW monsoon.
+  - **On white noise the detector still returns features** — a relative
+    threshold always has cells below it — but every one comes back at the 40 km
+    floor. So a *large* detection is evidence of real structure while a small one
+    may not be, and a test pins that asymmetry.
+  - The point brief carries it too (`eddies.nearest` → a row in `_flow_section`):
+    "inside an anticyclonic eddy, 244 km equivalent radius" at the Great Whirl,
+    "nearest detected eddy 386 km away" in the open Arabian Sea. The distance is
+    reported either way rather than the row omitted — a point far from every
+    detection is an answer, and a missing row reads as "no eddies anywhere".
+    `services/compare.py` picks this up for free, being a view over the brief.
+  - Not yet done: closed-SSH-contour detection as a cross-check on the OW count,
+    and validating the count against a published eddy atlas.
 - **Upwelling detection.** Alongshore wind stress → Ekman transport,
   corroborated by the SST-down/chlorophyll-up signature. **Blocked on
   `wind_u`/`wind_v`** (§1), and it also needs coastline geometry to resolve the
@@ -251,11 +431,13 @@ shorter list that says what it covers.
 
 ### Suggested order
 
-1. **`wind_u` / `wind_v` training runs** (§1) — already the bottleneck for three
-   things.
-2. **Eddy detection**, detection only.
+1. ~~**`wind_u` / `wind_v` training runs**~~ — done 2026-08-15 (§1); the grid
+   builds they unblock are what remains.
+2. ~~**Eddy detection**, detection only~~ — shipped 2026-08-15. Eddy *tracking*
+   is the open half.
 3. **The climatology job**, piloted on SST.
-4. **Marine heatwaves** on that pilot, then **upwelling**.
+4. **Marine heatwaves** on that pilot, then **upwelling** (which the wind
+   components have now unblocked, once the grids finish).
 5. **Anomaly explorer**, once the climatology covers more than one variable.
 
 ---

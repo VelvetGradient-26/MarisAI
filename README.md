@@ -25,7 +25,7 @@ model.
 | Compare | `/compare` | How one place differs from another |
 | Assistant | `/assistant` | The whole platform through one conversational interface |
 | Downloader | `/download` | Bulk export of 34 ocean variables as CSV/JSON/PDF |
-| Docs | `/docs` | How the models were built, validated, and where they fail |
+| Docs | `/docs` | How everything here works, was built, validated, and where it fails |
 
 ### The pieces
 
@@ -44,8 +44,23 @@ model.
   split. A horizon ships only if it beats persistence **and** at most one of
   five folds is negative.
 - **A forecast map.** The same engine rendered as a global raster layer, in
-  `absolute` and `change` modes. Grids are built offline and refreshed on a
-  schedule.
+  `absolute` and `change` modes — `change` (forecast minus the latest
+  observation) being the informative one, since the absolute field at +7d looks
+  almost exactly like today's. Where two grids hold the components of one
+  vector, they compose into a forecast *particle* field instead, drawn exactly
+  like its live counterpart so the two can be compared. Grids are built offline
+  and refreshed on a schedule.
+- **Detection, not just fields.** Mesoscale eddies are detected in the live
+  surface-current field by the Okubo-Weiss method and served as things with a
+  position, a size, a polarity and an intensity. It detects and does not track:
+  age and trajectory are a frame-to-frame assignment problem, and a matcher that
+  flickers identity produces tracks that are artefacts presented as
+  observations.
+- **A point brief, and a comparison.** One coordinate rendered as a document
+  (on screen or as a PDF), and two coordinates aligned row by row. Both are
+  composition rather than computation — every number already has an endpoint —
+  and a row only one point has is kept and labelled rather than dropped, because
+  the asymmetry is often the most informative part.
 - **Offline ML** (`machine_learning/`) — harmful algal bloom early warning and
   fish habitat / potential fishing zones, on a shared Marine Data Fusion Layer.
   It has its own environment and is **not imported by the backend**; its
@@ -164,12 +179,21 @@ training rows only" — the guardrails against silent methodology error.
 ```bash
 cd backend
 uv run python scripts/train_forecasting.py --variable sea_surface_temperature
+uv run python scripts/apply_shipping_bar.py --dry-run
 uv run python scripts/build_forecast_grid.py --all --skip-fresh 24
 ```
 
 Training and grid building are offline only — never triggered by a request. A
 grid build is dominated by the upstream fetch and is largely independent of
 output resolution, so budget for it.
+
+The middle step is not optional bookkeeping. A horizon ships only if it beats
+persistence **and** at most one of five folds is negative, and the trainer has
+no concept of rejection — it trains every configured horizon and saves each one
+that fits, so a batch retrain silently resurrects horizons that were deleted on
+their own merits. `apply_shipping_bar.py` re-applies the rule and *moves*
+failures to `models/forecasting/_rejected/<date>/` rather than deleting them,
+because the artifact is the evidence for the decision.
 
 `GET /api/dashboard/data-quality` reports what is actually present: every
 dataset with its grid spacing, cadence, coverage and licence; every trained
@@ -198,7 +222,26 @@ machine_learning/
   marine_ml/            Shared spine: ingestion, fusion, features, validation
   hab_early_warning/    Bloom risk
   fish_habitat_prediction/  Habitat suitability / PFZ
+research/               Papers, reproducible notebooks and exported datasets
 ```
+
+## Research
+
+`research/` holds work written *from* this codebase rather than about it. The
+shipped paper — "Rising Skill, Falling Skill" — argues that persistence alone is
+an insufficient baseline for statistical ocean forecasting, using the
+forecasting engine's own training data: 13 variables × 4 horizons, plus 1,248
+held-out fits. Persistence error grows with horizon and a seasonal cycle's does
+not, so a persistence-referenced score can rise while the model degrades. Median
+skill against persistence is +0.273 at 30 days; against a day-of-year
+climatology it is −0.023.
+
+It is also the place a retraction is recorded. An earlier draft concluded those
+models had "learned what month it is"; a three-arm feature ablation showed 10 of
+the 11 affected cases keep their skill with every calendar feature removed, so
+losing to climatology reports the *baseline's* strength rather than the model's
+mechanism. `research/research.md` catalogues the other papers this repository
+already holds the artefacts for, and how far each one is from being writable.
 
 ## Data sources and attribution
 
