@@ -10,191 +10,121 @@ them if it has been a while.
 
 ---
 
-## 1. Machine time, not code
+## 1. Machine time — done, and what the runs settled
 
-These are the shortest entries in the file and the largest fraction of what is
-actually blocking. Nothing here needs a design decision; each needs a run.
+Everything this section tracked has now run. What survives is the findings, per
+this file's own rule.
 
-### `wind_u` / `wind_v` — trained 2026-08-15, grids building
+**Verified on disk 2026-08-17, not read off this document:** 28 forecast grids
+exist; the only 5 trained variables without one are the Open-Meteo point-API
+variables `grid_history.ungriddable_reason` already refuses, so the `--all`
+build is complete. **0 grids are stale** against their models (every `_grids/*.nc`
+mtime compared against the newest `trained_at` across its horizons). Count the
+directory, never a number in a document.
 
-**Both variables now ship**, all four horizons each, every one clearing the bar
-(skill > 0 and ≤1 of 5 folds negative — read from `metrics.json`, not the
-aggregate line):
+### What the `wind_u`/`wind_v` grids unblocked — and one thing they did not
+
+Both variables ship at all four horizons, 0 of 5 folds negative everywhere:
 
 | | h1 | h3 | h7 | h30 |
 | --- | --- | --- | --- | --- |
 | `wind_u` | +0.217 | +0.301 | +0.385 | +0.398 |
 | `wind_v` | +0.300 | +0.366 | +0.398 | +0.450 |
 
-0 of 5 folds negative at every horizon, on all 24 points.
-
-**The partial-success hazard fired again, exactly as this file predicts it
-will.** `wind_v` h1 first trained on **21 of 24 points** — Open-Meteo 429'd
-through all three retries for `gulf_of_mannar`, `south_pacific_gyre` and
-`north_sea`, and the run printed `beats persistence` regardless. Only h1 was
-affected; h3/h7/h30 had the warmed cache. Retraining h1 alone once the cache was
-warm took 19 seconds and restored all 24. **Read `skipped_points` in
-`metadata.json` after every run** — the aggregate line will not tell you.
-
-What is left is the grid builds. `wind_u`'s is built (2026-08-15: 64,440 ocean
-cells at 1°, 25 min) and `wind_v`'s is running. The Copernicus wind fetch was
-already cached from earlier `--all` runs, so both skip the ~35-minute fetch
-entirely and cost only the cell loop.
-
-**Both grids carry no covariates at all.** `pressure` and `air_temperature` are
-Open-Meteo, a point API with a 900-point cap, so no global field for them can
-exist; `missing_covariates` names both and the layer's attribution surfaces it.
+Forecast wind particles ship. Both grids carry **no covariates at all** —
+`pressure` and `air_temperature` are Open-Meteo, so no global field for them can
+exist — and `missing_covariates` names them in the layer attribution, because
 LightGBM routes an absent feature down its missing-value branch without
-complaint, so the map would otherwise look exactly as confident as a complete
+complaint and the map would otherwise look exactly as confident as a complete
 one.
 
-Still waiting on those grids:
+**Upwelling was never actually blocked on this run, and that was a mistake in
+this file.** What upwelling needs is wind *components*, because a bearing cannot
+be projected onto a coastal normal — and `copernicus_wind.snapshot()` has
+exposed live `u`/`v` all along, for `services/drift.py` to sum. The training run
+produced *forecast* grids, which is a different thing and the wrong footing for
+a detector claiming to say what is happening now. Shipped 2026-08-17 reading the
+live caches. The lesson generalises: check what a dependency actually needs
+before recording it as blocked.
 
-- **Forecast wind particles**, which cannot be composed from `wind_speed` +
-  `wind_direction`: direction is circular while every step to the screen is
-  linear, so a vector built from those two grids flows backwards along every
-  wrap through north. The `VectorPair` is already registered **before its grids
-  exist, deliberately** — the catalog reports it with an explicit reason and the
-  frontend hook logs that, which beats a layer silently not existing.
-- **A forecast drift field.** The live one ships (§3); its wind term is
-  observation-only until these exist.
-- **Upwelling detection** (§4), which needs Ekman transport, which needs wind
-  *components* — a bearing cannot supply them.
+Still genuinely waiting on those grids: **a forecast drift field** (the live
+field's wind term is observation-only), and the **circular-variable modelling
+half** below.
 
-**One thing the build turned up, now fixed.** `grid_predictor` warned
-`64440 cell(s) produced feature columns absent from the first scored cell …
-Investigate before trusting the grid` — on *every* cell of *every* build,
-including the synthetic test that proves grid/point parity. Rows were being
-tested against the *numeric* column subset while every feature frame also
-carries the `timestamp` column that subset deliberately drops. Nothing was ever
-wrong with any grid; the warning was the bug. Same cry-wolf failure class as the
-assistant's grounding regex, and now pinned by a test.
+**The partial-success hazard fired again**, exactly as this file predicts. A
+`wind_v` h1 first trained on **21 of 24 points** — Open-Meteo 429'd for three
+sites — and printed `beats persistence` regardless. **Read `skipped_points` in
+`metadata.json` after every run**; the aggregate line will not tell you.
 
-The same move would make `wind_direction` a derived field rather than a trained
-one, which is the better answer for it anyway.
+### The 13 mixed-cadence variables — retrained, and it changed almost nothing
 
-### The 13 mixed-cadence variables — retrained 2026-08-15, and it changed almost nothing
+`cleaning.py` merged providers and *then* resampled, so an hourly covariate
+paired with a daily target survived as its 00:00 sample standing in for a
+24-hour mean — on a synthetic 3 degC diurnal cycle the old path returned **23.0
+where the daily mean is 20.0**. Fixed 2026-08-13 by reordering to resolve codes
+-> aggregate per provider -> merge.
 
-`cleaning.py::build_dataframe` merged providers and *then* resampled, so an
-hourly covariate paired with a daily target survived as its 00:00 sample
-standing in for a 24-hour mean. Fixed **2026-08-13** (commit `8625742`) by
-reordering to **resolve codes → aggregate per provider → merge**; on a synthetic
-3 °C diurnal cycle the old path returned **23.0 where the daily mean is 20.0** —
-wrong by the full amplitude, in the same direction, in every row, with nothing
-raised. Every shipped model predated that commit, so all 13 were genuinely
-stale.
-
-**The 13 are exactly those with more than one non-zero provider cadence**, which
-is worth recomputing rather than reading off a list (bathymetry is
-time-invariant and must be excluded or every variable looks mixed): the four
-*mixed* wave variables — `peak_wave_period` is single-cadence and is **not** one
-of them — plus `chlorophyll_a`, `nitrate`, `ph`, `dissolved_oxygen`,
-`primary_productivity`, the three depth-resolved ones and `sea_level_anomaly`.
-
-**The result: skill moved by less than ±0.03 everywhere, in no consistent
-direction.**
-
-| variable | h1 | h3 | h7 | h30 |
-| --- | --- | --- | --- | --- |
-| `significant_wave_height` | −0.001 | −0.013 | +0.005 | +0.001 |
-| `maximum_wave_height` | −0.002 | −0.002 | +0.009 | −0.003 |
-| `mean_wave_period` | −0.001 | +0.002 | −0.005 | +0.000 |
-| `wave_direction` | +0.008 | +0.002 | −0.000 | +0.003 |
-| `chlorophyll_a` | +0.003 | −0.007 | +0.012 | −0.028 |
-| `nitrate` | +0.006 | +0.013 | −0.030 | −0.007 |
-
-All on 24/24 points, all still clearing the bar. **This does not make the fix
-wrong** — the old path provably misrepresented a daily mean by the full diurnal
-amplitude — but it does answer "how much was riding on it": on these series, the
-difference between a covariate's daily mean and its midnight sample does not
-propagate into forecast skill. Worth knowing before anyone budgets a retrain
-against a similar find again.
+**Skill then moved by less than +/-0.03 everywhere, in no consistent direction**
+(worst: `chlorophyll_a` h30 -0.028, `nitrate` h7 -0.030). This does not make the
+fix wrong — the old path provably misrepresented a daily mean by the full
+diurnal amplitude — but it answers "how much was riding on it": on these series,
+the difference between a covariate's daily mean and its midnight sample does not
+propagate into forecast skill. Worth knowing before budgeting a retrain against
+a similar find.
 
 **The rejections reproduced, which is the more interesting half.** A retrain
-trains every *configured* horizon and `train_forecasting.py` has no concept of
-rejection, so the batch silently resurrected six horizons that had been deleted
-on their own merits — and all six failed again, with the same signature:
+trains every *configured* horizon and has no concept of rejection, so the batch
+silently resurrected six horizons deleted on their own merits — and all six
+failed again with the same signature. So the 2026-08-10 rejections were signal,
+not fold noise. `scripts/apply_shipping_bar.py` now makes that check mechanical:
+it reads `metrics.json` rather than the aggregate log line, and **moves** failures
+to `_rejected/<date>/` because the artifact is the evidence for the decision.
+Run it after every batch retrain; nothing else catches a resurrected horizon.
 
-    bottom_temperature h3  -0.061  2/5 negative
-    bottom_temperature h7  -0.073  2/5 negative
-    bottom_temperature h30 -0.060  3/5 negative
-    water_salinity     h3  -0.131  4/5 negative
-    water_salinity     h7  -0.050  4/5 negative
-    water_temperature  h3  +0.018  2/5 negative
-    sea_level_anomaly  h30 +0.077  2/5 negative
+### The HAB regions — all four run, and base rate does not explain the Arabian Sea
 
-So the 2026-08-10 rejections were signal, not fold noise. **`scripts/apply_
-shipping_bar.py` now exists to make that check mechanical** — it reads
-`metrics.json` rather than the aggregate log line, and *moves* failures to
-`_rejected/<date>/` rather than deleting them, because the artifact is the
-evidence for the decision. Run it after every batch retrain; nothing else will
-catch a resurrected horizon.
-
-Two horizons legitimately return, having cleared the bar this time:
-**`nitrate` h3** (+0.103, 1/5 negative, against the +0.050 / 2-of-5 that got it
-deleted) and **`water_salinity` h30** (+0.120, 1/5 negative).
-
-Grids for these must be rebuilt so the map and the point API agree — only where
-the grid's mtime predates its model's `trained_at`, which is a smaller set than
-"all 13" because an `--all` run was building grids concurrently.
-
-### Finish the `--all` forecast grid build
-
-**Count the directory; do not quote a number from a document** — it was 8 when
-this entry was written and 20 on 2026-08-15, and `--all` moves it again.
-`GET /api/dashboard/data-quality` reports it alongside the trained-model count.
-5 of the trained variables can *never* be gridded
-— Open-Meteo is a point API with a 900-point cap, and
-`grid_history.ungriddable_reason` already encodes this; extend it rather than
-working around it.
-
-- Cost is dominated by the fetch and is **independent of output resolution**:
-  ~1080 whole-globe reads (~35 min) plus ~15 min of cell loop at 1°.
-  `--resolution 4.0` speeds up only the loop; `--skip-fresh HOURS` is what makes
-  an interrupted run resumable.
-- **The build is affordable because the fetch cache was fixed.** It keyed on the
-  exact field list, so `current_u` fetching `(uo, zos)` and `current_v` fetching
-  `(vo, zos)` missed each other and each paid 35 minutes for the same product. A
-  cached entry that *contains* the requested fields is now a hit, and `--all`
-  warms the union first: one fetch window covering 31 codes instead of 26
-  separate fetches.
-
-### The HAB regions — two of four run 2026-08-15, and the Arabian Sea is the hard one
-
-`california_current` and `benguela` are trained and shipped (~2h each);
-`baltic_sea` is running and `bay_of_bengal` is queued. Thresholds and
-climatology stay fitted **per region** — they define what counts as a bloom, and
-one region's distribution must not set another's labels.
+All of `california_current`, `benguela`, `baltic_sea` and `bay_of_bengal` are
+trained and shipped beside the `arabian_sea` control. Thresholds and climatology
+stay fitted **per region** — they define what counts as a bloom, and one
+region's distribution must not set another's labels.
 
 **Held-out, at the 80%-recall operating point:**
 
-| region | base rate | t+7 precision | t+7 PR-AUC | persistence | lift |
-| --- | --- | --- | --- | --- | --- |
-| arabian_sea (control) | 0.076 | 0.202 | 0.362 | 0.309 | +0.053 |
-| california_current | 0.266 | **0.844** | 0.884 | 0.808 | +0.076 |
-| benguela | 0.154 | 0.566 | 0.705 | 0.594 | +0.111 |
+| region | base rate | t+3 precision | t+7 precision | t+7 PR-AUC | persistence | t+7 lift |
+| --- | --- | --- | --- | --- | --- | --- |
+| arabian_sea (control) | 0.076 | 0.449 | 0.202 | 0.362 | 0.309 | +0.053 |
+| bay_of_bengal | 0.078 | 0.461 | 0.187 | 0.365 | 0.215 | **+0.150** |
+| baltic_sea | 0.139 | 0.699 | 0.416 | — | — | — |
+| benguela | 0.154 | — | 0.566 | 0.705 | 0.594 | +0.111 |
+| california_current | 0.266 | — | 0.844 | 0.884 | 0.808 | +0.076 |
 
-**Read the base-rate column before the precision column.** California's t+7
-alert is right 84% of the time against the Arabian Sea's 20%, and almost all of
-that gap is *prevalence*: 27% of California cell-days carry a bloom label
-against the Arabian Sea's 7.6%. As a multiple over base rate the three regions
-are close (3.2x, 3.7x, 2.7x), and by lift over persistence the Arabian Sea is
-merely the weakest at long lead rather than an outlier.
+**The bay_of_bengal run settled a question the earlier three left open.** With
+three regions it was reasonable to read the whole spread as prevalence: California's
+alert is right 84% of the time against the Arabian Sea's 20%, and California's
+base rate is 3.5x higher. The Bay of Bengal breaks that reading — **the same base
+rate as the Arabian Sea (0.078 vs 0.076) and roughly 3x the lift** (+0.150 vs
++0.053 at t+7; +0.225 vs the Arabian Sea's weakest at t+3). A neighbouring basin
+at identical prevalence forecasts substantially better.
 
-Both framings are needed and neither is the whole answer: **a user experiences
-precision** — four-in-five false alarms is unusable however good the lift — while
-**a modeller has to judge lift**, because a high base rate makes precision cheap.
+So the two framings are still both needed — **a user experiences precision**,
+four-in-five false alarms being unusable however good the lift, while **a
+modeller has to judge lift** because a high base rate makes precision cheap — but
+the conclusion sharpens: **the Arabian Sea is genuinely the hard region, not
+merely the low-prevalence one.** Whatever makes it hard is physical rather than
+statistical, and that is now a question worth asking rather than an artefact to
+explain away.
 
-Consequence for the alerts item in §5: "**if alerts ship for HAB, they ship at
-+3d**" was written from the Arabian Sea's numbers and should be **per region**
-rather than global. A +7d California alert at 0.844 precision is a defensible
-product; a +7d Arabian Sea alert at 0.202 is not.
+Consequence for the alerts item in §5 stands and is now per region with evidence:
+"if alerts ship for HAB, they ship at +3d" was the Arabian Sea's rule. A +7d
+California alert at 0.844 is a defensible product; a +7d Arabian Sea alert at
+0.202 is not; the Bay of Bengal at 0.187 is not either, despite forecasting
+*better* than the Arabian Sea — which is precisely why precision and lift have to
+be quoted together.
 
-**HAB stays multi-region rather than global on arithmetic**, not preference: the
-same six years worldwide at 0.25° is ~1.6 billion rows and **~650 GB**, most of
-it open-ocean rows that are near-constant negatives. Disk is the live
-constraint — the two regions run so far took the machine from 21 GB free to
-13 GB, and the batch script stops rather than filling it.
+**HAB stays multi-region rather than global on arithmetic**: the same six years
+worldwide at 0.25 degrees is ~1.6 billion rows and **~650 GB**, most of it
+open-ocean rows that are near-constant negatives. The disk constraint this file
+recorded (13 GB free) is stale — there is 121 GB as of 2026-08-17.
 
 ### The global PFZ model is **worse over the Indian Ocean** — measured 2026-08-15
 
@@ -329,46 +259,60 @@ drawing-buffer resolution, and nothing coordinates them.
 
 ---
 
-## 4. From variables to events — the missing stage
+## 4. From variables to events — the stage that was missing
 
 > The platform serves 32 variables. It does not say **what is happening**.
 
 The framing worth keeping is **observe → detect → explain → predict → decide**:
 it says what each existing subsystem is for (map/downloader observe, forecasting
-predicts, SHAP explains) and names the stage missing entirely — **detect**.
+predicts, SHAP explains) and named the stage that was missing entirely —
+**detect**. Three detectors now exist (eddies, marine heatwaves, upwelling) and
+the prerequisite under four more is built. What is left is reaching them from
+the UI, and tracking.
 
-### The prerequisite nobody costed: there is exactly one climatology
+### The climatology — built 2026-08-17, and the cost was mis-stated here
 
-`services/crw.py` (NOAA Coral Reef Watch) carries the only real climatology in
-the codebase, and it is **SST only**. That is why bleaching risk, heat-stress
-extent and SST anomaly are possible at all — and it is also why *nothing else*
-can have an anomaly.
+`services/climatology/` now holds a per-cell, per-day-of-year **percentile**
+stack; `services/crw.py`'s SST-only climatology of *means* is no longer the only
+baseline in the codebase. This unblocks the anomaly explorer, polygon seasonal
+anomalies, marine heatwaves (shipped, below) and every percentile-relative event.
 
-It is a hard prerequisite hiding under at least four proposed features, each of
-which would otherwise discover it independently:
+**Two things this entry got wrong, both worth keeping:**
 
-- **An anomaly explorer** ranking "SST +2.7σ, chlorophyll +2.1σ" needs a
-  per-cell, per-day-of-year baseline **distribution** for every variable ranked.
-- **Polygon/regional seasonal anomalies** (§5) need the same thing, which is why
-  that item already stalls on it.
-- **Marine heatwaves** need more than a mean: the Hobday definition is a
-  **90th-percentile** threshold over a 30-year daily baseline, exceeded for ≥5
-  days. CRW's is a climatology of means, so even the one variable with a
-  baseline does not have the *right* baseline.
-- **Cold spells, extreme-wave events and low-oxygen events** are all
-  percentile-relative by definition and inherit it exactly.
+* **"An offline job against the expensive global fetch path" was the wrong
+  costing, because that path cannot supply it at all.** Every Copernicus
+  provider in `services/download/catalog.py` starts recently — physics
+  2022-06-01, waves 2022-11-01, wind 2024-06-13, BGC 2021-11-01. A 30-year
+  baseline is not expensive there; it does not exist. **NOAA OISST v2.1**
+  (`ncdcOisst21Agg_LonPM180`, daily 0.25 degrees, 1981-09-01 onward) is on the
+  same CoastWatch ERDDAP `crw.py` already uses. Measured 2026-08-17: one year
+  strided to 1 degree is **94.6 MB in 51s**, so the standard WMO 1991-2020
+  baseline is ~25 minutes and ~2.8 GB, not hours.
+* **The archive is gappy and that is the archive, not the transport.** Whole-year
+  requests return 365 days for 1991 and **163** for 1993. The first diagnosis was
+  truncation under load — the host was flapping at the time — and it was wrong:
+  re-fetching 1993 healthy returns the identical 163 days, and the dataset
+  reports `evenlySpaced=false` over 15,210 values across ~16,400 days, i.e.
+  **~1,200 days genuinely absent**, concentrated in the early record. The
+  per-year completeness check written against the wrong diagnosis would have
+  rejected a real baseline forever. What protects a percentile is a floor on
+  samples per *estimate* — a day-of-year percentile does not care which years its
+  samples came from — and the artifact records `baseline_completeness` so two
+  builds can be compared.
 
-**Build the climatology as its own item**, scoped honestly: an offline job
-against the expensive global fetch path (§1 — ~35 min per fetch window,
-independent of output resolution), over enough years to make a percentile mean
-something. It is not a UI feature and must not be scheduled as one. The output
-is a per-variable, per-cell, per-day-of-year percentile stack on disk, in the
-same shape as the forecast grids so `field_sampling.py` serves it unchanged.
+Two constructions in the fit are load-bearing and silent when wrong: the
+day-of-year index is **leap-adjusted** (pandas puts 1 March at 60 in a common
+year and 61 in a leap one, so raw pooling aligns March with late February), and
+the pooling window **wraps the year** (or its two ends are fitted from disjoint
+samples and disagree exactly where the hemispheres are at their extremes).
 
-**Consequence: an anomaly explorer is not a first item**, despite being the
-obvious headline. The detectors that need no climatology come first.
+**Extending it to a second variable is the remaining work**, and it is bounded by
+source rather than by code: `build.py` is variable-agnostic, but OISST serves
+SST alone, so every further variable needs a long-record source of its own.
+Until then the anomaly explorer stays a one-variable feature, which is not worth
+shipping — hence its position below.
 
-### Detectors affordable now, because they need no climatology
+### The detectors themselves — three shipped
 
 - **Eddy detection — the detection half shipped 2026-08-15.**
   `services/eddies.py` + `GET /api/ocean/eddies` + an `Eddies (detected)` map
@@ -410,18 +354,48 @@ obvious headline. The detectors that need no climatology come first.
     `services/compare.py` picks this up for free, being a view over the brief.
   - Not yet done: closed-SSH-contour detection as a cross-check on the OW count,
     and validating the count against a published eddy atlas.
-- **Upwelling detection.** Alongshore wind stress → Ekman transport,
-  corroborated by the SST-down/chlorophyll-up signature. **Blocked on
-  `wind_u`/`wind_v`** (§1), and it also needs coastline geometry to resolve the
-  alongshore component, which no current service provides. High local relevance
-  (Somalia/Oman/southwest India), and it produces the chain the platform is
-  otherwise missing: **upwelling → productivity → chlorophyll → habitat
-  suitability → fisheries**.
-- **Marine heatwaves, properly.** Needs the SST percentile climatology above,
-  which is the *cheapest* instance of that project since CRW already supplies
-  the field and the coverage — so doing MHW first is also the pilot for the
-  climatology job. The existing maskings in `crw.py` are load-bearing and apply
-  unchanged: aggregate over 60°S–60°N or ice-margin cells triple the mean.
+- **Upwelling detection — shipped 2026-08-17.** `services/upwelling.py` +
+  `GET /api/ocean/upwelling`. Bakun's index: Ekman transport from bulk wind
+  stress, projected onto the offshore normal. Reads the live wind and currents
+  caches, so it is a numpy pass over resident grids like the eddy detector.
+  - **It was never blocked on `wind_u`/`wind_v`** — see §1. It needed wind
+    *components*, which the live field always had.
+  - **The coastal normal is derived from the currents field's own land mask**
+    (smooth the ocean mask, take its gradient, and it points from land into
+    water by construction), because no service here supplies coastline geometry.
+    That is coarse at ~0.25 degrees, so `coastline_confidence` reports how
+    well-defined each normal is and an ambiguous cell is dropped rather than
+    given an invented bearing. The mask cannot come from the *wind* field: wind
+    is defined over land, so its coverage edge is the whole globe.
+  - **The hemisphere asymmetry falls out of the sign of f**, never a latitude
+    branch — the same failure mode as eddy polarity, and pinned by a test that
+    mirrors identical geometry and identical wind across the equator.
+  - **Not corroborated against SST or chlorophyll, deliberately.** Bakun's index
+    says the wind is favourable, not that cold nutrient-rich water surfaced.
+    Corroboration is a second claim needing its own baseline — and the SST half
+    is now affordable, since the percentile climatology exists. That is the
+    natural next increment.
+- **Marine heatwaves — shipped 2026-08-17.** `services/heatwaves.py` +
+  `GET /api/ocean/heatwaves`, to the Hobday definition: SST above the
+  seasonally-varying 90th percentile for **at least five consecutive days**,
+  categorised by multiples of the mean-to-p90 gap.
+  - **The five-day clause is what separates an event from a warm afternoon.** A
+    detector comparing today's field to today's threshold reports weather and
+    calls it a heatwave; `detect` takes a stack of consecutive daily fields and
+    refuses when handed too few.
+  - Each day is compared against **its own** threshold: over a 30-day window in
+    spring the seasonal p90 moves measurably, and reusing the latest day's
+    threshold biases run length in whichever direction the season is going.
+  - `crw.py`'s 60S-60N masking is inherited for **aggregates only**; the per-cell
+    field is unmasked, because a Barents Sea heatwave is real.
+  - **It detects and does not track**, like the eddy detector: onset date,
+    duration and cumulative intensity all need identity held across days, which
+    is the frame-to-frame assignment problem with the same failure of presenting
+    a matcher's artefact as an observation. Run lengths are censored at the
+    window and `run_days_censored` says so.
+
+**Still open in this section**: the map layers and point-brief rows for both new
+detectors — the services and endpoints ship, the UI does not yet reach them.
 
 **Do not put cyclones, storm surge or coastal flooding in the first event
 list.** No cyclone track source is integrated (IBTrACS/IMD/JTWC are all external
@@ -429,18 +403,15 @@ and unwired), and `tidal_height` is `available: false` with no global source. An
 event list that silently omits the events a user most expects is worse than a
 shorter list that says what it covers.
 
-### Suggested order
+### What is left in this section
 
-1. ~~**`wind_u` / `wind_v` training runs**~~ — done 2026-08-15 (§1); the grid
-   builds they unblock are what remains.
-2. ~~**Eddy detection**, detection only~~ — shipped 2026-08-15. Eddy *tracking*
-   is the open half.
-3. **The climatology job**, piloted on SST.
-4. **Marine heatwaves** on that pilot, then **upwelling** (which the wind
-   components have now unblocked, once the grids finish).
-5. **Anomaly explorer**, once the climatology covers more than one variable.
-
----
+1. **Map layers and brief rows** for the heatwave and upwelling detectors. The
+   backend ships; nothing in the UI reaches it yet.
+2. **Eddy tracking** — the open half of the first detector. Validate against a
+   published eddy atlas, not against how plausible the tracks look.
+3. **Upwelling corroborated by SST**, now that a percentile baseline exists.
+4. **Anomaly explorer**, once the climatology covers more than one variable —
+   which is bounded by finding long-record sources, not by code.
 
 ## 5. Feature candidates, surveyed and kept
 
@@ -771,8 +742,18 @@ the *change* in degrees, so a 5° veer across north trains as −355. The fix is
 predict components and derive the angle, which is what `current_u`/`current_v`
 already do — and why the currents *particle* layer was never affected. That
 makes `current_direction` and `wind_direction` derived fields rather than
-trained ones, and it is waiting on the same `wind_u`/`wind_v` run as everything
-else in §1.
+trained ones.
+
+**No longer waiting on anything**: the `wind_u`/`wind_v` grids exist (§1), so
+this is now unblocked work rather than a dependency. Two parts have to move
+together — the point path (`forecasting/predictor.py`) and the grid path — and
+`test_grid_matches_the_point_path` is what keeps them honest. The interval is
+the interesting part: a confidence interval on a bearing cannot be the interval
+on `atan2` of two independent intervals, so it needs propagating deliberately
+rather than by construction. **`wave_direction` has no components in the
+registry and stays trained**; that asymmetry must be stated in the catalog
+rather than hidden, since one direction variable would then be derived and
+another not.
 
 ### Fish-habitat ensemble — stacking was never attempted
 
@@ -852,6 +833,25 @@ it first if the bar is ever tightened.
   `services/crw.py`'s `NOAA_DHW` id**; switching to a `_Lon0360` dataset would
   silently change the longitude convention of reported coordinates while the
   query kept working.
+
+---
+
+## Parked, with the reason
+
+Not abandoned — blocked on something this workflow cannot supply.
+
+- **Browser verification of the globe recentre, the drift layers and the
+  particle animations.** Agent-driven Chrome tabs are always hidden, so
+  `requestAnimationFrame` never fires, the map never initialises and every
+  animation freezes — a limitation of the harness, not evidence of a problem.
+  Needs one human look at `/map`, which should also check several particle
+  systems at once on a mid-range GPU: there are now seven possible flow layers,
+  each an independent `requestAnimationFrame` + `map.redraw()` loop with its own
+  trail framebuffers, and nothing coordinates them.
+- **DATRAS/RLS true absences.** §5 is right that this is a decision about what
+  the product *is*, not a data-ingestion task: adopting either relocates the
+  habitat model out of the northern Indian Ocean, which is the platform's reason
+  for existing. It needs a product call before any code.
 
 ---
 
