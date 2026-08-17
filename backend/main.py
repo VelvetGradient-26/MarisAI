@@ -44,6 +44,7 @@ from services import (
     forecast_tiles,
     forecast_warm,
     gibs,
+    heatwaves,
     ndbc,
     ocean_state,
     stokes_drift,
@@ -98,6 +99,10 @@ async def lifespan(_app: FastAPI):
     asyncio.create_task(crw.refresh_cache())
     asyncio.create_task(gibs.refresh_cache())
     asyncio.create_task(ocean_state.refresh_cache())
+    # Marine heatwaves. Cheap (one griddap request plus a numpy pass) and it
+    # degrades to a logged note when no climatology has been built yet, so a
+    # fresh clone starts without it rather than failing.
+    asyncio.create_task(heatwaves.refresh_cache())
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(refresh_sst_cache, "interval", hours=SST_REFRESH_INTERVAL_HOURS)
@@ -129,6 +134,11 @@ async def lifespan(_app: FastAPI):
     scheduler.add_job(gibs.refresh_cache, "interval", hours=gibs.REFRESH_INTERVAL_HOURS)
     scheduler.add_job(
         ocean_state.refresh_cache, "interval", hours=ocean_state.REFRESH_INTERVAL_HOURS
+    )
+    # OISST is a daily product published with about a day's lag, so anything
+    # faster re-fetches a field that cannot have changed.
+    scheduler.add_job(
+        heatwaves.refresh_cache, "interval", hours=heatwaves.REFRESH_INTERVAL_HOURS
     )
     # The forecast map's grids. By far the most expensive job here — ~25 min of
     # Copernicus reads and feature building per variable — so it runs twice a

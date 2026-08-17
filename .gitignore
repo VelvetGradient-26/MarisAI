@@ -265,7 +265,10 @@ backend/data/
 # evidence for the shipping-bar decision.
 #
 # The fetch cache below stays ignored: it is a local disk cache keyed on a
-# fetch window, not an artifact anyone would want back.
+# fetch window, not an artifact anyone would want back. It also holds the
+# climatology build's OISST year cache (~2.8 GB of raw daily fields); the
+# *fitted* climatology in backend/models/climatology/ is the artifact, and that
+# is version-controlled.
 backend/forecasting/.cache/
 
 # Experiment tracking store (machine_learning/marine_ml/tracking.py).

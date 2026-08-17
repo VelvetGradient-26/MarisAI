@@ -9,6 +9,7 @@ from services import (
     drift,
     eddies,
     edna,
+    heatwaves,
     stokes_drift,
 )
 from services.bathymetry import BathymetryError, get_elevation
@@ -186,6 +187,39 @@ async def get_eddies(
     except eddies.EddyError as exc:
         # Everything the caller could have got wrong was rejected above, so
         # anything reaching here is a cold or unusable currents cache.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/heatwaves")
+async def get_heatwaves():
+    """Marine heatwaves in the current sea-surface temperature field.
+
+    503, not 502: this reads a cache this server warms, over a climatology this
+    project builds offline, so an unavailable answer is ours to explain — the
+    same split as `/eddies` and the opposite of `/edna` below. The two reasons
+    are different and the message says which: no climatology has been built
+    (actionable — run the script), or the recent record is still loading.
+    """
+    try:
+        return heatwaves.current_field().as_dict()
+    except heatwaves.HeatwaveError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/heatwaves/point")
+async def get_heatwave_point(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+):
+    """Marine heatwave state at one coordinate.
+
+    Answers for a point with no heatwave as readily as for one with — an absence
+    is a result here, the same reason `/eddies` reports the distance to the
+    nearest feature rather than omitting the row.
+    """
+    try:
+        return heatwaves.at_point(lat, lon)
+    except heatwaves.HeatwaveError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
