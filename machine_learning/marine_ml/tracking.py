@@ -314,11 +314,21 @@ def track(
     params: Mapping[str, Any] | None = None,
     tags: Mapping[str, Any] | None = None,
     enabled: bool | None = None,
+    nested: bool = False,
 ) -> Iterator[RunHandle]:
     """Open a tracked run. Yields a `RunHandle` that never raises.
 
     `enabled=False` (or ``MARINE_ML_TRACKING=0``) yields an inert handle, so a
     quick experiment can opt out without the call sites growing conditionals.
+
+    `nested=True` opens a **child** of the run already active, which is how an
+    ensemble's members are recorded. The alternative — and what this codebase did
+    first — is to flatten members into the parent's metric names
+    (`cv_tss_lightgbm`, `holdout_boyce_maxent`, ...). That is legible in a single
+    run and useless across runs: MLflow cannot sort, filter or plot by a member
+    when the member is part of the key, so "is MaxEnt's Boyce drifting?" needs
+    reading every run by hand. As a child run the member is a row, and the
+    question is a sort.
     """
     if enabled is None:
         enabled = os.getenv("MARINE_ML_TRACKING", "1").strip().lower() not in {
@@ -350,7 +360,7 @@ def track(
         if existing is None:
             mlflow.create_experiment(experiment, artifact_location=artifact_uri())
         mlflow.set_experiment(experiment)
-        run = mlflow.start_run(run_name=run_name)
+        run = mlflow.start_run(run_name=run_name, nested=nested)
         started = True
         handle.run_id = run.info.run_id
     except Exception as exc:  # noqa: BLE001 - tracking must not block training

@@ -346,3 +346,62 @@ def _track(
                         {f"holdout_{metric}_{model}": value
                          for model, value in holdout[metric].items()}
                     )
+
+    # Each ensemble member as its own child run, *after* the parent closes its
+    # own metrics but inside the same tracking session.
+    #
+    # The flattened metrics above are kept rather than replaced: they are what
+    # makes one run readable at a glance. What they cannot do is answer a
+    # question *across* runs — MLflow cannot sort or plot by a member when the
+    # member is baked into the metric name — and the ensemble findings this
+    # project keeps hitting are exactly that shape: the softmax weighting change
+    # traded 0.03 of Boyce for 0.10 of TSS, and seeing that required reading two
+    # runs by hand. As child runs it is a sort.
+    _track_members(result, name, region, holdout)
+
+
+def _track_members(
+    result: TrainingResult,
+    name: str,
+    region: config.Region,
+    holdout,
+) -> None:
+    """One nested run per ensemble member.
+
+    Opened inside the parent's tracking context by MLflow's own active-run
+    stack, so these attach to the run `_track` just wrote rather than floating
+    loose. Best-effort like everything else here: a member that cannot be logged
+    is a warning, never a failed training run.
+    """
+    for model, cv_tss in sorted(result.model_scores.items()):
+        metrics = {"cv_tss": cv_tss}
+        if holdout is not None and model in holdout.index:
+            for metric in ("tss", "roc_auc", "pr_auc", "boyce"):
+                if metric in holdout.columns:
+                    value = holdout.loc[model, metric]
+                    if value is not None:
+                        metrics[f"holdout_{metric}"] = value
+
+        with tracking.track(
+            "fish_habitat_prediction",
+            run_name=f"{name}::{model}",
+            nested=True,
+            params={
+                "member": model,
+                # The weight this member drew, beside its own quality. The whole
+                # point of the softmax change was that these two had come apart:
+                # MaxEnt scored 0.619 against LightGBM's 0.826 and still drew 27%
+                # of the vote under proportional weighting.
+                "ensemble_weight": round(
+                    result.ensemble_weights.weights.get(model, 0.0), 4
+                ),
+                "ensemble_weighting": ENSEMBLE_WEIGHTING,
+            },
+            tags={
+                "problem": "fish_habitat",
+                "region": region.name,
+                "member": model,
+                "parent_run": name,
+            },
+        ) as member_run:
+            member_run.log_metrics(metrics)

@@ -186,3 +186,53 @@ def test_snapshot_config_captures_constants_and_skips_callables():
     assert snapshot["HAB_START"] == "2016-01-01"
     assert "lowercase_ignored" not in snapshot
     assert "SOME_FUNC" not in snapshot
+
+
+def test_nested_runs_attach_to_their_parent(store):
+    """Ensemble members are child runs, not flattened metric names.
+
+    The flattened form (`cv_tss_lightgbm`, `holdout_boyce_maxent`) is legible in
+    one run and useless across runs: MLflow cannot sort, filter or plot by a
+    member when the member is baked into the key, so "is MaxEnt's Boyce
+    drifting?" means reading every run by hand. As child runs it is a sort.
+    """
+    import mlflow
+
+    with tracking.track("nesting", run_name="parent") as parent:
+        parent.log_metrics({"ensemble_tss": 0.79})
+        for member, score in (("lightgbm", 0.826), ("maxent", 0.619)):
+            with tracking.track(
+                "nesting",
+                run_name=f"parent::{member}",
+                nested=True,
+                params={"member": member},
+            ) as child:
+                child.log_metrics({"cv_tss": score})
+
+    runs = mlflow.search_runs(experiment_names=["nesting"], output_format="list")
+    by_name = {r.info.run_name: r for r in runs}
+    assert set(by_name) == {"parent", "parent::lightgbm", "parent::maxent"}
+
+    parent_id = by_name["parent"].info.run_id
+    for member in ("lightgbm", "maxent"):
+        child = by_name[f"parent::{member}"]
+        assert child.data.tags.get("mlflow.parentRunId") == parent_id
+        # The member's score is its own metric, under a name shared across
+        # members — which is exactly what makes it comparable.
+        assert "cv_tss" in child.data.metrics
+        assert child.data.params["member"] == member
+
+    assert by_name["parent"].data.tags.get("mlflow.parentRunId") is None
+
+
+def test_a_nested_run_without_a_parent_still_works(store):
+    """Nesting must not become a precondition. A member logged outside a parent
+    run is a top-level run, not a crash — tracking never fails training."""
+    import mlflow
+
+    with tracking.track("orphan", run_name="lone", nested=True) as run:
+        run.log_metrics({"cv_tss": 0.5})
+
+    runs = mlflow.search_runs(experiment_names=["orphan"], output_format="list")
+    assert len(runs) == 1
+    assert runs[0].data.metrics["cv_tss"] == 0.5
