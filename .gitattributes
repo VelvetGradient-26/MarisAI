@@ -1,0 +1,18 @@
+# Forecasting artifacts are version-controlled through Git LFS.
+#
+# These were deliberately untracked until now (see the note in .gitignore for
+# what changed). They are ~214 MB across 747 files, so committing the bytes
+# into git proper would roughly quadruple a 68 MB history permanently — and a
+# later removal means rewriting and force-pushing main. LFS keeps the pointers
+# in history and the payload out of it.
+#
+# Only the binary payloads are tracked here. The JSON beside each model
+# (metadata, metrics, feature_columns) stays in plain git: it is small, it is
+# text, and it is the part worth reading in a diff when a retrain moves a
+# score.
+#
+# Anyone cloning this repo needs `git lfs install` before the checkout resolves
+# these to real files rather than to pointer stubs.
+*.pkl filter=lfs diff=lfs merge=lfs -text
+*.nc filter=lfs diff=lfs merge=lfs -text
+backend/models/forecasting/_reports/**/*.png filter=lfs diff=lfs merge=lfs -text

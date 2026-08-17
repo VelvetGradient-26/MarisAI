@@ -254,10 +254,18 @@ Artifacts/
 backend/data/
 
 # Forecasting engine artifacts (backend/forecasting/, backend/models/).
-# Trained models are regenerated with `scripts/train_forecasting.py` and are
-# a few hundred KB each across 32 variables x 4 horizons — reproducible from
-# config, so they are built rather than committed.
-backend/models/forecasting/
+#
+# `backend/models/forecasting/` used to be ignored here on the reasoning that
+# the models are reproducible from config, so they should be built rather than
+# committed. They are now tracked through Git LFS instead — see .gitattributes.
+# Reproducible is not the same as cheap: a full retrain is hours of Copernicus
+# fetching, and a single forecast grid is ~35 min of it, so "rebuild it" is a
+# real cost to impose on a fresh clone. The rejected horizons are kept for the
+# same reason CLAUDE.md gives for not deleting them — the artifact is the
+# evidence for the shipping-bar decision.
+#
+# The fetch cache below stays ignored: it is a local disk cache keyed on a
+# fetch window, not an artifact anyone would want back.
 backend/forecasting/.cache/
 
 # Experiment tracking store (machine_learning/marine_ml/tracking.py).
