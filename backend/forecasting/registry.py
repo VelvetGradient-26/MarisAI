@@ -25,6 +25,7 @@ from typing import Any
 
 from forecasting import ForecastingError
 from forecasting.config import ForecastingConfig, VariableConfig, get_config
+from forecasting import derived
 from forecasting.model_store import list_trained
 from services.download.registry import VARIABLE_REGISTRY
 
@@ -133,7 +134,24 @@ def catalog(
         configured = config.horizons_for(key)
         trained_horizons = trained.get(key, [])
 
-        if trained_horizons:
+        # A derived bearing has no model of its own: it is assembled from two
+        # component forecasts, so it is available exactly where both components
+        # are trained. See `forecasting/derived.py` for why a circular target is
+        # not modelled directly.
+        spec = derived.spec_for(key)
+        if spec is not None:
+            east, north = spec.components
+            trained_horizons = sorted(set(trained.get(east, [])) & set(trained.get(north, [])))
+            if trained_horizons:
+                available, reason = True, None
+            else:
+                available = False
+                reason = (
+                    f"{variable.label} is derived from {east} and {north}; train "
+                    f"both (`python scripts/train_forecasting.py --variable {east}`) "
+                    f"to make it available."
+                )
+        elif trained_horizons:
             available, reason = True, None
         else:
             available = False

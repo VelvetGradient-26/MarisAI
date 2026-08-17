@@ -51,7 +51,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.s3_pool import widen_s3_connection_pool  # noqa: E402
-from forecasting import ForecastingError, progress  # noqa: E402
+from forecasting import ForecastingError, derived, progress  # noqa: E402
 from forecasting.grid_history import ungriddable_reason  # noqa: E402
 from forecasting.grid_history import GridRequest, warm  # noqa: E402
 from forecasting.grid_predictor import (  # noqa: E402
@@ -125,8 +125,39 @@ def _configure_logging(verbose: bool) -> None:
         handler.addFilter(quiet)
 
 
+def _derive_one(variable: str) -> bool:
+    """Assemble a bearing grid from its components rather than scoring cells.
+
+    Seconds instead of ~25 minutes, because a direction is a pointwise function
+    of two grids that already exist. It also cannot drift from the point path:
+    both call the same convention in `forecasting/derived.py`.
+    """
+    import xarray as xr
+
+    spec = derived.spec_for(variable)
+    assert spec is not None
+    missing = [c for c in spec.components if not grid_path(c).exists()]
+    if missing:
+        logger.warning(
+            f"{variable}: cannot derive — component grid(s) missing: "
+            f"{', '.join(missing)}. Build those first."
+        )
+        return False
+
+    with (
+        xr.open_dataset(grid_path(spec.east)) as east,
+        xr.open_dataset(grid_path(spec.north)) as north,
+    ):
+        grid = derived.derive_grid(east, north, variable)
+        save_grid(grid, variable)
+    logger.info(f"{variable}: derived from {spec.east} + {spec.north}")
+    return True
+
+
 async def _build_one(variable: str, horizons: list[int], resolution: float) -> bool:
     started = time.monotonic()
+    if derived.is_derived(variable):
+        return _derive_one(variable)
     try:
         grid = await build_forecast_grid(
             variable, horizons, resolution_deg=resolution
@@ -213,16 +244,29 @@ async def _main_async(args: argparse.Namespace) -> int:
         )
         return 1
 
+    # A derived bearing has no model of its own — it is assembled from its two
+    # component grids — so it is offered wherever both components are trained.
+    # Listed here rather than special-cased at each call site, so `--all` picks
+    # them up in the same pass and lands them after the components it needs.
+    derivable = {
+        name: sorted(set(trained[spec.east]) & set(trained[spec.north]))
+        for name, spec in derived.DERIVED.items()
+        if spec.east in trained and spec.north in trained
+    }
+
     if args.all:
-        selected = dict(trained)
+        selected = {**trained, **derivable}
     else:
-        if args.variable not in trained:
+        if args.variable in derivable:
+            selected = {args.variable: derivable[args.variable]}
+        elif args.variable not in trained:
             logger.error(
                 f"{args.variable!r} has no trained model. Available: "
-                f"{', '.join(sorted(trained)) or 'none'}"
+                f"{', '.join(sorted({**trained, **derivable})) or 'none'}"
             )
             return 1
-        selected = {args.variable: trained[args.variable]}
+        else:
+            selected = {args.variable: trained[args.variable]}
 
     plan: dict[str, list[int]] = {}
     skipped: dict[str, str] = {}

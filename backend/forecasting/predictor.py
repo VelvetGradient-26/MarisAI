@@ -16,6 +16,7 @@ unpickling a forest on every request.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import threading
 from dataclasses import dataclass, field
@@ -27,6 +28,7 @@ import numpy as np
 import pandas as pd
 
 from forecasting import ForecastingError
+from forecasting import derived
 from forecasting.config import ForecastingConfig, get_config
 from forecasting.feature_engineering import build_features
 from forecasting.history import (
@@ -231,6 +233,23 @@ async def predict(
     model that still sees its full 30-day rolling window.
     """
     config = config or get_config()
+
+    # A derived bearing is a view over two component forecasts, not a model of
+    # its own — see `forecasting/derived.py` for why a circular target trained
+    # on `delta` is broken in a way that leaves no trace in its metrics.
+    if derived.is_derived(variable_key):
+        return await _predict_derived(
+            variable_key,
+            latitude,
+            longitude,
+            horizon,
+            history_window=history_window,
+            config=config,
+            root=root,
+            top_k=top_k,
+            include_history=include_history,
+        )
+
     variable = resolve(variable_key, config)
     validate_horizon(horizon, config)
 
@@ -465,3 +484,136 @@ async def predict_many(
             await predict(variable_key, latitude, longitude, horizon, **kwargs)
         )
     return results
+
+
+async def _predict_derived(
+    variable_key: str,
+    latitude: float,
+    longitude: float,
+    horizon: int,
+    *,
+    history_window: int | None,
+    config: ForecastingConfig,
+    root: Path | None,
+    top_k: int,
+    include_history: bool,
+) -> Forecast:
+    """A bearing assembled from two component forecasts.
+
+    Both components are forecast through the ordinary path — same features, same
+    validation, same intervals — and only then combined. Nothing about the
+    components' modelling changes; this is a presentation of them in the units a
+    user asked for.
+    """
+    spec = derived.spec_for(variable_key)
+    assert spec is not None  # guarded by the caller
+    variable = resolve(variable_key, config)
+
+    east, north = await asyncio.gather(
+        predict(
+            spec.east,
+            latitude,
+            longitude,
+            horizon,
+            history_window=history_window,
+            config=config,
+            root=root,
+            top_k=top_k,
+            include_history=False,
+        ),
+        predict(
+            spec.north,
+            latitude,
+            longitude,
+            horizon,
+            history_window=history_window,
+            config=config,
+            root=root,
+            top_k=top_k,
+            include_history=False,
+        ),
+    )
+
+    prediction = derived.combine(east.prediction, north.prediction, spec.convention)
+
+    # Each component's interval half-width stands in for its sigma. Symmetric by
+    # assumption, which these residual intervals very nearly are — and the
+    # asymmetry that does exist is not meaningful once projected onto an angle.
+    east_sigma = (east.interval.upper - east.interval.lower) / 2.0
+    north_sigma = (north.interval.upper - north.interval.lower) / 2.0
+    spread = derived.combine_uncertainty(
+        east.prediction, north.prediction, east_sigma, north_sigma
+    )
+    interval = Interval(
+        lower=(prediction - spread) % 360.0,
+        upper=(prediction + spread) % 360.0,
+        confidence_level=east.interval.confidence_level,
+        method=(
+            "first-order propagation through atan2 of the two component "
+            "intervals; widens without bound as the vector approaches zero, "
+            "where a direction is genuinely undefined"
+        ),
+        n_residuals=min(east.interval.n_residuals, north.interval.n_residuals),
+    )
+
+    last_observed = None
+    if east.last_observed is not None and north.last_observed is not None:
+        last_observed = derived.combine(
+            east.last_observed, north.last_observed, spec.convention
+        )
+
+    evaluation = dict(east.evaluation)
+    evaluation["validation"] = (
+        "derived from component forecasts; the metrics shown are the components'"
+    )
+
+    notes = [
+        f"{variable.label} is derived from {spec.east} and {spec.north} rather "
+        "than forecast directly. A bearing is circular, so a model trained on "
+        "the change in degrees learns a 355-degree swing every time the "
+        "direction crosses north; forecasting the components avoids that "
+        "entirely.",
+    ]
+    if spread >= 180.0:
+        notes.append(
+            "The forecast vector is close to zero, so its direction is "
+            "effectively undetermined — the interval covers the full circle."
+        )
+    notes.extend(dict.fromkeys([*east.notes, *north.notes]))
+
+    trend, delta = classify_trend(
+        prediction,
+        last_observed,
+        # The angular spread is the right noise scale here, not either
+        # component's RMSE, which is in m/s and would make every veer "steady".
+        spread,
+        circular=True,
+    )
+
+    return Forecast(
+        variable=variable_key,
+        label=variable.label,
+        unit=variable.unit,
+        latitude=east.latitude,
+        longitude=east.longitude,
+        horizon=horizon,
+        target_time=east.target_time,
+        prediction=prediction,
+        interval=interval,
+        trend=trend,
+        trend_delta=delta,
+        last_observed=last_observed,
+        last_observed_time=east.last_observed_time,
+        # The components' drivers, not the bearing's: a bearing has no features
+        # of its own, and attributing the east component's SHAP values to a
+        # direction would be a category error dressed as an explanation.
+        drivers=[],
+        model=f"{east.model} (components)",
+        model_version=f"{spec.east}@{east.model_version}+{spec.north}@{north.model_version}",
+        trained_at=east.trained_at,
+        evaluation=evaluation,
+        history=[],
+        data_quality=east.data_quality,
+        sources=list(dict.fromkeys([*east.sources, *north.sources])),
+        notes=notes,
+    )

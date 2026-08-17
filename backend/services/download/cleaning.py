@@ -128,8 +128,33 @@ def _derive_direction_from(ds: xr.Dataset, u_field: str, v_field: str) -> xr.Dat
 
 
 def _derive_direction_to(ds: xr.Dataset, u_field: str, v_field: str) -> xr.DataArray:
-    # Oceanographic convention for currents: direction the water flows TOWARD.
-    return np.degrees(np.arctan2(ds[v_field], ds[u_field])) % 360
+    """Oceanographic convention for currents: the direction the water flows TOWARD.
+
+    **This used to return a mathematical angle, not a compass bearing**, and the
+    two disagree everywhere except the 45-degree diagonal. `atan2(v, u)` measures
+    counter-clockwise from *east*; a bearing measures clockwise from *north*, so
+    the conversion is `90 - angle`, a reflection as well as a rotation. Without
+    it, water flowing due east was reported as 0 degrees (north) and water
+    flowing due north as 90 degrees (east) — plausible numbers, in range, wrong.
+
+    Measured against the live map's own formula
+    (`services/vector_source.py`, `services/drift.py`, both
+    `(90 - degrees(atan2(v, u))) % 360`):
+
+        flow      downloader (old)   live layer
+        east            0                90
+        north          90                 0
+        west          180               270
+        south         270               180
+        north-east     45                45   <- the one that matched
+
+    The sibling `_derive_direction_from` was never affected: `270 - angle` is
+    `(90 - angle) + 180`, i.e. the correct bearing plus the half turn that makes
+    it a "from", so wind agreed with the live field all along. That asymmetry is
+    why this survived — the two derivations sit three lines apart and only one
+    of them was wrong.
+    """
+    return (90 - np.degrees(np.arctan2(ds[v_field], ds[u_field]))) % 360
 
 
 # Poole & Atkins' relation between Secchi disc depth and the diffuse

@@ -153,3 +153,59 @@ def test_a_gap_in_the_fine_provider_averages_what_is_there() -> None:
     # Day one keeps its 18 good hours; day two is all-NaN and is dropped
     # rather than filled.
     assert frame["sea_surface_temperature"].tolist() == pytest.approx([10.0])
+
+
+class TestDirectionConventions:
+    """Both derived bearings must agree with the live map's own formula.
+
+    They sit three lines apart in `cleaning.py` and only one of them was wrong:
+    `direction_from` is `270 - angle`, which is the correct bearing plus a half
+    turn, while `direction_to` was the bare mathematical angle. The failure was
+    invisible — every value in range, only reflected about the 45-degree axis,
+    so the one test vector a person is most likely to try (north-east) matched.
+    """
+
+    @staticmethod
+    def _live_toward(u: float, v: float) -> float:
+        # The formula in services/vector_source.py and services/drift.py.
+        import math
+
+        return (90.0 - math.degrees(math.atan2(v, u))) % 360.0
+
+    @pytest.mark.parametrize(
+        ("u", "v"), [(1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-3, 2), (0.4, -1.7)]
+    )
+    def test_direction_to_is_a_compass_bearing(self, u, v):
+        import numpy as np
+        import xarray as xr
+
+        from services.download.cleaning import _derive_direction_to
+
+        ds = xr.Dataset(
+            {"u": ("p", np.array([float(u)])), "v": ("p", np.array([float(v)]))}
+        )
+        got = float(_derive_direction_to(ds, "u", "v").values[0])
+        assert got == pytest.approx(self._live_toward(u, v), abs=1e-9)
+
+    @pytest.mark.parametrize(("u", "v"), [(1, 0), (0, 1), (-1, 0), (0, -1), (1, 1)])
+    def test_direction_from_is_the_toward_bearing_plus_half_a_turn(self, u, v):
+        import numpy as np
+        import xarray as xr
+
+        from services.download.cleaning import _derive_direction_from
+
+        ds = xr.Dataset(
+            {"u": ("p", np.array([float(u)])), "v": ("p", np.array([float(v)]))}
+        )
+        got = float(_derive_direction_from(ds, "u", "v").values[0])
+        assert got == pytest.approx((self._live_toward(u, v) + 180.0) % 360.0, abs=1e-9)
+
+    def test_due_east_flow_is_ninety_degrees_not_zero(self):
+        """The specific regression, named so it cannot be re-broken quietly."""
+        import numpy as np
+        import xarray as xr
+
+        from services.download.cleaning import _derive_direction_to
+
+        ds = xr.Dataset({"u": ("p", np.array([1.0])), "v": ("p", np.array([0.0]))})
+        assert float(_derive_direction_to(ds, "u", "v").values[0]) == pytest.approx(90.0)

@@ -46,6 +46,7 @@ from forecasting.grid_predictor import (
     grid_path,
     save_grid,
 )
+from forecasting import ForecastingError, derived
 from forecasting.model_store import list_trained
 from services.colormaps import (
     CYCLIC_STOPS,
@@ -477,11 +478,23 @@ def buildable() -> dict[str, list[int]]:
     griddable, and a scheduled job should not log an error about that twice a
     day forever.
     """
-    return {
+    trained = list_trained()
+    buildable_grids = {
         variable: horizons
-        for variable, horizons in list_trained().items()
+        for variable, horizons in trained.items()
         if ungriddable_reason(variable) is None
     }
+    # Derived bearings have no model, so `list_trained` never sees them — but
+    # their grids are assembled from the component grids in seconds, so the
+    # scheduler should refresh them alongside. Added after the components so a
+    # single pass builds the components first and derives from what it just
+    # wrote, rather than from the previous cycle's grids.
+    for name, spec in derived.DERIVED.items():
+        if spec.east in buildable_grids and spec.north in buildable_grids:
+            buildable_grids[name] = sorted(
+                set(buildable_grids[spec.east]) & set(buildable_grids[spec.north])
+            )
+    return buildable_grids
 
 
 async def refresh_grids(*, force: bool = False) -> None:
@@ -510,9 +523,16 @@ async def refresh_grids(*, force: bool = False) -> None:
                 logger.info(f"forecast grid for {variable} is fresh, skipping rebuild")
                 continue
             try:
-                grid = await build_forecast_grid(
-                    variable, horizons, resolution_deg=REFRESH_RESOLUTION_DEG
-                )
+                if derived.is_derived(variable):
+                    # Assembled from the component grids this same pass just
+                    # wrote — seconds, no fetch, no inference. Threaded because
+                    # opening two global NetCDFs is still a blocking read on
+                    # the server's event loop.
+                    grid = await asyncio.to_thread(_derive_grid_from_components, variable)
+                else:
+                    grid = await build_forecast_grid(
+                        variable, horizons, resolution_deg=REFRESH_RESOLUTION_DEG
+                    )
                 # Threaded for the same reason the build itself is: serialising
                 # a global grid to netCDF is a blocking write, and this runs on
                 # the server's event loop.
@@ -527,6 +547,28 @@ async def refresh_grids(*, force: bool = False) -> None:
                 logger.exception(
                     f"forecast grid rebuild failed for {variable}, keeping previous grid"
                 )
+
+
+def _derive_grid_from_components(variable: str):
+    """Open a derived bearing's two component grids and combine them.
+
+    Kept beside the refresh rather than in `derived.py` because it is the only
+    part that touches this module's grid *paths*; the arithmetic itself lives in
+    one place, shared with the offline builder and the point forecast.
+    """
+    import xarray as xr
+
+    spec = derived.spec_for(variable)
+    assert spec is not None
+    east_path = _grid_dir() / f"{spec.east}.nc"
+    north_path = _grid_dir() / f"{spec.north}.nc"
+    if not east_path.exists() or not north_path.exists():
+        raise ForecastingError(
+            f"{variable} needs the {spec.east} and {spec.north} grids, and at "
+            "least one is missing"
+        )
+    with xr.open_dataset(east_path) as east, xr.open_dataset(north_path) as north:
+        return derived.derive_grid(east, north, variable)
 
 
 def tile_or_placeholder(
