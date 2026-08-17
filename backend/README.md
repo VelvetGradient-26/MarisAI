@@ -171,5 +171,6 @@ behaviour, and are worth knowing about before "simplifying" one:
 
 - `forecasting/README.md` — the forecasting engine in full
 - `../CLAUDE.md` (local, untracked) — the conventions, at length
-- `../TODO.md` — open work, and a record of what was tried and rejected
+- `../TODO.md` — pending work
+- `../DONE.md` — what shipped, and the findings that outlived it
 - `../docs/AUTH_REMOVAL.md` — why there is no authentication

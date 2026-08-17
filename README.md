@@ -255,8 +255,11 @@ by `/api/dashboard/data-quality`.
 
 ## Contributing
 
-`CLAUDE.md` (untracked, local) and `TODO.md` carry the conventions and the open
-work. `TODO.md` is the more useful of the two to read first: items are removed
-when they ship, and what stays behind is the measured finding or the decision
-with its reason — so it doubles as a record of what has already been tried and
-why it was rejected.
+`CLAUDE.md` (untracked, local) carries the conventions. `TODO.md` holds pending
+work only; `DONE.md` holds what shipped, together with the finding that outlived
+it — a measured number, or a decision with its reason attached.
+
+**`DONE.md` is the more useful of the two to read first.** It is not a
+changelog: it is the record of what was already tried, measured and rejected,
+including several beliefs this project held confidently and had to correct. A
+good deal of it exists so the same ground is not covered twice.
