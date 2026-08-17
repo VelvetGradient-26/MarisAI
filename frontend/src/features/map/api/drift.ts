@@ -1,7 +1,7 @@
 import type { CursorCoordinates } from '../types';
 import type { CurrentsMetaResponse } from './currents';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+import { API_BASE_URL } from '../../../utils/apiBase';
 
 /**
  * The combined drift field — surface current + Stokes drift + wind leeway.

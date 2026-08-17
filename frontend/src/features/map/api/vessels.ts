@@ -1,4 +1,4 @@
-const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || '';
+import { API_BASE_URL } from '../../../utils/apiBase';
 
 function url(path: string): URL {
   return new URL(path, API_BASE_URL || window.location.origin);

@@ -50,12 +50,60 @@ What it deliberately does not claim
 **It is a wind-derived index, not an observation of upwelled water.** Bakun's
 index says the wind is favourable, not that cold nutrient-rich water has
 actually surfaced — stratification, topography and relaxation all intervene.
-Corroborating it against an SST drop and a chlorophyll rise is a genuinely
-useful second step and is *not* done here: that is a second claim needing its
-own baseline (an SST anomaly needs the climatology in `services/climatology/`,
-and there is no resident chlorophyll grid at all). Reporting "upwelling
-confirmed" from wind alone would be exactly the overreach this codebase avoids
-elsewhere.
+
+The SST corroboration, and why the two halves stay separable
+------------------------------------------------------------
+The second claim is now made, because the baseline it needs exists:
+`services/climatology/` fits a per-cell, per-day-of-year percentile climatology,
+and `services/heatwaves.py` already holds today's SST scored against it. A
+favourable-wind cell with a *coincident cold anomaly* is a materially stronger
+statement than either half alone, and it is the statement a user actually wants.
+
+Three things keep it from becoming an overreach:
+
+* **"Wind favourable" and "wind favourable and the water responded" are
+  different findings and are reported as different fields.** `index` and its
+  sign are untouched by any of this; corroboration rides in its own block with
+  its own availability, its own timestamp and its own baseline. A cell with no
+  SST is `sst_unavailable`, never "not corroborated" — the same distinction the
+  dashboard draws between `unavailable` and a value.
+* **Two tiers, because one of them needs a number chosen by hand.**
+  `cool_anomaly` is SST at least `COOL_ANOMALY_C` below its seasonal mean, and
+  that threshold is a judgement. `confirmed_below_p10` is SST below its own
+  seasonal 10th percentile, which is defined by the local distribution and needs
+  no chosen constant — it is the stronger claim and is labelled separately for
+  exactly that reason.
+* **The two halves are not simultaneous, and the lag is published rather than
+  smoothed over.** The wind and current fields are hourly; OISST publishes daily
+  with a lag of a week or more (16 days, measured 2026-08-17). So this is never
+  "the water responded to *this* wind" — it is "the wind is favourable now, and
+  at the most recent SST observation, N days ago, this coast was cool for the
+  season". Past `MAX_SST_LAG_DAYS` even that is withheld with a reason.
+
+Chlorophyll is the third leg and is still not done: there is no resident
+chlorophyll grid and no long-record chlorophyll climatology to make an anomaly
+out of.
+
+**How strong the agreement actually is, measured.** On the live global field
+2026-08-17: 19.9% of upwelling-favourable coastal cells were cool for the season
+— against **17.2% of downwelling-favourable ones**, where cool water is not
+expected at all. Below the seasonal p10 the two are indistinguishable (4.1% vs
+3.9%), and the mean anomaly is *warmer* under favourable wind (+0.91 degC) than
+under downwelling (+0.60). So a corroborated cell is a real observation of cool
+water and a weak coincidence, not evidence that this wind drove it — with a
+14.5-day-old SST field it could hardly be anything else. That control is
+therefore computed and returned with every response (`control_cool_fraction`)
+rather than left for a reader to think of, the same rule CLAUDE.md records for
+HAB precision: a level is not a finding without its base rate.
+
+**And the obvious fix for that lag does not work — do not reach for it again.**
+Scoring the *live* hourly SST field instead of the lagged OISST record was built
+and measured on 2026-08-17: the weak tier's contrast was unchanged (+0.022
+against +0.026) and the strong tier **inverted** (-0.149), because the
+climatology is fitted on OISST and a different product carries 0.76 degC of
+per-cell disagreement across the coastal band — wider than `COOL_ANOMALY_C`
+itself. Latency is not the binding constraint; the baseline's product is. The
+numbers and the route back are in `services/sst_anomaly.py`.
 """
 
 from __future__ import annotations
@@ -66,10 +114,18 @@ from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
+import xarray as xr
 from loguru import logger
 from scipy.ndimage import uniform_filter
 
-from services import copernicus_currents, copernicus_wind, field_sampling, vector_field
+from services import (
+    copernicus_currents,
+    copernicus_wind,
+    field_sampling,
+    heatwaves,
+    sst_anomaly,
+    vector_field,
+)
 from services.vector_source import VectorSnapshot, VectorSourceError
 
 # Air density and the drag coefficient for the bulk stress formula
@@ -105,6 +161,30 @@ NORMAL_SMOOTHING_CELLS = 3
 # Such cells are dropped rather than assigned a bearing.
 MIN_COASTLINE_CONFIDENCE = 0.05
 
+# How far below its seasonal mean the water has to be before the anomaly counts
+# as cool. A hand-chosen number, and named as one: OISST's daily 1-degree field
+# carries real sub-tenth-degree wobble, so a test at "any negative anomaly"
+# would corroborate half of every coast on any given day. The stronger tier
+# below needs no such choice.
+COOL_ANOMALY_C = 0.5
+
+# Past this, the SST field is too old to say anything about today's wind and
+# corroboration is withheld with a reason rather than quietly aged. OISST's own
+# publication lag is a week or more — 16 days on 2026-08-17 — so this is a cap
+# on *staleness beyond the product's normal lag*, not a promise of simultaneity.
+MAX_SST_LAG_DAYS = 30
+
+# Per-cell corroboration states. `sst_unavailable` is a distinct answer from
+# `wind_only`, exactly as the dashboard's `unavailable` is distinct from a
+# value: "we could not look" must never render as "we looked and found nothing".
+CORROBORATION_STATES = (
+    "confirmed_below_p10",
+    "cool_anomaly",
+    "wind_only",
+    "not_applicable",
+    "sst_unavailable",
+)
+
 METHOD = (
     "Bakun coastal upwelling index: Ekman transport from bulk wind stress, "
     "projected onto the offshore normal of the model land mask"
@@ -116,8 +196,16 @@ LIMITS = (
     "A wind-derived index, not an observation of upwelled water. It says the "
     "wind is favourable; stratification, topography and relaxation decide "
     "whether cold nutrient-rich water actually surfaces.",
-    "Not corroborated against sea-surface temperature or chlorophyll. That is a "
-    "second claim needing its own baseline and is deliberately not made here.",
+    "The sea-surface temperature corroboration is a separate, later observation "
+    "— OISST publishes daily with a lag of a week or more, so a corroborated "
+    "cell means the wind is favourable now and the water was cool for the "
+    "season at the most recent SST field, not that the water responded to this "
+    "wind. The lag is reported with every response.",
+    "Corroboration is at OISST's 1-degree resolution, which is coarser than the "
+    "index's grid and cannot resolve an upwelling filament. It says the water in "
+    "a ~110 km cell is cool for the season.",
+    "Not corroborated against chlorophyll: there is no resident chlorophyll "
+    "field and no long-record chlorophyll climatology to make an anomaly from.",
     "The coastal normal is derived from a ~0.25 degree land mask, so a "
     "headland, a bay or a fjord is below the grid. `coastline_confidence` "
     "reports how well-defined each normal is.",
@@ -151,6 +239,24 @@ class UpwellingField:
     longitude: np.ndarray
     timestamp: datetime
     computed_at: datetime
+    # (lat, lon) float32, degC: SST minus its seasonal mean, resampled onto this
+    # grid. All-NaN when no SST field was available, which is a state the
+    # response reports rather than a failure.
+    sst_anomaly: np.ndarray
+    # (lat, lon) float32, degC: SST minus its seasonal p10. Negative is the
+    # strong cold claim.
+    sst_cold_exceedance: np.ndarray
+    # The SST observation's own day, which is *not* `timestamp`: see the module
+    # docstring on why the lag is published instead of being folded into one
+    # stamp the way `services/drift.py` folds its components.
+    sst_timestamp: datetime | None
+    sst_baseline: tuple[int, int] | None
+    # Which observation the anomaly came from — the live hourly physics field or
+    # the lagged OISST record. Published, because the two disagree per-cell at
+    # the scale of `COOL_ANOMALY_C` (sd 0.50 degC, 17.1% of cells over 0.5,
+    # measured 2026-08-01), so "which source" changes which cells are outlined.
+    sst_source: str | None
+    sst_unavailable_reason: str | None
 
     def coverage(self) -> dict[str, Any]:
         scored = np.isfinite(self.index)
@@ -174,6 +280,109 @@ class UpwellingField:
             "excluded_latitude_band_deg": EQUATORIAL_BAND_DEG,
         }
 
+    def state_at(self, row: int, column: int) -> str:
+        """One cell's corroboration state. See `CORROBORATION_STATES`."""
+        index = float(self.index[row, column])
+        anomaly = float(self.sst_anomaly[row, column])
+        if not np.isfinite(anomaly):
+            return "sst_unavailable"
+        if not (index > 0):
+            # The test is defined for upwelling-favourable wind only. A warm
+            # anomaly under downwelling-favourable wind is not the symmetric
+            # confirmation it looks like: downwelling suppresses a cold signal
+            # rather than producing a warm one, and the surface warms for a
+            # dozen reasons that have nothing to do with the coast.
+            return "not_applicable"
+        cold = float(self.sst_cold_exceedance[row, column])
+        if np.isfinite(cold) and cold < 0:
+            return "confirmed_below_p10"
+        if anomaly <= -COOL_ANOMALY_C:
+            return "cool_anomaly"
+        return "wind_only"
+
+    def corroboration(self) -> dict[str, Any]:
+        """How much of the favourable coast the water agrees with.
+
+        Kept out of `coverage`, which stays a description of the wind-derived
+        index alone. The two are different findings and a caller has to be able
+        to read one without the other coming along.
+        """
+        common: dict[str, Any] = {
+            "source": (
+                f"{self.sst_source} against the daily percentile climatology in "
+                "services/climatology/"
+                if self.sst_source
+                else "the daily percentile climatology in services/climatology/"
+            ),
+            "cool_anomaly_threshold_c": COOL_ANOMALY_C,
+            "states": list(CORROBORATION_STATES),
+        }
+        if self.sst_unavailable_reason is not None:
+            return {
+                **common,
+                "available": False,
+                "unavailable_reason": self.sst_unavailable_reason,
+            }
+
+        scored = np.isfinite(self.index)
+        favourable = scored & (self.index > 0)
+        with_sst = favourable & np.isfinite(self.sst_anomaly)
+        below_p10 = with_sst & np.isfinite(self.sst_cold_exceedance)
+        below_p10 &= self.sst_cold_exceedance < 0
+        cool = with_sst & (self.sst_anomaly <= -COOL_ANOMALY_C)
+        corroborated = cool | below_p10
+
+        # The base rate the corroborated fraction has to be read against, and it
+        # is not optional. Measured 2026-08-17 on the live global field: 19.9% of
+        # favourable coastal cells were cool for the season against **17.2% of
+        # downwelling-favourable ones** — so on a single snapshot the agreement
+        # is barely better than chance, and a reader given only the first number
+        # would take a weak coincidence for a confirmed mechanism. The same rule
+        # CLAUDE.md records for HAB precision: quote the lift, not the level.
+        control = scored & (self.index < 0) & np.isfinite(self.sst_anomaly)
+        control_cool = control & (self.sst_anomaly <= -COOL_ANOMALY_C)
+        control_n = int(control.sum())
+
+        examined = int(with_sst.sum())
+        assert self.sst_timestamp is not None  # set together with the arrays
+        lag = self.timestamp - self.sst_timestamp
+        return {
+            **common,
+            "available": True,
+            "sst_timestamp": self.sst_timestamp.isoformat(),
+            "lag_hours": round(lag.total_seconds() / 3600.0, 1),
+            "baseline": (
+                {"start": self.sst_baseline[0], "end": self.sst_baseline[1]}
+                if self.sst_baseline
+                else None
+            ),
+            "favourable_cells": int(favourable.sum()),
+            # The denominator, stated. Coastal cells outside OISST's coverage
+            # are not corroborated *and not refuted*, and a fraction taken over
+            # all favourable cells would silently call them refuted.
+            "favourable_cells_with_sst": examined,
+            "corroborated_cells": int(corroborated.sum()),
+            "below_p10_cells": int(below_p10.sum()),
+            "corroborated_fraction": (
+                round(float(corroborated.sum() / examined), 4) if examined else None
+            ),
+            # Named `control_*`, not `downwelling_*`: its job is to be the
+            # denominator of belief, not another finding about downwelling.
+            "control_cells": control_n,
+            "control_cool_fraction": (
+                round(float(control_cool.sum() / control_n), 4) if control_n else None
+            ),
+            "note": (
+                "The wind is favourable now; the water was cool for the season "
+                "at the most recent sea-surface temperature field, which is "
+                "older. This is coincidence in space, not a causal link in time. "
+                "Read the corroborated fraction against `control_cool_fraction` "
+                "— the same fraction over downwelling-favourable coasts, where "
+                "cool water is not expected. The two being close means this "
+                "snapshot's agreement is weak, however many cells are outlined."
+            ),
+        }
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp.isoformat(),
@@ -185,6 +394,7 @@ class UpwellingField:
                 "offshore); negative is downwelling-favourable"
             ),
             "coverage": self.coverage(),
+            "corroboration": self.corroboration(),
             "limits": list(LIMITS),
         }
 
@@ -259,16 +469,25 @@ def _coastal_band(ocean: np.ndarray) -> np.ndarray:
     return ocean & near_land
 
 
-def detect(wind: VectorSnapshot, currents: VectorSnapshot) -> UpwellingField:
-    """Detect upwelling-favourable coasts.
+def detect(
+    wind: VectorSnapshot,
+    currents: VectorSnapshot,
+    sst: sst_anomaly.SstAnomalyField | None = None,
+) -> UpwellingField:
+    """Detect upwelling-favourable coasts, optionally corroborated by SST.
 
-    Pure — two snapshots in, a field out, no fetching and no clock beyond the
+    Pure — snapshots in, a field out, no fetching and no clock beyond the
     stamp. Same shape as `services/eddies.py::detect` and for the same reason:
     the science is then testable without a network.
 
     The **currents** snapshot supplies the grid and the land mask; the wind is
     resampled onto it. Not the other way round: the wind product covers the
     whole globe including land, so its coverage edge is not a coast.
+
+    `sst` is optional throughout, and the index is identical with and without
+    it. Corroboration adds a claim; it never edits or filters the wind-derived
+    one, so a cold SST cache degrades this to what it always was rather than
+    failing it.
     """
     lat = np.asarray(currents.lat, dtype="float64")
     lon = np.asarray(currents.lon, dtype="float64")
@@ -296,6 +515,15 @@ def detect(wind: VectorSnapshot, currents: VectorSnapshot) -> UpwellingField:
     )
     index = np.where(usable, index, np.nan).astype("float32")
 
+    # The stalest of the two live inputs, for the same reason `services/drift.py`
+    # reports the stalest term: a composite is only as current as its oldest
+    # component, and the wind blend routinely lags the hourly currents. The SST
+    # field is deliberately *not* folded in — it is a separate observation of a
+    # separate quantity, and averaging it into one stamp would hide the very lag
+    # the corroboration has to disclose.
+    stamp = min(wind.timestamp, currents.timestamp)
+    anomaly, cold, sst_reason = _corroborating_sst(sst, lat, lon, stamp)
+
     return UpwellingField(
         index=index,
         coastline_confidence=confidence.astype("float32"),
@@ -303,12 +531,93 @@ def detect(wind: VectorSnapshot, currents: VectorSnapshot) -> UpwellingField:
         normal_north=unit_north.astype("float32"),
         latitude=lat,
         longitude=lon,
-        # The stalest of the two inputs, for the same reason `services/drift.py`
-        # reports the stalest term: a composite is only as current as its oldest
-        # component, and the wind blend routinely lags the hourly currents.
-        timestamp=min(wind.timestamp, currents.timestamp),
+        timestamp=stamp,
         computed_at=datetime.now(UTC),
+        sst_anomaly=anomaly,
+        sst_cold_exceedance=cold,
+        sst_timestamp=sst.timestamp if sst_reason is None and sst else None,
+        sst_baseline=sst.baseline if sst_reason is None and sst else None,
+        sst_source=sst.source if sst_reason is None and sst else None,
+        sst_unavailable_reason=sst_reason,
     )
+
+
+def _corroborating_sst(
+    sst: sst_anomaly.SstAnomalyField | None,
+    lat: np.ndarray,
+    lon: np.ndarray,
+    stamp: datetime,
+) -> tuple[np.ndarray, np.ndarray, str | None]:
+    """The SST anomaly on this field's grid, or a reason there is none.
+
+    Returns all-NaN arrays alongside the reason rather than `None`, so every
+    downstream read is the same shape regardless — a per-cell branch on "is
+    there an SST field at all" is how a cell with no data starts rendering as a
+    cell with no anomaly.
+    """
+    empty = np.full((lat.size, lon.size), np.nan, dtype="float32")
+    if sst is None:
+        return (
+            empty,
+            empty.copy(),
+            "no sea-surface temperature anomaly is loaded — the marine heatwave "
+            "detector, which computes it, has not run or has no climatology "
+            "built (see `scripts/build_climatology.py`)",
+        )
+
+    # Signed, then compared on magnitude. The gap is normally large and
+    # positive (OISST is weeks behind), but it can go *negative*: the wind blend
+    # lagged the currents by 1.3 days on 2026-08-17, so a fresher SST field than
+    # the wind is a real state rather than an impossible one. A bare `>` would
+    # wave through an SST field arbitrarily far in the future of the wind.
+    lag_days = (stamp - sst.timestamp).total_seconds() / 86400.0
+    if abs(lag_days) > MAX_SST_LAG_DAYS:
+        return (
+            empty,
+            empty.copy(),
+            f"the most recent sea-surface temperature field is "
+            f"{abs(lag_days):.1f} days "
+            f"{'older' if lag_days > 0 else 'newer'} than the wind, past the "
+            f"{MAX_SST_LAG_DAYS}-day limit for saying anything about today's "
+            "coast",
+        )
+
+    return (
+        _resample_scalar(sst.anomaly, sst.latitude, sst.longitude, lat, lon),
+        _resample_scalar(sst.cold_exceedance, sst.latitude, sst.longitude, lat, lon),
+        None,
+    )
+
+
+def _resample_scalar(
+    values: np.ndarray,
+    source_lat: np.ndarray,
+    source_lon: np.ndarray,
+    lat: np.ndarray,
+    lon: np.ndarray,
+) -> np.ndarray:
+    """A NaN-holed scalar field onto this grid, via the shared sampler.
+
+    `field_sampling.build_sampler` rather than a bare interpolator, because that
+    is where the two properties this needs already live: coverage is resampled
+    separately from values, so a coastal cell beside OISST's land mask keeps its
+    own value instead of being poisoned to NaN by a land neighbour; and the
+    longitude wrap is *measured* from the cell edges, which OISST's global grid
+    needs and a regional field must not get.
+    """
+    field = xr.DataArray(
+        np.asarray(values, dtype="float64"),
+        dims=("latitude", "longitude"),
+        coords={"latitude": source_lat, "longitude": source_lon},
+    )
+    sampler = field_sampling.build_sampler(field)
+    # Into the sampler's own frame. The physics grid and OISST need not share a
+    # longitude origin, and a query outside the axis silently returns NaN, which
+    # would present as "no SST anywhere" rather than as a frame mismatch.
+    # `vector_field.wrap_longitude`'s arithmetic, over a whole axis at once.
+    origin = float(source_lon[0])
+    query = origin + (np.asarray(lon, dtype="float64") - origin) % 360.0
+    return sampler(query, lat).astype("float32")
 
 
 def _resample(
@@ -335,6 +644,7 @@ def _resample(
 # --------------------------------------------------------------------- cache
 
 _cache: UpwellingField | None = None
+_cache_key: tuple[datetime, datetime | None] | None = None
 _lock = threading.Lock()
 
 
@@ -355,25 +665,44 @@ def _current_field() -> UpwellingField:
             f"of them has no data yet ({exc})"
         ) from exc
 
+    # Read, never fetched: an absent anomaly is a missing corroboration, not a
+    # failure of the index.
+    #
+    # **The lagged OISST record, deliberately, and not the live SST field.**
+    # Scoring the live hourly physics field against this OISST-fitted baseline
+    # was built and measured and is worse: see `services/sst_anomaly.py` for the
+    # numbers. Freshness is not the binding constraint here.
+    sst = heatwaves.sst_anomaly_field()
+
     stamp = min(wind.timestamp, currents.timestamp)
-    global _cache
+    sst_stamp = sst.timestamp if sst is not None else None
+    # Keyed on *both* inputs' stamps. Keyed on the wind alone, a corroboration
+    # computed against a fortnight-old SST field would survive every OISST
+    # publication until the wind happened to move. The key is held separately
+    # rather than read back off the field, because a field whose SST was refused
+    # for age records no SST stamp at all and would never match itself.
+    key = (stamp, sst_stamp)
+    global _cache, _cache_key
     with _lock:
         cached = _cache
-        if cached is not None and cached.timestamp == stamp:
+        if cached is not None and _cache_key == key:
             return cached
 
-    field = detect(wind, currents)
+    field = detect(wind, currents, sst)
     coverage = field.coverage()
+    corroboration = field.corroboration()
     logger.info(
         "upwelling detection at {timestamp}: {favourable} of {cells} coastal "
-        "cells upwelling-favourable",
+        "cells upwelling-favourable, {corroborated} corroborated by SST",
         timestamp=field.timestamp.isoformat(),
         favourable=coverage.get("upwelling_favourable_cells", 0),
         cells=coverage.get("coastal_cells", 0),
+        corroborated=corroboration.get("corroborated_cells", "none (no SST)"),
     )
 
     with _lock:
         _cache = field
+        _cache_key = key
     return field
 
 
@@ -430,10 +759,68 @@ def at_point(latitude: float, longitude: float) -> dict[str, Any]:
             ),
             1,
         ),
+        "corroboration": _point_corroboration(field, row, column),
         "note": (
             "A wind-derived index: the wind is favourable for upwelling, which "
             "is not the same as cold nutrient-rich water having surfaced."
         ),
+    }
+
+
+# What each state means, in the words a brief or a tooltip can print unedited.
+# The wording is deliberately about *what was observed*, never "confirmed" or
+# "no upwelling": the wind index and the water are two observations that can
+# agree, and neither one settles the other.
+_STATE_NOTES = {
+    "confirmed_below_p10": (
+        "The wind is favourable and the water is below its seasonal 10th "
+        "percentile — the strongest agreement available here."
+    ),
+    "cool_anomaly": (
+        f"The wind is favourable and the water is at least {COOL_ANOMALY_C} degC "
+        "below its seasonal mean, though not below its 10th percentile."
+    ),
+    "wind_only": (
+        "The wind is favourable but the water is not cool for the season. That "
+        "is a real reading, not a missing one: upwelling can be suppressed by "
+        "stratification, or the wind may not have blown long enough yet."
+    ),
+    "not_applicable": (
+        "The wind is downwelling-favourable, and a warm surface would not "
+        "corroborate that the way a cold one corroborates upwelling."
+    ),
+    "sst_unavailable": (
+        "No sea-surface temperature anomaly covers this cell, so the wind index "
+        "here is uncorroborated — which is not the same as contradicted."
+    ),
+}
+
+
+def _point_corroboration(field: UpwellingField, row: int, column: int) -> dict[str, Any]:
+    """The corroboration block for one cell."""
+    if field.sst_unavailable_reason is not None:
+        return {"available": False, "unavailable_reason": field.sst_unavailable_reason}
+
+    state = field.state_at(row, column)
+    anomaly = float(field.sst_anomaly[row, column])
+    cold = float(field.sst_cold_exceedance[row, column])
+    assert field.sst_timestamp is not None  # set together with the arrays
+    return {
+        "available": True,
+        "state": state,
+        "corroborated": state in ("confirmed_below_p10", "cool_anomaly"),
+        "sst_anomaly_c": round(anomaly, 3) if np.isfinite(anomaly) else None,
+        "below_seasonal_p10": bool(np.isfinite(cold) and cold < 0),
+        "sst_timestamp": field.sst_timestamp.isoformat(),
+        "lag_hours": round(
+            (field.timestamp - field.sst_timestamp).total_seconds() / 3600.0, 1
+        ),
+        "baseline": (
+            {"start": field.sst_baseline[0], "end": field.sst_baseline[1]}
+            if field.sst_baseline
+            else None
+        ),
+        "note": _STATE_NOTES[state],
     }
 
 
@@ -470,6 +857,16 @@ def cells() -> dict[str, Any]:
                 "index": round(float(field.index[row, column]), 3),
                 "favourable": bool(field.index[row, column] > 0),
                 "confidence": round(float(field.coastline_confidence[row, column]), 3),
+                # Both travel per cell so the layer can draw agreement without
+                # a second request. `null` is the anomaly's absence, never 0 —
+                # a zero anomaly means the water is exactly average, which is a
+                # measurement.
+                "sst_anomaly_c": (
+                    round(float(field.sst_anomaly[row, column]), 3)
+                    if np.isfinite(field.sst_anomaly[row, column])
+                    else None
+                ),
+                "corroboration": field.state_at(row, column),
             }
             for row, column in zip(rows.tolist(), columns.tolist(), strict=True)
         ],

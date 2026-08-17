@@ -65,7 +65,16 @@
 
   position: relative;
   min-height: 100vh;
-  overflow-x: hidden;
+  /* `clip`, not `hidden`, and it is load-bearing for every scroll-driven
+     animation on this page. `overflow-x: hidden` computes the other axis to
+     `auto`, which makes this element a **scroll container** — and
+     `animation-timeline: view()` resolves against the subject's nearest
+     scrollport, not the viewport. So the hero parallax and the card turns
+     below got a real `ViewTimeline` bound to a box that never scrolls, and sat
+     frozen at progress 0 while `getAnimations()` reported them as running.
+     `clip` suppresses the horizontal overflow the marquee would otherwise
+     cause without creating a scrollport at all. */
+  overflow-x: clip;
   background: var(--lp-bg);
   color: var(--lp-text);
   font-family: var(--lp-font-body);
@@ -242,7 +251,9 @@
   /* The navbar is fixed and overlays every page; content must clear it. */
   padding: calc(var(--navbar-h, 64px) + clamp(4rem, 12vh, 9rem)) var(--lp-gutter)
     clamp(6rem, 14vh, 9rem);
-  overflow: hidden;
+  /* Same reason as `.lp-root` above: this is the hero content's *nearest*
+     ancestor, so `hidden` here freezes the parallax on its own. */
+  overflow: clip;
 }
 
 .lp-hero__field {
@@ -278,6 +289,51 @@
   max-width: var(--lp-measure);
   margin: 0 auto;
   will-change: transform, opacity;
+}
+
+/* The hero parallax, driven by the browser rather than by a scroll listener.
+   `Hero` writes the same transform from JS where this is unsupported, and
+   disables itself where it is not — see `supportsViewTimeline`.
+
+   **The guarded state is the animated one, never the hidden one.** Everything
+   that could make the headline invisible lives inside this `@supports`; a
+   browser without view timelines gets the element exactly as authored, fully
+   visible, which is the same resolution reduced motion takes below. Authored
+   the other way round — opacity 0 by default, revealed by the animation — an
+   unsupported browser would render a blank hero.
+
+   The range starts at `cover 50%`, i.e. the moment the content is centred in
+   the viewport, because that is where the JS formula reads zero. Starting at
+   `cover 0%` would have the hero already part-faded at the top of the page,
+   since a full-height hero begins its `cover` range above the fold. */
+@supports (animation-timeline: view()) {
+  .lp-hero__content {
+    animation: lp-hero-parallax linear both;
+    animation-timeline: view();
+    animation-range: cover 50% cover 100%;
+  }
+
+  @keyframes lp-hero-parallax {
+    from {
+      transform: translate3d(0, 0, 0);
+      opacity: 1;
+    }
+    /* Gone before it reaches the top edge, so the headline never crosses the
+       navbar at half opacity. */
+    62% {
+      opacity: 0;
+    }
+    to {
+      transform: translate3d(0, -60px, 0);
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lp-hero__content {
+      animation: none;
+    }
+  }
 }
 
 .lp-eyebrow--hero {
@@ -673,12 +729,232 @@
   border-radius: 14px;
   background: var(--lp-glyph-bg);
   border: 1px solid var(--lp-rule-soft);
+
+  /* The camera. Deliberately shallow — a long perspective flattens the object
+     back into the icon it used to be, and a short one distorts the line art
+     into something that reads as a mistake. */
+  perspective: 620px;
+  perspective-origin: 50% 42%;
+}
+
+/* The object itself. `preserve-3d` has to be here rather than on `.lp-glyph`,
+   because the perspective element must stay flat for its children to share one
+   camera. */
+.lp-glyph__stage {
+  position: relative;
+  display: block;
+  transform-style: preserve-3d;
+  /* The pose at rest, and the one a browser without view timelines keeps.
+     Static, but still unmistakably an object seen from an angle. */
+  transform: rotateX(9deg) rotateY(-13deg);
+}
+
+/* Alternate the turn so a row of four does not read as four copies of one
+   rotation. */
+.lp-surface:nth-child(even) .lp-glyph__stage {
+  transform: rotateX(9deg) rotateY(13deg);
+}
+
+/* The pointer's tilt, on its own element. It cannot share `.lp-glyph__stage`
+   with the scroll animation: a running animation wins the cascade for
+   `transform`, so whichever of the two were written there second would simply
+   never appear. Nested, the two compose. */
+.lp-glyph__tilt {
+  position: relative;
+  display: block;
+  transform-style: preserve-3d;
+  transform: rotateY(calc(var(--pxn, 0) * 11deg)) rotateX(calc(var(--pyn, 0) * -9deg));
+  transition: transform 0.4s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* Every layer of the object occupies the same box, so they stack in depth
+   rather than in flow. The front face keeps the box in the layout. */
+.lp-glyph__echo,
+.lp-glyph__gloss,
+.lp-glyph__grid {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+}
+
+.lp-glyph__face {
+  position: relative;
+  display: block;
+  transform: translateZ(0);
+  transition: transform 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* **The artwork repeated into the distance.** This is what makes it an object
+   instead of an icon with a shadow behind it: each surface here *is* a stack of
+   layers, and seeing the same figure recede reads as depth immediately, where
+   an abstract plate reads as a drop shadow. Desaturated and dimmed with
+   distance, which is the cheapest honest depth cue there is. */
+.lp-glyph__echo {
+  opacity: 0.34;
+  filter: saturate(0.35);
+}
+
+.lp-glyph__echo--mid {
+  transform: translateZ(-26px) scale(0.955);
+}
+
+.lp-glyph__echo--far {
+  opacity: 0.16;
+  transform: translateZ(-54px) scale(0.9);
+}
+
+/* A floor under the stack, so the object sits *in* something. Kept faint: at
+   full strength the grid competed with the line art it is supposed to support. */
+.lp-glyph__grid {
+  transform: translateZ(-72px) scale(0.86);
+  border: 1px solid var(--lp-rule-soft);
+  border-radius: 12px;
+  background-image:
+    linear-gradient(var(--lp-rule-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lp-rule-soft) 1px, transparent 1px);
+  background-size: 22px 22px;
+  opacity: 0.5;
+}
+
+/* Specular sheen on the front face, tracking the pointer. It is what sells the
+   faces as physical surfaces rather than as stacked transparencies — a solid
+   turning in light has a highlight that moves across it. */
+.lp-glyph__gloss {
+  transform: translateZ(1px);
+  border-radius: 12px;
+  background: radial-gradient(
+    260px circle at var(--px, 50%) var(--py, 12%),
+    color-mix(in oklab, var(--lp-accent) 22%, transparent),
+    transparent 60%
+  );
+  opacity: 0;
+  transition: opacity var(--ma-duration-slow, 0.42s) var(--ma-ease);
+  mix-blend-mode: screen;
+}
+
+.lp-surface:hover .lp-glyph__gloss {
+  opacity: 1;
 }
 
 .lp-glyph__svg {
   display: block;
   width: 100%;
   height: auto;
+}
+
+/* Turning the object as the card crosses the viewport.
+   Same shape as the hero: the animated pose is inside `@supports`, so a
+   browser without view timelines keeps the static angled pose above rather
+   than losing the object. The `both` fill matters here — without it the stage
+   snaps back to the rest pose outside the range, which reads as a glitch at
+   the moment the card settles. */
+@supports (animation-timeline: view()) {
+  .lp-glyph__stage {
+    animation: lp-glyph-turn linear both;
+    animation-timeline: view();
+    animation-range: entry 15% exit 85%;
+  }
+
+  .lp-surface:nth-child(even) .lp-glyph__stage {
+    animation-name: lp-glyph-turn-alt;
+  }
+
+  /* Turns toward the reader as the card centres and away at both ends, so
+     scrolling reads as walking past an object on a shelf.
+
+     **The midpoint keeps a residual angle rather than going square-on.** At
+     zero rotation the echoes sit exactly behind the front face and the whole
+     stack collapses into what looks like a blurred icon — the depth is only
+     legible while there is some parallax between the layers. So the object is
+     never quite face-on; it is only ever less turned. */
+  @keyframes lp-glyph-turn {
+    from {
+      transform: rotateX(17deg) rotateY(-27deg);
+    }
+    50% {
+      transform: rotateX(5deg) rotateY(-9deg);
+    }
+    to {
+      transform: rotateX(-13deg) rotateY(21deg);
+    }
+  }
+
+  @keyframes lp-glyph-turn-alt {
+    from {
+      transform: rotateX(17deg) rotateY(27deg);
+    }
+    50% {
+      transform: rotateX(5deg) rotateY(9deg);
+    }
+    to {
+      transform: rotateX(-13deg) rotateY(-21deg);
+    }
+  }
+
+  /* The stack opens as the object turns, so the depth is legible while it
+     moves rather than only being implied by the static offsets. */
+  .lp-glyph__echo--mid {
+    animation: lp-echo-mid linear both;
+    animation-timeline: view();
+    animation-range: entry 15% exit 85%;
+  }
+
+  .lp-glyph__echo--far {
+    animation: lp-echo-far linear both;
+    animation-timeline: view();
+    animation-range: entry 15% exit 85%;
+  }
+
+  @keyframes lp-echo-mid {
+    from {
+      transform: translateZ(-12px) scale(0.98);
+    }
+    50% {
+      transform: translateZ(-34px) scale(0.945);
+    }
+    to {
+      transform: translateZ(-12px) scale(0.98);
+    }
+  }
+
+  @keyframes lp-echo-far {
+    from {
+      transform: translateZ(-24px) scale(0.945);
+    }
+    50% {
+      transform: translateZ(-70px) scale(0.875);
+    }
+    to {
+      transform: translateZ(-24px) scale(0.945);
+    }
+  }
+
+  /* Resolves to the static angled pose, never to a faster turn. */
+  @media (prefers-reduced-motion: reduce) {
+    .lp-glyph__stage,
+    .lp-glyph__echo--mid,
+    .lp-glyph__echo--far {
+      animation: none;
+    }
+  }
+}
+
+/* Hover lifts the front face clear of the stack — the 3D equivalent of the
+   flat glyph's old drift.
+
+   **It is on the face, not on the stage, and that is a constraint rather than
+   a preference.** The stage's transform belongs to the scroll animation, and a
+   running animation beats both a transition and a static rule for the same
+   property: a hover pose written there is simply never seen while the card is
+   in the animated range. The face is a child, so its own translate composes
+   with whatever the stage is doing instead of fighting it. */
+.lp-glyph__face {
+  transition: transform 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.lp-surface:hover .lp-glyph__face {
+  transform: translateZ(22px);
 }
 
 /* Glyph internals drift on card hover — the animation is what separates this
@@ -1429,7 +1705,12 @@
 .lp-surface {
   position: relative;
   isolation: isolate;
-  overflow: hidden;
+  /* `clip` rather than `hidden`, for the reason `.lp-root` carries at length:
+     `hidden` makes the card a scroll container, and the glyph's
+     `animation-timeline: view()` then measures the *card's* box — which never
+     scrolls — so the 3D turn froze at one pose while still reporting itself as
+     a running animation. This still clips the pointer wash to the radius. */
+  overflow: clip;
 }
 
 .lp-surface::before {

@@ -1,6 +1,6 @@
 import type { CurrentsMetaResponse } from './currents';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+import { API_BASE_URL } from '../../../utils/apiBase';
 
 /** One offered depth level, and whether it can be drawn right now.
  *

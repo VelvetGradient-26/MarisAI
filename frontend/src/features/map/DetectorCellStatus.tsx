@@ -100,7 +100,7 @@ export function UpwellingStatus({
     );
   }
 
-  const { coverage } = payload;
+  const { coverage, corroboration } = payload;
   const stamp = payload.timestamp.slice(11, 16);
 
   if (coverage.coastal_cells === 0) {
@@ -122,6 +122,55 @@ export function UpwellingStatus({
       <span className="eddy-status__meta">
         {stamp} · wind-derived index, not observed upwelling
       </span>
+      <span className="eddy-status__meta">{corroborationLine(corroboration)}</span>
     </div>
   );
+}
+
+/**
+ * The SST half, as one line under the wind count.
+ *
+ * Its job is the denominator. An outline on the map says "the water is cool
+ * here too"; nothing on the map can say "we had no SST for this coast at all",
+ * and without that number an un-outlined coast reads as a checked-and-refuted
+ * one. So the checked count is always stated, and when it is zero that is the
+ * whole message.
+ */
+function corroborationLine(
+  corroboration: UpwellingResponse['corroboration']
+): string {
+  if (!corroboration.available) {
+    return `No SST corroboration — ${corroboration.unavailable_reason ?? 'unavailable'}`;
+  }
+
+  const checked = corroboration.favourable_cells_with_sst ?? 0;
+  const favourable = corroboration.favourable_cells ?? 0;
+  if (checked === 0) {
+    return favourable === 0
+      ? 'No upwelling-favourable coast to corroborate'
+      : 'No sea-surface temperature covers any favourable cell — none checked';
+  }
+
+  const days = Math.round((corroboration.lag_hours ?? 0) / 24);
+  const strong = corroboration.below_p10_cells ?? 0;
+  return (
+    `${(corroboration.corroborated_cells ?? 0).toLocaleString()} of ${checked.toLocaleString()} ` +
+    `checked also cool for the season (${strong.toLocaleString()} below the seasonal 10th ` +
+    `percentile) · SST observed ${days} d earlier${controlClause(corroboration)}`
+  );
+}
+
+/**
+ * The base rate, which travels with the number it qualifies — always.
+ *
+ * Cool water is nearly as common on downwelling-favourable coasts as on
+ * favourable ones (17.2% against 19.9%, measured 2026-08-17), so a corroborated
+ * count on its own reads as a confirmed mechanism when it is a weak
+ * coincidence. The same rule the HAB reports follow for precision against base
+ * rate: a level is not a finding without the level it beat.
+ */
+function controlClause(corroboration: UpwellingResponse['corroboration']): string {
+  const control = corroboration.control_cool_fraction;
+  if (control == null) return '';
+  return ` · ${(control * 100).toFixed(0)}% of downwelling-favourable coasts are cool too`;
 }

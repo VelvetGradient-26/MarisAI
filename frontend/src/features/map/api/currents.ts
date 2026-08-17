@@ -1,6 +1,6 @@
 import type { CursorCoordinates } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+import { API_BASE_URL } from '../../../utils/apiBase';
 
 export interface CurrentsPointResponse {
   speed_ms: number | null;

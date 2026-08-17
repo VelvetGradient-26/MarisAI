@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+import { fetchJson } from '../../../utils/apiBase';
 
 /**
  * The two cell-based detectors: marine heatwaves and coastal upwelling.
@@ -10,10 +10,6 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
  * interesting output is a few thousand cells, not 40,000, so GeoJSON is both
  * cheaper and clickable.
  */
-
-function url(path: string): string {
-  return `${API_BASE_URL}${path}`;
-}
 
 export interface HeatwaveCell {
   west: number;
@@ -47,6 +43,21 @@ export interface HeatwaveResponse {
   cells: HeatwaveCell[];
 }
 
+/**
+ * How the water compares with the wind's claim, per cell.
+ *
+ * `sst_unavailable` is a fifth state rather than a falsy `corroborated`, and
+ * that is the whole point of the field: a coast OISST does not cover is neither
+ * confirmed nor refuted, and collapsing it into "not corroborated" would report
+ * a gap in coverage as a finding about the ocean.
+ */
+export type UpwellingCorroboration =
+  | 'confirmed_below_p10'
+  | 'cool_anomaly'
+  | 'wind_only'
+  | 'not_applicable'
+  | 'sst_unavailable';
+
 export interface UpwellingCell {
   west: number;
   south: number;
@@ -56,6 +67,9 @@ export interface UpwellingCell {
   index: number;
   favourable: boolean;
   confidence: number;
+  /** Null where no SST covers the cell — never 0, which would mean average water. */
+  sst_anomaly_c: number | null;
+  corroboration: UpwellingCorroboration;
 }
 
 export interface UpwellingResponse {
@@ -72,24 +86,57 @@ export interface UpwellingResponse {
     max_index?: number;
     unavailable_reason?: string;
   };
+  /**
+   * The SST half, deliberately outside `coverage`. `coverage` describes the
+   * wind-derived index alone and stays readable without this block, because
+   * "the wind is favourable" and "the wind is favourable and the water is cool
+   * for the season" are different findings.
+   */
+  corroboration: {
+    available: boolean;
+    unavailable_reason?: string;
+    source: string;
+    cool_anomaly_threshold_c: number;
+    states: UpwellingCorroboration[];
+    /** The SST observation's own day, which lags the wind by a week or more. */
+    sst_timestamp?: string;
+    lag_hours?: number;
+    baseline?: { start: number; end: number } | null;
+    favourable_cells?: number;
+    /** The denominator. Cells outside SST coverage are excluded, not refuted. */
+    favourable_cells_with_sst?: number;
+    corroborated_cells?: number;
+    below_p10_cells?: number;
+    corroborated_fraction?: number | null;
+    /**
+     * The base rate: the same cool fraction over *downwelling*-favourable
+     * coasts, where cool water is not expected. Measured 2026-08-17 the two
+     * were 19.9% and 17.2%, so the corroborated fraction alone reads as a
+     * confirmed mechanism when it is a weak coincidence. Always render them
+     * together.
+     */
+    control_cells?: number;
+    control_cool_fraction?: number | null;
+    note?: string;
+  };
   limits: string[];
   cells: UpwellingCell[];
 }
 
 export async function fetchHeatwaveCells(signal?: AbortSignal): Promise<HeatwaveResponse> {
-  const response = await fetch(url('/api/ocean/heatwaves/cells'), { signal });
-  if (!response.ok) {
-    throw new Error(`Marine heatwave detection unavailable (${response.status})`);
-  }
-  return (await response.json()) as HeatwaveResponse;
+  return fetchJson<HeatwaveResponse>(
+    '/api/ocean/heatwaves/cells',
+    { signal },
+    (status) => `Marine heatwave detection unavailable (${status})`
+  );
 }
 
 export async function fetchUpwellingCells(signal?: AbortSignal): Promise<UpwellingResponse> {
-  const response = await fetch(url('/api/ocean/upwelling/cells'), { signal });
-  if (!response.ok) {
-    throw new Error(`Upwelling detection unavailable (${response.status})`);
-  }
-  return (await response.json()) as UpwellingResponse;
+  return fetchJson<UpwellingResponse>(
+    '/api/ocean/upwelling/cells',
+    { signal },
+    (status) => `Upwelling detection unavailable (${status})`
+  );
 }
 
 /**

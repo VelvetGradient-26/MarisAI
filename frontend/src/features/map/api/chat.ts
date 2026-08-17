@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+import { API_BASE_URL } from '../../../utils/apiBase';
 
 /**
  * A per-browser identifier used to scope chat history.

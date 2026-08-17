@@ -287,6 +287,7 @@ def _flow_section(latitude: float, longitude: float) -> Section:
                 f"{up['regime']}, index {up['index']:g} {up['unit']} "
                 f"(offshore {up['offshore_bearing_deg']:g}°)"
             )
+            value += _upwelling_corroboration(up.get("corroboration"))
         else:
             value = up["unavailable_reason"]
         rows.append({"label": "Coastal upwelling", "value": value})
@@ -303,9 +304,42 @@ def _flow_section(latitude: float, longitude: float) -> Section:
             "Okubo-Weiss method and are not tracked, so none of them has an age; the "
             "radius is the equivalent radius of the rotating core. The upwelling "
             "index is wind-derived — it says the wind is favourable for upwelling, "
-            "not that cold nutrient-rich water has actually surfaced."
+            "not that cold nutrient-rich water has actually surfaced. Where a "
+            "sea-surface temperature anomaly is quoted beside it, that is a "
+            "second and later observation: the two agreeing is coincidence in "
+            "space, not a demonstrated response to this wind."
         ),
     )
+
+
+def _upwelling_corroboration(corroboration: dict[str, Any] | None) -> str:
+    """The SST half of the upwelling row, as a clause appended to the wind half.
+
+    A clause rather than its own row, deliberately: the value of this reading is
+    entirely in sitting against the wind index, and split across two rows a
+    reader can take either one home alone. The wind claim is still first and
+    still stands on its own words — the clause never rewrites `regime`.
+    """
+    if not corroboration or not corroboration.get("available"):
+        return ""
+
+    state = corroboration["state"]
+    if state in ("not_applicable", "sst_unavailable"):
+        # Neither is worth a clause in a document read where nobody can hover:
+        # one is a test that does not apply, the other an absence the row's own
+        # wind reading already stands without.
+        return ""
+
+    anomaly = corroboration["sst_anomaly_c"]
+    # A day is the honest unit here — the lag is a week or more and quoting it
+    # in hours invites the reader to treat it as a synoptic measurement.
+    days = corroboration["lag_hours"] / 24.0
+    seasonal = f"SST {anomaly:+g} °C against its seasonal mean, observed {days:.0f} d earlier"
+    if state == "confirmed_below_p10":
+        return f"; {seasonal}, and below its seasonal 10th percentile"
+    if state == "cool_anomaly":
+        return f"; {seasonal}"
+    return f"; {seasonal} — the water is not cool for the season"
 
 
 def _events_section(latitude: float, longitude: float) -> Section:

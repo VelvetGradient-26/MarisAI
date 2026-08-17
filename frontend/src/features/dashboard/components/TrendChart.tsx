@@ -296,10 +296,15 @@ export const TrendChart = memo(function TrendChart({
         )}
       </div>
 
-      {isPending && <PanelSkeleton rows={3} />}
+      {/* One of four states, and changing the range walks through them. The
+          panel's own `min-h-[260px]` already holds the height steady, so all
+          that was missing was the fade — see `.oid-swap-in`, which is opacity
+          only because these panels are measured and host Recharts. */}
+      {isPending && <PanelSkeleton rows={3} className="oid-swap-in" />}
 
       {isError && (
         <PanelEmpty
+          className="oid-swap-in"
           title="Series unavailable"
           reason={error instanceof Error ? error.message : undefined}
           onRetry={() => void refetch()}
@@ -308,13 +313,14 @@ export const TrendChart = memo(function TrendChart({
 
       {data && points.length === 0 && (
         <PanelEmpty
+          className="oid-swap-in"
           title="No data in this window"
           reason="The upstream model returned no values for this point and range. Try a different range or location."
         />
       )}
 
       {data && points.length > 0 && (
-        <div ref={chartRef} className="min-h-[150px] flex-1 px-1 pb-2">
+        <div ref={chartRef} className="oid-swap-in min-h-[150px] flex-1 px-1 pb-2">
           <ResponsiveContainer width="100%" height="100%" minHeight={150}>
             <AreaChart data={points} margin={{ top: 6, right: 10, bottom: 0, left: -18 }}>
               <defs>

@@ -18,13 +18,18 @@
  * "one, or none".
  */
 
+import { API_BASE_URL } from '../../../utils/apiBase';
 import type { LayerLegend, RasterLayerDescriptor } from '../types';
 import type { ForecastGridEntry, ForecastMode } from '../api/forecastGrids';
 
 /**
- * Same fallback as `layerRegistry.ts`, and it is load-bearing here rather than
- * defensive. Every `api/*.ts` client guards this value inside a `url()` helper,
- * but a tile template is a *string* MapLibre expands per request — an undefined
+ * The base URL now comes from `utils/apiBase`, which guards it once for the
+ * whole app — this file and `layerRegistry.ts` had grown the only two copies of
+ * that guard, which is why *tiles* worked while the JSON detector layers did
+ * not. The failure mode below is still worth keeping, because it is the tile
+ * half of it and it looks nothing like the JSON half:
+ *
+ * A tile template is a *string* MapLibre expands per request, so an undefined
  * base interpolates as the literal `"undefined/api/tiles/..."`, which then
  * resolves against the page origin.
  *
@@ -42,7 +47,6 @@ import type { ForecastGridEntry, ForecastMode } from '../api/forecastGrids';
  * :8000 (see `vite.config.ts`) — so the fallback is the *normal* path here,
  * not an edge case.
  */
-const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || window.location.origin;
 
 export function forecastLayerId(variable: string, horizon: number, mode: ForecastMode): string {
   return `forecast-${variable}-h${horizon}-${mode}`;

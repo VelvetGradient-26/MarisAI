@@ -254,8 +254,117 @@ projected onto the offshore normal. Reads the live wind and currents caches.
   an equatorward wind correctly downwells — so the physics was right and the
   geometry was backwards. Had the code been "fixed" to match, every upwelling
   coast would have been reported as downwelling, in an entirely plausible field.
-- **Not corroborated against SST or chlorophyll**, deliberately: Bakun's index
-  says the wind is favourable, not that cold nutrient-rich water surfaced.
+- **Not corroborated against SST or chlorophyll** at first, deliberately: Bakun's
+  index says the wind is favourable, not that cold nutrient-rich water surfaced.
+  The SST half shipped later the same day — see below.
+
+### Upwelling corroborated by SST — shipped 2026-08-17
+
+A favourable-wind cell whose water is also cool for the season is a materially
+stronger claim than either half alone, and the baseline it needs already existed:
+`services/climatology/` fits p10 as the cold mirror of the heatwave p90.
+
+- **One fetch, one baseline, two detectors.** The anomaly is computed in
+  `services/heatwaves.py` — same OISST tail, same fitted climatology, sign
+  reversed — and exposed as `sst_anomaly_field()`. A second module opening a
+  second OISST tail would be a second answer to "how unusual is this water".
+  The export is a narrow `SstAnomalyField`, not the whole `HeatwaveField`: a
+  caller that could reach `category` and `run_days` eventually would.
+- **The index is bit-identical with and without SST, and a test says so.**
+  Corroboration adds a claim; it never edits or filters the wind-derived one, so
+  a cold SST cache degrades the layer to what it always was rather than failing
+  it.
+- **Two tiers, because one of them needs a number chosen by hand.**
+  `cool_anomaly` is ≥0.5 °C below the seasonal mean — a judgement, and named as
+  one. `confirmed_below_p10` is below the local seasonal 10th percentile, defined
+  by the distribution and needing no constant. The strong tier is reported
+  separately for exactly that reason.
+- **`sst_unavailable` is a fifth state, not a falsy `corroborated`.** A coast
+  OISST does not cover is neither confirmed nor refuted, and it is excluded from
+  the denominator: `favourable_cells_with_sst` is the denominator, not
+  `favourable_cells`. Collapsing the two would report a gap in coverage as a
+  finding about the ocean — the same rule as the dashboard's `unavailable`.
+- **The lag is published rather than folded into one timestamp.** This is where
+  it differs from `services/drift.py`, which reports the stalest of its terms
+  because they are the same quantity. Wind and currents are hourly; OISST
+  publishes daily with a week or more of lag. So the response carries both
+  stamps and `lag_hours`, and the wording throughout is "the wind is favourable
+  now, and at the most recent SST field, N days ago, this coast was cool for the
+  season" — never "the water responded to this wind". Past `MAX_SST_LAG_DAYS`
+  (30) even that is withheld with a reason.
+- **The cache key is both stamps, held separately from the field.** Keyed on the
+  wind alone, a corroboration computed against a fortnight-old SST field would
+  survive every OISST publication until the wind happened to move; read back off
+  the field, a detection whose SST was refused for age records no SST stamp and
+  would never match itself, recomputing on every request.
+- **The agreement is weak, and measuring that is the most useful thing here.**
+  Live global field, 2026-08-17: **28,203 coastal cells, 13,887
+  upwelling-favourable, of which OISST covers 9,316** — a third of the coastal
+  band has no SST at all, which is why `sst_unavailable` had to be a state.
+  Of those checked, **1,874 (19.9%) were cool for the season and 381 (4.1%)
+  below the seasonal p10**. The control makes the reading:
+
+  | | cool (≤ −0.5 °C) | below p10 | mean anomaly |
+  | --- | --- | --- | --- |
+  | upwelling-favourable | 19.9% | 4.1% | **+0.91 °C** |
+  | downwelling-favourable (control) | 17.2% | 3.9% | +0.60 °C |
+
+  Cool water is nearly as common where the wind is piling water *onto* the
+  coast, the p10 tiers are indistinguishable, and the favourable coasts are on
+  average the *warmer* of the two. With a 14.5-day-old SST field it could hardly
+  be otherwise. So a corroborated cell is a real observation of cool water and a
+  weak coincidence — not evidence this wind drove it.
+  - **The control therefore ships in the response** (`control_cool_fraction`)
+    and in the status chip, rather than being left for a reader to think of.
+    Same rule as HAB precision against base rate: a level is not a finding
+    without the level it beat. Shipping the corroborated count alone would have
+    been the most confidently misleading number in the product.
+- **The live SST field was tried as the fix and measured worse — that is the
+  finding, and it is why `services/sst_anomaly.py` exists to hold it.** The
+  obvious reading of the weak contrast above is latency: a 14.5-day-old SST
+  field cannot respond to today's wind. So the corroboration was rebuilt on the
+  live hourly Copernicus field (hours old) that the SST map layer already
+  caches, and both arms were run over the identical wind/currents field:
+
+  | source | cool contrast | below-p10 contrast |
+  | --- | --- | --- |
+  | OISST record (14.5 d old) | +0.026 | +0.002 |
+  | live physics field (current) | +0.022 | **−0.149** |
+
+  Closing a fortnight of latency bought nothing on the weak tier and **inverted**
+  the strong one — downwelling-favourable coasts came out below their seasonal
+  p10 three times as often as favourable ones. The cause is a product mismatch,
+  measured separately on 2026-08-01 (a full day of hourly physics, daily-averaged
+  onto the OISST grid):
+
+  | water | mean | median | sd | \|d\|>0.5 °C | \|d\|>1.0 °C |
+  | --- | --- | --- | --- | --- | --- |
+  | open ocean | +0.033 | +0.011 | 0.467 | 14.3% | 3.9% |
+  | **coastal band** | +0.131 | −0.002 | **0.758** | **24.9%** | **10.0%** |
+
+  There is **no systematic offset to correct** — the medians are ~0, so a bias
+  constant would have been a fudge with nothing to fix. What there is instead is
+  per-cell noise of 0.76 °C on exactly the water this feature scores, wider than
+  the 0.5 °C `COOL_ANOMALY_C` threshold, and a below-p10 test is a *tail* test
+  that cannot survive noise the width of its own signal. The coast is twice as
+  bad as open water because a 1° cell there averages a coastline the two products
+  resolve differently.
+  - **Latency is not the binding constraint; the baseline's product is.** The
+    route forward is a climatology fitted on the Copernicus reanalysis, not a
+    fresher observation scored against OISST's. In TODO.md.
+  - The live path was **deleted rather than kept behind a flag**. A switch that
+    silently makes the detector worse is worth less than the paragraph
+    explaining why it does.
+- **The lag can be negative, and the bound is on its magnitude.** The wind blend
+  lagged the currents by 1.3 days on 2026-08-17, so an SST field *newer* than the
+  wind is a normal state rather than an impossible one. A bare `>` on the signed
+  lag would wave through an SST field arbitrarily far in the wind's future.
+- **On the map it is an outline, never a third fill colour.** The fill answers
+  "what is the wind doing" and the stroke answers "and is the water cool too" —
+  blended, neither is readable without the other, and a reader could take a
+  cold-SST cell home as a stronger *wind* index. Full-width stroke for the p10
+  tier, thin for the mean tier. A stroke cannot say "we could not look", so the
+  status chip always states how many favourable cells could be checked.
 
 ### All three detectors reach the UI — 2026-08-17
 
@@ -379,6 +488,138 @@ beside it.
 | README | Rewritten. It described the product as "a single interactive map". |
 | branches | 8 remote branches to 1; the prototype preserved as tag `prototype-2026-07`. |
 | motion foundation | A motion budget in `styles/tokens.css`, `useReveal` promoted to `hooks/`, applied to the compare page. |
+
+### Motion, applied — 2026-08-17
+
+The three remaining targets, all in CSS. No new JS, no new dependency, and
+nothing added to a code path that measures geometry.
+
+- **The dashboard's range-change transitions** and **the metric pages' chart
+  swaps** share one class, `.oid-swap-in` — a fade on the arriving state.
+  **Opacity only, and that is a constraint rather than a taste**: these panels
+  are what `AnalyticsGrid`'s `LazyMount` measures, and they host Recharts, whose
+  own entry animation is already disabled here for running before
+  `ResponsiveContainer` settled. A transform or height animation moves the thing
+  being measured *as it is measured*; opacity changes no geometry. It is a class
+  and not a wrapper component for the same reason — the chart region is a
+  `flex-1` child whose height feeds `ResponsiveContainer`, and an extra div
+  between them collapses the chart.
+- **The bigger half of the chart swap was not motion at all.** Changing the
+  range on a metric page unmounted a 340px chart and put a ~170px placeholder in
+  its place, so the whole page jumped up and back down — under the reader's
+  cursor, on a control they are likely to click twice. The loading state now
+  reserves the chart's height. Reserved on the *placeholder* rather than floored
+  on the panel, because a floor would also pad "no model has been trained" to the
+  size of a chart that is never coming.
+- **The map's layer picker** animates open with `grid-template-rows: 0fr -> 1fr`,
+  the one way to animate to *auto* height in CSS alone. The groups run 8-14 rows,
+  so no `max-height` guess is right for all of them. Entry only: animating the
+  exit means keeping a zero-height menu in the flex column, which adds a phantom
+  8px gap and leaves eight checkboxes in the tab order while invisible — a
+  keyboard trap traded for a flourish nobody waits around to see.
+- **The parallax was the only expensive thing here, and it was not the one this
+  file suspected.** `useReveal` detaches its own listeners the moment it fires,
+  so the landing page's eight reveals cost eight one-shot subscriptions.
+  `useScrollProgress` stays subscribed for the life of the page and routed a
+  per-frame number through React state — reconciling a subtree containing
+  `HeroField`'s WebGL canvas once per scroll frame, to move one headline. It now
+  takes an `apply` callback and writes to the node inside the same rAF that
+  measured it. Same formula, same frames, no re-render. The inline style stays as
+  the value at rest, so first paint and reduced motion both land on the neutral
+  transform without waiting for a frame.
+
+**Verified headlessly, because these are mechanism questions with numeric
+answers.** Chrome over CDP against a harness of the two mechanisms, sampling
+computed style every 45ms:
+
+| | t=0 | 45ms | 90ms | 135ms | 180ms |
+|---|---|---|---|---|---|
+| disclosure height | 16px | 179px | 211px | 216px | 217px |
+| swap opacity | 0 | 0.83 | 0.97 | 0.998 | 1 |
+
+The content below the menu tracked it (45px -> 246px), i.e. it is pushed rather
+than overlapped. Under emulated `prefers-reduced-motion: reduce` both land on the
+finished state within 30ms — full height, opacity 1 — and **the same probe with
+the reduced-motion blocks removed showed mid-animation values**, so that rule is
+doing work rather than being decorative.
+
+What is *not* verified is how any of it feels in the real app: agent-driven
+Chrome tabs never fire `requestAnimationFrame` (§6), so this checks the
+mechanisms, not the product.
+
+### The `<!doctype` bug — every JSON API client, 2026-08-17
+
+Activating the eddy, marine-heatwave or upwelling layer failed with
+`Unexpected token '<', "<!doctype "... is not valid JSON`.
+
+**Twenty-odd API clients opened with `const API_BASE_URL =
+import.meta.env.VITE_API_BASE_URL;` and that line is a bug without a fallback.**
+Vite only defines a `VITE_*` variable when an `.env` declares it; there is no
+committed `.env` in `frontend/` (the dev server proxies `/api` to :8000
+instead), so the value is `undefined` and every template literal built from it
+produced `"undefined/api/ocean/eddies"` — a *relative* path. The dev server
+answers any unmatched path with `index.html`, so the fetch came back **200 OK
+with an HTML body**, sailed past the `response.ok` check every client performs,
+and died in `.json()` with a message naming neither the URL nor the variable.
+
+- **Three of the clients had independently grown `|| window.location.origin`**,
+  which is exactly why the symptom looked so selective: the raster and tile
+  layers worked, and only the JSON-fetching detector layers failed.
+  `forecastLayers.ts` even carried a written-up diagnosis of the tile half of
+  this — a full dropdown of silently blank layers — without the fix reaching the
+  other seventeen files.
+- Now one guarded constant in `utils/apiBase.ts`. Same-origin is the right
+  default rather than merely a safe one: in development it hands the path to
+  Vite's proxy, and in a normal deployment the API is same-origin.
+- **`fetchJson` there also checks the content type**, so this class of failure
+  can never again surface as a parse error: a 200 that is not JSON now throws a
+  message naming the URL and saying the request never reached the API. The two
+  detector clients use it.
+- Verified end to end against a running backend: the old shape returns
+  `200 text/html`, the fixed shape returns `application/json`, and in a real
+  browser the three layers now show data or an honest `503` chip with **zero
+  JSON-parse errors**.
+
+**`npx tsc --noEmit` checks nothing in this repo.** `tsconfig.json` is a
+solution file with `"files": []` and two references, so `--noEmit` compiles an
+empty project and exits 0 — it reported success on a file with an undefined
+identifier. Use `npx tsc -b` (what `npm run build` runs), which caught it.
+
+### Scroll-driven CSS, and the cards as 3D objects — 2026-08-17
+
+The hero parallax now runs on `animation-timeline: view()`, and the four
+platform cards' glyphs are 3D objects that turn as they cross the viewport.
+
+- **`overflow: hidden` silently kills a view timeline, and this cost two
+  debugging rounds.** `hidden` computes the other axis to `auto`, which makes
+  the element a **scroll container** — and `view()` resolves against the
+  subject's nearest scrollport, not the viewport. Three ancestors were doing it
+  (`.lp-root` for the marquee, `.lp-hero`, and `.lp-surface` for its pointer
+  wash), so the animations existed, reported themselves as running, held a real
+  `ViewTimeline`, and sat frozen at progress 0. **`overflow: clip` clips
+  identically and creates no scrollport.**
+- **The screenshots lied and the numbers did not.** The 3D cards looked correct
+  in a still at any scroll position — they were angled, the plates receded —
+  because the *static* pose is also 3D. Only sampling the computed matrix across
+  five scroll positions showed it byte-identical each time. A still of a
+  scroll-driven animation cannot tell you it is animating.
+- **The glyphs are HTML boxes, not SVG internals.** `transform-style:
+  preserve-3d` is flattened inside an `<svg>`, so separating the existing line
+  art's own paths in depth is not available however natural it looks. Two plate
+  elements sit behind each glyph in Z instead.
+- **Hover is on the face, not the stage.** A running animation beats a
+  transition for the same property, so a hover pose written on the animated
+  element is simply never seen. The face is a child, so its lift composes with
+  whatever the stage is doing.
+- Measured after the fix: the stage matrix passes through near-identity as the
+  card centres and rotates oppositely either side; the plates' `translateZ`
+  spreads −33 → −41 and back. Under emulated reduced motion both elements report
+  **zero animations** and hold the static angled pose, with the hero at opacity 1
+  at every scroll position.
+- The JS path remains for browsers without view timelines, and is *disabled*
+  rather than merely overridden where the CSS is in charge — the cascade would
+  win anyway, but the listeners would still measure every frame to write a value
+  nothing paints.
 
 ### Regrouping `services/` — deliberately not done
 

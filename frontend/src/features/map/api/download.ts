@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+import { API_BASE_URL } from '../../../utils/apiBase';
 
 export type Resolution = 'hourly' | 'daily' | 'weekly' | 'monthly';
 export type OutputFormat = 'csv' | 'json' | 'pdf';

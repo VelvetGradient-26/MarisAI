@@ -76,6 +76,20 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(href);
 }
 
+// The chart's own height, and what the states that replace it must reserve.
+//
+// **Changing the range is a 340px hole in a scrolling page.** The chart
+// unmounts, a four-row placeholder ~170px tall takes its place, and everything
+// below jumps up and then back down — under the reader's cursor, on a control
+// they are likely to click twice. Reserving the height on the *other* states is
+// what fixes that; the fade is the smaller half of the problem.
+//
+// Reserved on the placeholder rather than floored on the panel, because a panel
+// floor would also apply to a variable with no history at all, padding an empty
+// state to the size of a chart that is never coming.
+const CHART_HEIGHT = 340;
+const CHART_RESERVE = CHART_HEIGHT + 56; // chart + its padding and caption line
+
 export function HistoricalAnalysis({ variable, latitude, longitude }: SectionProps) {
   const [range, setRange] = useState<string>('1y');
   const [maWindow, setMaWindow] = useState<number>(30);
@@ -238,22 +252,28 @@ export function HistoricalAnalysis({ variable, latitude, longitude }: SectionPro
         )}
       </div>
 
-      {isPending && <PanelSkeleton rows={4} />}
+      {isPending && (
+        <div className="oid-swap-in" style={{ minHeight: CHART_RESERVE }}>
+          <PanelSkeleton rows={4} />
+        </div>
+      )}
 
       {isError && (
-        <PanelEmpty
-          title="History unavailable"
-          reason={error instanceof Error ? error.message : undefined}
-          onRetry={() => void refetch()}
-        />
+        <div className="oid-swap-in" style={{ minHeight: CHART_RESERVE }}>
+          <PanelEmpty
+            title="History unavailable"
+            reason={error instanceof Error ? error.message : undefined}
+            onRetry={() => void refetch()}
+          />
+        </div>
       )}
 
       {chart && data && (
-        <div className="p-4" id={`metric-history-${variable.key}`}>
+        <div className="oid-swap-in p-4" id={`metric-history-${variable.key}`}>
           <SeriesChart
             x={chart.x}
             unit={variable.unit}
-            height={340}
+            height={CHART_HEIGHT}
             onHover={setHoverIndex}
             series={[
               { label: variable.label, values: chart.y },

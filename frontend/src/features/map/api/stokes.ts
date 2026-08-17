@@ -1,7 +1,7 @@
 import type { CursorCoordinates } from '../types';
 import type { CurrentsMetaResponse, CurrentsPointResponse } from './currents';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+import { API_BASE_URL } from '../../../utils/apiBase';
 
 /**
  * Stokes drift shares the currents response shape exactly — same units, same

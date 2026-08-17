@@ -287,3 +287,72 @@ class TestCells:
         payload = heatwaves.cells(field=field)
         assert payload["cells"] == []
         assert payload["coverage"]["ocean_cells"] == 1
+
+
+class TestSstAnomaly:
+    """The cold side of the same arithmetic, which `services/upwelling.py` reads.
+
+    It is computed here rather than in a second module so that there is one
+    OISST fetch and one baseline behind both claims. That makes these assertions
+    the contract between the two detectors.
+    """
+
+    def test_anomaly_is_the_observation_minus_the_seasonal_mean(self):
+        lats, lons = (0.0,), (0.0,)
+        values = np.full((10, 1, 1), 19.0)
+        values[-1] = 17.5
+        field = heatwaves.detect(_record(values, lats, lons), _climatology(lats, lons))
+        assert field.anomaly[0, 0] == pytest.approx(-2.5)
+
+    def test_cold_exceedance_is_negative_below_the_seasonal_p10(self):
+        """p10 is 18.0 in the fixture; 17.5 is below it and 19.0 is not."""
+        lats, lons = (0.0,), (0.0,)
+        cold = np.full((10, 1, 1), 19.0)
+        cold[-1] = 17.5
+        assert (
+            heatwaves.detect(_record(cold, lats, lons), _climatology(lats, lons))
+            .cold_exceedance[0, 0]
+            < 0
+        )
+        warm = np.full((10, 1, 1), 19.0)
+        assert (
+            heatwaves.detect(_record(warm, lats, lons), _climatology(lats, lons))
+            .cold_exceedance[0, 0]
+            > 0
+        )
+
+    def test_land_stays_nan_in_both(self):
+        """A NaN cell must not become a 0 degC anomaly, which reads as 'exactly
+        average water' — the substitution this whole product refuses."""
+        lats, lons = (0.0,), (0.0,)
+        values = np.full((10, 1, 1), np.nan)
+        field = heatwaves.detect(_record(values, lats, lons), _climatology(lats, lons))
+        assert not np.isfinite(field.anomaly[0, 0])
+        assert not np.isfinite(field.cold_exceedance[0, 0])
+
+    def test_a_climatology_without_p10_still_detects(self):
+        """An older artifact is missing p10. The heat side never needed it, so
+        the cold side degrades to NaN rather than failing the detection."""
+        lats, lons = (0.0,), (0.0,)
+        climatology = _climatology(lats, lons).drop_vars("p10")
+        field = heatwaves.detect(
+            _record(np.full((10, 1, 1), 25.0), lats, lons), climatology
+        )
+        assert field.category[0, 0] > 0
+        assert not np.isfinite(field.cold_exceedance[0, 0])
+
+    def test_the_exported_field_carries_the_grid_and_the_stamp(self):
+        lats, lons = (0.0, 1.0), (0.0,)
+        heatwaves._cached_field(
+            heatwaves.detect(
+                _record(np.full((10, 2, 1), 19.0), lats, lons), _climatology(lats, lons)
+            )
+        )
+        try:
+            exported = heatwaves.sst_anomaly_field()
+            assert exported is not None
+            assert exported.anomaly.shape == (2, 1)
+            assert list(exported.latitude) == [0.0, 1.0]
+            assert exported.baseline == (1991, 2020)
+        finally:
+            heatwaves._cache = None

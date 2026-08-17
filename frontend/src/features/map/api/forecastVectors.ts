@@ -1,6 +1,6 @@
 import type { VectorFieldMeta } from '../vectorField/VectorFieldParticleLayer';
 
-const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || window.location.origin;
+import { API_BASE_URL } from '../../../utils/apiBase';
 
 /** Which half of the pair a layer draws: the prediction, or the observation it
  *  was launched from. Both are fields; `anchor` is what makes the forecast

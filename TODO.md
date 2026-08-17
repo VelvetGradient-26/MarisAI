@@ -15,7 +15,10 @@ been a while.
 ## 1. Detection — the half that is still open
 
 Three detectors ship (eddies, marine heatwaves, coastal upwelling) over a
-percentile climatology. What is left is tracking, corroboration and breadth.
+percentile climatology, and upwelling is now corroborated against SST — weakly,
+which was measured rather than assumed. What is left is tracking, breadth, and
+the two things that measurement pointed at: a baseline fitted on the product
+being scored, and a wind history long enough to test the claim fairly.
 
 ### Eddy tracking
 
@@ -30,16 +33,56 @@ between refreshes, deliberately, so this starts from a clean sheet.
   is beautiful and wrong.
 - Also open: closed-SSH-contour detection as a cross-check on the count.
 
-### Upwelling corroborated by SST
+### A climatology fitted on the product being scored
 
-`services/upwelling.py` ships the wind-derived index and says explicitly that it
-is not an observation of upwelled water. The SST half is now affordable, since
-the percentile climatology exists — a favourable-wind cell with a coincident
-negative SST anomaly is a materially stronger claim than either alone.
+**The latency answer has been tried and it is the wrong lever** (measured
+2026-08-17, written up in `services/sst_anomaly.py` and DONE.md). Scoring the
+live hourly SST field instead of the 14.5-day-old OISST record left the weak
+tier's contrast unchanged and *inverted* the strong one, because the climatology
+is fitted on OISST and a different product carries **0.76 degC of per-cell
+disagreement across the coastal band** — wider than the 0.5 °C threshold it is
+compared against, and twice the open-ocean figure (0.47) because a 1° coastal
+cell is an average of a coastline the two products resolve differently.
 
-Keep the two separable in the response. "Wind favourable" and "wind favourable
-*and* the water responded" are different findings and a user needs to know which
-one they are looking at.
+So the open item is the baseline, not the observation: **fit a climatology on
+the Copernicus physics reanalysis**, whose record reaches 1993, and score the
+live field against its own product.
+
+- `services/climatology/build.py` is variable- and source-agnostic already; what
+  it needs is a fetch that hands it a long daily record. `sources` guidance in
+  CLAUDE.md applies — global reanalysis at 1/12° must be coarsened *while the
+  array is still lazy*, and needs a server-side depth bound or it pulls 50
+  levels and never finishes.
+- **Re-run the control after, not before, deciding it worked.** The measurement
+  that matters is whether the favourable/downwelling contrast widens beyond
+  +0.026. If it does not even with a matched product, the honest conclusion is
+  that a wind snapshot and an SST snapshot do not agree at this resolution, and
+  the layer should say so more loudly rather than be tuned until it looks better.
+- It would also give the anomaly explorer below a second baseline variable
+  nearly free, since the same fetch carries salinity and currents.
+
+### A rolling wind history, so the corroboration can be tested fairly
+
+Upwelling responds to wind *integrated over days*, not to the instantaneous
+stress the index computes. Nothing here keeps more than the latest wind
+timestep, so the favourable/downwelling contrast above is measured against a
+snapshot on both sides — which is a weaker test than the physics deserves, and a
+plausible part of why the contrast is small. A short trailing wind buffer (the
+KPI ring buffer in `services/dashboard/history.py` is the shape) would let the
+index be computed on a multi-day mean and the control re-run against it.
+
+### Upwelling corroborated by chlorophyll
+
+The third leg, still blocked on the same thing it always was: there is no
+resident chlorophyll field and no long-record chlorophyll climatology to make an
+anomaly out of, so "nutrient-rich water reached the surface *and* something ate
+it" cannot be said. `services/climatology/build.py` is variable-agnostic and
+would fit it — what is missing is a long daily chlorophyll record to fit on, the
+same source problem as the anomaly explorer below. Worth doing *after* the
+baseline item above, since it inherits whatever that settles about scoring one
+product against another's climatology — a chlorophyll baseline fitted on one
+sensor and applied to another would repeat the same mistake in a field with a
+far worse dynamic range.
 
 ### Anomaly explorer
 
@@ -49,6 +92,12 @@ Ranking "SST +2.7σ, chlorophyll +2.1σ" over a point or a box.
 variable-agnostic, but OISST serves SST alone, so every further variable needs a
 long-record source of its own. Until the climatology covers more than one
 variable this is a one-variable feature and not worth shipping.
+
+**The scoring half is now built, though**, which was not true when this was
+written: `heatwaves.sst_anomaly_field()` exports the per-cell anomaly and the
+p10 deficit against the fitted baseline, and `services/upwelling.py` consumes it
+across a grid change. A second variable would reuse that path rather than start
+one. What is missing is still only the record to fit on.
 
 **Only variables with a real baseline may appear.** A ranked list that silently
 omits half the catalogue is the same failure as an event list that omits the
@@ -194,8 +243,27 @@ different cost class: it needs the global depth-resolved temperature fetch, so
 
 ### Motion, applied
 
-The budget exists in `styles/tokens.css`. Remaining targets: the dashboard's
-range-change transitions, the map's layer picker, the metric pages' chart swaps.
+The three named targets ship (see DONE.md) — all three in CSS, no new JS and no
+new dependency.
+
+**Native CSS scroll-driven animations now drive the hero parallax and the
+platform cards' 3D glyphs** (see DONE.md). The JS path stays as the fallback for
+browsers without `animation-timeline`, and is disabled rather than overridden
+where the CSS is in charge.
+
+What is left of this item is the rest of the landing page's reveals, and they
+are deliberately *not* urgent: `useReveal` detaches its own listeners the moment
+it fires, so eight reveals cost eight one-shot subscriptions and nothing
+thereafter. Convert them for consistency, not for performance.
+
+- **`overflow: hidden` on any ancestor silently freezes a view timeline** — it
+  makes that element a scroll container, and `view()` measures the nearest
+  scrollport rather than the viewport. Use `overflow: clip`. Three ancestors on
+  the landing page were doing it and the animations still reported themselves as
+  running.
+- **A screenshot cannot verify a scroll-driven animation.** Sample the computed
+  matrix at several scroll positions; a static pose looks identical to a moving
+  one in any single frame.
 
 **The no-go list is the important half — all three were paid for once:**
 
@@ -206,13 +274,9 @@ range-change transitions, the map's layer picker, the metric pages' chart swaps.
   decides what to render by *measuring geometry*, and Recharts' entry animation
   is already disabled for starting before `ResponsiveContainer` settled its
   width. Moving and rescaling the thing being measured, as it is measured, is the
-  same hazard. Hover is safe.
+  same hazard. Hover is safe. **Opacity is also safe, and that is now load-
+  bearing** — it is why `.oid-swap-in` fades and never slides.
 - **Reduced motion resolves to the finished state**, never to a faster animation.
-
-Worth measuring before adding more JS: **native CSS scroll-driven animations**
-(`animation-timeline: view()`). They run off the main thread, need no library,
-and degrade to "already visible" where unsupported — the same resolution reduced
-motion already takes.
 
 ### The visual standard — a standard, not a task
 

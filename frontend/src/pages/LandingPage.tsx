@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { ArrowRight, ArrowUpRight } from 'lucide-react';
 import { Link } from '../app/router';
@@ -14,7 +14,12 @@ import {
   RollingOriginDiagram,
   SpatialBlockDiagram,
 } from './landing/Diagrams';
-import { useCountUp, useReveal, useScrollProgress } from './landing/useScrollReveal';
+import {
+  supportsViewTimeline,
+  useCountUp,
+  useReveal,
+  useScrollProgress,
+} from './landing/useScrollReveal';
 import SplitText from '../components/reactbits/SplitText/SplitText';
 import SpotlightCard from '../components/reactbits/SpotlightCard/SpotlightCard';
 import { ClosingBackdrop } from './landing/ClosingBackdrop';
@@ -139,7 +144,32 @@ function MagneticLink({
 // --------------------------------------------------------------------------
 
 function Hero({ dark }: { dark: boolean }) {
-  const { ref, progress } = useScrollProgress<HTMLDivElement>();
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Parallax: the headline drifts up and dissolves slightly slower than the
+  // page scrolls past it.
+  //
+  // **Where a browser can drive this from scroll itself, CSS does it** — see
+  // `lp-hero-parallax` in landing.css, which runs on the compositor with no
+  // listener, no measurement and no React involvement at all. This hook is the
+  // fallback for browsers without `animation-timeline`, and it is disabled
+  // rather than merely ignored when the CSS is in charge: the animation would
+  // win the cascade regardless (animations outrank inline styles), so leaving
+  // it on would measure every frame to write a value nothing paints.
+  //
+  // In the fallback the value is written straight to the node instead of held
+  // in React state. Same formula, same rAF — but this subtree contains
+  // `HeroField`'s WebGL canvas, and routing a per-frame number through state
+  // reconciled all of it once per scroll frame to move one headline. The inline
+  // style below is the value at rest, so first paint, reduced motion and the
+  // CSS path all start from the neutral transform.
+  const cssDriven = supportsViewTimeline();
+  const { ref } = useScrollProgress<HTMLDivElement>((progress) => {
+    const node = contentRef.current;
+    if (!node) return;
+    node.style.transform = `translate3d(0, ${progress * -60}px, 0)`;
+    node.style.opacity = String(Math.max(0, 1 - Math.max(0, progress) * 1.6));
+  }, !cssDriven);
 
   return (
     <section className="lp-hero" ref={ref}>
@@ -147,12 +177,8 @@ function Hero({ dark }: { dark: boolean }) {
       <div className="lp-hero__veil" />
       <div
         className="lp-hero__content"
-        style={{
-          // Parallax: the headline drifts up and dissolves slightly slower
-          // than the page scrolls past it.
-          transform: `translate3d(0, ${progress * -60}px, 0)`,
-          opacity: Math.max(0, 1 - Math.max(0, progress) * 1.6),
-        }}
+        ref={contentRef}
+        style={{ transform: 'translate3d(0, 0, 0)', opacity: 1 }}
       >
         {/* A status pill rather than a plain eyebrow. Both figures in it are
             the same constants the metrics row counts up to, so the sentence
@@ -482,18 +508,55 @@ function Platform() {
               // for something no React code reads.
               onPointerMove={(event: ReactPointerEvent<HTMLAnchorElement>) => {
                 const rect = event.currentTarget.getBoundingClientRect();
-                event.currentTarget.style.setProperty(
-                  '--px',
-                  `${((event.clientX - rect.left) / rect.width) * 100}%`
-                );
-                event.currentTarget.style.setProperty(
-                  '--py',
-                  `${((event.clientY - rect.top) / rect.height) * 100}%`
-                );
+                const x = (event.clientX - rect.left) / rect.width;
+                const y = (event.clientY - rect.top) / rect.height;
+                const card = event.currentTarget;
+                card.style.setProperty('--px', `${x * 100}%`);
+                card.style.setProperty('--py', `${y * 100}%`);
+                // Signed and unitless, because a percentage cannot be multiplied
+                // into an angle. These drive the object's tilt toward the
+                // cursor; the wash above still wants the percentages.
+                card.style.setProperty('--pxn', `${(x - 0.5) * 2}`);
+                card.style.setProperty('--pyn', `${(y - 0.5) * 2}`);
+              }}
+              onPointerLeave={(event: ReactPointerEvent<HTMLAnchorElement>) => {
+                // Back to square-on rather than frozen at whatever angle the
+                // pointer left at. The transition on `.lp-glyph__tilt` carries
+                // it, so this is one property write and no animation frame.
+                event.currentTarget.style.setProperty('--pxn', '0');
+                event.currentTarget.style.setProperty('--pyn', '0');
               }}
             >
+              {/* The artwork as a solid object rather than a flat icon.
+                  
+                  **The same glyph is drawn three times at three depths.** An
+                  abstract plate behind an icon is just a shadow; repeating the
+                  *content* into the distance makes the object legible as a
+                  stack of layers, which is what all four of these surfaces
+                  actually are. It has to be built from HTML boxes because
+                  `transform-style: preserve-3d` is flattened inside an `<svg>`,
+                  so the glyph's own paths cannot be separated in depth however
+                  natural that looks.
+                  
+                  Three nested transforms, each owned by exactly one input:
+                  `__stage` is the scroll timeline's, `__tilt` is the pointer's,
+                  and the echoes' own translateZ is static. A running animation
+                  beats a transition on the same property, so sharing an element
+                  between two of them means one of them silently never shows. */}
               <span className="lp-glyph" aria-hidden="true">
-                {surface.glyph}
+                <span className="lp-glyph__stage">
+                  <span className="lp-glyph__tilt">
+                    <span className="lp-glyph__grid" />
+                    <span className="lp-glyph__echo lp-glyph__echo--far">
+                      {surface.glyph}
+                    </span>
+                    <span className="lp-glyph__echo lp-glyph__echo--mid">
+                      {surface.glyph}
+                    </span>
+                    <span className="lp-glyph__face">{surface.glyph}</span>
+                    <span className="lp-glyph__gloss" />
+                  </span>
+                </span>
               </span>
               <h3 className="lp-surface__title">{surface.title}</h3>
               <p className="lp-surface__body">{surface.body}</p>

@@ -450,6 +450,55 @@
 }
 
 /* --------------------------------------------------------------------------
+   Swapping one panel state for another
+   --------------------------------------------------------------------------
+   Every chart panel here renders exactly one of four things — a loading
+   placeholder, an error, an empty state, or the chart — and switching between
+   them used to be an instant cut. `.oid-swap-in` fades the arriving state up.
+
+   **Opacity only, and that is a hard constraint rather than a taste.** These
+   panels are what `AnalyticsGrid`'s `LazyMount` measures to decide what to
+   render, and they host Recharts, whose own entry animation is already
+   disabled here for starting before `ResponsiveContainer` had settled its
+   width (CLAUDE.md carries both). A transform or a height animation moves and
+   rescales the thing being measured *as it is measured* — the same hazard the
+   no-JS-mount-animation rule exists for. Opacity changes no geometry, so it is
+   safe where those are not.
+
+   It is also why this is one class rather than a wrapper component: the chart
+   region is a `flex-1` child whose height feeds `ResponsiveContainer`, and an
+   extra div between them collapses the chart to its minimum. The class goes on
+   the element that was already there.
+
+   No exit animation, deliberately. The states are mutually exclusive, so
+   cross-fading them means overlapping two boxes of different heights — the
+   layout jump the reserved height below exists to prevent, reintroduced by the
+   animation meant to smooth it. */
+.oid-swap-in {
+  animation: oid-swap-in var(--ma-duration, 0.2s) var(--ma-ease-out, cubic-bezier(0.16, 1, 0.3, 1))
+    both;
+}
+
+@keyframes oid-swap-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* The blanket reduced-motion rule above already collapses this to 0.001ms,
+   which lands on the `to` frame — i.e. on the finished state, revealed, never
+   on a faster fade. Stated explicitly because the blanket rule is easy to
+   remove and this is the property that must survive it. */
+@media (prefers-reduced-motion: reduce) {
+  .oid-swap-in {
+    animation: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
    Markdown inside a panel
    --------------------------------------------------------------------------
    `components/Markdown` emits `.md-*` classes, and the only stylesheet that

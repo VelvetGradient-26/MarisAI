@@ -709,11 +709,52 @@ body,
 
 .layer-dropdown__caret {
   flex: none;
-  transition: transform 0.18s ease;
+  /* On the shared budget rather than its own 0.18s: this is a state flip the
+     user just caused and is already looking at. */
+  transition: transform var(--ma-duration-instant, 0.09s) var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1));
 }
 
 .layer-dropdown__trigger.open .layer-dropdown__caret {
   transform: rotate(180deg);
+}
+
+/* The disclosure's height animation.
+   `grid-template-rows: 0fr -> 1fr` on a wrapper whose only child clips its own
+   overflow is the one way to animate to *auto* height in CSS alone — the menu
+   is 8 to 14 rows depending on the group, so no fixed max-height would be
+   right for all of them, and animating `max-height` to a guess either clips the
+   long groups or coasts through empty space on the short ones. */
+.layer-dropdown__reveal {
+  display: grid;
+  animation: layer-dropdown-reveal var(--ma-duration, 0.2s)
+    var(--ma-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+
+.layer-dropdown__reveal > * {
+  /* Both are load-bearing: a grid item's default `min-height: auto` refuses to
+     shrink below its content, so without these the row collapses to 0fr and
+     the content simply overflows it, un-animated. */
+  overflow: hidden;
+  min-height: 0;
+}
+
+@keyframes layer-dropdown-reveal {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+  to {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+}
+
+/* Resolves to the finished state — open, full height — never to a faster
+   reveal. */
+@media (prefers-reduced-motion: reduce) {
+  .layer-dropdown__reveal {
+    animation: none;
+  }
 }
 
 .layer-dropdown__menu {

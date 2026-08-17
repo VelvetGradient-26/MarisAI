@@ -281,26 +281,38 @@ function LayerDropdown({
         </span>
       </button>
 
+      {/* The wrapper exists to animate the height. A `grid-template-rows`
+          0fr -> 1fr reveal is the one way to animate to *auto* height in CSS
+          alone, so the menu pushes the controls below it down smoothly instead
+          of appearing at full size in a single frame.
+
+          Entry only, and the menu stays conditionally mounted. Animating the
+          exit would mean keeping a zero-height menu in the flex column, which
+          adds a phantom 8px gap and leaves eight checkboxes in the tab order
+          while invisible — a keyboard trap traded for a flourish nobody waits
+          around to see. */}
       {open && (
-        <ul className="layer-dropdown__menu" role="group" aria-label={label}>
-          {descriptors.map((descriptor) => {
-            const disabled = descriptor.implemented === false;
-            return (
-              <li key={descriptor.id} className={disabled ? 'disabled' : ''}>
-                <label title={descriptor.attribution}>
-                  <input
-                    type="checkbox"
-                    checked={layerState.get(descriptor.id)?.active ?? false}
-                    disabled={disabled}
-                    onChange={() => layerManager.toggle(descriptor.id)}
-                  />
-                  {descriptor.name}
-                  {disabled && <span className="badge">not wired yet</span>}
-                </label>
-              </li>
-            );
-          })}
-        </ul>
+        <div className="layer-dropdown__reveal">
+          <ul className="layer-dropdown__menu" role="group" aria-label={label}>
+            {descriptors.map((descriptor) => {
+              const disabled = descriptor.implemented === false;
+              return (
+                <li key={descriptor.id} className={disabled ? 'disabled' : ''}>
+                  <label title={descriptor.attribution}>
+                    <input
+                      type="checkbox"
+                      checked={layerState.get(descriptor.id)?.active ?? false}
+                      disabled={disabled}
+                      onChange={() => layerManager.toggle(descriptor.id)}
+                    />
+                    {descriptor.name}
+                    {disabled && <span className="badge">not wired yet</span>}
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
 
       {active.length > 0 && (

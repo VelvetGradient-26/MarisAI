@@ -35,6 +35,23 @@ summer retreat leaves water, and they tripled the global mean. The per-cell
 field is *not* masked — a heatwave in the Barents Sea is real and the map should
 draw it — only the headline numbers are, and the response says so.
 
+What else reads this module, and why it lives here
+--------------------------------------------------
+`services/upwelling.py` corroborates its wind-derived index against a *cold* SST
+anomaly, which is this module's own arithmetic with the sign reversed — the same
+OISST tail, the same fitted climatology, using the `p10` that
+`climatology/build.py` fits precisely as "the cold-spell mirror" of `p90`. So
+`anomaly` and `cold_exceedance` are computed here beside the heat side, from the
+record this module already fetched, and exposed as `sst_anomaly_field()`.
+
+**The shape of that answer belongs to `services/sst_anomaly.py`, not here.**
+There are two observations that can be scored against this one baseline — this
+lagged daily record, and the live hourly physics field behind the SST map layer
+— and only the record can support the five-consecutive-day clause. Keeping the
+dataclass and the scorer there means the two sources cannot drift into two
+definitions of what an anomaly is; this module supplies the record's answer and
+labels it as the record's.
+
 What this deliberately does not do
 ----------------------------------
 It does not track events between refreshes, exactly as `services/eddies.py` does
@@ -59,10 +76,11 @@ import pandas as pd
 import xarray as xr
 from loguru import logger
 
-from services import field_sampling
+from services import field_sampling, sst_anomaly
 from services.climatology import build as climatology_build
 from services.climatology import oisst
 from services.climatology import store as climatology_store
+from services.sst_anomaly import SstAnomalyField
 
 # Hobday's minimum duration. Five days is the published definition, not a knob —
 # it is exposed as a constant so the response can state it, not so it can be
@@ -125,6 +143,14 @@ class HeatwaveField:
     computed_at: datetime
     baseline: tuple[int, int]
     window_days: int
+    # (lat, lon) float32: SST minus the day's climatological mean, degC. The
+    # plain anomaly, kept because the cold side of this field is what
+    # `services/upwelling.py` corroborates against and recomputing it from a
+    # second source would be a second answer.
+    anomaly: np.ndarray
+    # (lat, lon) float32: SST minus the day's p10, degC. Negative means the
+    # water is below its seasonal 10th percentile — the mirror of `exceedance`.
+    cold_exceedance: np.ndarray
 
     def coverage(self) -> dict[str, Any]:
         """Headline statistics, over 60S-60N only."""
@@ -229,6 +255,16 @@ def detect(
     latest_p90 = p90[-1]
     latest_mean = mean[-1]
     exceedance = (latest - latest_p90).astype("float32")
+    anomaly = (latest - latest_mean).astype("float32")
+    # Only the latest day is gathered for p10: the run length is a property of
+    # the heat side, and the cold side is read as a state at the most recent
+    # observation. A climatology fitted without p10 is old but valid, so this
+    # degrades to NaN rather than failing a detection that never needed it.
+    if "p10" in climatology:
+        latest_p10 = climatology["p10"].values[indices[-1] - 1]
+        cold_exceedance = (latest - latest_p10).astype("float32")
+    else:
+        cold_exceedance = np.full(latest.shape, np.nan, dtype="float32")
 
     # Hobday's category scale: multiples of the mean-to-p90 gap. Where that gap
     # is zero or undefined the category is undefined too, not "extreme" —
@@ -261,6 +297,10 @@ def detect(
             int(climatology.attrs.get("baseline_end", 0)),
         ),
         window_days=days,
+        anomaly=np.where(np.isfinite(latest), anomaly, np.nan).astype("float32"),
+        cold_exceedance=np.where(
+            np.isfinite(latest), cold_exceedance, np.nan
+        ).astype("float32"),
     )
 
 
@@ -333,6 +373,25 @@ def at_point(
             "date or total duration."
         ),
     }
+
+
+def sst_anomaly_field() -> SstAnomalyField | None:
+    """The cold/warm anomaly from the cached detection, or None if none is
+    loaded. None rather than an exception: a caller here is *adding* a claim to
+    its own answer, so an absent anomaly must degrade that caller to its
+    uncorroborated result, not fail it."""
+    field = _cached_field()
+    if field is None:
+        return None
+    return SstAnomalyField(
+        anomaly=field.anomaly,
+        cold_exceedance=field.cold_exceedance,
+        latitude=field.latitude,
+        longitude=field.longitude,
+        timestamp=field.timestamp,
+        baseline=field.baseline,
+        source=sst_anomaly.OISST_RECORD,
+    )
 
 
 def is_available() -> bool:

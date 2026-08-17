@@ -19,6 +19,9 @@ import { SeriesChart } from '../components/SeriesChart';
 import { Panel, PanelEmpty, PanelHeader, PanelSkeleton } from '../../components/Panel';
 import { cn } from '../../lib/cn';
 
+const CHART_HEIGHT = 300;
+const CHART_RESERVE = CHART_HEIGHT + 56;
+
 export function ForecastSection({ variable, latitude, longitude }: SectionProps) {
   const horizons = variable.trained_horizons;
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -117,10 +120,18 @@ export function ForecastSection({ variable, latitude, longitude }: SectionProps)
         }
       />
 
-      {isPending && <PanelSkeleton rows={4} />}
+      {/* Reserved on the loading state only. "No model trained" is a permanent
+          answer, not a gap where a chart will appear, so padding it to chart
+          height would be reserving room for something that is never coming. */}
+      {isPending && (
+        <div className="oid-swap-in" style={{ minHeight: CHART_RESERVE }}>
+          <PanelSkeleton rows={4} />
+        </div>
+      )}
 
       {isError && (
         <PanelEmpty
+          className="oid-swap-in"
           title="Forecast unavailable"
           reason={error instanceof Error ? error.message : undefined}
           onRetry={() => void refetch()}
@@ -129,17 +140,18 @@ export function ForecastSection({ variable, latitude, longitude }: SectionProps)
 
       {data && !chart && (
         <PanelEmpty
+          className="oid-swap-in"
           title="No forecast for this variable"
           reason={`No model has been trained for ${variable.label} yet.`}
         />
       )}
 
       {chart && (
-        <div className="p-4">
+        <div className="oid-swap-in p-4">
           <SeriesChart
             x={chart.x}
             unit={variable.unit}
-            height={300}
+            height={CHART_HEIGHT}
             forecastFrom={chart.forecastFrom}
             onHover={setHoverIndex}
             band={{ lower: chart.lower, upper: chart.upper, label: '95% interval' }}

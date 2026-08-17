@@ -3,6 +3,7 @@ import type {
   LayerDescriptor,
   RasterLayerDescriptor,
 } from '../types';
+import { API_BASE_URL } from '../../../utils/apiBase';
 import { createWindParticleLayer } from '../vectorField/windLayer';
 import {
   createCurrentsDepthParticleLayer,
@@ -15,7 +16,6 @@ type LayerSource = RasterLayerDescriptor['sources'][number];
 
 const GIBS_WMTS = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best';
 const GIBS_WMS = 'https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi';
-const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || window.location.origin;
 
 /**
  * WHY THE DARK WEDGES / SAWTOOTH APPEARED (background, for whatever's left)
@@ -615,6 +615,18 @@ function marineHeatwaveLayer(): GeoJsonLayerDescriptor {
 const UPWELLING_UP = '#2dd4bf';
 const UPWELLING_DOWN = '#f59e0b';
 
+// Corroboration is drawn as an *outline*, never as a third fill colour, and the
+// separation is the reason. The fill answers "what is the wind doing", which is
+// what this layer measures; the stroke answers "and is the water cool for the
+// season", which is a second, later observation from a different product. A
+// blended colour would make one unreadable without the other and would let a
+// reader take a cold-SST cell home as a stronger *wind* index.
+//
+// Near-white at full width for the strong tier (below the seasonal 10th
+// percentile), the same colour thinner for the hand-thresholded tier. Both clear
+// 3:1 on the Abyss basemap and on either fill.
+const UPWELLING_CORROBORATED = '#f8fafc';
+
 function upwellingLayer(): GeoJsonLayerDescriptor {
   return {
     id: 'upwelling',
@@ -627,8 +639,20 @@ function upwellingLayer(): GeoJsonLayerDescriptor {
       'the wind drives surface water away from the coast, so deeper water rises to replace ' +
       'it; negative (amber) means the opposite. ' +
       'THIS IS A WIND-DERIVED INDEX, NOT AN OBSERVATION OF UPWELLED WATER — it says the wind ' +
-      'is favourable, not that cold nutrient-rich water has surfaced, and it is deliberately ' +
-      'not corroborated against sea-surface temperature or chlorophyll. The offshore ' +
+      'is favourable, not that cold nutrient-rich water has surfaced. ' +
+      'A white outline marks a favourable cell where the sea-surface temperature was also ' +
+      'cool for the season — a full outline where the water was below its seasonal 10th ' +
+      'percentile, a thin one where it was merely below its seasonal mean. THAT IS A SECOND ' +
+      'AND LATER OBSERVATION: OISST publishes daily with a lag of a week or more, at 1° ' +
+      'resolution, so an outline means the wind is favourable now and this ~110 km cell was ' +
+      'cool at the most recent SST field — not that the water responded to this wind. An ' +
+      'un-outlined cell is either water that is not cool for the season or water no SST field ' +
+      'covers, and those are different: the panel reports how many cells could be checked. ' +
+      'AN OUTLINE IS A COINCIDENCE, NOT A CONFIRMED MECHANISM — measured on the live global ' +
+      'field, 19.9% of upwelling-favourable coasts were cool for the season against 17.2% of ' +
+      'downwelling-favourable ones, where cool water is not expected at all. The panel prints ' +
+      'that control fraction beside the count for exactly this reason. ' +
+      'Chlorophyll is not used — there is no long-record chlorophyll baseline here. The offshore ' +
       'direction is derived from a ~0.25° land mask, so a headland, bay or fjord is below the ' +
       'grid. Only coastal cells are shown, because the index is per metre of coastline. Cells ' +
       'within 5° of the equator are excluded: Ekman transport diverges as the Coriolis ' +
@@ -657,6 +681,28 @@ function upwellingLayer(): GeoJsonLayerDescriptor {
           ],
         },
       },
+      {
+        type: 'line',
+        // Only the two corroborated states are drawn. `wind_only` and
+        // `sst_unavailable` both go unmarked, which is honest in one direction
+        // only — the panel carries the count that separates them, because a
+        // stroke cannot say "we could not look".
+        filter: [
+          'in',
+          ['get', 'corroboration'],
+          ['literal', ['confirmed_below_p10', 'cool_anomaly']],
+        ],
+        paint: {
+          'line-color': UPWELLING_CORROBORATED,
+          'line-width': [
+            'case',
+            ['==', ['get', 'corroboration'], 'confirmed_below_p10'],
+            1.4,
+            0.7,
+          ],
+          'line-opacity': 0.9 * opacity,
+        },
+      },
     ],
     legend: {
       type: 'categories',
@@ -671,6 +717,11 @@ function upwellingLayer(): GeoJsonLayerDescriptor {
           label: 'Downwelling-favourable',
           range: 'transport onshore',
           color: UPWELLING_DOWN,
+        },
+        {
+          label: 'Outlined: water cool too',
+          range: 'SST below its seasonal mean (thick: below the 10th percentile)',
+          color: UPWELLING_CORROBORATED,
         },
       ],
     },
