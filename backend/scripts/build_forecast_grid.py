@@ -50,6 +50,7 @@ from pathlib import Path
 # without requiring PYTHONPATH to be set by hand.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.core.s3_pool import widen_s3_connection_pool  # noqa: E402
 from forecasting import ForecastingError, progress  # noqa: E402
 from forecasting.grid_history import ungriddable_reason  # noqa: E402
 from forecasting.grid_history import GridRequest, warm  # noqa: E402
@@ -325,6 +326,9 @@ def main() -> int:
     args = parser.parse_args()
 
     _configure_logging(args.verbose)
+    # `_QuietFilter` above only silences the pool-full line; this removes the
+    # handshake churn that produces it. See app/core/s3_pool.py.
+    widen_s3_connection_pool()
     # On here and nowhere else. The same build runs from the API's scheduler,
     # where a bar rewriting stderr would interleave with request logs — see
     # `forecasting/progress.py`.

@@ -40,6 +40,7 @@ from typing import Any
 # without requiring PYTHONPATH to be set by hand.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.core.s3_pool import widen_s3_connection_pool  # noqa: E402
 from forecasting import ForecastingError  # noqa: E402
 from forecasting.config import get_config  # noqa: E402
 from forecasting.history import clear_cache  # noqa: E402
@@ -361,6 +362,7 @@ def main() -> int:
 
     args = parser.parse_args()
     _configure_logging(args.verbose)
+    widen_s3_connection_pool()
 
     try:
         return asyncio.run(run(args))

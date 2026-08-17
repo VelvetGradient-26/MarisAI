@@ -9,6 +9,12 @@ from loguru import logger
 from app.core.config import settings
 from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware
+from app.core.s3_pool import widen_s3_connection_pool
+
+# Before copernicusmarine builds its first S3 client, which it does lazily on
+# the first dataset open. See app/core/s3_pool.py for why the default of 10 is
+# wrong for a zarr read and why the fix has to be a botocore default.
+widen_s3_connection_pool()
 
 # Before any other import that logs. Most of this backend's log calls go through
 # stdlib `logging`, which nothing configured until now — see app/core/logging.py
