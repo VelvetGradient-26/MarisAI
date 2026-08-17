@@ -110,13 +110,23 @@ def backoff_for(attempt: int) -> float:
 
 
 def _retryable(status: int, attempt: int) -> bool:
-    if status not in _RETRY_STATUSES:
-        return False
-    # 404 retries once. A reload window recovers; a genuinely removed dataset
-    # costs one backoff rather than three.
-    if status == 404:
-        return attempt == 1
-    return True
+    """Whether to try again.
+
+    **404 is retried like any other transient here, and that is a deliberate
+    departure from `forecasting/history.is_retryable`, which allows it exactly
+    one retry.** The rule is the same; the cost that shaped it is not. There,
+    a 404 sits on the request path, so retrying a permanently-dead dataset three
+    times with backoff adds ~8s to *every* forecast — measured, and the reason
+    the allowance is one. Here the caller is a 25-minute offline batch job whose
+    unit of work is a 51s fetch, nothing is waiting on it, and the dataset is
+    known to exist because the previous years came from it.
+
+    That distinction is not hypothetical: this job died on
+    `404 "Currently unknown datasetID=ncdcOisst21Agg_LonPM180"` seven years into
+    a thirty-year build — the exact reload window ERDDAP answers 404 during, and
+    indistinguishable from a removed dataset except by waiting.
+    """
+    return status in _RETRY_STATUSES
 
 
 async def fetch_range(

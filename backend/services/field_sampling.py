@@ -45,6 +45,8 @@ a heading. See `angular_difference` for the matching subtraction.
 
 from __future__ import annotations
 
+import math
+
 from dataclasses import dataclass
 
 import numpy as np
@@ -162,3 +164,41 @@ def build_sampler(field: xr.DataArray, *, angular: bool = False) -> Sampler:
 def _wrap(plane: np.ndarray) -> np.ndarray:
     """One column of padding at each end, taken from the opposite edge."""
     return np.concatenate([plane[:, -1:], plane, plane[:, :1]], axis=1)
+
+
+# --------------------------------------------------------------- grid geometry
+#
+# These three were `services/eddies.py`'s privates until `services/upwelling.py`
+# needed the identical arithmetic. They live here rather than being copied
+# because a duplicated derivative stencil is the kind of thing that drifts
+# silently: two detectors disagreeing about what a metre is would still produce
+# plausible fields, and the seam handling below is exactly the part that is easy
+# to get subtly different.
+
+EARTH_RADIUS_M = 6_371_000.0
+
+
+def cell_spacing_m(lat: np.ndarray, lon: np.ndarray) -> tuple[np.ndarray, float]:
+    """Metres per grid step: dx varies with latitude, dy does not."""
+    dlat = math.radians(float(np.abs(np.diff(lat)).mean()))
+    dlon = math.radians(float(np.abs(np.diff(lon)).mean()))
+    dy = EARTH_RADIUS_M * dlat
+    dx = EARTH_RADIUS_M * dlon * np.cos(np.radians(lat))
+    # A pole row has dx = 0 and would divide by zero. Callers cut the polar caps
+    # anyway; this only keeps the arithmetic finite.
+    dx = np.where(np.abs(dx) < 1.0, np.nan, dx)
+    return dx, dy
+
+
+def d_dx(values: np.ndarray, dx: np.ndarray, periodic: bool) -> np.ndarray:
+    """Centred difference along longitude, closing the seam when global."""
+    if periodic:
+        forward = np.roll(values, -1, axis=1)
+        backward = np.roll(values, 1, axis=1)
+        return (forward - backward) / (2.0 * dx[:, None])
+    return np.gradient(values, axis=1) / dx[:, None]
+
+
+def d_dy(values: np.ndarray, dy: float) -> np.ndarray:
+    """Centred difference along latitude. Never periodic — the poles are ends."""
+    return np.gradient(values, axis=0) / dy

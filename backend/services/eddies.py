@@ -56,7 +56,7 @@ import numpy as np
 from loguru import logger
 from scipy import ndimage
 
-from services import copernicus_currents
+from services import copernicus_currents, field_sampling
 from services.field_sampling import is_globally_periodic
 from services.vector_source import VectorSnapshot, VectorSourceError
 
@@ -166,30 +166,14 @@ _lock = threading.Lock()
 # --------------------------------------------------------------- derivatives
 
 
-def _cell_spacing(lat: np.ndarray, lon: np.ndarray) -> tuple[np.ndarray, float]:
-    """Metres per grid step: dx varies with latitude, dy does not."""
-    dlat = math.radians(float(np.abs(np.diff(lat)).mean()))
-    dlon = math.radians(float(np.abs(np.diff(lon)).mean()))
-    dy = EARTH_RADIUS_M * dlat
-    dx = EARTH_RADIUS_M * dlon * np.cos(np.radians(lat))
-    # A pole row has dx = 0 and would divide by zero. The polar caps are cut
-    # from the result anyway; this only keeps the arithmetic finite.
-    dx = np.where(np.abs(dx) < 1.0, np.nan, dx)
-    return dx, dy
-
-
-def _d_dx(values: np.ndarray, dx: np.ndarray, periodic: bool) -> np.ndarray:
-    """Centred difference along longitude, closing the seam when global."""
-    if periodic:
-        forward = np.roll(values, -1, axis=1)
-        backward = np.roll(values, 1, axis=1)
-        return (forward - backward) / (2.0 * dx[:, None])
-    return np.gradient(values, axis=1) / dx[:, None]
-
-
-def _d_dy(values: np.ndarray, dy: float) -> np.ndarray:
-    """Centred difference along latitude. Never periodic — the poles are ends."""
-    return np.gradient(values, axis=0) / dy
+# The grid geometry these detectors share now lives in `field_sampling`, so the
+# derivative stencil and the metres-per-step arithmetic have exactly one
+# definition. `services/upwelling.py` needs the identical maths, and two copies
+# of a seam-closing stencil is precisely the kind of duplication that drifts
+# without either field looking wrong.
+_cell_spacing = field_sampling.cell_spacing_m
+_d_dx = field_sampling.d_dx
+_d_dy = field_sampling.d_dy
 
 
 def okubo_weiss(

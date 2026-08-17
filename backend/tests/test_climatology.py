@@ -240,13 +240,17 @@ class TestOisst:
         with pytest.raises(oisst.OisstError, match="finer"):
             oisst.stride_for(0.1)
 
-    def test_404_retries_once_and_400_never(self):
-        """Same policy as `forecasting/history.is_retryable`, and for the same
-        measured reason: ERDDAP answers 404 while reloading a dataset."""
+    def test_404_keeps_retrying_here_unlike_the_request_path(self):
+        """A deliberate departure from `forecasting/history.is_retryable`,
+        which allows 404 exactly one retry because it sits on the request path
+        and three retries add ~8s to every forecast. This is an offline batch
+        job where waiting is free, and it died seven years into a thirty-year
+        build on ERDDAP's reload 404."""
         assert oisst._retryable(404, 1) is True
-        assert oisst._retryable(404, 2) is False
+        assert oisst._retryable(404, 4) is True
         assert oisst._retryable(503, 2) is True
         assert oisst._retryable(400, 1) is False
+        assert oisst._retryable(403, 1) is False
 
     def test_backoff_is_minutes_and_capped(self):
         """A first draft retried on 2s/4s and lost a whole year's fetch inside

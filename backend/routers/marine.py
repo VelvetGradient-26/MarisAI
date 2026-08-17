@@ -10,6 +10,7 @@ from services import (
     eddies,
     edna,
     heatwaves,
+    upwelling,
     stokes_drift,
 )
 from services.bathymetry import BathymetryError, get_elevation
@@ -220,6 +221,35 @@ async def get_heatwave_point(
     try:
         return heatwaves.at_point(lat, lon)
     except heatwaves.HeatwaveError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/upwelling")
+async def get_upwelling():
+    """Coastal upwelling favourability from Ekman transport.
+
+    503 on a cold cache, like `/eddies` and `/heatwaves`: this reads the live
+    wind and surface-current caches this server warms rather than fetching.
+    """
+    try:
+        return upwelling.get_upwelling()
+    except upwelling.UpwellingError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/upwelling/point")
+async def get_upwelling_point(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+):
+    """Upwelling favourability at one coordinate.
+
+    Answers for open ocean too — "not coastal" is a result, and an omitted row
+    reads as "no upwelling anywhere".
+    """
+    try:
+        return upwelling.at_point(lat, lon)
+    except upwelling.UpwellingError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
