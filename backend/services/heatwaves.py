@@ -51,7 +51,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
@@ -59,6 +59,7 @@ import pandas as pd
 import xarray as xr
 from loguru import logger
 
+from services import field_sampling
 from services.climatology import build as climatology_build
 from services.climatology import oisst
 from services.climatology import store as climatology_store
@@ -400,15 +401,16 @@ async def refresh_cache(variable: str = "sea_surface_temperature") -> None:
 
         try:
             resolution = float(climatology.attrs.get("resolution_deg", 1.0))
-            end = datetime.now(UTC).date()
-            # A generous tail: OISST publishes with ~1 day of lag and the
-            # occasional gap, and `detect` needs MIN_DURATION_DAYS of
-            # *consecutive* fields. Asking for more days than the window costs
-            # one griddap request either way.
-            record = await oisst.fetch_range(
-                end - timedelta(days=WINDOW_DAYS + 5),
-                end,
-                resolution_deg=resolution,
+            # `fetch_recent`, not a date range ending today. **OISST publishes
+            # with a lag** — coverage ended 2026-08-01 when checked on
+            # 2026-08-17 — and a griddap request running past the dataset's end
+            # answers 404, which is indistinguishable by status code from the
+            # reload 404 this module retries. Asking by date therefore burned
+            # five attempts and ~8 minutes of backoff on every refresh, for a
+            # reason no amount of retrying could fix. `last` lets the dataset
+            # name its own end.
+            record = await oisst.fetch_recent(
+                WINDOW_DAYS + 5, resolution_deg=resolution
             )
             # The detection is numpy over a resident grid — small, but it is
             # still CPU on the event loop, and this runs on the server's loop at
@@ -441,3 +443,42 @@ def current_field() -> HeatwaveField:
             "sea-surface temperature record is still loading"
         )
     return field
+
+
+def cells(field: HeatwaveField | None = None) -> dict[str, Any]:
+    """Cells currently in a marine heatwave, as drawable rectangles.
+
+    Only cells with a category, deliberately: the interesting output is sparse
+    (a few percent of the ocean on a typical day) and sending 40,000 mostly-zero
+    cells to draw nothing would be most of the payload for none of the picture.
+    The map's blankness is then meaningful in the same way the eDNA layer's is —
+    which is why `coverage` rides along, so the UI can say how much ocean was
+    examined rather than leaving "empty" to be read as "not loaded".
+    """
+    resolved = field or _cached_field()
+    if resolved is None:
+        raise HeatwaveError(
+            "no marine heatwave field has been computed yet — the climatology "
+            "or the recent sea-surface temperature record is not loaded"
+        )
+
+    south, north = field_sampling.cell_edges(resolved.latitude)
+    west, east = field_sampling.cell_edges(resolved.longitude)
+    rows, columns = np.nonzero(resolved.category > 0)
+
+    return {
+        **resolved.as_dict(),
+        "cells": [
+            {
+                "west": round(float(west[column]), 4),
+                "south": round(float(south[row]), 4),
+                "east": round(float(east[column]), 4),
+                "north": round(float(north[row]), 4),
+                "category": CATEGORY_NAMES[int(resolved.category[row, column])],
+                "category_index": int(resolved.category[row, column]),
+                "exceedance_c": round(float(resolved.exceedance[row, column]), 3),
+                "run_days": int(resolved.run_days[row, column]),
+            }
+            for row, column in zip(rows.tolist(), columns.tolist(), strict=True)
+        ],
+    }

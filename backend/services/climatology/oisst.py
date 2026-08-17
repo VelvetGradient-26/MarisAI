@@ -146,6 +146,14 @@ async def fetch_range(
     query = build_query(start, end, stride_for(resolution_deg))
     url = f"{ERDDAP_URL}?{query}"
 
+    payload = await _get(url)
+    return _open(payload, destination, start, end)
+
+
+
+async def _get(url: str) -> bytes:
+    """One retrying GET. Shared so `fetch_range` and `fetch_recent` cannot drift
+    apart on retry policy — the half that is easy to get wrong."""
     last: Exception | None = None
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
@@ -173,8 +181,7 @@ async def fetch_range(
             await asyncio.sleep(delay)
     else:
         raise OisstError(f"OISST request failed after {_MAX_ATTEMPTS} attempts: {last}")
-
-    return _open(payload, destination, start, end)
+    return payload
 
 
 def expected_days(start: date, end: date) -> int:
@@ -245,4 +252,45 @@ def _drop_zlev(dataset: xr.Dataset) -> xr.Dataset:
         return dataset.isel(zlev=0, drop=True)
     if "zlev" in dataset.coords:
         return dataset.drop_vars("zlev")
+    return dataset
+
+
+# Native grid extents in *index* space, for the `last` selector below.
+_LAT_INDEX_MAX = 719
+_LON_INDEX_MAX = 1439
+
+
+def build_recent_query(days: int, stride: int, variable: str = "sst") -> str:
+    """A selector for the last `days` timesteps, in ERDDAP index space.
+
+    **Asking for "the last N days" by date does not work, and the failure is
+    disguised as a flap.** OISST publishes with a lag — coverage ended
+    2026-08-01 when checked on 2026-08-17 — and a griddap request whose time
+    range runs past the dataset's end answers **404**, not an empty result. That
+    is indistinguishable by status code from the "Currently unknown datasetID"
+    reload 404 this module retries, so the refresh burned five attempts and
+    about eight minutes of backoff before failing, every time, for a reason no
+    amount of retrying could fix.
+
+    `last` sidesteps it entirely by letting the dataset name its own end. It is
+    index-space, hence the explicit lat/lon index bounds: the value-space form
+    `(last-34)` is accepted but means something else and returns a near-empty
+    grid.
+    """
+    return (
+        f"{variable}"
+        f"[last-{max(days - 1, 0)}:1:last]"
+        f"[0:1:0]"
+        f"[0:{stride}:{_LAT_INDEX_MAX}]"
+        f"[0:{stride}:{_LON_INDEX_MAX}]"
+    ).replace("[", "%5B").replace("]", "%5D")
+
+
+async def fetch_recent(days: int, *, resolution_deg: float = 1.0) -> xr.Dataset:
+    """The dataset's most recent `days` daily fields, whenever they end."""
+    query = build_recent_query(days, stride_for(resolution_deg))
+    payload = await _get(f"{ERDDAP_URL}?{query}")
+    dataset = _drop_zlev(xr.open_dataset(payload))
+    if "time" not in dataset.sizes or int(dataset.sizes["time"]) == 0:
+        raise OisstError("OISST returned no recent daily fields")
     return dataset

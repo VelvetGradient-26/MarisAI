@@ -26,6 +26,18 @@ into the previous December. A non-wrapping window makes the two ends of the year
 disagree with each other by construction, and the discontinuity lands exactly on
 the date the northern hemisphere is coldest and the southern hemisphere is
 warmest.
+
+One invariant that does **not** hold, checked against the real fit
+-------------------------------------------------------------------
+`p90 >= mean` is a tempting thing to assert and it is false here — measured on
+the shipped 1991-2020 global fit, 1,940 of 15,761,058 finite cells (0.012%)
+have a mean above their own 90th percentile. Two causes, both legitimate:
+the median violation is 5e-06 degC, i.e. float32 storage rounding; and the
+largest (0.068 degC) sit on the Antarctic ice margin, where the sample is pinned
+at the -1.8 degC freezing point for most of the window with occasional warm
+excursions. A strongly right-skewed sample can put its mean above its 90th
+percentile, and sea ice produces exactly that shape. `p10 <= p90` *does* hold
+everywhere and is the ordering worth testing.
 """
 
 from __future__ import annotations
@@ -154,9 +166,16 @@ def fit_percentiles(
         with np.errstate(all="ignore"), warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
             all_nan = np.all(np.isnan(window), axis=0)
-            for p in percentiles:
-                estimate = np.nanpercentile(window, p, axis=0)
-                outputs[f"p{p}"][target - 1] = np.where(all_nan, np.nan, estimate)
+            # Both percentiles in one call. `nanpercentile` sorts along the
+            # time axis, and that sort is the dominant cost of the whole build
+            # (366 windows x ~21M elements); asking for p10 and p90 separately
+            # pays for it twice. Measured on the 30-year global fit, this is
+            # the difference between roughly 30 and 15 minutes.
+            estimates = np.nanpercentile(window, list(percentiles), axis=0)
+            for offset, p in enumerate(percentiles):
+                outputs[f"p{p}"][target - 1] = np.where(
+                    all_nan, np.nan, estimates[offset]
+                )
             mean = np.nanmean(window, axis=0)
             outputs["mean"][target - 1] = np.where(all_nan, np.nan, mean)
 

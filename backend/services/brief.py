@@ -39,9 +39,11 @@ from services import (
     biodiversity,
     copernicus_currents,
     eddies,
+    heatwaves,
     forecast_tiles,
     predictions,
     stokes_drift,
+    upwelling,
 )
 from services.bathymetry import BathymetryError, get_elevation
 from services.biodiversity import BiodiversityError
@@ -272,6 +274,23 @@ def _flow_section(latitude: float, longitude: float) -> Section:
             )
         rows.append({"label": "Eddies", "value": value})
 
+    # Vertical movement, which the horizontal vector above cannot show. Reported
+    # for open ocean too — "not coastal" is a real answer, and an omitted row
+    # reads as "no upwelling anywhere", the same rule the eddy row follows.
+    try:
+        up = upwelling.at_point(latitude, longitude)
+    except upwelling.UpwellingError:
+        up = None
+    if up is not None:
+        if up["available"]:
+            value = (
+                f"{up['regime']}, index {up['index']:g} {up['unit']} "
+                f"(offshore {up['offshore_bearing_deg']:g}°)"
+            )
+        else:
+            value = up["unavailable_reason"]
+        rows.append({"label": "Coastal upwelling", "value": value})
+
     return Section(
         key="flow",
         title="Water movement",
@@ -282,7 +301,70 @@ def _flow_section(latitude: float, longitude: float) -> Section:
             "drift, not by the current alone. Directions are the direction the water "
             "travels toward. Eddies are detected from the current field by the "
             "Okubo-Weiss method and are not tracked, so none of them has an age; the "
-            "radius is the equivalent radius of the rotating core."
+            "radius is the equivalent radius of the rotating core. The upwelling "
+            "index is wind-derived — it says the wind is favourable for upwelling, "
+            "not that cold nutrient-rich water has actually surfaced."
+        ),
+    )
+
+
+def _events_section(latitude: float, longitude: float) -> Section:
+    """Detected events — currently marine heatwaves.
+
+    Its own section rather than a row among the observed conditions, because a
+    detection is a different kind of claim from a measurement: it carries a
+    definition, a baseline and a threshold, and burying it beside a temperature
+    reading invites it to be read as one. The note states the baseline, since a
+    heatwave is meaningless without saying "relative to what".
+    """
+    try:
+        state = heatwaves.at_point(latitude, longitude)
+    except heatwaves.HeatwaveError as exc:
+        return Section(
+            key="events",
+            title="Detected events",
+            available=False,
+            unavailable_reason=str(exc),
+        )
+
+    if not state["available"]:
+        return Section(
+            key="events",
+            title="Detected events",
+            available=False,
+            unavailable_reason=state["unavailable_reason"],
+        )
+
+    if state["in_heatwave"]:
+        run = f"{state['run_days']} consecutive day{'s' if state['run_days'] != 1 else ''}"
+        if state["run_days_censored"]:
+            # The window bounds what can be claimed. Saying "12 days" when the
+            # record only reaches back 12 days states a duration the data cannot
+            # support — and a marine heatwave's duration is one of its defining
+            # properties, so the overstatement would matter.
+            run += " or more (the record examined does not reach further back)"
+        value = (
+            f"{state['category']} marine heatwave — {run} above the seasonal "
+            f"90th percentile, currently {state['exceedance_c']:g} °C above it"
+        )
+    else:
+        value = (
+            "no marine heatwave — sea-surface temperature is not above its "
+            "seasonal 90th percentile for five consecutive days"
+        )
+
+    baseline = state["baseline"]
+    return Section(
+        key="events",
+        title="Detected events",
+        available=True,
+        rows=[{"label": "Marine heatwave", "value": value}],
+        note=(
+            f"Hobday definition: sea-surface temperature above the "
+            f"seasonally-varying 90th percentile of the {baseline['start']}-"
+            f"{baseline['end']} baseline for at least five consecutive days. "
+            "Events are not tracked between refreshes, so this carries no onset "
+            "date or total duration."
         ),
     )
 
@@ -498,11 +580,12 @@ async def build_brief(latitude: float, longitude: float) -> dict[str, Any]:
     generated = datetime.now(UTC)
     location, conditions = await _location_section(latitude, longitude)
 
-    forecast, habitat, bloom, flow, biology = await asyncio.gather(
+    forecast, habitat, bloom, flow, events, biology = await asyncio.gather(
         asyncio.to_thread(_forecast_section, latitude, longitude),
         asyncio.to_thread(_habitat_section, latitude, longitude, generated.month),
         asyncio.to_thread(_bloom_section, latitude, longitude),
         asyncio.to_thread(_flow_section, latitude, longitude),
+        asyncio.to_thread(_events_section, latitude, longitude),
         # Already a coroutine — it is a live HTTP call, not a grid read.
         _biodiversity_section(latitude, longitude),
     )
@@ -510,6 +593,9 @@ async def build_brief(latitude: float, longitude: float) -> dict[str, Any]:
     sections = [
         location,
         _conditions_section(conditions),
+        # Directly after the conditions it qualifies: "27.4 °C" and "that is a
+        # severe marine heatwave" are the same reader's question one step apart.
+        events,
         flow,
         forecast,
         habitat,

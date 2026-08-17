@@ -443,3 +443,34 @@ def is_available() -> bool:
     except UpwellingError:
         return False
     return True
+
+
+def cells() -> dict[str, Any]:
+    """Coastal cells with a defined index, as drawable rectangles.
+
+    Every scored cell is sent, not just the favourable ones: the sign is the
+    measurement here, and a layer showing only upwelling would answer "where is
+    upwelling" with a map that cannot distinguish "downwelling" from "not
+    coastal". Both are drawn, on a diverging ramp about zero.
+    """
+    field = _current_field()
+
+    south, north = field_sampling.cell_edges(field.latitude)
+    west, east = field_sampling.cell_edges(field.longitude)
+    rows, columns = np.nonzero(np.isfinite(field.index))
+
+    return {
+        **field.as_dict(),
+        "cells": [
+            {
+                "west": round(float(west[column]), 4),
+                "south": round(float(south[row]), 4),
+                "east": round(float(east[column]), 4),
+                "north": round(float(north[row]), 4),
+                "index": round(float(field.index[row, column]), 3),
+                "favourable": bool(field.index[row, column] > 0),
+                "confidence": round(float(field.coastline_confidence[row, column]), 3),
+            }
+            for row, column in zip(rows.tolist(), columns.tolist(), strict=True)
+        ],
+    }

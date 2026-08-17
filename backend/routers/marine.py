@@ -207,6 +207,35 @@ async def get_heatwaves():
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@router.get("/heatwaves/cells")
+async def get_heatwave_cells():
+    """Cells currently in a marine heatwave, as drawable rectangles.
+
+    Only cells with a category are sent: the output is sparse, and 40,000
+    mostly-zero cells would be most of the payload for none of the picture. The
+    coverage block rides along so the map can say how much ocean was examined —
+    a blank layer here must not read as a failed load.
+    """
+    try:
+        return heatwaves.cells()
+    except heatwaves.HeatwaveError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/upwelling/cells")
+async def get_upwelling_cells():
+    """Coastal cells with a defined upwelling index, as drawable rectangles.
+
+    Both signs are sent, not only the favourable ones: the sign is the
+    measurement, and dropping the negatives would make "downwelling" and "not
+    coastal" the same blank cell.
+    """
+    try:
+        return upwelling.cells()
+    except upwelling.UpwellingError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.get("/heatwaves/point")
 async def get_heatwave_point(
     lat: float = Query(..., ge=-90, le=90),

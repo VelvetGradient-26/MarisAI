@@ -254,3 +254,36 @@ class TestTrailingRun:
     def test_all_true_is_the_window(self):
         above = np.ones((7, 1, 1), dtype=bool)
         assert heatwaves._trailing_run_length(above)[0, 0] == 7
+
+
+class TestCells:
+    def test_only_cells_in_heatwave_are_sent(self):
+        lats, lons = (0.0, 1.0), (0.0,)
+        values = np.full((10, 2, 1), 19.0)
+        values[:, 0, 0] = 25.0
+        field = heatwaves.detect(_record(values, lats, lons), _climatology(lats, lons))
+        payload = heatwaves.cells(field=field)
+        assert len(payload["cells"]) == 1
+        # 25 degC against mean 20 / p90 22 is 2.5x the gap, i.e. strong.
+        assert payload["cells"][0]["category"] == "strong"
+
+    def test_rectangles_are_cell_edges_not_centres(self):
+        """Centre-to-centre polygons sit half a step off the basemap coastline."""
+        lats, lons = (0.0, 1.0), (0.0, 1.0)
+        field = heatwaves.detect(
+            _record(np.full((10, 2, 2), 25.0), lats, lons), _climatology(lats, lons)
+        )
+        cell = heatwaves.cells(field=field)["cells"][0]
+        assert cell["west"] == -0.5 and cell["east"] == 0.5
+        assert cell["south"] == -0.5 and cell["north"] == 0.5
+
+    def test_coverage_rides_along_so_empty_is_legible(self):
+        """A blank layer must be readable as 'we looked and found none', not as
+        'it did not load' — the same rule the eDNA coverage layer follows."""
+        lats, lons = (0.0,), (0.0,)
+        field = heatwaves.detect(
+            _record(np.full((10, 1, 1), 19.0), lats, lons), _climatology(lats, lons)
+        )
+        payload = heatwaves.cells(field=field)
+        assert payload["cells"] == []
+        assert payload["coverage"]["ocean_cells"] == 1

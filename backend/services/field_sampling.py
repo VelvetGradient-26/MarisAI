@@ -202,3 +202,16 @@ def d_dx(values: np.ndarray, dx: np.ndarray, periodic: bool) -> np.ndarray:
 def d_dy(values: np.ndarray, dy: float) -> np.ndarray:
     """Centred difference along latitude. Never periodic — the poles are ends."""
     return np.gradient(values, axis=0) / dy
+
+
+def cell_edges(centres: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Half a step either side of each cell centre.
+
+    Grids here are cell-*centred*, so a polygon drawn from centre to centre is
+    offset by half a step and lands visibly beside the basemap's coastline. Same
+    centre-versus-edge distinction `is_globally_periodic` measures, and the
+    reason it is shared: two detectors drawing cells half a step apart would
+    both look plausible.
+    """
+    step = float(np.abs(np.diff(centres)).mean()) if centres.size > 1 else 1.0
+    return centres - step / 2.0, centres + step / 2.0

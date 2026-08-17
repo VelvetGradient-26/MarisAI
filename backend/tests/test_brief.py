@@ -68,6 +68,7 @@ def test_every_section_is_present_even_when_nothing_can_be_reached(offline):
     assert set(sections) == {
         "location",
         "conditions",
+        "events",
         "flow",
         "forecast",
         "habitat",
@@ -179,3 +180,77 @@ def test_the_pdf_carries_the_unavailable_reasons_rather_than_dropping_them():
 
     assert brief_pdf.render(brief).startswith(b"%PDF")
     assert brief["sections"][0]["unavailable_reason"]
+
+
+def test_the_events_section_states_its_baseline(monkeypatch):
+    """A heatwave is meaningless without "relative to what", and the brief is
+    read where nobody can hover over a tooltip."""
+    monkeypatch.setattr(
+        brief_service.heatwaves,
+        "at_point",
+        lambda lat, lon: {
+            "available": True,
+            "in_heatwave": True,
+            "category": "severe",
+            "exceedance_c": 1.4,
+            "run_days": 9,
+            "run_days_censored": False,
+            "baseline": {"start": 1991, "end": 2020},
+        },
+    )
+    section = brief_service._events_section(9.5, 75.0)
+    assert section.available
+    assert "1991-2020" in section.note
+    assert "severe marine heatwave" in section.rows[0]["value"]
+    assert "9 consecutive days" in section.rows[0]["value"]
+
+
+def test_a_censored_run_does_not_claim_a_duration(monkeypatch):
+    """The window bounds what can be claimed. "12 days" when the record only
+    reaches back 12 days states a duration the data cannot support — and
+    duration is one of a marine heatwave's defining properties."""
+    monkeypatch.setattr(
+        brief_service.heatwaves,
+        "at_point",
+        lambda lat, lon: {
+            "available": True,
+            "in_heatwave": True,
+            "category": "moderate",
+            "exceedance_c": 0.3,
+            "run_days": 30,
+            "run_days_censored": True,
+            "baseline": {"start": 1991, "end": 2020},
+        },
+    )
+    value = brief_service._events_section(9.5, 75.0).rows[0]["value"]
+    assert "or more" in value
+
+
+def test_no_heatwave_is_stated_rather_than_omitted(monkeypatch):
+    """An absence is a result. A dropped row reads as "we did not check"."""
+    monkeypatch.setattr(
+        brief_service.heatwaves,
+        "at_point",
+        lambda lat, lon: {
+            "available": True,
+            "in_heatwave": False,
+            "category": "none",
+            "exceedance_c": -2.1,
+            "run_days": 0,
+            "run_days_censored": False,
+            "baseline": {"start": 1991, "end": 2020},
+        },
+    )
+    section = brief_service._events_section(9.5, 75.0)
+    assert section.available
+    assert "no marine heatwave" in section.rows[0]["value"]
+
+
+def test_a_cold_detector_gives_a_reason_not_an_empty_section(monkeypatch):
+    def raise_(lat, lon):
+        raise brief_service.heatwaves.HeatwaveError("no climatology has been built")
+
+    monkeypatch.setattr(brief_service.heatwaves, "at_point", raise_)
+    section = brief_service._events_section(9.5, 75.0)
+    assert not section.available
+    assert "climatology" in section.unavailable_reason

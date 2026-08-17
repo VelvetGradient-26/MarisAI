@@ -531,6 +531,152 @@ const EDNA_COLOR = [
   '#fce7f3',
 ];
 
+
+// Marine heatwave categories. A sequential warm ramp rather than a diverging
+// one: the scale has no meaningful midpoint — every category is "hotter than
+// usual" and they differ only in degree. Each stop clears 3:1 on the Abyss
+// basemap, the floor every other ramp in this file is held to.
+const HEATWAVE_COLORS = ['#fcd34d', '#fb923c', '#ef4444', '#a21caf'];
+
+function marineHeatwaveLayer(): GeoJsonLayerDescriptor {
+  return {
+    id: 'marine-heatwaves',
+    // 'flow' would be wrong and 'ai' would be worse: this is a detection from
+    // an observed field against an observed baseline, so it sits with the other
+    // detectors rather than under anything implying inference.
+    category: 'flow',
+    name: 'Marine Heatwaves (detected)',
+    type: 'geojson',
+    attribution:
+      'Marine heatwaves to the Hobday definition: sea-surface temperature above the ' +
+      'seasonally-varying 90th percentile of a 1991-2020 daily baseline, for at least five ' +
+      'consecutive days. Baseline built from NOAA OISST v2.1; the current field is the same ' +
+      'product. Category is the multiple of the gap between the climatological mean and that ' +
+      '90th percentile, so "extreme" means four times that gap and not four degrees. ' +
+      'A BLANK OCEAN HERE MEANS NO HEATWAVE WAS DETECTED, not that nothing loaded — the panel ' +
+      'states how much ocean was examined. Detection only: events are NOT tracked between ' +
+      'refreshes, so nothing here carries an onset date or a total duration, and the run ' +
+      'length shown is censored at the 30-day window examined. A fixed baseline in a warming ' +
+      'ocean reports more heatwave over time by construction; that is the intended reading.',
+    defaultOpacity: 0.85,
+    defaultVisible: false,
+    interactiveLayerIndices: [0],
+    paintLayers: (opacity: number) => [
+      {
+        type: 'fill',
+        paint: {
+          'fill-color': [
+            'match',
+            ['get', 'category'],
+            'moderate', HEATWAVE_COLORS[0],
+            'strong', HEATWAVE_COLORS[1],
+            'severe', HEATWAVE_COLORS[2],
+            'extreme', HEATWAVE_COLORS[3],
+            HEATWAVE_COLORS[0],
+          ],
+          'fill-opacity': 0.55 * opacity,
+        },
+      },
+      {
+        type: 'line',
+        paint: {
+          'line-color': [
+            'match',
+            ['get', 'category'],
+            'moderate', HEATWAVE_COLORS[0],
+            'strong', HEATWAVE_COLORS[1],
+            'severe', HEATWAVE_COLORS[2],
+            'extreme', HEATWAVE_COLORS[3],
+            HEATWAVE_COLORS[0],
+          ],
+          'line-width': 0.6,
+          'line-opacity': 0.8 * opacity,
+        },
+      },
+    ],
+    legend: {
+      type: 'categories',
+      unit: 'multiples of the mean-to-90th-percentile gap',
+      categories: [
+        { label: 'Moderate', range: '1-2x', color: HEATWAVE_COLORS[0] },
+        { label: 'Strong', range: '2-3x', color: HEATWAVE_COLORS[1] },
+        { label: 'Severe', range: '3-4x', color: HEATWAVE_COLORS[2] },
+        { label: 'Extreme', range: '4x+', color: HEATWAVE_COLORS[3] },
+      ],
+    },
+  };
+}
+
+// Upwelling is the one field here that is genuinely diverging: zero is a real
+// midpoint (the wind neither drives water offshore nor piles it on), and the
+// two signs are opposite processes rather than more and less of one. Teal for
+// upwelling and amber for downwelling reuses the eddy layer's polarity pairing
+// deliberately — same visual grammar for "two opposite states of a flow".
+const UPWELLING_UP = '#2dd4bf';
+const UPWELLING_DOWN = '#f59e0b';
+
+function upwellingLayer(): GeoJsonLayerDescriptor {
+  return {
+    id: 'upwelling',
+    category: 'flow',
+    name: 'Coastal Upwelling (detected)',
+    type: 'geojson',
+    attribution:
+      'Bakun coastal upwelling index: Ekman transport computed from bulk wind stress on the ' +
+      'live Copernicus wind field, projected onto the offshore normal. Positive (teal) means ' +
+      'the wind drives surface water away from the coast, so deeper water rises to replace ' +
+      'it; negative (amber) means the opposite. ' +
+      'THIS IS A WIND-DERIVED INDEX, NOT AN OBSERVATION OF UPWELLED WATER — it says the wind ' +
+      'is favourable, not that cold nutrient-rich water has surfaced, and it is deliberately ' +
+      'not corroborated against sea-surface temperature or chlorophyll. The offshore ' +
+      'direction is derived from a ~0.25° land mask, so a headland, bay or fjord is below the ' +
+      'grid. Only coastal cells are shown, because the index is per metre of coastline. Cells ' +
+      'within 5° of the equator are excluded: Ekman transport diverges as the Coriolis ' +
+      'parameter goes to zero, and equatorial upwelling is a different mechanism.',
+    defaultOpacity: 0.9,
+    defaultVisible: false,
+    interactiveLayerIndices: [0],
+    paintLayers: (opacity: number) => [
+      {
+        type: 'fill',
+        paint: {
+          'fill-color': [
+            'case',
+            ['>', ['get', 'index'], 0],
+            UPWELLING_UP,
+            UPWELLING_DOWN,
+          ],
+          // Magnitude reads through opacity rather than through a second hue,
+          // so the sign stays the thing the eye resolves first.
+          'fill-opacity': [
+            'interpolate',
+            ['linear'],
+            ['abs', ['get', 'index']],
+            0, 0.15 * opacity,
+            2, 0.75 * opacity,
+          ],
+        },
+      },
+    ],
+    legend: {
+      type: 'categories',
+      unit: 'm²/s per metre of coastline',
+      categories: [
+        {
+          label: 'Upwelling-favourable',
+          range: 'transport offshore',
+          color: UPWELLING_UP,
+        },
+        {
+          label: 'Downwelling-favourable',
+          range: 'transport onshore',
+          color: UPWELLING_DOWN,
+        },
+      ],
+    },
+  };
+}
+
 function ednaCoverageLayer(): GeoJsonLayerDescriptor {
   return {
     id: 'edna-coverage',
@@ -1142,5 +1288,7 @@ export const layerRegistry: LayerDescriptor[] = [
   eddyLayer(),
   // Filed with the reference layers: sampling effort is context about how the
   // ocean was observed, not a property of the water.
+  marineHeatwaveLayer(),
+  upwellingLayer(),
   ednaCoverageLayer(),
 ];
