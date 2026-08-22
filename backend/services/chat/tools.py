@@ -43,10 +43,21 @@ class Ledger:
     def __init__(self) -> None:
         self.observations: list[dict[str, Any]] = []
 
-    def record(self, tool: str, arguments: dict[str, Any], result: Any) -> None:
-        self.observations.append(
-            {"tool": tool, "arguments": arguments, "result": result}
-        )
+    def record(
+        self,
+        tool: str,
+        arguments: dict[str, Any],
+        result: Any,
+        *,
+        agent: str | None = None,
+    ) -> None:
+        entry: dict[str, Any] = {"tool": tool, "arguments": arguments, "result": result}
+        # Only present for a specialist's own tool calls, so the top-level
+        # loop's calls (before the multi-agent split existed) keep the exact
+        # same observation shape as before — additive, not a breaking change.
+        if agent is not None:
+            entry["agent"] = agent
+        self.observations.append(entry)
 
     def as_text(self) -> str:
         return json.dumps(self.observations, default=str)
@@ -133,6 +144,19 @@ class BloomArgs(PointArgs):
 
 class Empty(BaseModel):
     pass
+
+
+class FishingZoneArgs(PointArgs):
+    radius_km: float = Field(
+        100.0, ge=10, le=300, description="How far around the point to scan, in km."
+    )
+
+
+class RouteArgs(BaseModel):
+    start_latitude: float = Field(..., ge=-90, le=90, description="Start latitude in degrees north.")
+    start_longitude: float = Field(..., ge=-180, le=180, description="Start longitude in degrees east.")
+    end_latitude: float = Field(..., ge=-90, le=90, description="Destination latitude in degrees north.")
+    end_longitude: float = Field(..., ge=-180, le=180, description="Destination longitude in degrees east.")
 
 
 # --------------------------------------------------------------------------
@@ -248,6 +272,26 @@ async def _bloom_risk(horizon_days: int, latitude: float, longitude: float) -> d
     return hab_point(horizon_days, latitude, longitude)
 
 
+async def _fishing_zones(latitude: float, longitude: float, radius_km: float) -> dict[str, Any]:
+    from services.pfz import find_zones
+
+    return find_zones(latitude, longitude, radius_km)
+
+
+async def _geofence(latitude: float, longitude: float) -> dict[str, Any]:
+    from services import geofencing
+
+    return geofencing.check(latitude, longitude)
+
+
+async def _safe_route(
+    start_latitude: float, start_longitude: float, end_latitude: float, end_longitude: float
+) -> dict[str, Any]:
+    from services.routing import plan_route
+
+    return await plan_route(start_latitude, start_longitude, end_latitude, end_longitude)
+
+
 # --------------------------------------------------------------------------
 # Wiring
 # --------------------------------------------------------------------------
@@ -316,19 +360,59 @@ _SPECS: list[tuple[str, str, type[BaseModel], Any]] = [
         BloomArgs,
         _bloom_risk,
     ),
+    (
+        "find_fishing_zones",
+        "Scan the water around a coordinate for potentially favourable fishing "
+        "conditions (chlorophyll + SST), ranked. A heuristic screening aid, "
+        "not a validated PFZ model or an official advisory.",
+        FishingZoneArgs,
+        _fishing_zones,
+    ),
+    (
+        "check_geofence",
+        "Check a coordinate against India's EEZ (mainland coastal waters), the "
+        "India-Sri Lanka maritime boundary (IMBL), and nearby Marine Protected "
+        "Areas. Reference geometry, not a surveyed nautical chart.",
+        PointArgs,
+        _geofence,
+    ),
+    (
+        "plan_safe_route",
+        "Plan a route between two coordinates, comparing wave/wind hazard "
+        "along a direct line against two lateral alternatives, and flagging "
+        "any candidate that crosses the IMBL or a Marine Protected Area.",
+        RouteArgs,
+        _safe_route,
+    ),
 ]
 
+# name -> (description, schema, function), for lookup by the specialist
+# tool-name allowlists in `services/chat/specialists.py`.
+_BY_NAME: dict[str, tuple[str, type[BaseModel], Any]] = {
+    name: (description, schema, function) for name, description, schema, function in _SPECS
+}
 
-def build_tools(ledger: Ledger) -> list[StructuredTool]:
-    """Bind the tool set to one conversation's ledger.
+ALL_TOOL_NAMES: list[str] = [name for name, *_ in _SPECS]
+
+
+def build_tools(
+    ledger: Ledger, names: list[str] | None = None, *, agent: str | None = None
+) -> list[StructuredTool]:
+    """Bind a tool set to one conversation's ledger.
 
     Built per request rather than once at import, because the ledger has to be
     per-conversation — see `Ledger`. The wrapper is also the single place tool
     failures are turned into text, so no individual tool has to remember to.
+
+    `names=None` returns every tool (the pre-multi-agent behaviour, and what
+    `test_every_tool_declares_a_description_and_schema` still exercises).
+    `agent` tags every observation this tool set records, so a specialist's
+    calls carry which specialist made them — see `Ledger.record`.
     """
+    selected = _SPECS if names is None else [(n, *_BY_NAME[n]) for n in names]
     tools: list[StructuredTool] = []
 
-    for name, description, schema, function in _SPECS:
+    for name, description, schema, function in selected:
         def make(name: str, function: Any):
             async def run(**kwargs: Any) -> str:
                 try:
@@ -345,7 +429,7 @@ def build_tools(ledger: Ledger) -> list[StructuredTool]:
                             ),
                         }
                     )
-                ledger.record(name, kwargs, result)
+                ledger.record(name, kwargs, result, agent=agent)
                 return json.dumps(result, default=str)
 
             return run

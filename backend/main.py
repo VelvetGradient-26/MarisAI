@@ -49,11 +49,15 @@ from services import (
     ocean_state,
     stokes_drift,
 )
+from services.copernicus_chlorophyll import refresh_chlorophyll_cache
 from services.copernicus_currents import refresh_currents_cache
 from services.copernicus_sst import refresh_sst_cache
 from services.copernicus_wind import refresh_wind_cache
 
 SST_REFRESH_INTERVAL_HOURS = 3
+# The BGC-PFT product this feeds is daily, so anything faster re-fetches a
+# field that cannot have changed — same reasoning as heatwaves' OISST cadence.
+CHLOROPHYLL_REFRESH_INTERVAL_HOURS = 12
 # Wind's source dataset is itself hourly (vs. SST's underlying hourly-but-slow-
 # changing thetao) and drives a live animation, so it's refreshed more often.
 WIND_REFRESH_INTERVAL_HOURS = 1
@@ -71,6 +75,9 @@ async def lifespan(_app: FastAPI):
     # finishes, SST/wind endpoints report "not yet available" (see
     # CopernicusSstError/CopernicusWindError) instead of erroring.
     asyncio.create_task(refresh_sst_cache())
+    # Feeds the PFZ ("nearest fishing zone") chat tool, on the same
+    # fire-and-forget footing as everything else here.
+    asyncio.create_task(refresh_chlorophyll_cache())
     # Wind, surface currents and Stokes drift warm together and then compose the
     # combined drift field, which is summed from all three. Gathered rather than
     # created separately so the compose can be chained onto them: it needs every
@@ -106,6 +113,9 @@ async def lifespan(_app: FastAPI):
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(refresh_sst_cache, "interval", hours=SST_REFRESH_INTERVAL_HOURS)
+    scheduler.add_job(
+        refresh_chlorophyll_cache, "interval", hours=CHLOROPHYLL_REFRESH_INTERVAL_HOURS
+    )
     scheduler.add_job(refresh_wind_cache, "interval", hours=WIND_REFRESH_INTERVAL_HOURS)
     scheduler.add_job(
         refresh_currents_cache, "interval", hours=CURRENTS_REFRESH_INTERVAL_HOURS

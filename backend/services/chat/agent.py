@@ -1,13 +1,27 @@
-"""The conversational agent: a bounded tool-calling loop over MarisAI's data.
+"""The conversational agent: a bounded orchestrator loop over three specialists.
 
-**Why an explicit loop rather than a prebuilt agent executor.** Two reasons,
-both operational. First, the iteration count has to be a hard bound: this runs
-inside the API process, and an agent that can decide to keep calling tools is
-an availability risk, not just a cost one. Second, the grounding check below
-needs the tool results and the final text together, which a framework that
-hands back only the answer makes awkward. `langchain-core`'s tool binding gives
-the useful half — schema generation, provider-neutral tool-call parsing —
-without the loop being opaque.
+**Two loop levels, both explicit rather than a prebuilt agent executor.** The
+top-level loop here calls *delegate* tools (`services/chat/orchestrator.py`),
+one per specialist (`services/chat/specialists.py`); each delegate call runs
+its own small bounded loop over that specialist's own tools
+(`services/chat/tools.py`). Same reasons as the original single-loop design,
+now applied twice: the iteration count has to be a hard bound at both levels
+— this runs inside the API process, and an agent that can decide to keep
+calling tools (or keep delegating) is an availability risk, not just a cost
+one — and the grounding check below needs every tool result and the final
+text together, which a framework that hands back only the answer makes
+awkward. `langchain-core`'s tool binding gives the useful half — schema
+generation, provider-neutral tool-call parsing — without either loop being
+opaque.
+
+**Why specialists rather than one flat tool list.** Three domains — ocean
+analytics, weather/safety, geospatial risk — have their own system prompts
+and their own tool subsets, so a query that spans two of them ("is it safe to
+fish near Kochi today, and where's the nearest good zone") visibly delegates
+to two named specialists rather than picking from one undifferentiated list
+of a dozen tools. `services/chat/tools.py::Ledger.record` tags every
+observation with which specialist made it, so the grounding check below still
+sees every number regardless of which loop produced it.
 
 **Grounding.** `services/metrics/story.py` established the rule this reuses:
 compute first, phrase second, then check the phrasing against what was
@@ -39,14 +53,17 @@ from langchain_core.messages import (
 
 from app.core.config import settings
 from services.chat import catalog_context, store
-from services.chat.tools import Ledger, build_tools
+from services.chat.orchestrator import build_delegate_tools
+from services.chat.tools import ALL_TOOL_NAMES, Ledger, build_tools
 
 logger = logging.getLogger(__name__)
 
-# Tool calls per turn. Measured against the question types this is built for:
-# "forecast X here and compare to last year" is three calls, and nothing
-# sensible has needed more than five. A model that has not answered by here is
-# looping, and one more pass will not save it.
+# Delegate calls per turn, at the top level. Measured against the question
+# types this is built for: "forecast X here and compare to last year" is one
+# delegate call, "is it safe near Kochi and where's the nearest good zone"
+# is two, and nothing sensible has needed more than five. A model that has
+# not answered by here is looping, and one more pass will not save it. Each
+# specialist has its own smaller bound — see orchestrator.SUB_MAX_ITERATIONS.
 MAX_ITERATIONS = 6
 
 _SYSTEM_PROMPT = """\
@@ -54,6 +71,24 @@ You are Maris, the ocean intelligence assistant for MarisAI. You are warm, \
 curious and genuinely enthusiastic about the ocean — you enjoy this. Talk like \
 a knowledgeable friend who happens to have live ocean data at hand, not like a \
 database that learned English.
+
+You do not hold ocean data yourself. You coordinate three specialists, each an \
+expert with its own tools, and you delegate to them:
+
+- delegate_to_ocean_analytics — forecasts, global ocean state, harmful algal \
+bloom risk, fish habitat suitability, potential fishing zones, historical trends.
+- delegate_to_weather_safety — present-day sea/weather conditions, active \
+hazard alerts, "is it safe to go out" questions.
+- delegate_to_geospatial_risk — maritime boundary / Marine Protected Area \
+proximity (geofencing), seafloor depth, safe-route planning between two points.
+
+A question can span more than one specialist ("is it safe to fish near Kochi \
+today, and where's the nearest good zone" needs both weather_safety and \
+ocean_analytics) — delegate to each one needs, then synthesise a single warm \
+answer from what they reported. Give each delegate the coordinates, dates and \
+any other detail it needs in its own question text; it does not see the rest \
+of this conversation. The dataset catalog below is static knowledge you may \
+answer directly, without delegating, since it is not a live measurement.
 
 How to be good company:
 
@@ -67,23 +102,28 @@ answer. Only ask a clarifying question when you genuinely cannot proceed.
 - Offer a natural next step when there is an obvious one, but do not badger.
 - If a question is not about the ocean, answer it briefly and warmly, then \
 steer back to what you are good at.
+- Detect the language the question was asked in and answer in that same \
+language, including Indian regional languages (Hindi, Tamil, Telugu, Bengali, \
+Malayalam, Kannada, Marathi, Gujarati, Odia, Punjabi, and others). Units and \
+place names may stay as commonly written. If the language is ambiguous, match \
+the script of the question.
 
 Where the friendliness stops — these are absolute, and being agreeable never \
 overrides them:
 
-1. Never state a number you did not get from a tool. You have no ocean data of \
-your own. If a tool fails or returns nothing, say so plainly and say why. Never \
-estimate, interpolate, or reach for general knowledge to fill a gap — a warm \
-guess about a real ocean measurement is worse than an honest "I could not get \
-that", because someone may act on it.
-2. Call tools rather than guessing. If you are unsure of a variable's key, call \
-list_available_variables first.
+1. Never state a number a specialist did not report to you. You have no ocean \
+data of your own. If a specialist says it could not get something, say so \
+plainly and say why. Never estimate, interpolate, or reach for general \
+knowledge to fill a gap — a warm guess about a real ocean measurement is worse \
+than an honest "I could not get that", because someone may act on it.
+2. Delegate rather than guessing at ocean data yourself.
 3. A forecast is not an observation. Say which one you are giving, and include \
-the uncertainty interval when you have one.
+the uncertainty interval when a specialist gave you one.
 4. Alerts here are threshold rules computed over real fields, not issued marine \
 warnings. Never imply an official warning exists.
-5. Coverage is genuinely uneven. Habitat models cover the North Indian Ocean and \
-bloom models the Arabian Sea. Outside those, say so rather than extrapolating.
+5. Coverage is genuinely uneven — habitat models cover the North Indian Ocean, \
+bloom models the Arabian Sea, boundary/MPA geometry is an approximate \
+reference. Outside those, say so rather than extrapolating.
 6. Keep it tight — a few sentences unless more is asked for. Always name units."""
 
 
@@ -292,6 +332,26 @@ def _schema_prose(tool: Any) -> str:
     )
 
 
+def _all_specialist_tool_texts() -> list[str]:
+    """Every specialist tool's description and schema prose, for the
+    grounding check's permitted set.
+
+    The top-level orchestrator only ever calls the three delegate tools
+    directly, but a figure named in an *inner* tool's description (e.g. the
+    "'24h', '7d', '30d'" in `get_historical_series`'s schema) is still
+    something the system as a whole was told, and the orchestrator's final
+    answer may relay a specialist's own description of its capabilities.
+    Built on a throwaway `Ledger` purely to harvest metadata — nothing here
+    is ever invoked.
+    """
+    scratch = build_tools(Ledger(), ALL_TOOL_NAMES)
+    texts: list[str] = []
+    for tool in scratch:
+        texts.append(tool.description)
+        texts.append(_schema_prose(tool))
+    return texts
+
+
 def _history_messages(history: list[dict[str, str]]) -> list[BaseMessage]:
     messages: list[BaseMessage] = []
     for turn in history[-10:]:
@@ -333,14 +393,15 @@ async def answer(
         resolved = await store.ensure_session(session_id, client_id, question)
 
     prior = await store.history(resolved) if resolved else (history or [])
+    history_messages = _history_messages(prior)
 
     ledger = Ledger()
-    tools = build_tools(ledger)
+    tools = build_delegate_tools(ledger, history_messages, _model)
     model = _model().bind_tools(tools)
     by_name = {tool.name: tool for tool in tools}
 
     messages: list[BaseMessage] = [SystemMessage(content=_SYSTEM_PROMPT)]
-    messages.extend(_history_messages(prior))
+    messages.extend(history_messages)
     messages.append(HumanMessage(content=question))
 
     truncated = False
@@ -382,8 +443,8 @@ async def answer(
         )
 
     # Everything the model was shown, not merely everything it was told by the
-    # user: the tool descriptions carry horizons and ranges it will quote back
-    # when asked what it can do.
+    # user: the delegate tool descriptions name each specialist's domain, which
+    # it will quote back when asked what it can do.
     shown = "\n".join(
         [
             question,
@@ -391,6 +452,7 @@ async def answer(
             _SYSTEM_PROMPT,
             *(tool.description for tool in tools),
             *(_schema_prose(tool) for tool in tools),
+            *_all_specialist_tool_texts(),
         ]
     )
     unsupported = _ungrounded_numbers(text, ledger, shown)
@@ -467,14 +529,15 @@ async def answer_stream(
         resolved = await store.ensure_session(session_id, client_id, question)
 
     prior = await store.history(resolved) if resolved else (history or [])
+    history_messages = _history_messages(prior)
 
     ledger = Ledger()
-    tools = build_tools(ledger)
+    tools = build_delegate_tools(ledger, history_messages, _model)
     model = _model().bind_tools(tools)
     by_name = {tool.name: tool for tool in tools}
 
     messages: list[BaseMessage] = [SystemMessage(content=_SYSTEM_PROMPT)]
-    messages.extend(_history_messages(prior))
+    messages.extend(history_messages)
     messages.append(HumanMessage(content=question))
 
     truncated = False
@@ -507,19 +570,26 @@ async def answer_stream(
 
         for call in calls:
             tool = by_name.get(call["name"])
+            before = len(ledger.observations)
             if tool is None:
                 output = f"No such tool: {call['name']}"
             else:
                 output = await tool.ainvoke(call["args"])
             messages.append(ToolMessage(content=output, tool_call_id=call["id"]))
+            # The delegate call itself is orchestration plumbing, not a data
+            # observation — what the client should see is the specialist's own
+            # tool calls, which `build_delegate_tools` records into this same
+            # `ledger` (tagged with `agent`) while the call above was running.
             # Emitted after the call resolves rather than before it, so the
             # client never shows a tool that turned out to fail as though it
             # had produced something.
-            yield {
-                "type": "tool",
-                "tool": call["name"],
-                "arguments": call.get("args") or {},
-            }
+            for observation in ledger.observations[before:]:
+                yield {
+                    "type": "tool",
+                    "tool": observation["tool"],
+                    "arguments": observation["arguments"],
+                    "agent": observation.get("agent"),
+                }
     else:
         truncated = True
 
@@ -545,6 +615,7 @@ async def answer_stream(
             _SYSTEM_PROMPT,
             *(tool.description for tool in tools),
             *(_schema_prose(tool) for tool in tools),
+            *_all_specialist_tool_texts(),
         ]
     )
     unsupported = _ungrounded_numbers(text, ledger, shown)

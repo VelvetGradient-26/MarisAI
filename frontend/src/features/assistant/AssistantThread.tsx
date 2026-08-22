@@ -150,6 +150,15 @@ function Composer() {
   );
 }
 
+/** "ocean_analytics" -> "Ocean Analytics", for the specialist label on a tool row. */
+function agentLabel(agent: string | null | undefined): string | null {
+  if (!agent) return null;
+  return agent
+    .split('_')
+    .map((word) => word[0]?.toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
 function RunIndicator() {
   const provenance = useContext(ProvenanceContext);
   const running = Object.values(provenance).find((turn) => turn.pending);
@@ -189,6 +198,9 @@ function RunIndicator() {
             transition={{ duration: 0.3, ease: EASE }}
           >
             <span className="chat-livecall__tick" aria-hidden />
+            {agentLabel(call.agent) ? (
+              <span className="chat-livecall__agent">{agentLabel(call.agent)}</span>
+            ) : null}
             <code>{call.tool}</code>
           </motion.div>
         ))}
@@ -341,8 +353,10 @@ function Provenance({ provenance }: { provenance: TurnProvenance | undefined }) 
 
 function ObservationRow({ observation }: { observation: ChatObservation }) {
   const args = Object.entries(observation.arguments ?? {});
+  const agent = agentLabel(observation.agent);
   return (
     <li className="chat-call">
+      {agent ? <span className="chat-call__agent">{agent}</span> : null}
       <code className="chat-call__name">{observation.tool}</code>
       {args.length > 0 ? (
         <span className="chat-call__args">

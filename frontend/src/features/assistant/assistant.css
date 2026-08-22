@@ -28,6 +28,26 @@
   flex: none;
 }
 
+/* Which specialist made a call — the visible payoff of the multi-agent split.
+ * A pill rather than plain text so it reads as a label, not more prose, next
+ * to the tool name it precedes in both the live trace and the finished
+ * provenance list. */
+.chat-livecall__agent,
+.chat-call__agent {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--chat-accent, var(--ma-accent)) 16%, transparent);
+  color: var(--chat-accent, var(--ma-accent));
+  font: var(--ma-text-2xs) / 1.4 var(--ma-font-mono);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.chat-call__agent {
+  display: inline-block;
+  margin-right: 6px;
+}
+
 /* The positive counterpart to `.chat-flag`. Deliberately quieter than the
    warning it mirrors: "traced" is the expected outcome, and styling it as
    loudly as a failure would train people to stop reading both. It appears

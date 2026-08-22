@@ -17,7 +17,7 @@ import type { ChatTurn } from '../map/api/chat';
  */
 export interface TurnProvenance {
   pending: boolean;
-  tools: { tool: string; arguments: Record<string, unknown> }[];
+  tools: { tool: string; arguments: Record<string, unknown>; agent?: string | null }[];
   meta: ChatStreamMeta | null;
 }
 
@@ -89,7 +89,7 @@ export function useMarisChatRuntime() {
             text = '';
             yield { content: [{ type: 'text', text }] };
           } else if (event.type === 'tool') {
-            tools = [...tools, { tool: event.tool, arguments: event.arguments }];
+            tools = [...tools, { tool: event.tool, arguments: event.arguments, agent: event.agent }];
             setProvenance((prior) => ({
               ...prior,
               [id]: { ...(prior[id] ?? EMPTY), tools },

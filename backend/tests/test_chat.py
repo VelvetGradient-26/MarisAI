@@ -1,9 +1,17 @@
-"""The agent loop, its bounds, and the grounding check.
+"""The orchestrator loop, its bounds, and the grounding check.
 
 No provider is contacted. The model is a scripted stand-in that emits the
 tool-call shape `bind_tools` produces, which is what lets the loop's control
 flow be tested at all — against a real provider these paths are nondeterministic
 and only reachable by luck.
+
+**Two loop levels since the multi-agent split**, and `_model()` is called
+once per level: once for the top-level orchestrator, once more inside
+`services.chat.orchestrator.run_specialist` for whichever specialist gets
+delegated to. `patched` therefore takes a model *per `_model()` call, in
+order* — a test that never delegates only needs one, a test that exercises a
+real tool needs two (the top-level model that emits the delegate call, and
+the specialist's own model that emits the tool call).
 """
 
 from __future__ import annotations
@@ -47,11 +55,28 @@ def _tool_call(name: str, args: dict, call_id: str = "c1") -> AIMessage:
     )
 
 
+def _delegate_call(specialist: str, question: str, call_id: str = "d1") -> AIMessage:
+    return _tool_call(f"delegate_to_{specialist}", {"question": question}, call_id)
+
+
 @pytest.fixture
 def patched(monkeypatch):
-    def install(model: ScriptedModel):
-        monkeypatch.setattr(agent, "_model", lambda: model)
-        return model
+    """Install one model per `_model()` call, in order.
+
+    Once the queue is exhausted, further calls (typically a specialist's sub-
+    loop when a test only cares about the top level) get a trivial stand-in
+    that answers "done" with no tool calls, so a delegate call that a test
+    doesn't script for still terminates instead of hanging the sub-loop.
+    """
+
+    def install(*models: "ScriptedModel"):
+        queue = list(models)
+
+        def factory():
+            return queue.pop(0) if queue else ScriptedModel([AIMessage(content="done")])
+
+        monkeypatch.setattr(agent, "_model", factory)
+        return models[0] if models else None
 
     return install
 
@@ -80,26 +105,34 @@ def depth(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_a_tool_result_reaches_the_answer(patched, depth):
-    """The whole point of the loop: the model's second turn can see tool output."""
+    """The whole point of the loop: a specialist's tool output reaches its own
+    answer, and the orchestrator's final answer carries that figure through."""
     depth({"elevation_m": -1234.5, "source": "GEBCO_2021 via Ifremer ERDDAP"})
 
-    model = patched(
-        ScriptedModel(
-            [
-                _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
-                AIMessage(content="The seafloor there is about 1234.5 m deep."),
-            ]
-        )
+    top = ScriptedModel(
+        [
+            _delegate_call("geospatial_risk", "How deep is it at 10N 72E?"),
+            AIMessage(content="The seafloor there is about 1234.5 m deep."),
+        ]
     )
+    specialist = ScriptedModel(
+        [
+            _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
+            AIMessage(content="It's about 1234.5 m deep."),
+        ]
+    )
+    patched(top, specialist)
 
     result = await agent.answer("How deep is it at 10N 72E?")
 
     assert "1234.5" in result["answer"]
     assert result["grounded"] is True
     assert result["observations"][0]["tool"] == "get_seafloor_depth"
+    assert result["observations"][0]["agent"] == "geospatial_risk"
     assert "GEBCO_2021 via Ifremer ERDDAP" in result["sources"]
-    # The tool result must actually have been fed back, not merely recorded.
-    assert any("1234.5" in str(m.content) for m in model.seen[-1])
+    # The tool result must actually have been fed back to the specialist that
+    # called it, not merely recorded.
+    assert any("1234.5" in str(m.content) for m in specialist.seen[-1])
 
 
 @pytest.mark.asyncio
@@ -112,14 +145,19 @@ async def test_an_invented_number_is_reported_not_hidden(patched, depth):
 
     depth({"elevation_m": -1234.5, "source": "GEBCO"})
 
-    patched(
-        ScriptedModel(
-            [
-                _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
-                AIMessage(content="It is 1234.5 m deep and the water is 28.4 C."),
-            ]
-        )
+    top = ScriptedModel(
+        [
+            _delegate_call("geospatial_risk", "How deep is it?"),
+            AIMessage(content="It is 1234.5 m deep and the water is 28.4 C."),
+        ]
     )
+    specialist = ScriptedModel(
+        [
+            _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
+            AIMessage(content="It is 1234.5 m deep and the water is 28.4 C."),
+        ]
+    )
+    patched(top, specialist)
 
     result = await agent.answer("How deep is it?")
 
@@ -161,11 +199,14 @@ async def test_numbers_from_earlier_turns_are_not_flagged(patched):
 
 @pytest.mark.asyncio
 async def test_numbers_from_tool_descriptions_are_not_flagged(patched):
-    """Describing its own capabilities is not reporting a measurement.
+    """Describing capabilities is not reporting a measurement.
 
-    Found live: "ranges of 24 h, 7 d, 30 d" flagged 30, which appears verbatim
-    in a tool's own argument description. Same lesson as `story._verify` — the
-    permitted set has to come from what was actually put in front of the model.
+    Found live (pre-multi-agent): "ranges of 24 h, 7 d, 30 d" flagged 30,
+    which appears verbatim in a tool's own argument description. That tool
+    now lives inside a specialist rather than on the top-level orchestrator,
+    so this also pins that the permitted set still reaches every specialist
+    tool's description, not just the three delegate tools the orchestrator
+    calls directly — see `agent._all_specialist_tool_texts`.
     """
     patched(ScriptedModel([AIMessage(content="I can serve ranges like 7 d and 30 d.")]))
 
@@ -191,28 +232,28 @@ async def test_schema_bounds_do_not_launder_a_fabricated_reading(patched):
 
 
 @pytest.mark.asyncio
-async def test_the_loop_is_bounded(patched, depth):
-    """A model that keeps requesting tools must not run forever.
+async def test_the_loop_is_bounded(patched):
+    """A model that keeps delegating must not run forever.
 
     This is an availability property, not a cost one: the loop runs inside the
-    API process, so an unbounded agent is a way for one request to occupy a
-    worker indefinitely.
+    API process, so an unbounded orchestrator is a way for one request to
+    occupy a worker indefinitely. Each delegate call still runs a full
+    specialist sub-loop, which terminates immediately here (the default
+    trivial stand-in `patched` installs once the queue is empty) — what's
+    bounded is the *top-level* model's own call count.
     """
 
-    depth({"elevation_m": -10.0})
-
-    model = patched(
-        ScriptedModel(
-            [
-                _tool_call("get_seafloor_depth", {"latitude": 1.0, "longitude": 1.0}, f"c{i}")
-                for i in range(agent.MAX_ITERATIONS + 5)
-            ]
-        )
+    top = ScriptedModel(
+        [
+            _delegate_call("geospatial_risk", "loop forever", f"c{i}")
+            for i in range(agent.MAX_ITERATIONS + 5)
+        ]
     )
+    patched(top)
 
     result = await agent.answer("loop forever")
 
-    assert len(model.seen) == agent.MAX_ITERATIONS
+    assert len(top.seen) == agent.MAX_ITERATIONS
     assert result["truncated"] is True
 
 
@@ -220,26 +261,32 @@ async def test_the_loop_is_bounded(patched, depth):
 async def test_a_failing_tool_does_not_end_the_turn(patched, depth):
     """A raise inside a tool would kill the conversation; it must become text.
 
-    The message also has to reach the model, because the recovery we want is
-    "say it is unavailable" — which it can only do if it knows.
+    The message also has to reach the specialist that called it, because the
+    recovery we want is "say it is unavailable" — which it can only do if it
+    knows.
     """
 
     depth(RuntimeError("provider exploded"))
 
-    model = patched(
-        ScriptedModel(
-            [
-                _tool_call("get_seafloor_depth", {"latitude": 1.0, "longitude": 1.0}),
-                AIMessage(content="That depth data is unavailable right now."),
-            ]
-        )
+    top = ScriptedModel(
+        [
+            _delegate_call("geospatial_risk", "depth?"),
+            AIMessage(content="That depth data is unavailable right now."),
+        ]
     )
+    specialist = ScriptedModel(
+        [
+            _tool_call("get_seafloor_depth", {"latitude": 1.0, "longitude": 1.0}),
+            AIMessage(content="That depth data is unavailable right now."),
+        ]
+    )
+    patched(top, specialist)
 
     result = await agent.answer("depth?")
 
     assert "unavailable" in result["answer"].lower()
     assert result["observations"] == [], "a failed tool must not enter the ledger"
-    assert any("provider exploded" in str(m.content) for m in model.seen[-1])
+    assert any("provider exploded" in str(m.content) for m in specialist.seen[-1])
 
 
 @pytest.mark.asyncio
@@ -290,6 +337,17 @@ def test_the_ledger_separates_conversations():
     assert "42.0" in first.as_text()
 
 
+def test_the_ledger_tags_specialist_observations():
+    """A delegated call's observation must say which specialist made it, so
+    the streaming trace can group tool calls by agent."""
+    ledger = Ledger()
+    ledger.record("get_current_conditions", {}, {"ok": True}, agent="weather_safety")
+    ledger.record("get_seafloor_depth", {}, {"ok": True})
+
+    assert ledger.observations[0]["agent"] == "weather_safety"
+    assert "agent" not in ledger.observations[1]
+
+
 @pytest.mark.asyncio
 async def test_an_empty_question_is_rejected(patched):
     patched(ScriptedModel([AIMessage(content="hi")]))
@@ -309,14 +367,19 @@ async def test_a_thousands_separator_does_not_fake_an_ungrounded_number(patched,
     """
     depth({"elevation_m": -2048.0, "source": "GEBCO_2021 via Ifremer ERDDAP"})
 
-    patched(
-        ScriptedModel(
-            [
-                _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
-                AIMessage(content="The seafloor there sits about 2,048 m deep."),
-            ]
-        )
+    top = ScriptedModel(
+        [
+            _delegate_call("geospatial_risk", "How deep is it at 10N 72E?"),
+            AIMessage(content="The seafloor there sits about 2,048 m deep."),
+        ]
     )
+    specialist = ScriptedModel(
+        [
+            _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
+            AIMessage(content="About 2,048 m deep."),
+        ]
+    )
+    patched(top, specialist)
 
     result = await agent.answer("How deep is it at 10N 72E?")
 
@@ -333,14 +396,19 @@ async def test_a_grouped_number_is_still_checked(patched, depth):
     """
     depth({"elevation_m": -2048.0, "source": "GEBCO_2021 via Ifremer ERDDAP"})
 
-    patched(
-        ScriptedModel(
-            [
-                _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
-                AIMessage(content="The seafloor there sits about 9,876 m deep."),
-            ]
-        )
+    top = ScriptedModel(
+        [
+            _delegate_call("geospatial_risk", "How deep is it at 10N 72E?"),
+            AIMessage(content="The seafloor there sits about 9,876 m deep."),
+        ]
     )
+    specialist = ScriptedModel(
+        [
+            _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
+            AIMessage(content="About 2,048 m deep."),
+        ]
+    )
+    patched(top, specialist)
 
     result = await agent.answer("How deep is it at 10N 72E?")
 
@@ -380,24 +448,34 @@ async def test_the_stream_reports_tools_before_the_answer(patched, depth):
     """The reason the streaming endpoint exists.
 
     A turn that fetches ocean data takes tens of seconds, and the point of
-    streaming it is that the user sees *what is being fetched* while they wait.
-    If a `tool` event could arrive after the prose it justifies, the feature
-    would be pointless — so the ordering is asserted, not assumed.
+    streaming it is that the user sees *what is being fetched* while they
+    wait — now labelled with which specialist is doing the fetching. If a
+    `tool` event could arrive after the prose it justifies, the feature would
+    be pointless — so the ordering is asserted, not assumed. Only the
+    top-level orchestrator streams tokens (`astream`); a specialist's own
+    sub-loop always uses `ainvoke`, so only the top model needs to be a
+    `ScriptedStreamModel`.
     """
     depth({"elevation_m": -1234.5, "source": "GEBCO_2021 via Ifremer ERDDAP"})
-    patched(
-        ScriptedStreamModel(
-            [
-                _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
-                AIMessage(content="The seafloor there is about 1234.5 m deep."),
-            ]
-        )
+    top = ScriptedStreamModel(
+        [
+            _delegate_call("geospatial_risk", "How deep is it at 10N 72E?"),
+            AIMessage(content="The seafloor there is about 1234.5 m deep."),
+        ]
     )
+    specialist = ScriptedModel(
+        [
+            _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
+            AIMessage(content="About 1234.5 m deep."),
+        ]
+    )
+    patched(top, specialist)
 
     events = await _collect("How deep is it at 10N 72E?")
     kinds = [event["type"] for event in events]
 
     assert kinds[0] == "tool"
+    assert events[0]["agent"] == "geospatial_risk"
     assert kinds.index("tool") < kinds.index("delta")
     assert kinds[-1] == "meta", "meta must be terminal — it carries the grounding verdict"
     assert kinds.count("meta") == 1
@@ -413,14 +491,19 @@ async def test_the_streamed_text_reassembles_into_the_final_answer(patched, dept
     grounding and written to the transcript.
     """
     depth({"elevation_m": -1234.5, "source": "GEBCO_2021 via Ifremer ERDDAP"})
-    patched(
-        ScriptedStreamModel(
-            [
-                _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
-                AIMessage(content="The seafloor there is about 1234.5 m deep."),
-            ]
-        )
+    top = ScriptedStreamModel(
+        [
+            _delegate_call("geospatial_risk", "How deep is it at 10N 72E?"),
+            AIMessage(content="The seafloor there is about 1234.5 m deep."),
+        ]
     )
+    specialist = ScriptedModel(
+        [
+            _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
+            AIMessage(content="About 1234.5 m deep."),
+        ]
+    )
+    patched(top, specialist)
 
     events = await _collect("How deep is it at 10N 72E?")
     streamed = "".join(e["text"] for e in events if e["type"] == "delta")
@@ -429,6 +512,7 @@ async def test_the_streamed_text_reassembles_into_the_final_answer(patched, dept
     assert streamed.strip() == meta["answer"].strip()
     assert meta["grounded"] is True
     assert meta["observations"][0]["tool"] == "get_seafloor_depth"
+    assert meta["observations"][0]["agent"] == "geospatial_risk"
 
 
 @pytest.mark.asyncio
@@ -440,15 +524,20 @@ async def test_grounding_is_only_reported_at_the_end(patched, depth):
     event is what makes that impossible rather than merely discouraged.
     """
     depth({"elevation_m": -1234.5, "source": "GEBCO_2021 via Ifremer ERDDAP"})
-    patched(
-        ScriptedStreamModel(
-            [
-                _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
-                # 4321.0 appears in no tool result.
-                AIMessage(content="It is 4321.0 m deep."),
-            ]
-        )
+    top = ScriptedStreamModel(
+        [
+            _delegate_call("geospatial_risk", "How deep is it at 10N 72E?"),
+            # 4321.0 appears in no tool result.
+            AIMessage(content="It is 4321.0 m deep."),
+        ]
     )
+    specialist = ScriptedModel(
+        [
+            _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
+            AIMessage(content="About 1234.5 m deep."),
+        ]
+    )
+    patched(top, specialist)
 
     events = await _collect("How deep is it at 10N 72E?")
 
@@ -462,10 +551,23 @@ def test_every_tool_declares_a_description_and_schema():
     """The description is the only thing the model reads to choose a tool.
 
     An undescribed tool is invisible in practice, and the failure is silent —
-    the model simply never calls it.
+    the model simply never calls it. 12 = the original 9 plus the three PS2
+    additions (find_fishing_zones, check_geofence, plan_safe_route).
     """
     tools = build_tools(Ledger())
-    assert len(tools) == 9
+    assert len(tools) == 12
     for tool in tools:
         assert tool.description and len(tool.description) > 30, tool.name
         assert tool.args_schema is not None, tool.name
+
+
+def test_every_specialist_tool_name_is_real():
+    """`services.chat.specialists.SPECIALISTS` names tools by string — a typo
+    there would silently vanish a tool from every specialist rather than
+    raising, since `build_tools` only looks up what it's given."""
+    from services.chat.specialists import SPECIALISTS
+    from services.chat.tools import ALL_TOOL_NAMES
+
+    for specialist in SPECIALISTS.values():
+        for name in specialist.tool_names:
+            assert name in ALL_TOOL_NAMES, f"{specialist.name} references unknown tool {name}"
