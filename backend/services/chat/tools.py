@@ -152,6 +152,15 @@ class FishingZoneArgs(PointArgs):
     )
 
 
+class CycloneArgs(PointArgs):
+    radius_km: float = Field(
+        500.0,
+        ge=50,
+        le=2000,
+        description="How far from the point counts as 'nearby' for a tropical cyclone, in km.",
+    )
+
+
 class RouteArgs(BaseModel):
     start_latitude: float = Field(..., ge=-90, le=90, description="Start latitude in degrees north.")
     start_longitude: float = Field(..., ge=-180, le=180, description="Start longitude in degrees east.")
@@ -237,6 +246,18 @@ async def _active_alerts() -> dict[str, Any]:
     from services.dashboard import alerts
 
     return alerts.build()
+
+
+async def _cyclone_alerts(latitude: float, longitude: float, radius_km: float) -> dict[str, Any]:
+    from services.cyclones import check_point
+
+    return await check_point(latitude, longitude, radius_km)
+
+
+async def _severe_weather_alerts(latitude: float, longitude: float) -> dict[str, Any]:
+    from services.severe_weather import check_point
+
+    return await check_point(latitude, longitude)
 
 
 async def _history(variable: str, latitude: float, longitude: float, range_key: str) -> dict[str, Any]:
@@ -338,6 +359,25 @@ _SPECS: list[tuple[str, str, type[BaseModel], Any]] = [
         "blooms). These are computed rules, not issued marine warnings.",
         Empty,
         _active_alerts,
+    ),
+    (
+        "get_cyclone_alerts",
+        "Active tropical cyclones worldwide, and whether one is within a "
+        "given radius of a coordinate. From GDACS (aggregating JTWC and "
+        "national warning centres), not a live track — position is the most "
+        "recently reported fix.",
+        CycloneArgs,
+        _cyclone_alerts,
+    ),
+    (
+        "get_severe_weather_alerts",
+        "India Meteorological Department severe-weather warnings (heavy "
+        "rain, heatwave, cold wave, thunderstorm/lightning, ...) whose "
+        "warned area covers a coordinate. Nationwide coverage, not scoped to "
+        "the coast; not a cyclone-track bulletin — use get_cyclone_alerts "
+        "for that.",
+        PointArgs,
+        _severe_weather_alerts,
     ),
     (
         "get_historical_series",

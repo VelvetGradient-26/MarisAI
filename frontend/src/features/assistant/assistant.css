@@ -28,11 +28,43 @@
   flex: none;
 }
 
+/* The orchestrator's own reasoning: which specialist it decided to ask, and
+   the sub-task it wrote for them, shown before that specialist's tool calls
+   land. Same indent as `.chat-livecall` while live, since it precedes that
+   specialist's calls in the same bubble; unindented inside `.chat-delegations`
+   (the finished-message list), which sits in the answer's own column. */
+.chat-delegation {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0.3rem 0 0 1.15rem;
+  font: var(--ma-text-2xs) / 1.4 var(--ma-font-sans, inherit);
+  color: var(--chat-muted, var(--ma-muted));
+}
+
+.chat-delegation__question {
+  font-style: italic;
+}
+
+.chat-delegations {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.chat-delegations .chat-delegation {
+  margin: 0;
+}
+
 /* Which specialist made a call — the visible payoff of the multi-agent split.
  * A pill rather than plain text so it reads as a label, not more prose, next
  * to the tool name it precedes in both the live trace and the finished
  * provenance list. */
 .chat-livecall__agent,
+.chat-delegation__agent,
 .chat-call__agent {
   padding: 1px 6px;
   border-radius: 999px;

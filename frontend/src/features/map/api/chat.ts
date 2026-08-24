@@ -38,6 +38,13 @@ export interface ChatObservation {
   agent?: string | null;
 }
 
+/** One orchestrator decision to hand a sub-task to a specialist, and why —
+ * the `question` argument the orchestrator wrote before the specialist ran. */
+export interface ChatDelegation {
+  agent: string;
+  question: string;
+}
+
 export interface ChatReply {
   answer: string;
   /**
@@ -50,6 +57,7 @@ export interface ChatReply {
   unsupported_numbers: string[];
   observations: ChatObservation[];
   sources: string[];
+  delegations: ChatDelegation[];
   truncated: boolean;
   session_id: string | null;
 }

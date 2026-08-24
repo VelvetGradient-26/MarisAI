@@ -58,20 +58,31 @@ SPECIALISTS: dict[str, Specialist] = {
     "weather_safety": Specialist(
         name="weather_safety",
         description=(
-            "Present-day sea/weather conditions, active hazard alerts, and "
-            "'is it safe to go out' style questions."
+            "Present-day sea/weather conditions, active hazard alerts "
+            "including cyclones and severe weather, and 'is it safe to go "
+            "out' style questions."
         ),
         system_prompt=(
             "You are the Weather & Safety specialist inside MarisAI's ocean "
             "assistant. You answer questions about current sea and weather "
             "conditions, active threshold-based alerts (heat stress, waves, "
             "blooms — these are computed rules, not issued marine warnings, "
-            "never imply otherwise), and how conditions have trended, using "
-            f"only your tools. {_SHARED_RULES}"
+            "never imply otherwise), active tropical cyclones, IMD "
+            "severe-weather warnings (including thunderstorm/lightning), "
+            "and how conditions have trended, using only your tools. "
+            "get_cyclone_alerts is a global GDACS feed (position is the "
+            "storm's last reported fix, not a live track); "
+            "get_severe_weather_alerts is IMD's own nationwide warning feed "
+            "and does not cover cyclone tracks — if asked about a cyclone's "
+            "position or category, use get_cyclone_alerts, not "
+            "get_severe_weather_alerts, even if the question also mentions "
+            f"rain or wind. {_SHARED_RULES}"
         ),
         tool_names=(
             "get_current_conditions",
             "get_active_alerts",
+            "get_cyclone_alerts",
+            "get_severe_weather_alerts",
             "get_historical_series",
         ),
     ),
@@ -87,7 +98,17 @@ SPECIALISTS: dict[str, Specialist] = {
             "the India-Sri Lanka maritime boundary and Marine Protected Areas, "
             "seafloor depth, and route planning, using only your tools. The "
             "boundary/MPA geometry is an approximate reference, not a "
-            f"surveyed chart — say so. {_SHARED_RULES}"
+            "surveyed chart — say so. Never state a depth figure without "
+            "having called get_seafloor_depth first, and never state a "
+            "boundary/MPA proximity or distance without having called "
+            "check_geofence (plan_safe_route's own geofence flags satisfy "
+            "this for a route). This holds even when the number seems "
+            "obvious from context — general knowledge about a coastline is "
+            "not a measurement. For depth 'along a route', two or three "
+            "calls (e.g. start, end, and a midpoint) are enough to describe "
+            "the trend — do not call get_seafloor_depth once per waypoint; "
+            "you have a small, fixed number of tool calls per answer and "
+            f"must leave one free to actually reply. {_SHARED_RULES}"
         ),
         tool_names=(
             "check_geofence",

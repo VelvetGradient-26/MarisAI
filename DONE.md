@@ -463,6 +463,153 @@ attribution carries the per-horizon operating point (+3d 0.449 / +5d 0.280 / +7d
 
 ## Platform
 
+### Cyclone and severe-weather alerts, from GDACS and IMD's CAP feed — 2026-08-24
+
+PS2's own example queries name "any lightning or cyclone alerts in my area",
+and nothing in the platform answered it — `get_active_alerts` is threshold
+rules over SST/wave/bloom fields, and there was no cyclone-track or
+lightning source anywhere in the codebase. TODO.md flagged this as the
+biggest gap against the problem statement and called for a probe pass before
+assuming IMD had a usable feed. It did, plus a genuinely good global fallback
+— both found live, both shipped as chat tools.
+
+**IMD's cyclone/weather pages are HTML only, but a real CAP feed was found
+embedded in one of them.** `mausam.imd.gov.in/imd_latest/contents/cyclone.php`
+links to `https://cap-sources.s3.amazonaws.com/in-imd-en/rss.xml` — a public,
+anonymous-read S3 bucket (public domain) that is IMD's own NWFC division
+feeding a standard OASIS CAP 1.2 alert stream into a third-party aggregator
+(`alert-hub.appspot.com`; the bucket hosts many countries' feeds, not just
+India's). No key, no auth, real live data — confirmed current as of the probe
+date and structurally a proper CAP document per alert (event, severity/
+urgency/certainty, onset/expiry, polygon or circle geometry).
+
+**It answers "lightning", not "cyclone" — measured, not assumed.** Sampling
+the alerts issued during five major India-landfalling cyclones spanning
+2021-2024 (Biparjoy, Michaung, Tauktae, Remal, Dana) found every one of them
+recorded in this feed only as `event`="Heavy Rain"/"Heavy rainfall"/
+"Extremely heavy" — never as "Cyclone". This is IMD's rainfall/heatwave/
+thunderstorm nowcast channel, not RSMC New Delhi's cyclone-track bulletin
+(which is PDF-only). It does carry a genuine `event` of "Thunderstorm,
+hailstorm, gusty winds and lightning" during pre-monsoon season (confirmed
+live, an April 2023 alert) — a real, if indirect, answer to "any lightning
+alerts": IMD relays a warning that a strike is likely, it does not report
+individual strikes (no such free public source was found for India).
+
+**GDACS closed the cyclone half, and it is a strong source, not a
+compromise.** `gdacs.org/gdacsapi` is free, keyless, and aggregates JTWC's
+(and other RSMCs') tropical cyclone bulletins into one global GeoJSON feed —
+exactly the NOAA/JTWC fallback TODO.md named. Verified against
+`country=India` history: it correctly carries Biparjoy-23, Michaung-23,
+Remal-24, Dana-24, Fengal-24, Montha-25 and more, each sourced from JTWC, with
+real position, intensity, alert level, and (via a second endpoint,
+`getgeometry`) uncertainty-cone polygons and per-timestep wind-radii features.
+**Its `eventtypes=TC` query parameter does not reliably filter server-side**
+— measured, a request with that parameter still returned floods, earthquakes,
+droughts, volcanoes and wildfires — so `services/cyclones.py` filters on
+`properties.eventtype == "TC"` itself rather than trusting the query string.
+
+**Shipped:**
+- `services/cyclones.py` — `get_active_cyclones()` (every GDACS-current TC
+  worldwide) and `check_point(lat, lon, radius_km)` (nearest active storm,
+  distance, and a coarse "within watch radius" flag against its last reported
+  fix — not its forecast cone; see TODO.md for the wind-radii refinement).
+  15-minute cache, one GDACS call regardless of how many points are checked.
+- `services/severe_weather.py` — parses the CAP 1.2 XML properly (namespace-
+  aware, `cap:polygon`/`cap:circle` geometry via shapely, `status`/`msgType`
+  filtering that excludes `Test`/`Exercise` and `Cancel` messages, an
+  `onset <= now <= expires` activity window). `get_active_alerts()` and
+  `check_point(lat, lon)` (point-in-polygon/circle against every alert
+  currently valid). 10-minute cache.
+- Two new chat tools on the `weather_safety` specialist,
+  `get_cyclone_alerts`/`get_severe_weather_alerts` — its system prompt now
+  states which tool owns which question explicitly (a cyclone's position or
+  category always goes to `get_cyclone_alerts`, even if the question also
+  mentions rain or wind), since the two sources' scopes overlap in exactly
+  the way a demo question is likely to ask about.
+- **No REST router** — deliberately matching `geofencing`/`pfz`/`routing`'s
+  existing precedent that a new PS2 capability ships as a chat tool first,
+  not a map layer, until there is a reason to add one (see TODO.md).
+- 17 new unit tests (both services fully mocked, no network) plus the tool
+  count bump (12 -> 14) and specialist-prompt update in the existing chat
+  suite; 42/42 passing.
+
+**Verified live end to end, not just unit-tested**: `run_specialist` against
+the real configured LLM asked "any active cyclone or lightning/severe-weather
+alerts near Chennai" correctly called both new tools with sensible arguments
+and produced a grounded, accurate answer (no active North Indian Ocean
+cyclone at probe time, nearest storm ~5,900 km away near Japan, no IMD warning
+covering the point). One more live run, phrased more casually, surfaced the
+grounding checker correctly flagging the model's own "roughly 5,900 km"
+paraphrase of the tool's precise 5992.7 — the same documented, intentional
+behavior as CLAUDE.md's "a model's own unit conversion is still flagged, and
+that is correct" rule. Not a defect in the new tools; the safety net working
+as designed on a new data source.
+
+### Multi-agent: prompt tightening and a visible delegation trace — 2026-08-24
+
+Two of the three items TODO.md's "usage surfaced two things worth tightening"
+named after the 2026-08-22 Kochi→Kanyakumari run, where the orchestrator's
+synthesis added seafloor-depth figures no tool had returned (caught correctly
+by grounding, but a flagged answer in front of a demo audience is worse than
+one that never needed flagging).
+
+- **`geospatial_risk`'s system prompt now names the failure mode directly**:
+  never state a depth figure without calling `get_seafloor_depth`, never state
+  a boundary/MPA proximity without calling `check_geofence`, explicitly
+  including the case where the number "seems obvious from context" — that
+  qualifier exists because the original failure was exactly a plausible-sounding
+  generic figure ("generally >200 m"), not an implausible one.
+  - **Verified live against the configured provider** (`ollama` /
+    `gpt-oss:20b-cloud`), not just by inspection — and the first live run
+    caught a real regression the prompt change introduced: asked to plan a
+    route *and* describe depth "along the way", the model dutifully called
+    `get_seafloor_depth` once per waypoint and burned through
+    `SUB_MAX_ITERATIONS` (4) with no turn left to answer, so the specialist
+    fell back to its truncated-answer text and the orchestrator improvised an
+    apology around it — `grounded: true` (no fabricated numbers) but useless.
+    Fixed with two changes together: the prompt now bounds depth checks to
+    "two or three calls (start, end, a midpoint)" for a route question, and
+    `SUB_MAX_ITERATIONS` went 4 -> 5 for headroom. Re-run afterward:
+    `truncated: False`, a real per-waypoint depth table, and land waypoints
+    correctly reported as "no depth data" rather than guessed.
+  - **One live run out of three still produced a refusal** ("I couldn't pull
+    a safe-route plan") despite `plan_safe_route` and `get_seafloor_depth`
+    having succeeded and populated the ledger — `grounded` stayed `true`
+    because a refusal states no numbers to check, so grounding cannot catch
+    this failure mode at all. A repeat of the identical question immediately
+    after succeeded normally. This reads as the small provider model
+    occasionally discarding a successful tool result during synthesis rather
+    than anything the prompt or iteration-budget change touched — pre-existing
+    and orthogonal to this fix, not re-created by it. Left open in TODO.md;
+    grounding needs a second check for "claims failure when the ledger has
+    data" symmetric to its existing "claims a number the ledger doesn't have".
+- **The orchestrator's delegation reasoning is now a first-class event, not an
+  inference from the tool-call list.** `agent.py::_record_delegation` reads the
+  `question` argument already present on every `delegate_to_*` call — the
+  orchestrator was always producing this text, it just was not surfaced — and
+  emits it as a `delegate` SSE event the moment the call is made, before that
+  specialist has run at all. It rides the terminal `meta.delegations` too, for
+  a client that only reads the finished reply. `services/chat/orchestrator.py`
+  and the specialists' own tool calls are unchanged; this is purely making an
+  existing decision visible.
+  - **Ahead of, not folded into, the tool-call list.** It answers "why was this
+    specialist asked", the tool list answers "what did it do once asked" — the
+    two questions the reasoning-trace gap named separately.
+  - Not persisted to the chat transcript (`services/chat/store.py` keeps
+    `observations`/`sources` only) — same call already made for the delegate
+    call itself, which is "orchestration plumbing, not a data observation".
+  - `frontend/src/features/assistant/`: a `chat-delegation` line (specialist
+    pill + its question, in the same muted style as a live tool call) appears
+    in the live thinking indicator ahead of that specialist's own calls, and
+    persists in the finished message's provenance block, unconditionally
+    visible rather than folded into the collapsed "N data calls" disclosure.
+  - `tests/test_chat.py` pins the ordering (`delegate` before that specialist's
+    `tool` events, before any `delta`) and the event's exact shape.
+
+The third item — a live browser pass on `/assistant` to eyeball the specialist
+pill and the new delegation line — is still owed; see §6, same
+`requestAnimationFrame`-never-fires limitation as the map.
+
 ### Observability — the request was a bug report
 
 Two logging systems had grown side by side (loguru in 13 modules, stdlib

@@ -337,3 +337,125 @@ Not abandoned.
 - **Documentation drift**: CLAUDE.md's forecast-map section no longer quotes a
   grid count and says to count the directory instead. Keep it that way — the
   number moves with every `--all` run.
+
+---
+
+## 8. SIH Problem Statement 2 — the agentic marine intelligence platform
+
+Phase 1 shipped: the Ocean Assistant is now a real multi-agent system — an
+orchestrator delegating to three specialists (`services/chat/specialists.py`,
+`services/chat/orchestrator.py`), each its own bounded tool-calling sub-loop,
+sharing one `Ledger` so grounding still covers every specialist's numbers.
+Three new capabilities feed it: `services/geofencing.py` (India EEZ/IMBL/MPA
+proximity), `services/pfz.py` + `services/copernicus_chlorophyll.py` (a
+heuristic potential-fishing-zone scan), and `services/routing.py` (candidate-
+route hazard comparison). Regional-language response is LLM-native (a system
+prompt instruction, no detection/translation pipeline) and was verified live
+in Hindi. What's below is what Phase 1 deliberately left out, plus what using
+it live surfaced as worth doing next.
+
+### Cyclone/severe-weather alerts — shipped, three things left
+
+The gap this section named is closed — see DONE.md's "Cyclone and
+severe-weather alerts, from GDACS and IMD's CAP feed". `get_cyclone_alerts`
+(GDACS, global tropical-cyclone tracking) and `get_severe_weather_alerts`
+(IMD's own CAP feed — heavy rain, heatwave, cold wave, thunderstorm/lightning)
+are live chat tools on the `weather_safety` specialist, verified end to end
+against the real APIs and a live LLM. What's left:
+
+- **No REST endpoint, matching `geofencing`/`pfz`/`routing`'s existing
+  precedent** (all three are chat-tool-only, no router) — but unlike those
+  three, a cyclone/severe-weather map layer is a plausible, genuinely useful
+  next surface (a polygon/point overlay, same shape as `eddies`/`upwelling`).
+  Worth doing if this becomes more than a chat-only feature; the services
+  already return real geometry (GDACS track points, IMD CAP polygons/circles)
+  so a router would be thin.
+- **`check_point`'s cyclone proximity is a circle around the last reported
+  fix, not an intersection with the storm's forecast cone or wind-radius
+  polygons.** GDACS's `getgeometry` endpoint exposes exactly that (per-
+  timestep `PointRadii` features carrying real 34/50/64kt wind radii) — see
+  `services/cyclones.py`'s docstring. Left out of this pass to keep the
+  fetch to one call per check rather than one per active storm; worth doing
+  if the coarse radius proves too imprecise in practice.
+- **The IMD CAP feed's RSS index has only ever been observed carrying 7
+  items.** That is fine for "currently active" (alerts are rarely valid
+  longer than ~48h) but was never confirmed against the aggregator's own
+  behavior under a burst of alerts (e.g. a real landfall issuing many warnings
+  in one day) — worth re-checking during the next actual severe-weather event
+  rather than assumed safe from today's quiet-season sample.
+
+### Geofencing — the approximations that should not ship to production
+
+`services/geofencing.py` says this about itself, and it is worth restating as
+tasks:
+
+- **Andaman & Nicobar and Lakshadweep EEZs are not represented.** Only
+  mainland coastal waters are. A fisherman operating from either archipelago
+  gets no geofencing at all today.
+- **The IMBL is hand-placed from public descriptions, not the treaty's
+  surveyed coordinates.** Worth sourcing the actual 1974/1976 India-Sri Lanka
+  agreement coordinates rather than an eyeballed sketch, given this is the
+  real-world hazard (fishermen straying across it) the feature exists for.
+- **The India EEZ polygon is a coastline sketch offset by a fixed degree
+  margin**, not a geodesic buffer of a real coastline dataset. Marine Regions'
+  WFS (`geo.vliz.be/geoserver/MarineRegions/wfs`, reachable per CLAUDE.md's
+  EMODnet probe) is the natural upgrade — a `GetFeature` call against the
+  World EEZ layer, cached like every other slow-changing reference dataset.
+- **Only 4 MPAs are registered**, hand-picked, not sourced from India's MPA
+  registry. WDPA (protectedplanet.net) is the standard source; whether it has
+  a clean API or is bulk-download-only was not checked this pass.
+
+### Routing — currently a comparison, not a planner
+
+- **Three candidate routes (direct + two lateral offsets), not a pathfinder.**
+  A real hazard-aware router (A*/Dijkstra over a gridded wave/wind cost
+  surface, the way the forecast grid already tiles the ocean) would find
+  routes the three-candidate comparison structurally cannot, e.g. routing
+  around a headland. This is the biggest single accuracy gap in `plan_route`.
+- **Waypoints are linearly interpolated in lat/lon, not a true geodesic.**
+  Stated as fine at coastal/fishing-vessel route lengths in
+  `routing.py`'s docstring — re-check that assumption before using this for
+  anything ocean-basin-scale.
+- **No vessel profile.** Speed, fuel range and draft are not inputs; every
+  route is scored on wave/wind hazard alone.
+
+### PFZ — a heuristic, not a validated model
+
+`services/pfz.py` composes raw chlorophyll + SST with a documented but
+untested rule (chlorophyll above the local sample's own median, SST inside a
+broad band). It has never been checked against real catch data or INCOIS's
+own PFZ advisories, which use validated chlorophyll/SST *front* detection —
+a genuinely different and more sophisticated technique than a threshold. If
+this is going to be presented as more than a screening aid, it needs that
+validation pass; the honest caveat currently baked into every response is a
+substitute for that, not a step toward it.
+
+### Multi-agent — two things still owed
+
+The prompt tightening and the delegation reasoning trace shipped and were
+verified live against the configured provider — see DONE.md's "Multi-agent:
+prompt tightening and a visible delegation trace". What's left:
+
+- **A live browser pass on `/assistant`** — the specialist-name pill on each
+  tool call and the new delegation line (`AssistantThread.tsx`) have only been
+  verified via the raw SSE event stream and a typecheck, not eyeballed in the
+  UI. Same "agent-driven Chrome tabs are always hidden, `requestAnimationFrame`
+  never fires" limitation section 6 already names for the map — needs one
+  human look, not a repeat automation attempt.
+- **Grounding cannot catch a false refusal, and one was observed live.** Of
+  three live runs of the same Kochi→Kanyakumari question, one had the
+  orchestrator claim it "couldn't pull a safe-route plan" after
+  `plan_safe_route` and `get_seafloor_depth` had already succeeded and
+  populated the ledger — `grounded` stayed `true` because a refusal states no
+  numbers to check against the ledger, so today's checker is structurally
+  blind to this failure mode. A repeat of the identical question immediately
+  succeeded, so this reads as the small provider model (`gpt-oss:20b-cloud`
+  via `ollama`) occasionally discarding a successful tool result during
+  synthesis, not a deterministic bug in the loop. `_ungrounded_numbers` checks
+  "does the answer claim a number the ledger doesn't have" — the missing
+  symmetric check is "does the ledger have data the answer claims is
+  unavailable", e.g. flag (or log) a turn where `ledger.observations` is
+  non-empty but the final text matches a refusal/apology pattern. Worth doing
+  before a demo relies on this path, since the current failure is silent —
+  no flag, no log line, just a bad answer that looks exactly as confident as
+  a correct "I don't have that" would.

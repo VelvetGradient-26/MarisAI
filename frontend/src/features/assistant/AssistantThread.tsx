@@ -162,6 +162,7 @@ function agentLabel(agent: string | null | undefined): string | null {
 function RunIndicator() {
   const provenance = useContext(ProvenanceContext);
   const running = Object.values(provenance).find((turn) => turn.pending);
+  const delegations = running?.delegations ?? [];
   const calls = running?.tools ?? [];
 
   return (
@@ -184,6 +185,25 @@ function RunIndicator() {
           />
         </span>
       </div>
+
+      {/* Why each specialist was asked, in the order the orchestrator decided
+          it — arrives before that specialist's own tool calls, since it is
+          the reasoning step rather than a result. */}
+      <AnimatePresence initial={false}>
+        {delegations.map((delegation, index) => (
+          <motion.div
+            key={`${delegation.agent}-${index}`}
+            className="chat-delegation"
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3, ease: EASE }}
+          >
+            <span className="chat-delegation__agent">{agentLabel(delegation.agent)}</span>
+            <span className="chat-delegation__question">{delegation.question}</span>
+          </motion.div>
+        ))}
+      </AnimatePresence>
 
       {/* The tool calls as they land. This is the substance of the wait: a
           named data call is more reassuring than a spinner, and it is true. */}
@@ -304,6 +324,21 @@ function Provenance({ provenance }: { provenance: TurnProvenance | undefined }) 
           </motion.p>
         ) : null}
       </AnimatePresence>
+
+      {/* The orchestrator's reasoning trace, always visible rather than
+          folded into the collapsed data-call list below — it is *why* a
+          specialist was asked, not one of the results it produced, and PS2
+          asks for that reasoning to be demonstrable on its own. */}
+      {meta.delegations.length > 0 ? (
+        <ul className="chat-delegations">
+          {meta.delegations.map((delegation, index) => (
+            <li key={index} className="chat-delegation">
+              <span className="chat-delegation__agent">{agentLabel(delegation.agent)}</span>
+              <span className="chat-delegation__question">{delegation.question}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       {meta.observations.length > 0 ? (
         <div className="chat-provenance">

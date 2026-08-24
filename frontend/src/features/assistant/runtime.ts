@@ -18,10 +18,14 @@ import type { ChatTurn } from '../map/api/chat';
 export interface TurnProvenance {
   pending: boolean;
   tools: { tool: string; arguments: Record<string, unknown>; agent?: string | null }[];
+  // The orchestrator's own delegation decisions, in the order they were made
+  // — arrives before the specialist's tools do, since it is the reason the
+  // specialist was asked, not something it produced.
+  delegations: { agent: string; question: string }[];
   meta: ChatStreamMeta | null;
 }
 
-const EMPTY: TurnProvenance = { pending: true, tools: [], meta: null };
+const EMPTY: TurnProvenance = { pending: true, tools: [], delegations: [], meta: null };
 
 function textOf(message: ThreadMessage): string {
   return message.content
@@ -72,6 +76,7 @@ export function useMarisChatRuntime() {
 
         let text = '';
         let tools: TurnProvenance['tools'] = [];
+        let delegations: TurnProvenance['delegations'] = [];
 
         for await (const event of streamChat({
           message: question,
@@ -88,6 +93,13 @@ export function useMarisChatRuntime() {
             // or the answer arrives with a false start glued to the front.
             text = '';
             yield { content: [{ type: 'text', text }] };
+          } else if (event.type === 'delegate') {
+            delegations = [...delegations, { agent: event.agent, question: event.question }];
+            setProvenance((prior) => ({
+              ...prior,
+              [id]: { ...(prior[id] ?? EMPTY), delegations },
+            }));
+            yield { content: [{ type: 'text', text }] };
           } else if (event.type === 'tool') {
             tools = [...tools, { tool: event.tool, arguments: event.arguments, agent: event.agent }];
             setProvenance((prior) => ({
@@ -103,7 +115,7 @@ export function useMarisChatRuntime() {
             if (meta.session_id) sessionRef.current = meta.session_id;
             setProvenance((prior) => ({
               ...prior,
-              [id]: { pending: false, tools, meta },
+              [id]: { pending: false, tools, delegations, meta },
             }));
             yield { content: [{ type: 'text', text: meta.answer }] };
           } else if (event.type === 'error') {

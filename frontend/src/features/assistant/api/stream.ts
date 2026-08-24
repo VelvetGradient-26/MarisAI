@@ -10,7 +10,7 @@
  * remains the fallback.
  */
 
-import type { ChatObservation, ChatTurn } from '../../map/api/chat';
+import type { ChatDelegation, ChatObservation, ChatTurn } from '../../map/api/chat';
 import { clientId } from '../../map/api/chat';
 
 import { API_BASE_URL } from '../../../utils/apiBase';
@@ -26,6 +26,7 @@ export interface ChatStreamMeta {
   unsupported_numbers: string[];
   observations: ChatObservation[];
   sources: string[];
+  delegations: ChatDelegation[];
   truncated: boolean;
   session_id: string | null;
 }
@@ -38,6 +39,10 @@ export type ChatStreamEvent =
   // orchestrator called directly, which no longer happens in practice but
   // keeps this type honest about what the backend can send.
   | { type: 'tool'; tool: string; arguments: Record<string, unknown>; agent?: string | null }
+  // The orchestrator's own reasoning, made visible: fires the moment it
+  // decides to hand a sub-task to `agent`, before that specialist has run at
+  // all — `question` is the sub-task in the orchestrator's own words.
+  | { type: 'delegate'; agent: string; question: string }
   | ({ type: 'meta' } & ChatStreamMeta)
   | { type: 'error'; message: string };
 

@@ -474,11 +474,49 @@ async def test_the_stream_reports_tools_before_the_answer(patched, depth):
     events = await _collect("How deep is it at 10N 72E?")
     kinds = [event["type"] for event in events]
 
-    assert kinds[0] == "tool"
+    assert kinds[0] == "delegate", "the delegation decision precedes the specialist running"
     assert events[0]["agent"] == "geospatial_risk"
-    assert kinds.index("tool") < kinds.index("delta")
+    assert kinds[1] == "tool"
+    assert events[1]["agent"] == "geospatial_risk"
+    assert kinds.index("delegate") < kinds.index("tool") < kinds.index("delta")
     assert kinds[-1] == "meta", "meta must be terminal — it carries the grounding verdict"
     assert kinds.count("meta") == 1
+
+
+@pytest.mark.asyncio
+async def test_the_delegate_event_carries_the_orchestrators_own_question(patched, depth):
+    """The visible 'why' behind a delegation.
+
+    The orchestrator's reasoning for choosing a specialist is not a separate
+    reasoning step — it is the `question` argument it hands to the delegate
+    tool, produced before the specialist ever runs. Surfacing it is what turns
+    "geospatial_risk called get_seafloor_depth" into "asked geospatial_risk:
+    how deep is it at 10N 72E, which then called get_seafloor_depth".
+    """
+    depth({"elevation_m": -1234.5, "source": "GEBCO_2021 via Ifremer ERDDAP"})
+    top = ScriptedStreamModel(
+        [
+            _delegate_call("geospatial_risk", "How deep is it at 10N 72E?"),
+            AIMessage(content="The seafloor there is about 1234.5 m deep."),
+        ]
+    )
+    specialist = ScriptedModel(
+        [
+            _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
+            AIMessage(content="About 1234.5 m deep."),
+        ]
+    )
+    patched(top, specialist)
+
+    events = await _collect("How deep is it at 10N 72E?")
+    delegate_events = [event for event in events if event["type"] == "delegate"]
+
+    assert delegate_events == [
+        {"type": "delegate", "agent": "geospatial_risk", "question": "How deep is it at 10N 72E?"}
+    ]
+    assert events[-1]["delegations"] == [
+        {"agent": "geospatial_risk", "question": "How deep is it at 10N 72E?"}
+    ]
 
 
 @pytest.mark.asyncio
@@ -551,11 +589,13 @@ def test_every_tool_declares_a_description_and_schema():
     """The description is the only thing the model reads to choose a tool.
 
     An undescribed tool is invisible in practice, and the failure is silent —
-    the model simply never calls it. 12 = the original 9 plus the three PS2
-    additions (find_fishing_zones, check_geofence, plan_safe_route).
+    the model simply never calls it. 14 = the original 9, the three PS2
+    additions (find_fishing_zones, check_geofence, plan_safe_route), and the
+    two cyclone/severe-weather additions (get_cyclone_alerts,
+    get_severe_weather_alerts).
     """
     tools = build_tools(Ledger())
-    assert len(tools) == 12
+    assert len(tools) == 14
     for tool in tools:
         assert tool.description and len(tool.description) > 30, tool.name
         assert tool.args_schema is not None, tool.name

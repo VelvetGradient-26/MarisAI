@@ -31,7 +31,16 @@ from services.chat.tools import Ledger, build_tools
 
 # Smaller than the top-level loop's MAX_ITERATIONS: a specialist answers one
 # narrow, delegated sub-task, not a whole multi-domain conversation turn.
-SUB_MAX_ITERATIONS = 4
+#
+# 4 was measured too tight for `geospatial_risk` specifically: asked to plan a
+# route *and* describe depth along it, the model (correctly, per its prompt's
+# "never state a figure without calling the tool first") called
+# `plan_safe_route` then `get_seafloor_depth` up to the iteration cap with no
+# turn left to synthesize an answer — the specialist returned its truncated-
+# fallback text, and the top-level orchestrator then improvised an apology
+# around it. 5 leaves one call of headroom for a route (1) plus the prompt's
+# own "two or three depth calls" bound (up to 3) plus a final answer (1).
+SUB_MAX_ITERATIONS = 5
 
 
 class SpecialistResult:

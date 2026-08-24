@@ -352,6 +352,30 @@ def _all_specialist_tool_texts() -> list[str]:
     return texts
 
 
+# Prefix `orchestrator.build_delegate_tools` names every delegate tool with,
+# e.g. "delegate_to_geospatial_risk" -> specialist name "geospatial_risk".
+_DELEGATE_PREFIX = "delegate_to_"
+
+
+def _record_delegation(call: dict[str, Any], delegations: list[dict[str, Any]]) -> None:
+    """If `call` is a delegate call, record which specialist and why.
+
+    This is the orchestrator's own reasoning step made visible: the `question`
+    argument is what it decided this sub-task is, in its own words, before the
+    specialist ever ran. PS2 asks for demonstrable "autonomous planning,
+    reasoning, tool selection" and today's trace only showed *which* specialist
+    called *which* tool, not *why* the orchestrator delegated to it — this is
+    the cheap, honest version of that: no separate reasoning call, just
+    surfacing an argument the model already produces.
+    """
+    name = call.get("name") or ""
+    if not name.startswith(_DELEGATE_PREFIX):
+        return
+    args = call.get("args") or {}
+    question = args.get("question", "") if isinstance(args, dict) else ""
+    delegations.append({"agent": name[len(_DELEGATE_PREFIX):], "question": question})
+
+
 def _history_messages(history: list[dict[str, str]]) -> list[BaseMessage]:
     messages: list[BaseMessage] = []
     for turn in history[-10:]:
@@ -404,6 +428,7 @@ async def answer(
     messages.extend(history_messages)
     messages.append(HumanMessage(content=question))
 
+    delegations: list[dict[str, Any]] = []
     truncated = False
     for _ in range(MAX_ITERATIONS):
         try:
@@ -419,6 +444,7 @@ async def answer(
 
         for call in calls:
             tool = by_name.get(call["name"])
+            _record_delegation(call, delegations)
             if tool is None:
                 output = f"No such tool: {call['name']}"
             else:
@@ -465,6 +491,7 @@ async def answer(
         "unsupported_numbers": unsupported,
         "observations": ledger.observations,
         "sources": ledger.sources(),
+        "delegations": delegations,
         "truncated": truncated,
         "session_id": str(resolved) if resolved else None,
     }
@@ -540,6 +567,7 @@ async def answer_stream(
     messages.extend(history_messages)
     messages.append(HumanMessage(content=question))
 
+    delegations: list[dict[str, Any]] = []
     truncated = False
     for _ in range(MAX_ITERATIONS):
         streamed = ""
@@ -570,6 +598,14 @@ async def answer_stream(
 
         for call in calls:
             tool = by_name.get(call["name"])
+            before_delegations = len(delegations)
+            _record_delegation(call, delegations)
+            # Emitted before the call runs, unlike the `tool` event below —
+            # this *is* the orchestrator's decision, not its outcome, so there
+            # is nothing to wait on. A specialist can take tens of seconds;
+            # showing why it was asked before it starts is the whole point.
+            if len(delegations) > before_delegations:
+                yield {"type": "delegate", **delegations[-1]}
             before = len(ledger.observations)
             if tool is None:
                 output = f"No such tool: {call['name']}"
@@ -628,6 +664,7 @@ async def answer_stream(
         "unsupported_numbers": unsupported,
         "observations": ledger.observations,
         "sources": ledger.sources(),
+        "delegations": delegations,
         "truncated": truncated,
         "session_id": str(resolved) if resolved else None,
     }
