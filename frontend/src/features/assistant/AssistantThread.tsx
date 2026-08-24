@@ -312,6 +312,19 @@ function Provenance({ provenance }: { provenance: TurnProvenance | undefined }) 
                 : `These figures could not be traced to a data source: ${meta.unsupported_numbers.join(', ')}.`}
             </span>
           </motion.p>
+        ) : meta.possible_false_refusal ? (
+          <motion.p
+            className="chat-flag"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: EASE }}
+          >
+            <TriangleAlert size={14} aria-hidden />
+            <span>
+              This reads like a refusal, but the assistant did retrieve data this turn — it
+              may be worth asking again.
+            </span>
+          </motion.p>
         ) : meta.observations.length > 0 ? (
           <motion.p
             className="chat-traced"

@@ -24,6 +24,11 @@ export interface ChatStreamMeta {
   answer: string;
   grounded: boolean;
   unsupported_numbers: string[];
+  // A refusal ("I couldn't get that") despite the ledger already holding
+  // real tool results this turn. `grounded` cannot catch this — a refusal
+  // states no numbers to check — so it rides as its own flag; see
+  // `services/chat/agent.py::_false_refusal`.
+  possible_false_refusal: boolean;
   observations: ChatObservation[];
   sources: string[];
   delegations: ChatDelegation[];

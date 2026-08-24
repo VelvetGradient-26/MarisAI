@@ -430,32 +430,18 @@ this is going to be presented as more than a screening aid, it needs that
 validation pass; the honest caveat currently baked into every response is a
 substitute for that, not a step toward it.
 
-### Multi-agent — two things still owed
+### Multi-agent — one thing still owed
 
-The prompt tightening and the delegation reasoning trace shipped and were
-verified live against the configured provider — see DONE.md's "Multi-agent:
-prompt tightening and a visible delegation trace". What's left:
+The prompt tightening, the delegation reasoning trace, and the false-refusal
+check all shipped and were verified live against the configured provider —
+see DONE.md's "Multi-agent: prompt tightening and a visible delegation trace"
+and "Catching a false refusal — the check `grounded` cannot make". What's
+left:
 
 - **A live browser pass on `/assistant`** — the specialist-name pill on each
-  tool call and the new delegation line (`AssistantThread.tsx`) have only been
-  verified via the raw SSE event stream and a typecheck, not eyeballed in the
-  UI. Same "agent-driven Chrome tabs are always hidden, `requestAnimationFrame`
-  never fires" limitation section 6 already names for the map — needs one
-  human look, not a repeat automation attempt.
-- **Grounding cannot catch a false refusal, and one was observed live.** Of
-  three live runs of the same Kochi→Kanyakumari question, one had the
-  orchestrator claim it "couldn't pull a safe-route plan" after
-  `plan_safe_route` and `get_seafloor_depth` had already succeeded and
-  populated the ledger — `grounded` stayed `true` because a refusal states no
-  numbers to check against the ledger, so today's checker is structurally
-  blind to this failure mode. A repeat of the identical question immediately
-  succeeded, so this reads as the small provider model (`gpt-oss:20b-cloud`
-  via `ollama`) occasionally discarding a successful tool result during
-  synthesis, not a deterministic bug in the loop. `_ungrounded_numbers` checks
-  "does the answer claim a number the ledger doesn't have" — the missing
-  symmetric check is "does the ledger have data the answer claims is
-  unavailable", e.g. flag (or log) a turn where `ledger.observations` is
-  non-empty but the final text matches a refusal/apology pattern. Worth doing
-  before a demo relies on this path, since the current failure is silent —
-  no flag, no log line, just a bad answer that looks exactly as confident as
-  a correct "I don't have that" would.
+  tool call, the delegation line, and the new false-refusal banner
+  (`AssistantThread.tsx`) have only been verified via the raw SSE event
+  stream and a typecheck, not eyeballed in the UI. Same "agent-driven Chrome
+  tabs are always hidden, `requestAnimationFrame` never fires" limitation
+  section 6 already names for the map — needs one human look, not a repeat
+  automation attempt.

@@ -55,6 +55,9 @@ export interface ChatReply {
    */
   grounded: boolean;
   unsupported_numbers: string[];
+  /** A refusal despite the ledger already holding real tool results this
+   * turn — `grounded` cannot catch this since a refusal states no numbers. */
+  possible_false_refusal: boolean;
   observations: ChatObservation[];
   sources: string[];
   delegations: ChatDelegation[];

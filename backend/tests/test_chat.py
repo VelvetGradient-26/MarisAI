@@ -416,6 +416,108 @@ async def test_a_grouped_number_is_still_checked(patched, depth):
     assert "9,876" in result["unsupported_numbers"]
 
 
+@pytest.mark.asyncio
+async def test_a_refusal_despite_real_data_is_flagged(patched, depth):
+    """The gap `_ungrounded_numbers` cannot cover: a live run (2026-08-24) had
+    the orchestrator claim it "couldn't pull" a route after the specialist's
+    tools had already succeeded. `grounded` stays true — a refusal states no
+    numbers — so this needs its own check."""
+    depth({"elevation_m": -1234.5, "source": "GEBCO_2021 via Ifremer ERDDAP"})
+
+    top = ScriptedModel(
+        [
+            _delegate_call("geospatial_risk", "How deep is it at 10N 72E?"),
+            AIMessage(
+                content=(
+                    "I'm sorry, but I couldn't pull the depth data for that "
+                    "location right now."
+                )
+            ),
+        ]
+    )
+    specialist = ScriptedModel(
+        [
+            _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
+            AIMessage(content="About 1234.5 m deep."),
+        ]
+    )
+    patched(top, specialist)
+
+    result = await agent.answer("How deep is it at 10N 72E?")
+
+    assert result["grounded"] is True, "a refusal states no numbers, so this stays true"
+    assert result["possible_false_refusal"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_curly_apostrophe_refusal_is_still_caught(patched, depth):
+    """A live re-run of the exact case above wrote "couldn't" with a curly
+    Unicode apostrophe (U+2019, what "I’m sorry, but I couldn’t retrieve..."
+    actually contains) rather than a straight one — every provider does this
+    routinely, and a straight-quote-only pattern missed it outright."""
+    depth({"elevation_m": -1234.5, "source": "GEBCO_2021 via Ifremer ERDDAP"})
+
+    top = ScriptedModel(
+        [
+            _delegate_call("geospatial_risk", "How deep is it at 10N 72E?"),
+            AIMessage(content="I’m sorry, but I couldn’t retrieve the depth data."),
+        ]
+    )
+    specialist = ScriptedModel(
+        [
+            _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
+            AIMessage(content="About 1234.5 m deep."),
+        ]
+    )
+    patched(top, specialist)
+
+    result = await agent.answer("How deep is it at 10N 72E?")
+
+    assert result["possible_false_refusal"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_genuine_refusal_with_no_data_is_not_flagged(patched):
+    """An empty ledger means there was nothing to ignore — this is an honest
+    "I don't have that", not the failure the check exists to catch."""
+    top = ScriptedModel([AIMessage(content="I'm sorry, I couldn't find that information.")])
+    patched(top)
+
+    result = await agent.answer("What is the meaning of life?")
+
+    assert result["possible_false_refusal"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_partial_failure_that_still_reports_a_figure_is_not_flagged(patched, depth):
+    """An answer that honestly reports one real number is not the shape of
+    the observed bug, even if it also apologises for a different failure."""
+    depth({"elevation_m": -1234.5, "source": "GEBCO_2021 via Ifremer ERDDAP"})
+
+    top = ScriptedModel(
+        [
+            _delegate_call("geospatial_risk", "How deep is it at 10N 72E?"),
+            AIMessage(
+                content=(
+                    "The seafloor there is about 1234.5 m deep. I couldn't "
+                    "get the boundary proximity for that point, though."
+                )
+            ),
+        ]
+    )
+    specialist = ScriptedModel(
+        [
+            _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 72.0}),
+            AIMessage(content="About 1234.5 m deep."),
+        ]
+    )
+    patched(top, specialist)
+
+    result = await agent.answer("How deep is it at 10N 72E?")
+
+    assert result["possible_false_refusal"] is False
+
+
 class ScriptedStreamModel(ScriptedModel):
     """`ScriptedModel` that also answers `astream`.
 

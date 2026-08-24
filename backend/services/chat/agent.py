@@ -37,6 +37,7 @@ discarded answer cannot.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import uuid
@@ -312,6 +313,92 @@ def _ungrounded_numbers(text: str, ledger: Ledger, said: str = "") -> list[str]:
     return unsupported
 
 
+# "could not/couldn't/can't/... get/pull/fetch/..." — the shape the observed
+# failure actually took ("I couldn't pull a safe-route plan..."), not a bare
+# keyword like "sorry" or "unavailable", which shows up plenty in legitimate,
+# accurate answers ("the model is unavailable outside the Arabian Sea").
+#
+# The apostrophe is a character class, not a literal `'`. A live re-run of
+# the exact failure this check exists for wrote "couldn’t" with a curly
+# Unicode apostrophe (U+2019) — every provider does this routinely — and a
+# straight-quote-only pattern missed both live recurrences outright, passing
+# its unit tests (which use `'`) while doing nothing on the real traffic that
+# motivated it.
+_REFUSAL_PATTERN = re.compile(
+    r"\b(?:could\s*not|couldn[’']t|can[’']t|cannot|unable to|wasn[’']t able to|"
+    r"was not able to)\s+"
+    r"(?:get|pull|fetch|retrieve|find|obtain|access|provide|generate|compute|produce|put together)\b",
+    re.IGNORECASE,
+)
+
+
+def _allowed_set(source_text: str) -> set[str]:
+    """Every rendering `_ungrounded_numbers` would accept for a number drawn
+    from `source_text` — factored out because `_false_refusal` needs the same
+    matching in the opposite direction (does the answer *use* a ledger number,
+    rather than does it *invent* one the ledger lacks)."""
+    allowed: set[str] = set()
+    for match in _quantities(source_text):
+        allowed.add(match)
+        allowed.add(match.lstrip("-"))
+        allowed.add(match.replace(",", ""))
+        try:
+            allowed |= _renderings(_numeric(match))
+        except ValueError:
+            continue
+    return allowed
+
+
+def _false_refusal(text: str, ledger: Ledger) -> bool:
+    """True when the answer reads as "I couldn't get that" despite the ledger
+    already holding real tool results from this same turn.
+
+    `_ungrounded_numbers` checks the opposite direction: a number in the
+    answer that no tool reported. Nothing checked this one, and a live run
+    found it (2026-08-24, see DONE.md): the orchestrator claimed it "couldn't
+    pull a safe-route plan" after `plan_safe_route` and `get_seafloor_depth`
+    had already succeeded and populated the ledger. `grounded` stayed `true`
+    — a refusal states no numbers, so the existing check is structurally
+    blind to a turn that has data and denies having it.
+
+    Restricted to an answer that quotes *none* of the ledger's own numbers,
+    not merely one containing a refusal phrase or one that happens to be
+    numberless. Three weaker versions were tried and each broke on live
+    traffic:
+
+    - A numberless-answer rule missed a refusal that padded itself with an
+      unrelated figure ("GEBCO's 0.05° grid" — true, but from the model's
+      general knowledge, not from any tool call this turn).
+    - A bare refusal-phrase rule would flag a legitimate partial failure
+      ("the route avoids every MPA; I couldn't get the wave forecast for it")
+      that still quotes a real figure for the part that worked.
+    - **Matching against `ledger.as_text()` (arguments *and* results) still
+      missed two live refusals**, because both restated the *input*
+      coordinates ("I asked to route from 10.02°N, 76.96°E...") — present in
+      every call's recorded `arguments`, not evidence a single result value
+      was ever used. Matching is therefore against `result` fields only.
+    """
+    if not ledger.observations:
+        return False
+    if not _REFUSAL_PATTERN.search(text):
+        return False
+
+    results_text = json.dumps([entry.get("result") for entry in ledger.observations], default=str)
+    ledger_numbers = _allowed_set(results_text)
+    if not ledger_numbers:
+        return False
+
+    for match in _quantities(text):
+        candidates = {match, match.lstrip("-"), match.replace(",", "")}
+        try:
+            candidates |= _renderings(_numeric(match))
+        except ValueError:
+            continue
+        if candidates & ledger_numbers:
+            return False  # the answer used at least one real figure
+    return True
+
+
 def _schema_prose(tool: Any) -> str:
     """The `description` strings from a tool's argument schema, and nothing else.
 
@@ -485,10 +572,18 @@ async def answer(
     if unsupported:
         logger.warning(f"chat answer carried ungrounded numbers: {unsupported}")
 
+    possible_false_refusal = _false_refusal(text, ledger)
+    if possible_false_refusal:
+        logger.warning(
+            f"chat answer read as a refusal despite {len(ledger.observations)} "
+            "successful tool call(s) this turn"
+        )
+
     reply = {
         "answer": text,
         "grounded": not unsupported,
         "unsupported_numbers": unsupported,
+        "possible_false_refusal": possible_false_refusal,
         "observations": ledger.observations,
         "sources": ledger.sources(),
         "delegations": delegations,
@@ -658,10 +753,18 @@ async def answer_stream(
     if unsupported:
         logger.warning(f"chat answer carried ungrounded numbers: {unsupported}")
 
+    possible_false_refusal = _false_refusal(text, ledger)
+    if possible_false_refusal:
+        logger.warning(
+            f"chat answer read as a refusal despite {len(ledger.observations)} "
+            "successful tool call(s) this turn"
+        )
+
     reply = {
         "answer": text,
         "grounded": not unsupported,
         "unsupported_numbers": unsupported,
+        "possible_false_refusal": possible_false_refusal,
         "observations": ledger.observations,
         "sources": ledger.sources(),
         "delegations": delegations,

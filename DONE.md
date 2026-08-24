@@ -463,6 +463,60 @@ attribution carries the per-horizon operating point (+3d 0.449 / +5d 0.280 / +7d
 
 ## Platform
 
+### Catching a false refusal — the check `grounded` cannot make — 2026-08-24
+
+The gap the previous multi-agent pass left open, closed the same day.
+`_ungrounded_numbers` checks one direction — a number in the answer no tool
+reported — and is structurally blind to the opposite failure: the
+orchestrator claiming it "couldn't get" something the ledger already holds,
+because a refusal states no numbers to check against. `services/chat/agent.py`
+now has a second, independent check, `_false_refusal`, riding beside
+`grounded` as its own `possible_false_refusal` field rather than folded into
+it — the same "two claims, two blocks" shape `services/upwelling.py` uses for
+corroboration, because a refusal and a fabricated number are different
+failure modes and conflating them into one flag would make the UI's message
+generic where it could be specific.
+
+**Three iterations, each broken by a live run before the next one shipped —
+this is the record of what a plausible-looking heuristic misses in practice,
+not just the final answer:**
+
+1. **v1: flag a refusal-shaped answer with zero numbers anywhere.** Live
+   testing (the same Kochi→Kanyakumari question from the prompt-tightening
+   pass) reproduced the exact original bug twice — and the check fired on
+   neither. Cause: the live model wrote "couldn't" with a **curly Unicode
+   apostrophe** (`'`, U+2019), which a straight-quote-only regex (`couldn't`,
+   tested only against ASCII in the unit tests) never matches. Every
+   provider does this routinely; the check's own unit tests were quietly
+   testing an input shape that never occurs in production.
+2. **v2: same check, apostrophe-fixed.** Caught 2 of 4 live recurrences. The
+   other 2 were refusals that padded themselves with an unrelated real
+   number ("GEBCO's 0.05° grid" — true, but general knowledge, not from any
+   tool call that turn), which a "zero numbers anywhere" rule can't
+   distinguish from an answer that actually used its data.
+3. **v3, shipped: flag only when the answer quotes *none* of the numbers the
+   ledger's tools actually returned**, matched with the same rendering-
+   tolerant comparison `_ungrounded_numbers` already uses (just inverted).
+   First live batch at this version: 2 of 3 refusals still slipped through,
+   because `ledger.as_text()` includes each call's recorded `arguments` as
+   well as its `result` — and both surviving refusals restated the *input*
+   coordinates ("I asked to route from 10.02°N, 76.96°E...") without ever
+   using a result value. Matching against `result` fields only fixed it:
+   **8 of 8 live-reproduced refusals correctly flagged** in the final
+   verification run, with zero false positives across every other live run
+   in the same session (including partial-success answers that legitimately
+   apologise for one missing piece while reporting a real figure for another).
+- Shipped in `services/chat/agent.py` (`_false_refusal`, `_allowed_set`, both
+  `answer()`/`answer_stream()`), `frontend/src/features/assistant/` (a
+  `possible_false_refusal` field through `stream.ts`/`runtime.ts`, and a
+  banner in `AssistantThread.tsx`'s `Provenance` reusing `.chat-flag`'s
+  styling), and 4 new unit tests in `tests/test_chat.py` (29/29 passing,
+  585/585 across the full backend suite).
+- **Never made a hard gate**, matching `agent.py`'s own reasoning for why
+  `_ungrounded_numbers` only annotates: there is no template to fall back to
+  for a whole conversation, so the response states the finding rather than
+  discarding or blocking the answer.
+
 ### Cyclone and severe-weather alerts, from GDACS and IMD's CAP feed — 2026-08-24
 
 PS2's own example queries name "any lightning or cyclone alerts in my area",
