@@ -17,51 +17,65 @@ been a while.
 Three detectors ship (eddies, marine heatwaves, coastal upwelling) over a
 percentile climatology, and upwelling is now corroborated against SST — weakly,
 which was measured rather than assumed. What is left is tracking, breadth, and
-the two things that measurement pointed at: a baseline fitted on the product
-being scored, and a wind history long enough to test the claim fairly.
+the one lever measurement has not yet ruled out: a wind history long enough to
+test the claim fairly (both SST-side levers — closing the latency gap, and
+fitting the baseline on the scored product — were tried and measured worse).
 
-### Eddy tracking
+### Eddy tracking — the matcher shipped, the atlas comparison didn't
 
-The open half of the first detector. Nothing in `services/eddies.py` holds state
-between refreshes, deliberately, so this starts from a clean sheet.
+`services/eddy_tracking.py` gives eddies frame-to-frame identity (nearest-
+neighbour matching, gated and polarity-separated, solved exactly within each
+locally ambiguous cluster via `linear_sum_assignment` rather than greedily)
+over `services/eddies.py`'s own hourly detection passes. See DONE.md's "Eddy
+tracking: frame-to-frame identity over a live detection grid" for what
+shipped, the scaling design (KD-tree + connected components, not a dense
+matrix — verified live at 2177 real global eddies in 16ms), and the three
+things checked before calling the matcher correct. What's left:
 
-- It is a frame-to-frame assignment problem. An eddy that flickers identity
-  between timesteps produces a "trajectory" that is an artefact of the matcher
-  presented as an observation.
-- **Validate against a published eddy atlas, not against how plausible the tracks
-  look.** This is the whole difficulty; a matcher can be tuned until its output
-  is beautiful and wrong.
+- **Validation against a published eddy atlas remains undone, but only for
+  lack of two downloaded files, not for lack of a path.** AVISO+'s Mesoscale
+  Eddy Trajectory Atlas needs a registered account — confirmed three ways
+  2026-08-24 (the product page; its THREDDS catalog, whose *listing* is
+  public but whose data answers `401 Unauthorized`; a direct `fileServer`
+  request) — the same shape of blocker as WDPA for `services/geofencing.py`.
+  What shipped instead: the product handbook is openly downloadable (no
+  account) and gave the real NetCDF schema, not a guessed one; `scripts/
+  compare_against_eddy_atlas.py` reads it, runs `eddies.detect()` against a
+  **historical** reanalysis current field for the requested date (the atlas's
+  own coverage ends 2023-09-08, already years behind live operation, so a
+  same-instant comparison was never going to be possible — see the script's
+  own docstring), and matches the two detections with the same gated,
+  optimal-assignment shape `eddy_tracking.py` uses. **Live-verified for the
+  half that doesn't need the atlas**: `fetch_currents_day` and the full
+  detect-against-history pipeline both run correctly against the real
+  Copernicus reanalysis (2020-06-15: 2097 eddies, 954 cyclonic / 1143
+  anticyclonic — the same order as the live cache's 2177). What's left is
+  registering an AVISO+ account, downloading the two files, and running the
+  script — not writing any more code.
+  - Also open: closed-SSH-contour detection as a cross-check on the count —
+    `py-eddy-tracker` (github.com/AntSimi/py-eddy-tracker), the actual
+    open-source algorithm AVISO's own atlas is built from, is pip-installable
+    and unblocked by the AVISO+ account wall entirely. Worth trying against
+    the live SSH-adjacent field this platform already has before assuming a
+    from-scratch contour detector is needed.
+- **No map layer or chat tool yet** — `GET /api/ocean/eddies/tracks` exists
+  and is tested, but nothing visualises a track's path the way `/eddies`
+  itself is drawn. A natural next step once the atlas comparison above says
+  the tracks are trustworthy enough to show.
 - Also open: closed-SSH-contour detection as a cross-check on the count.
 
-### A climatology fitted on the product being scored
-
-**The latency answer has been tried and it is the wrong lever** (measured
-2026-08-17, written up in `services/sst_anomaly.py` and DONE.md). Scoring the
-live hourly SST field instead of the 14.5-day-old OISST record left the weak
-tier's contrast unchanged and *inverted* the strong one, because the climatology
-is fitted on OISST and a different product carries **0.76 degC of per-cell
-disagreement across the coastal band** — wider than the 0.5 °C threshold it is
-compared against, and twice the open-ocean figure (0.47) because a 1° coastal
-cell is an average of a coastline the two products resolve differently.
-
-So the open item is the baseline, not the observation: **fit a climatology on
-the Copernicus physics reanalysis**, whose record reaches 1993, and score the
-live field against its own product.
-
-- `services/climatology/build.py` is variable- and source-agnostic already; what
-  it needs is a fetch that hands it a long daily record. `sources` guidance in
-  CLAUDE.md applies — global reanalysis at 1/12° must be coarsened *while the
-  array is still lazy*, and needs a server-side depth bound or it pulls 50
-  levels and never finishes.
-- **Re-run the control after, not before, deciding it worked.** The measurement
-  that matters is whether the favourable/downwelling contrast widens beyond
-  +0.026. If it does not even with a matched product, the honest conclusion is
-  that a wind snapshot and an SST snapshot do not agree at this resolution, and
-  the layer should say so more loudly rather than be tuned until it looks better.
-- It would also give the anomaly explorer below a second baseline variable
-  nearly free, since the same fetch carries salinity and currents.
-
 ### A rolling wind history, so the corroboration can be tested fairly
+
+**Both baseline levers have now been tried and both failed** — see
+`services/sst_anomaly.py`'s docstring and DONE.md for the full numbers. Neither
+closing the OISST/live-field latency gap (2026-08-17) nor fitting the
+climatology on the Copernicus reanalysis instead of OISST (2026-08-25, a real
+30-year build, measured against a paired same-snapshot control) widened the
+favourable/downwelling contrast; the second attempt made the strong (below-p10)
+tier substantially worse (-0.051 against OISST's -0.001). Both the product and
+the baseline it is scored against have now been ruled out, which points at what
+is left: the wind and SST snapshots on both sides of the control are
+instantaneous.
 
 Upwelling responds to wind *integrated over days*, not to the instantaneous
 stress the index computes. Nothing here keeps more than the latest wind
@@ -69,7 +83,10 @@ timestep, so the favourable/downwelling contrast above is measured against a
 snapshot on both sides — which is a weaker test than the physics deserves, and a
 plausible part of why the contrast is small. A short trailing wind buffer (the
 KPI ring buffer in `services/dashboard/history.py` is the shape) would let the
-index be computed on a multi-day mean and the control re-run against it.
+index be computed on a multi-day mean and the control re-run against it. This is
+now the only untried lever — re-run
+`scripts/measure_sst_corroboration.py` (either source) once it exists, rather
+than reaching for a third SST variant.
 
 ### Upwelling corroborated by chlorophyll
 
@@ -384,40 +401,46 @@ against the real APIs and a live LLM. What's left:
   in one day) — worth re-checking during the next actual severe-weather event
   rather than assumed safe from today's quiet-season sample.
 
-### Geofencing — the approximations that should not ship to production
+### Geofencing — three of four fixed, one blocked on a key
 
-`services/geofencing.py` says this about itself, and it is worth restating as
-tasks:
+Three of the four approximations `services/geofencing.py` used to warn about
+itself are shipped — see DONE.md's "Real EEZ and IMBL geometry for
+geofencing". What's left:
 
-- **Andaman & Nicobar and Lakshadweep EEZs are not represented.** Only
-  mainland coastal waters are. A fisherman operating from either archipelago
-  gets no geofencing at all today.
-- **The IMBL is hand-placed from public descriptions, not the treaty's
-  surveyed coordinates.** Worth sourcing the actual 1974/1976 India-Sri Lanka
-  agreement coordinates rather than an eyeballed sketch, given this is the
-  real-world hazard (fishermen straying across it) the feature exists for.
-- **The India EEZ polygon is a coastline sketch offset by a fixed degree
-  margin**, not a geodesic buffer of a real coastline dataset. Marine Regions'
-  WFS (`geo.vliz.be/geoserver/MarineRegions/wfs`, reachable per CLAUDE.md's
-  EMODnet probe) is the natural upgrade — a `GetFeature` call against the
-  World EEZ layer, cached like every other slow-changing reference dataset.
-- **Only 4 MPAs are registered**, hand-picked, not sourced from India's MPA
-  registry. WDPA (protectedplanet.net) is the standard source; whether it has
-  a clean API or is bulk-download-only was not checked this pass.
+- **The MPA registry is still hand-curated, not WDPA** (now 9 named sites,
+  up from 4, each individually verified — see DONE.md). WDPA's API needs a
+  registered key (`api.protectedplanet.net` returns 401 unauthenticated,
+  checked 2026-08-24) and its bulk release is not a plain scriptable download
+  either — both real blockers, not unchecked assumptions. Getting a key is a
+  human action this workflow can't self-serve; once one exists, the fetch
+  shape would follow `services/eddies.py`'s pattern for a slow-changing
+  reference dataset, same as the EEZ/IMBL fetch that just shipped.
 
-### Routing — currently a comparison, not a planner
+### Routing — now a planner; two items carried over, one new
 
-- **Three candidate routes (direct + two lateral offsets), not a pathfinder.**
-  A real hazard-aware router (A*/Dijkstra over a gridded wave/wind cost
-  surface, the way the forecast grid already tiles the ocean) would find
-  routes the three-candidate comparison structurally cannot, e.g. routing
-  around a headland. This is the biggest single accuracy gap in `plan_route`.
-- **Waypoints are linearly interpolated in lat/lon, not a true geodesic.**
-  Stated as fine at coastal/fishing-vessel route lengths in
-  `routing.py`'s docstring — re-check that assumption before using this for
-  anything ocean-basin-scale.
-- **No vessel profile.** Speed, fuel range and draft are not inputs; every
-  route is scored on wave/wind hazard alone.
+The three-candidate comparison is gone — `plan_route` is a real A* search
+over a live grid now, land/IMBL/MPA-excluding by construction. See DONE.md's
+"A* route planning over a live hazard grid" for what shipped and how it was
+verified. What's left:
+
+- **Waypoints are still linearly interpolated in lat/lon for bbox/heading
+  math, not a true geodesic.** Unchanged from before — fine at the coastal/
+  fishing-vessel route lengths this is built for; re-check before using this
+  for anything ocean-basin-scale.
+- **Still no vessel profile.** Speed, fuel range and draft are not inputs;
+  every route is scored on wave hazard alone.
+- **The search grid trades resolution for Open-Meteo request volume, and
+  the failure mode when that trade is too coarse is a hard error, not a
+  degraded answer.** A start/end point enclosed by land tighter than
+  `_MAX_CONNECT_RADIUS_CELLS` (an actual narrow inlet, or just an unlucky
+  coastline shape at this grid's resolution), or a route whose only real
+  detour exceeds the search bbox margin (open-ocean circumnavigation of an
+  island, say), correctly raises `RoutingError` rather than returning a
+  route that secretly crosses something — verified live for exactly that
+  case (Palk Strait to the open sea east of Sri Lanka correctly reports no
+  path, since going around Sri Lanka is outside the search box). Worth
+  watching whether real usage hits this often enough to justify widening the
+  margin or the connect radius as a follow-up, now that it ships.
 
 ### PFZ — a heuristic, not a validated model
 
@@ -445,3 +468,136 @@ left:
   tabs are always hidden, `requestAnimationFrame` never fires" limitation
   section 6 already names for the map — needs one human look, not a repeat
   automation attempt.
+
+---
+
+## 9. Competition UI/UX push (2026-08-24)
+
+A batch from a competition-prep pass. None of these are measured yet — they're
+requests, not findings — so verify the premise named in each bullet before
+building.
+
+### Metric pages: forecast should be warm before the click, not triggered by it
+
+`/dashboard/<variable>` currently calls forecast inference on the click that
+opens the page — the user experiences the click as "it starts forecasting".
+`services/predictions.py` already establishes the pattern this should move
+to: precomputed output served on request, nothing computed synchronously in
+the request path. The forecasting engine (`backend/forecasting/`,
+`POST /api/v1/forecast`) is the thing actually being invoked late — check
+whether a metric page's forecast section calls it inline on mount rather than
+reading something pre-warmed. If so, either move the compute to the existing
+12-hourly grid-build scheduler job (`scripts/build_forecast_grid.py`'s
+pattern — background thread, never on the event loop, per
+`test_the_cell_loop_does_not_run_on_the_event_loop`) or add a per-point cache
+warmed on a schedule. Whichever: the click should always read a cache, never
+originate a computation.
+
+### Fun, non-decorative loading states
+
+Section 5's "visual standard" already drew this line and it still holds:
+**no fake confidence, no skeleton implying data that isn't coming.** The
+constraint here is animating the *wait*, not the *data* — a fish swimming
+across the panel, bubbles rising, a submarine sweeping a light back and forth
+while a real fetch is in flight is fine, because it makes no claim about the
+data's shape or value. A shimmering skeleton row that mimics a chart's
+eventual layout is the thing to avoid, because it implies specific content is
+about to resolve. Scope: replace the current skeleton loaders (dashboard
+panels, metric pages) with a small set of playful SVG/CSS loop animations,
+picked contextually (e.g. a submarine light-sweep for a map/geo fetch, bubbles
+for a numeric KPI). Keep them opacity/transform-safe per the existing
+`LazyMount`-measures-geometry constraint in section 5, and give every one a
+reduced-motion resting frame.
+
+### Ocean Assistant: general questions without forcing a tool call, plus image upload
+
+Two separate gaps in `services/chat/`:
+
+- **Not every user turn should force a tool call.** If the current loop
+  always dispatches to a specialist/tool even for a question answerable from
+  general knowledge ("what causes upwelling" vs. "what's the SST at this
+  point"), that's a routing problem — the orchestrator
+  (`services/chat/orchestrator.py`) or the specialists
+  (`services/chat/specialists.py`) should be able to answer directly for
+  general marine-science questions and only reach into `build_tools()`
+  (`services/chat/tools.py`) when the question needs a live number. Check
+  whether the model already has this freedom (tool_choice="auto" style) before
+  assuming a routing layer needs to be built — this may already be a prompting
+  fix, not an architecture change.
+- **Image upload / vision.** The user wants to attach an image and have the
+  assistant describe/answer about it. This means passing image content
+  through to the LLM provider's multimodal input on a turn (provider-
+  dependent content-block shape), plus a composer affordance in
+  `features/assistant/` to attach a file. Check the provider client already in
+  use in `services/chat/` for whether it already exposes an image content
+  type — this is very likely additive to the existing message-building code,
+  not a new client.
+
+### Ocean Assistant: answer questions about the software itself, with doc links
+
+Right now the assistant only reasons about ocean data. It should also be able
+to answer "how do I use X feature" / "where's the download page" /
+"what does the grounding badge mean" and point at the real docs — the
+platform already has a documentation section
+(`frontend/src/pages/docs/`, chapters per feature: `Assistant.tsx`,
+`DashboardCharts.tsx`, `ForecastMap.tsx`, etc., indexed by
+`DocsSearch.tsx`/`searchIndex.tsx`). This is a **self-knowledge** capability,
+distinct from the ocean-data tools: likely a small retrieval step over the
+existing docs chapters (they're already React/TS source, not prose files, so
+decide whether to index rendered text or keep a parallel plain-text/markdown
+copy for retrieval) plus a system-prompt instruction to link `/docs/...`
+routes rather than inventing paths. Scope this as its own tool
+(`get_documentation` or similar) rather than folding it into an existing
+specialist, since its source of truth (the docs pages) is unrelated to any
+ocean-data provider.
+
+### Data Quality section: each card should open a full model dossier
+
+`services/dashboard/data_quality.py` reports `models_trained` — **116** models
+across the forecasting engine's variables x horizons — but
+`DataQualityPanel.tsx` currently surfaces a partial list (checked live:
+**14** of 116). Two asks, and they compound:
+
+- **List all 116, not a subset.** If the panel currently truncates for
+  layout/perf reasons, that needs a paginated or scrollable list instead —
+  dropping 102 trained models from view understates what actually shipped
+  (same "never substitute a number for missing data" principle section 5
+  already holds, applied to *omission* here rather than fabrication).
+- **A per-model detail page**, one click from any card, that makes the model
+  reproducible from what's shown: what water/points it was trained on, the
+  feature list `forecasting/`'s pipeline built (`build_features`), the
+  algorithm (LightGBM, per CLAUDE.md), the delta-vs-level target-mode
+  decision, the CV fold scores and `skill_score` against persistence *and*
+  climatology (the two-baseline point in section — already computed, not
+  fabricated for the page), and a SHAP explainability panel
+  (`forecasting/shap_explainer.py`, already exists and is rendered on metric
+  pages — reuse it rather than rebuilding). This is presentation of numbers
+  already computed and logged (`_reports/runs/<timestamp>/`,
+  `marine_ml.tracking`), **not new modelling work** — the honesty constraint
+  is the same one metric pages already meet ("Ocean Story computes first,
+  phrases second" — every figure on this page must be traceable to a real
+  training-run artifact, none invented for narrative).
+
+### Live ocean data, satellite products, and data source status: same "click for detail" treatment
+
+Three panels get the same ask — right now clicking a station/product/source
+does nothing or shows too little, and it's not verifiable at a glance whether
+what's listed is real:
+
+- **Live ocean stations** (`services/ndbc.py`) — clicking a station should
+  show its real identity (NDBC station ID, coordinates, what it actually
+  measures) and enough of its raw feed/history to visibly confirm it's a real
+  instrument, not a placeholder — this addresses "I don't know if the
+  stations are true or false" directly, so the detail view's whole job is
+  proving provenance.
+- **Recent satellite products** (`services/gibs.py`) — clicking a product
+  should show the source (which GIBS layer), the coverage/resolution, and the
+  actual imagery/tile preview, not just a name and timestamp.
+- **Data source status** — clicking a source should show what's cached, when
+  it last refreshed, and why (the existing `ready`/`warming`/`unavailable`
+  three-way state from section 5 is the right foundation — extend it with
+  detail, don't replace it).
+
+All three are "expose more of what the backend already tracks," not new data
+collection — check what each service already returns/logs before assuming a
+new fetch is needed.

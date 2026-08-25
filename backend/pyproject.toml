@@ -110,6 +110,10 @@ exclude = ["others*", "tests*"]
 # time. Without this it is omitted from a built distribution and the whole
 # package fails to load with "forecasting config not found".
 forecasting = ["config/*.yaml"]
+# services/geofencing.py reads India's EEZ polygons from a JSON file at
+# import time (real Marine Regions geometry, too large to embed as a Python
+# literal) — same failure mode as the forecasting config above without this.
+services = ["geo_data/*.json"]
 
 [dependency-groups]
 dev = [

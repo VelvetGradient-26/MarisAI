@@ -410,17 +410,24 @@ _SPECS: list[tuple[str, str, type[BaseModel], Any]] = [
     ),
     (
         "check_geofence",
-        "Check a coordinate against India's EEZ (mainland coastal waters), the "
-        "India-Sri Lanka maritime boundary (IMBL), and nearby Marine Protected "
-        "Areas. Reference geometry, not a surveyed nautical chart.",
+        "Check a coordinate against India's EEZ (mainland, including "
+        "Lakshadweep, and the Andaman & Nicobar Islands as a separate zone), "
+        "the India-Sri Lanka maritime boundary (IMBL), and nearby Marine "
+        "Protected Areas. The EEZ/IMBL geometry is real (Marine Regions and "
+        "the India-Sri Lanka treaty line); the Marine Protected Area list is "
+        "still a hand-curated set of named sites, not a surveyed footprint.",
         PointArgs,
         _geofence,
     ),
     (
         "plan_safe_route",
-        "Plan a route between two coordinates, comparing wave/wind hazard "
-        "along a direct line against two lateral alternatives, and flagging "
-        "any candidate that crosses the IMBL or a Marine Protected Area.",
+        "Plan a route between two coordinates with an A* search over a live "
+        "hazard grid — land, the IMBL and Marine Protected Areas are "
+        "excluded from the search outright (the route cannot cross them, "
+        "not merely flagged after the fact) and the path prefers lower wave "
+        "height when a calmer detour exists. May report that no route could "
+        "be planned if the points are too enclosed or a detour would exceed "
+        "the search area.",
         RouteArgs,
         _safe_route,
     ),

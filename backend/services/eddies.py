@@ -5,12 +5,16 @@ The platform serves 32 variables and, until this module, said nothing about
 current field the map already draws into a list of named things — rotating
 features with a position, a size, a polarity and an intensity.
 
-**It detects; it does not track.** Age and trajectory are a frame-to-frame
-assignment problem, and an eddy that flickers identity between two timesteps
-produces a "track" that is an artefact of the matcher rather than an
-observation. Detection ships first and tracking is a separate item, to be
-validated against a published eddy atlas rather than against how plausible the
-lines look. Nothing here holds state between refreshes, deliberately.
+**This module detects; it does not track, and that split is deliberate rather
+than incomplete.** Age and trajectory are a frame-to-frame assignment problem
+with its own failure modes (an eddy that flickers identity between two
+timesteps produces a "track" that is an artefact of the matcher rather than an
+observation), so `services/eddy_tracking.py` owns that as a separate module
+built on top of `current_detection()` rather than a flag added here. Nothing
+in *this* module holds state between refreshes — `detect()` stays a pure
+snapshot-in, features-out function, which is what lets the tracker treat every
+call here as one frame in a sequence it alone is responsible for stitching
+together.
 
 Design decisions worth keeping:
 
@@ -397,7 +401,7 @@ def _empty_detection(
 # --------------------------------------------------------------------- cache
 
 
-def _current_detection() -> Detection:
+def current_detection() -> Detection:
     """The detection for the currents cache's current timestep.
 
     Computed on demand rather than on a schedule: it costs a second of numpy
@@ -468,7 +472,7 @@ def get_eddies(
         )
     limit = max(1, min(int(limit), MAX_LIMIT))
 
-    detection = _current_detection()
+    detection = current_detection()
     selected = list(detection.eddies)
     if bbox is not None:
         selected = [eddy for eddy in selected if _in_bbox(eddy, bbox)]
@@ -516,7 +520,7 @@ def nearest(latitude: float, longitude: float) -> dict[str, Any] | None:
     equivalent radius, so it is as round as the detection is: a point just
     outside a lopsided feature can read as outside while sitting in its water.
     """
-    detection = _current_detection()
+    detection = current_detection()
     if not detection.eddies:
         return None
 

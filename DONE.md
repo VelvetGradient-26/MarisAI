@@ -355,6 +355,52 @@ stronger claim than either half alone, and the baseline it needs already existed
   - The live path was **deleted rather than kept behind a flag**. A switch that
     silently makes the detector worse is worth less than the paragraph
     explaining why it does.
+- **The matched-baseline fix this pointed at was built for real and also
+  measured worse — 2026-08-25.** `scripts/build_climatology_copernicus.py`
+  fetched all 30 years the GLORYS reanalysis supports (1993-2022, ~1.4 GB of
+  cache, month-chunked per year because a single whole-year request hung for
+  20+ minutes against ~28s/month chunked) and fitted a real percentile
+  climatology on it — `services/climatology/copernicus_reanalysis.py` is the
+  fetch (a third Copernicus access shape: whole globe, many years, via
+  `arco-geo-series` coarsened while still lazy, same reasoning as
+  `forecasting/grid_history.py`'s). `copernicus_sst.anomaly_field()` scores the
+  live physics field against it. `scripts/measure_sst_corroboration.py
+  --source copernicus_reanalysis`, run paired against the same script's OISST
+  arm over one identical wind/currents snapshot:
+
+  | source (baseline) | cool contrast | below-p10 contrast |
+  | --- | --- | --- |
+  | OISST record (1991-2020 baseline) | +0.027 | -0.001 |
+  | live physics, GLORYS climatology (1993-2022 baseline) | +0.021 | **-0.051** |
+
+  Removing the 0.76 degC product-mismatch term did not widen either contrast —
+  the weak tier moved slightly the wrong way and the strong tier, which the
+  mismatched live-field attempt above had already inverted to -0.149, stayed
+  inverted at -0.051. Both SST-side levers this feature had (fresher
+  observation, matched baseline) are now tried and both failed the same way,
+  which relocates the diagnosis: what is untested is not the SST product but
+  the fact that both sides of the control are instantaneous snapshots, not a
+  wind history integrated over the days upwelling actually responds to. In
+  TODO.md.
+  - `services/upwelling.py` **stays on OISST** — `anomaly_field()` and the
+    built climatology are kept (the reanalysis fetch is shared with
+    `scripts/compare_against_eddy_atlas.py`, and the measurement script stays
+    runnable to re-ask this once a wind history exists) but neither is wired
+    into the live corroboration path, for the same reason the live-field
+    attempt was deleted rather than flagged: a tested-worse switch left
+    reachable is a hazard, not a feature.
+  - **The build itself needed a retry it didn't have.** The first real 30-year
+    attempt crashed 10 years in on a `ReadTimeoutError` against
+    `s3.waw3-1.cloudferro.com`, after a multi-hour gap in the log consistent
+    with the build machine sleeping mid-run — `copernicus_reanalysis.py` had no
+    retry logic at all, unlike every other fetch path in this codebase. Fixed
+    with a per-month retry (reusing `forecasting/history.py`'s `is_retryable`,
+    4 attempts, 10/30/60s backoff — per month, not per year, since a month
+    costs ~28s to redo and retrying the whole gather would repeat eleven
+    months that already succeeded) and the resumed build was run under
+    `caffeinate -i` so the machine could not sleep mid-fetch again. Per-year
+    disk caching meant the crash cost no progress — the resumed run picked up
+    at 2002 and finished cleanly in ~2 hours with the retry never triggering.
 - **The lag can be negative, and the bound is on its magnitude.** The wind blend
   lagged the currents by 1.3 days on 2026-08-17, so an SST field *newer* than the
   wind is a normal state rather than an impossible one. A bare `>` on the signed
@@ -462,6 +508,300 @@ attribution carries the per-horizon operating point (+3d 0.449 / +5d 0.280 / +7d
 ---
 
 ## Platform
+
+### Eddy atlas comparison: the infrastructure, not blocked on writing code anymore — 2026-08-24
+
+TODO.md named this "the whole difficulty" and it still is, but the difficulty
+turned out to be entirely on the data side, not the engineering side — and
+three real finds narrowed it from "needs an account" to "needs an account,
+and everything else is ready."
+
+- **The AVISO+ product handbook is openly downloadable — the data is not.**
+  Confirmed the account wall three separate ways: the product page states
+  registration is required; its THREDDS catalog (`tds-odatis.aviso.altimetry.fr`)
+  is publicly *browsable* (the file listing loads with no login) but a
+  `fileServer` request for the actual NetCDF answers `401 Unauthorized`,
+  `WWW-Authenticate: Basic realm="Ldap Authentification"`; the OPeNDAP `.das`
+  endpoint answers the same 401 before revealing even the variable schema.
+  The 32-page PDF handbook itself, though, is served with no login at all —
+  fetched directly from `aviso.altimetry.fr`, giving the **real** NetCDF
+  variable names (`latitude`, `longitude`, `time` — days since 1950-01-01 —
+  `track`, `speed_radius`, `amplitude`, one row per (track, day) flattened
+  into a single `obs` dimension, ~31M rows in the cyclonic file alone) rather
+  than a schema this session would otherwise have had to guess and ship
+  unverified.
+- **Polarity needs no reconciliation between the two products.** AVISO's
+  algorithm labels an eddy from the sign of its SSH extremum alone (low SSH
+  is cyclonic, in both hemispheres); `services/eddies.py` labels from
+  `sign(vorticity) == sign(latitude)`. Both encode the same geostrophic fact
+  — a low-pressure centre rotates the hemisphere-correct "cyclonic" direction
+  by construction — so the comparison matches strictly within same-polarity
+  pairs with no translation step, and a disagreement would be a real finding
+  rather than a units mismatch to paper over.
+- **The atlas's own coverage (1993-01-01 to 2023-09-08) is already years
+  behind live operation**, so a same-instant check against
+  `eddy_tracking.py`'s live state was never going to be possible regardless
+  of the account wall. `scripts/compare_against_eddy_atlas.py` instead runs
+  `eddies.detect()` — pure, snapshot-in features-out by design — against a
+  **historical** Copernicus reanalysis current field for whatever date is
+  being compared, via a new `copernicus_reanalysis.fetch_currents_day()`
+  (the same reanalysis product the climatology fetch already uses, since it
+  carries `uo`/`vo` on the same grid as `thetao` — a second fetch of the same
+  product, not a second integration).
+- **Verified live, for the entire half of the pipeline that doesn't need the
+  atlas file**: `fetch_currents_day(2020-06-15)` returned a correctly-shaped
+  680x1440 (0.25 deg) current field in 8.8s, and running `eddies.detect()`
+  against it found 2097 real eddies (954 cyclonic / 1143 anticyclonic) — the
+  same order of magnitude as the 2177 the live cache reports today, on a
+  date chosen at random 6 years in the past. The matching logic itself
+  (gated, polarity-separated, exact within each spatially independent
+  cluster via `linear_sum_assignment`, the same shape `eddy_tracking.py`
+  uses) is pinned by 10 tests against synthetic point sets, including the
+  same order-independence case `test_eddy_tracking.py` checks for the live
+  tracker.
+- **What is genuinely still missing is two downloaded files and one command
+  line**, not more code: register at AVISO+, select "Mesoscale Eddy
+  Trajectory Atlas," download the Cyclonic/Anticyclonic NetCDF pair, and run
+  `python scripts/compare_against_eddy_atlas.py --cyclonic ... --anticyclonic
+  ... --date YYYY-MM-DD`.
+- **A second lead surfaced and is left for later, not chased now**:
+  `py-eddy-tracker` (github.com/AntSimi/py-eddy-tracker) is the actual
+  open-source library AVISO's own atlas is built from (v3.6.1, per the
+  handbook's own bibliography) — pip-installable, no account needed at all.
+  TODO.md's still-open "closed-SSH-contour detection as a cross-check on the
+  count" item should try this before writing a contour detector from
+  scratch.
+
+### Eddy tracking: frame-to-frame identity over a live detection grid — 2026-08-24
+
+`services/eddies.py` detected but never tracked, deliberately — its own
+docstring named tracking as a frame-to-frame assignment problem to be solved
+separately, "validated against a published eddy atlas rather than against
+how plausible the tracks look." `services/eddy_tracking.py` is that separate
+module: nearest-neighbour matching, gated and polarity-separated (a cyclonic
+eddy can never become anticyclonic), solved exactly within each locally
+ambiguous cluster via `scipy.optimize.linear_sum_assignment` rather than a
+greedy nearest-first pass whose answer would depend on iteration order.
+
+**The scaling design is the load-bearing decision, not an optimisation
+afterthought.** A global detection pass can carry up to 2000 features
+(`eddies.MAX_LIMIT`); a dense every-track-against-every-eddy cost matrix, or
+a Hungarian solve over it, is `O(n^2)`/`O(n^3)` in a number that size, and
+almost every pair is on opposite sides of the planet. `_candidate_pairs`
+shortlists candidates with a `scipy.spatial.cKDTree` (a flat-earth
+approximation good enough at the gate's own tens-of-km scale; every
+shortlisted pair is re-scored with exact haversine before it counts), then
+`_connected_components` splits the shortlist into independent clusters via
+union-find — almost every cluster is one track and one eddy, a trivial
+direct match, and only a genuinely crowded patch of ocean pays for an actual
+assignment solve, over that cluster's own small sub-matrix.
+
+**Verified live at real global scale, not just on synthetic fixtures**:
+warmed the real currents cache, ran `eddies.current_detection()` (2177
+features worldwide), fed it through `eddy_tracking.update()`, then built a
+second synthetic frame by jittering every one of those 2177 positions by up
+to ±0.02° and ran it again. Matching took **16ms** and correctly continued
+**all 2177** tracks (`hits == 2` for every one, zero new/lost identities) —
+both the performance and correctness the design was for, measured rather
+than assumed. A repeated call against the *same* unchanged snapshot
+correctly did nothing (idempotent on a stale timestamp), which matters
+because both the scheduler and an on-demand caller can invoke `update()`.
+
+**The match gate is sized from the detection grid's own resolution, not from
+eddy propagation speed, and that is a deliberate inversion of the obvious
+choice.** At this module's hourly cadence, real mesoscale eddy movement (a
+few km/day) is not the dominant source of apparent displacement between two
+frames — the detection's own centroid jitter at ~0.25° grid resolution is
+larger. Sizing the gate off a propagation speed smaller than the noise floor
+it has to survive would make the matcher reject its own detector's jitter as
+"moved too far, must be a new eddy."
+
+**What is validated, and what honestly is not:**
+- The matcher's own correctness against controlled synthetic scenarios
+  (`tests/test_eddy_tracking.py`, 10 tests): continuous tracking across
+  frames, a missed frame not breaking a track, retirement after too many
+  misses (and non-resurrection of a retired identity), polarity never
+  flipping mid-track, and the textbook case where independent greedy
+  matching disagrees with the optimal assignment — checked in both track
+  orderings to confirm `_match` never depends on iteration order.
+- **Not validated: accuracy against a published eddy atlas.** AVISO+'s
+  Mesoscale Eddy Trajectory Atlas needs a registered account (checked
+  2026-08-24, no keyless download) — the same shape of blocker as WDPA for
+  `services/geofencing.py`'s Marine Protected Areas, and left equally
+  honestly unresolved in TODO.md rather than worked around with a synthetic
+  substitute presented as the real thing.
+
+**Shipped**: `services/eddy_tracking.py` (matching, lifecycle, an in-process
+`_tracks` dict — state does not survive a restart, the same limitation
+`services/dashboard/history.py`'s ring buffer already carries and for the
+same reason), a scheduled job in `main.py` on the same hourly cadence as the
+currents cache it reads, and `GET /api/ocean/eddies/tracks` /
+`GET /api/ocean/eddies/tracks/{id}` in `routers/marine.py` mirroring
+`/eddies`'s own query shape. `services/eddies.py::_current_detection` is now
+the public `current_detection()` — the one API surface change needed to let
+a second module read it. 604/604 backend tests passing.
+
+### A* route planning over a live hazard grid — 2026-08-24
+
+`plan_route` compared a direct line against two fixed lateral offsets and
+could only *reject* a candidate that crossed something — never route around
+it. It is now a real A* search over a live grid: land, the IMBL and Marine
+Protected Areas are excluded from the search graph outright, so a found path
+cannot cross any of them, and the graph is weighted by live wave height so
+the router prefers a calmer detour when one exists.
+
+**Two live sources, at two different resolutions, feed the graph:**
+
+- **Land mask** comes from `services/download/providers/gebco.py::fetch()` —
+  the Universal Ocean Data Downloader's bbox-in-one-request bathymetry
+  provider, not `services/bathymetry.py`'s single-point WMS lookup that
+  `get_seafloor_depth` uses. It auto-strides to keep the response near
+  40,000 cells regardless of box size, so a routing bbox a few degrees
+  across still resolves to sub-kilometre spacing. Land avoidance is checked
+  at *this* fine resolution along every candidate edge (including its
+  midpoint), independent of the coarser search grid's own node spacing —
+  the reason a peninsula gets found even though the search grid itself is
+  much coarser than the coastline.
+- **Hazard** (wave height, wind speed) comes from Open-Meteo's marine/
+  weather "current" endpoints, batched — confirmed live that the endpoint
+  accepts comma-joined multi-coordinate lists in one request (up to the
+  ~100-point batch size `services/download/providers/openmeteo.py` already
+  found the practical limit for its own batching), which is what makes
+  fetching hazard for a few hundred grid nodes cost a handful of requests
+  instead of one per node.
+
+**Three real bugs found by running it against real data before calling it
+done, not by reasoning about the algorithm on paper:**
+
+1. **The exact start/end coordinate routinely reads as "land" in the fine
+   mask, and the first version let that reject the query the caller was
+   asking.** Kanyakumari itself — the destination in this project's own
+   standard test route — sits close enough to the coastline that GEBCO's
+   nearest cell there resolves as land, and the segment-to-water check
+   samples the endpoint itself as step zero. Fixed with `skip_first` on
+   `_DepthGrid.segment_is_water`: the user's literal point is trusted as
+   navigable by design (a real harbour routinely sits exactly on a coarse
+   mask's land/water line), and only the rest of the segment has to test as
+   water. Without this, the very route this feature is demoed on failed
+   outright.
+2. **A three-candidate-era IMBL test coordinate (Palk Strait / Rameswaram)
+   turned out to sit in one of the most geometrically complex, narrow-
+   channel coastlines in the country** (Adam's Bridge/Pamban), and the new
+   router correctly could not connect an endpoint there at this grid's
+   resolution — a real, honest limit of a fixed-resolution grid near a very
+   intricate coastline, not a bug to paper over. The test suite now uses
+   open-water coordinates either side of Sri Lanka to exercise IMBL
+   exclusion instead.
+3. **Routing between the two sides of Sri Lanka correctly finds no path**,
+   confirmed live — the only legal detour is around the entire island,
+   which is outside the search bbox's margin by construction (this is a
+   coastal/fishing-vessel router, not an ocean-basin planner). `RoutingError`
+   is the honest answer here, not a route that quietly crosses the boundary
+   because the search box wasn't big enough to find the legal way around.
+
+**Verified live end to end, including the exact improvement being claimed**:
+routing between two points straddling the Malvan Marine Sanctuary — where
+the *old* three-candidate version rejected the direct line
+(`blocked_reason: "enters Malvan Marine Sanctuary"`) and answered with an
+arbitrary ~55 km lateral offset instead — the new router finds a real,
+minimal detour (great-circle 27.8 km, actual path 31.7 km, a ~4 km deviation)
+that never enters the sanctuary. Kochi→Kanyakumari (this project's standing
+test route) completes in ~3.3s end to end, hugs the coastline as a real path
+should (307.6 km via the found path vs. 257.5 km great-circle), and a live
+run through the real LLM produced a correctly-grounded answer citing the
+route's own reported figures.
+
+9 new tests in `tests/test_routing.py`, fully mocked (no network) following
+the existing `monkeypatch` convention — a headland/wall detour, MPA/IMBL
+structural exclusion (using the real `services.geofencing` registry, not a
+second fake), hazard-preference routing through a gap, and every failure
+mode (`RoutingError` on unreachable bathymetry, an unconnectable endpoint, or
+no path at all) — plus a hazard-fetch-failure test asserting the same "a
+missing sample must not fail the route" rule the old per-waypoint version
+had. 594/594 backend tests passing.
+
+### Real EEZ and IMBL geometry for geofencing — 2026-08-24
+
+Three of the four approximations `services/geofencing.py` documented about
+itself are gone. All from Marine Regions (marineregions.org), fetched live
+via its public WFS (`geo.vliz.be/geoserver/MarineRegions/wfs`) — no key, no
+auth, the natural upgrade CLAUDE.md's EMODnet probe already named.
+
+- **The India EEZ is now Marine Regions' real polygon**, not a coastline
+  sketch offset by a fixed degree margin. `MarineRegions:eez`, MRGID 8480,
+  fetched as ~54,700 vertices and simplified to ~1,510 (`shapely.simplify`,
+  tolerance 0.05°, `preserve_topology=True`) — measured area distortion
+  +0.28%. Stored in `services/geo_data/india_eez.json` (loaded once at
+  import; `check()` still touches no network, ever) rather than as a Python
+  literal, which the previous ~17-point sketch could be but ~1,500 points
+  cannot without turning the module into an unreadable blob.
+- **Andaman & Nicobar now has its own EEZ zone** — MRGID 8333, a second
+  Marine Regions record, not a modelling choice made here. **Lakshadweep
+  needed no separate fix**: Marine Regions carries no distinct Lakshadweep
+  record at all, because its waters already fall inside the mainland
+  polygon — verified directly (a point near Kavaratti covers `True` against
+  the mainland zone). The `india_eez` response now reports which of the two
+  zones a point falls in, or neither.
+- **The IMBL is the actual treaty line**, not a public-description sketch.
+  `MarineRegions:eez_boundaries` carries four segments tagged
+  `line_type="Treaty"` between India and Sri Lanka (line IDs 1306/1307/1310/
+  1311) — the 1974 Palk Strait Agreement and 1976 extension coordinates
+  themselves, 25 points total, small enough to keep as a literal.
+
+**Two real bugs found by checking the result rather than trusting the first
+successful fetch, both instructive about what "simplify a polygon" quietly
+costs:**
+
+1. **Dropping interior rings (holes) first, before noticing.** The first
+   pass extracted only each polygon's exterior ring. The real mainland EEZ
+   carries **817 interior holes** — land/shoal exclusions cut throughout the
+   coastline (river deltas, near-shore islands), not one special carve-out.
+   Dropping them all silently turned every one of those excluded areas into
+   "inside the EEZ". Fixed by keeping holes with area ≥ 0.0005 deg² (137 of
+   817, 94.7% of total hole area — the rest are islets too small to matter
+   for a point check) and simplifying those too.
+   - **This nearly produced a false claim in this very writeup.** A
+     coordinate near Rameswaram/Adam's Bridge tested as outside the mainland
+     EEZ, and the first draft of this entry explained it as "Palk Strait
+     runs under a different legal regime than the 200 nm EEZ" — a plausible-
+     sounding theory that turned out to be wrong on inspection: the
+     "excluded" hole is a small, specific area right at Rameswaram
+     (~0.2°×0.17°), and most of Palk Strait's open water tests `True`
+     against the same polygon. The corrected, checked claim is only that one
+     real, mapped local exclusion exists there, of the same kind the layer
+     cuts everywhere else along the coast — not a claim about the strait's
+     legal status. `tests/test_geofencing.py` now pins both facts (the one
+     excluded point, and that most of the strait is not excluded) so this
+     doesn't quietly regress into the wrong story again.
+2. **Simplifying holes at a different tolerance than their exterior produced
+   an invalid, self-intersecting polygon** (a hole poking outside its own
+   exterior near the Sundarbans and near Andaman). Repaired with
+   `buffer(0)`, which is topologically correct but splits the mainland zone
+   into 38 sub-polygons (one large body plus small fragments pinched off by
+   the repair) — stored as a real `MultiPolygon` rather than forcing it back
+   into one shape.
+- **`tool.setuptools.package-data` needed a new entry.** `geofencing.py`
+  reads `geo_data/india_eez.json` at import time; without declaring it, a
+  built wheel omits the file and the import fails — the exact failure mode
+  already recorded here for `forecasting/config/*.yaml`, caught before it
+  could repeat rather than after.
+- **`services/routing.py`'s IMBL-crossing test needed new coordinates.** The
+  real boundary sits close enough to the old hand-sketch that most crossing
+  scenarios still cross, but the specific three-candidate route the test
+  used no longer blocks its southern lateral offset (closest approach 20.8 km
+  against a 20 km threshold) — a real, small position difference from the
+  more accurate line, not a bug. `tests/test_routing.py` now uses a
+  start/end pair verified to block all three candidates against the real
+  geometry.
+- **Marine Protected Areas went from 4 to 9**, hand-verified rather than
+  pulled from WDPA (see TODO.md for why). The five additions include the
+  registry's first Andaman & Nicobar sites (Mahatma Gandhi and Rani Jhansi
+  Marine National Parks) — matching the EEZ fix, since the registry
+  previously had zero island coverage on both counts together.
+- **Verified live against the real LLM**: the `geospatial_risk` specialist
+  correctly reported a point's Andaman & Nicobar EEZ zone, a real ~24 km IMBL
+  distance, and a real ~7.8 km Gulf of Mannar MPA distance, all in one
+  grounded answer with the new source citations attached.
 
 ### Catching a false refusal — the check `grounded` cannot make — 2026-08-24
 

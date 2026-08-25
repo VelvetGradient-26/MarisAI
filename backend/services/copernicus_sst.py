@@ -29,6 +29,7 @@ from scipy.interpolate import RegularGridInterpolator
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.core.config import settings
+from services import sst_anomaly
 from services.colormaps import SST_COLORMAP
 
 DATASET_ID = "cmems_mod_glo_phy_anfc_0.083deg_PT1H-m"
@@ -184,6 +185,83 @@ def get_meta() -> dict[str, Any]:
 
 def is_available() -> bool:
     return _cache is not None
+
+
+# The climatology store's variable key for the Copernicus-reanalysis-fitted
+# baseline — distinct from `"sea_surface_temperature"`, which is
+# `services/heatwaves.py`'s OISST-fitted one. Two climatologies, two keys,
+# never the same file silently meaning two different things.
+REANALYSIS_CLIMATOLOGY_VARIABLE = "sea_surface_temperature_copernicus"
+
+
+def anomaly_field() -> sst_anomaly.SstAnomalyField | None:
+    """This cache's live field, scored against a climatology fitted on the
+    Copernicus GLORYS reanalysis — the same product family, not OISST.
+
+    See `services/sst_anomaly.py` for why that distinction is the whole
+    point: scoring this field against the OISST-fitted climatology was
+    measured and made `services/upwelling.py`'s corroboration worse.
+
+    `None` when either half is missing (no live cache yet, or the
+    reanalysis climatology has not been built) — the same "an absent
+    anomaly degrades the caller, it does not fail it" contract
+    `heatwaves.sst_anomaly_field()` already follows, so `upwelling.py` can
+    treat the two producers identically.
+    """
+    import xarray as xr
+
+    from services.climatology import build as climatology_build
+    from services.climatology import store as climatology_store
+    from services.vector_field import axis_after_block_mean, block_mean
+
+    cache = _cache
+    if cache is None:
+        return None
+
+    try:
+        climatology = climatology_store.load(REANALYSIS_CLIMATOLOGY_VARIABLE)
+    except climatology_store.ClimatologyNotBuilt:
+        return None
+
+    resolution_deg = float(climatology.attrs.get("resolution_deg", 1.0))
+    # This cache and the reanalysis both sit on the same GLO12 model grid
+    # (native 1/12 deg) — see `copernicus_reanalysis.py`'s docstring — so the
+    # same block-average factor that built the climatology also downsamples
+    # this live grid onto a matching resolution.
+    factor = max(1, round(resolution_deg * 12.0))
+    grid = block_mean(cache.grid, factor)
+    lat = axis_after_block_mean(cache.latitudes, factor)
+    lon = axis_after_block_mean(cache.longitudes, factor)
+
+    # Aligned by value (nearest cell), not by position: the climatology's own
+    # coarsening (`xarray.Dataset.coarsen`, offline) and this cache's
+    # (`block_mean`, live) are two different implementations of the same
+    # idea, and trusting them to land on bit-identical cell centres would be
+    # exactly the silent-misalignment risk this module elsewhere writes
+    # tests against. `.sel(..., method="nearest")` makes correctness not
+    # depend on that coincidence.
+    aligned = climatology.sel(latitude=lat, longitude=lon, method="nearest")
+
+    observation = xr.DataArray(
+        grid[np.newaxis, :, :],
+        dims=("time", "latitude", "longitude"),
+        coords={"time": [cache.timestamp], "latitude": lat, "longitude": lon},
+    )
+    scored = climatology_build.apply_percentiles(observation, aligned, when=cache.timestamp)
+
+    baseline = (
+        int(climatology.attrs.get("baseline_start", 0)),
+        int(climatology.attrs.get("baseline_end", 0)),
+    )
+    return sst_anomaly.SstAnomalyField(
+        anomaly=scored["anomaly"].values[0],
+        cold_exceedance=scored["exceedance"].values[0],
+        latitude=lat,
+        longitude=lon,
+        timestamp=cache.timestamp,
+        baseline=baseline,
+        source=sst_anomaly.COPERNICUS_REANALYSIS,
+    )
 
 
 def global_stats() -> dict[str, Any]:

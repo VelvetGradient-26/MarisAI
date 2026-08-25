@@ -49,7 +49,39 @@ why the coast is twice as bad as open water.
 
 **The route back is to fit the baseline on the product being scored** — a
 climatology from the Copernicus physics reanalysis, whose record reaches 1993 —
-not to reach for the live field again against this one. See TODO.md.
+not to reach for the live field again against this one.
+
+The matched baseline was also tried, and also measured worse
+--------------------------------------------------------------
+`scripts/build_climatology_copernicus.py` built that climatology for real (30
+years, 1993-2022, the reanalysis's full supported window) and
+`scripts/measure_sst_corroboration.py --source copernicus_reanalysis` scored
+the live Copernicus field against it, paired against the same script's OISST
+arm over the identical wind/currents snapshot (2026-08-25):
+
+| source (baseline) | cool contrast | below-p10 contrast |
+| --- | --- | --- |
+| OISST record (1991-2020 baseline) | +0.027 | -0.001 |
+| live physics, GLORYS climatology (1993-2022 baseline) | +0.021 | **-0.051** |
+
+Matching the product did not rescue the tail test — it made the weak tier
+slightly worse and the strong tier newly and substantially inverted, the same
+failure shape the mismatched live-field attempt above produced, not a
+different one. So the product-mismatch diagnosis was itself incomplete: a
+matched baseline removes the 0.76 degC product-disagreement term, but the
+contrast still does not widen, which means what limits this control is the
+wind/SST snapshots being instantaneous on both sides, not which SST product or
+baseline scores them — see "a rolling wind history" in TODO.md, the lever this
+result actually points at.
+
+`copernicus_sst.anomaly_field()` and the built climatology stay — the
+reanalysis fetch is shared with `scripts/compare_against_eddy_atlas.py`, and
+`measure_sst_corroboration.py --source copernicus_reanalysis` is kept
+runnable so this question can be re-asked once a wind history exists — but
+`services/upwelling.py` stays on `heatwaves.sst_anomaly_field()` (OISST).
+Wiring the reanalysis path into the live corroboration would be the same
+mistake the deleted live-field path was: a switch that makes the detector
+worse and looks like progress.
 """
 
 from __future__ import annotations
@@ -63,6 +95,14 @@ import numpy as np
 # Source labels. Strings rather than an enum because they are published in the
 # API response and read by a person deciding how much to believe a cell.
 OISST_RECORD = "NOAA OISST v2.1 daily record"
+# The live Copernicus physics field, scored against a climatology fitted on
+# the Copernicus GLORYS reanalysis rather than OISST — tried as the fix for
+# the measured 0.76 degC coastal disagreement, and itself measured not to
+# widen the contrast (see this module's docstring). Not used by
+# services/upwelling.py; kept for services/compare_against_eddy_atlas.py's
+# shared fetch and for re-measuring this question later. See
+# services/climatology/copernicus_reanalysis.py.
+COPERNICUS_REANALYSIS = "Copernicus Marine physics, scored against its own reanalysis climatology"
 
 
 @dataclass(frozen=True)

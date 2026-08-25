@@ -11,9 +11,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import numpy as np
+import pandas as pd
 import pytest
+import xarray as xr
 
 import services.copernicus_sst as sst
+from services import sst_anomaly
+from services.climatology import build as climatology_build
+from services.climatology import store as climatology_store
 
 LAT = np.linspace(-80.0, 90.0, 401).astype(np.float64)
 LON = np.linspace(-180.0, 179.0, 800).astype(np.float64)
@@ -121,3 +126,80 @@ def test_global_stats_weights_by_area(cache):
     stats = sst.global_stats()
     assert stats["mean_c"] == pytest.approx(expected, abs=1e-3)
     assert stats["mean_c"] != pytest.approx(unweighted, abs=1e-3)
+
+
+def _synthetic_climatology() -> xr.Dataset:
+    """A small, fast-to-fit climatology — the point of these tests is
+    `anomaly_field()`'s wiring (coarsening, grid alignment, `None`-handling),
+    not a physically meaningful fit, so `min_samples` is dropped well below
+    the shipped default."""
+    times = pd.date_range("1993-01-01", "1997-12-31", freq="D")
+    rng = np.random.default_rng(1)
+    lat = np.array([-40.0, 0.0, 40.0, 60.0])
+    lon = np.array([-90.0, 0.0, 90.0, 150.0])
+    values = rng.normal(20.0, 1.0, size=(times.size, lat.size, lon.size)).astype("float32")
+    record = xr.Dataset(
+        {"sea_surface_temperature": (("time", "latitude", "longitude"), values)},
+        coords={"time": times, "latitude": lat, "longitude": lon},
+    )
+    climatology = climatology_build.build_climatology(
+        record,
+        variable="sea_surface_temperature",
+        baseline_start=1993,
+        baseline_end=1997,
+        min_samples=10,
+    )
+    climatology.attrs["resolution_deg"] = 1.0
+    return climatology
+
+
+class TestAnomalyField:
+    """`copernicus_sst.anomaly_field()`: the live cache scored against the
+    Copernicus-reanalysis-fitted climatology, not OISST — see
+    `services/sst_anomaly.py` for why that distinction is the whole point.
+    """
+
+    def test_none_without_a_live_cache(self, monkeypatch):
+        monkeypatch.setattr(sst, "_cache", None)
+        assert sst.anomaly_field() is None
+
+    def test_none_without_a_built_climatology(self, cache, monkeypatch):
+        def fake_load(variable, root=None):
+            raise climatology_store.ClimatologyNotBuilt("not built")
+
+        monkeypatch.setattr(climatology_store, "load", fake_load)
+        assert sst.anomaly_field() is None
+
+    def test_loads_the_reanalysis_variable_key_not_oissts(self, cache, monkeypatch):
+        """The two climatologies must never collide under one key — see
+        `REANALYSIS_CLIMATOLOGY_VARIABLE`'s own docstring."""
+        climatology = _synthetic_climatology()
+        seen: list[str] = []
+
+        def fake_load(variable, root=None):
+            seen.append(variable)
+            return climatology
+
+        monkeypatch.setattr(climatology_store, "load", fake_load)
+        sst.anomaly_field()
+
+        assert seen == [sst.REANALYSIS_CLIMATOLOGY_VARIABLE]
+        assert sst.REANALYSIS_CLIMATOLOGY_VARIABLE != "sea_surface_temperature"
+
+    def test_returns_a_correctly_shaped_scored_field(self, cache, monkeypatch):
+        entry, _ = cache
+        climatology = _synthetic_climatology()
+        monkeypatch.setattr(climatology_store, "load", lambda variable, root=None: climatology)
+
+        field = sst.anomaly_field()
+
+        assert field is not None
+        assert field.source == sst_anomaly.COPERNICUS_REANALYSIS
+        assert field.timestamp == entry.timestamp
+        assert field.baseline == (1993, 1997)
+        assert field.anomaly.shape == (field.latitude.size, field.longitude.size)
+        assert field.cold_exceedance.shape == field.anomaly.shape
+        # Coarsened, not passed through at the cache's native resolution —
+        # the whole reason `anomaly_field` block-means first.
+        assert field.latitude.size < entry.latitudes.size
+        assert field.longitude.size < entry.longitudes.size

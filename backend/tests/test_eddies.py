@@ -289,7 +289,7 @@ def test_nearest_reports_inside_and_distance(monkeypatch):
     lat, lon = _grid()
     u, v = _vortex(lat, lon, centre_lat=25.0, centre_lon=70.0, radius_km=90.0, peak_ms=0.6, sign=1)
     detection = eddies.detect(_snapshot(lat, lon, u, v))
-    monkeypatch.setattr(eddies, "_current_detection", lambda: detection)
+    monkeypatch.setattr(eddies, "current_detection", lambda: detection)
 
     inside = eddies.nearest(25.0, 70.0)
     assert inside is not None
@@ -315,7 +315,7 @@ def test_nearest_is_none_when_nothing_was_detected(monkeypatch):
         grid_spacing_deg=0.25,
         min_resolvable_radius_km=eddies.MIN_RADIUS_KM,
     )
-    monkeypatch.setattr(eddies, "_current_detection", lambda: empty)
+    monkeypatch.setattr(eddies, "current_detection", lambda: empty)
     assert eddies.nearest(25.0, 70.0) is None
 
 

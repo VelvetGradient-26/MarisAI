@@ -8,6 +8,7 @@ from services import (
     currents_depth,
     drift,
     eddies,
+    eddy_tracking,
     edna,
     heatwaves,
     upwelling,
@@ -189,6 +190,61 @@ async def get_eddies(
         # Everything the caller could have got wrong was rejected above, so
         # anything reaching here is a cold or unusable currents cache.
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/eddies/tracks")
+async def get_eddy_tracks(
+    bbox: str | None = Query(
+        None,
+        description="Optional south,west,north,east. East < west crosses the antimeridian.",
+    ),
+    polarity: str | None = Query(None, description="cyclonic | anticyclonic"),
+    min_age_hours: float | None = Query(None, ge=0),
+    limit: int = Query(eddy_tracking.DEFAULT_LIMIT, ge=1, le=eddy_tracking.MAX_LIMIT),
+):
+    """Frame-to-frame identity over `/eddies`' own hourly detection passes.
+
+    Unlike `/eddies`, this never 503s on its own: it reads state a scheduled
+    job already computed rather than the live currents cache, so there is no
+    per-request failure mode to report. `active_tracks: 0` is what a cold
+    process (no scheduled refresh has run yet — state lives in this process
+    and does not survive a restart) and a genuinely quiet ocean look like
+    alike, and both are real, reportable answers rather than errors. 422 for
+    a caller error (bad bbox/polarity), the same convention as `/eddies`.
+    """
+    if polarity is not None and polarity not in ("cyclonic", "anticyclonic"):
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown polarity {polarity!r}; expected 'cyclonic' or 'anticyclonic'",
+        )
+
+    parsed: tuple[float, float, float, float] | None = None
+    if bbox is not None:
+        try:
+            south, west, north, east = (float(part) for part in bbox.split(","))
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail="bbox must be four comma-separated numbers: south,west,north,east",
+            ) from exc
+        if south > north:
+            raise HTTPException(
+                status_code=422, detail="bbox south must not be north of bbox north"
+            )
+        parsed = (south, west, north, east)
+
+    return eddy_tracking.get_tracks(
+        bbox=parsed, polarity=polarity, min_age_hours=min_age_hours, limit=limit
+    )
+
+
+@router.get("/eddies/tracks/{track_id}")
+async def get_eddy_track(track_id: str):
+    """One track's full position history."""
+    track = eddy_tracking.get_track(track_id)
+    if track is None:
+        raise HTTPException(status_code=404, detail=f"No such track: {track_id!r}")
+    return track
 
 
 @router.get("/heatwaves")

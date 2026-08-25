@@ -41,6 +41,7 @@ from services import (
     crw,
     currents_depth,
     drift,
+    eddy_tracking,
     forecast_tiles,
     forecast_warm,
     gibs,
@@ -110,6 +111,15 @@ async def lifespan(_app: FastAPI):
     # degrades to a logged note when no climatology has been built yet, so a
     # fresh clone starts without it rather than failing.
     asyncio.create_task(heatwaves.refresh_cache())
+    # Eddy tracking's first tick, same fire-and-forget footing as the rest of
+    # this block. It reads the currents cache `_warm_flow_fields` is warming
+    # concurrently above, so on a cold boot this can race it and find nothing
+    # yet — `eddy_tracking.refresh()` degrades to a logged skip in exactly
+    # that case (see its own docstring), and the scheduled job below picks it
+    # up on the next hourly tick regardless. A single frame does not track
+    # anything by itself either way; what matters is that the *next* refresh
+    # has a first frame already on record to match against.
+    asyncio.create_task(eddy_tracking.refresh())
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(refresh_sst_cache, "interval", hours=SST_REFRESH_INTERVAL_HOURS)
@@ -119,6 +129,13 @@ async def lifespan(_app: FastAPI):
     scheduler.add_job(refresh_wind_cache, "interval", hours=WIND_REFRESH_INTERVAL_HOURS)
     scheduler.add_job(
         refresh_currents_cache, "interval", hours=CURRENTS_REFRESH_INTERVAL_HOURS
+    )
+    # Same cadence as the currents cache it reads: eddy positions barely move
+    # inside an hour (a few km/day for a real mesoscale eddy), so anything
+    # faster would just re-process a snapshot `update()` has already seen
+    # (it is idempotent on a repeated timestamp) for no new information.
+    scheduler.add_job(
+        eddy_tracking.refresh, "interval", hours=CURRENTS_REFRESH_INTERVAL_HOURS
     )
     # Cadences match each product's own publication rate rather than a shared
     # default: the wave product is 3-hourly and the depth currents daily, so a
