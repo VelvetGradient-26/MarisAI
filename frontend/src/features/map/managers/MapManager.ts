@@ -75,6 +75,11 @@ export class MapManager {
       pitch,
       renderWorldCopies: false,
       attributionControl: { compact: true },
+      // Needed for exportHighResImage()'s canvas.toBlob() capture — without
+      // it the WebGL context is free to discard its backing buffer right
+      // after compositing, and a screenshot taken any time after the
+      // triggering `idle` event comes back blank on some browsers/GPUs.
+      canvasContextAttributes: { preserveDrawingBuffer: true },
     });
     (window as unknown as { __debugMap?: unknown }).__debugMap = map;
 
@@ -160,6 +165,53 @@ export class MapManager {
     map.setProjection({ type: mode });
   }
 
+  /**
+   * Captures the current view (basemap + every active overlay, exactly as
+   * shown) as a PNG at a true higher pixel density, not an upscale of the
+   * on-screen canvas.
+   *
+   * `setPixelRatio` only changes the canvas's backing-store resolution, not
+   * its CSS/layout size, so there is no visible resize/flash — MapLibre just
+   * re-renders every layer (vector geometry, raster tiles) at the new pixel
+   * density, fetching deeper raster tiles where the source's maxzoom allows
+   * it. `targetLongEdge` is a floor on the longer edge, not an exact crop, so
+   * the export keeps the on-screen framing/aspect ratio instead of
+   * distorting it to hit an exact 3840x2160.
+   *
+   * Deliberately does not await `map.once('idle')` — measured live, `idle`
+   * never fires and `map.loaded()` never returns true while in the globe
+   * projection (the app's default), because globe's atmosphere/halo repaints
+   * every frame regardless of whether tiles or camera are still moving. That
+   * would hang this method forever for anyone who hadn't switched to 2D. A
+   * short debounced poll on `areTilesLoaded()` plus a bounded timeout works
+   * in both projections and can't hang the export.
+   */
+  async exportHighResImage(targetLongEdge = 3840): Promise<Blob> {
+    const map = this.map;
+    if (!map) throw new Error('Map not initialized');
+
+    const canvas = map.getCanvas();
+    const originalRatio = map.getPixelRatio();
+    const cssLongEdge = Math.max(canvas.clientWidth, canvas.clientHeight);
+    const scale = Math.max(originalRatio, targetLongEdge / cssLongEdge);
+
+    map.setPixelRatio(scale);
+    try {
+      await waitForTilesSettled(map);
+      // One more repaint so the just-settled tiles are actually composited
+      // into the canvas before capture, not merely marked loaded.
+      map.triggerRepaint();
+      await new Promise<void>((resolve) => map.once('render', () => resolve()));
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, 'image/png')
+      );
+      if (!blob) throw new Error('Canvas capture returned no data');
+      return blob;
+    } finally {
+      map.setPixelRatio(originalRatio);
+    }
+  }
+
   destroy() {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
@@ -172,6 +224,35 @@ export class MapManager {
     this.controlManager = null;
     this.layerManager = null;
   }
+}
+
+/**
+ * Polls `areTilesLoaded()` until it reports true and holds for one more
+ * check (debounced, since a tile can finish loading and immediately queue a
+ * dependent one), or gives up after `timeoutMs` — this is a best-effort
+ * wait, not a guarantee, since a slow/failing tile source must not be able
+ * to hang the export. See exportHighResImage's docstring for why `idle`
+ * can't be used here.
+ */
+function waitForTilesSettled(map: MapLibreMap, timeoutMs = 8000, pollMs = 150): Promise<void> {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    let sawLoaded = false;
+    const check = () => {
+      const loaded = map.areTilesLoaded();
+      if (loaded && sawLoaded) {
+        resolve();
+        return;
+      }
+      sawLoaded = loaded;
+      if (Date.now() - start >= timeoutMs) {
+        resolve();
+        return;
+      }
+      setTimeout(check, pollMs);
+    };
+    check();
+  });
 }
 
 function getBasemapInsertBeforeId(map: MapLibreMap): string | undefined {
