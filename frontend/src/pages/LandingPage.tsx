@@ -5,7 +5,9 @@ import { Link } from '../app/router';
 import { KineticText, Marquee } from '../components/craft';
 import { useMagnetic } from '../hooks/useMagnetic';
 import { useThemeStore } from '../store/themeStore';
+import { Eyebrow } from './landing/Eyebrow';
 import { HeroField } from './landing/HeroField';
+import { MapDescent } from './landing/MapDescent';
 import {
   AssistantGlyph,
   DashboardGlyph,
@@ -80,6 +82,7 @@ export function LandingPage() {
       <Metrics />
       <Ticker />
       <Forecasting />
+      <MapDescent />
       <Coverage />
       <Platform />
       <Research />
@@ -93,26 +96,6 @@ export function LandingPage() {
 // --------------------------------------------------------------------------
 // Shared page furniture
 // --------------------------------------------------------------------------
-
-/**
- * A numbered eyebrow.
- *
- * The ordinal is passed rather than derived, because the sections are separate
- * components rendered in a fixed order and an auto-incrementing counter would
- * mean either a context or an index prop threaded through every one of them —
- * more machinery than the six literals it would replace. If a section is
- * reordered, renumber it here; the numbers are part of the copy.
- */
-function Eyebrow({ index, children }: { index: string; children: ReactNode }) {
-  return (
-    <p className="lp-eyebrow">
-      <span className="lp-eyebrow__index" aria-hidden="true">
-        {index}
-      </span>
-      {children}
-    </p>
-  );
-}
 
 /**
  * A `Link` that leans toward the pointer.
@@ -180,6 +163,12 @@ function Hero({ dark }: { dark: boolean }) {
         ref={contentRef}
         style={{ transform: 'translate3d(0, 0, 0)', opacity: 1 }}
       >
+        {/* The problem, stated before the platform: the page used to open
+            straight on the brand claim below, with nothing said about why it
+            is hard. This line carries no number, deliberately — it is the
+            one sentence on the page that is not a measured claim, so it
+            reads as scale rather than as evidence. */}
+        <p className="lp-eyebrow lp-eyebrow--hero">Too vast to watch. Too fast to guess.</p>
         {/* A status pill rather than a plain eyebrow. Both figures in it are
             the same constants the metrics row counts up to, so the sentence
             cannot drift from the numbers a screen below it. */}
@@ -418,7 +407,7 @@ function Coverage() {
     <section className="lp-section lp-section--panel">
       <div ref={ref} className={`lp-coverage ${revealed ? 'is-in' : ''}`}>
         <div className="lp-coverage__head">
-          <Eyebrow index="02">Data layer</Eyebrow>
+          <Eyebrow index="03">Data layer</Eyebrow>
           <KineticText as="h2" className="lp-h2" text="Every variable traced to its source." />
           <p className="lp-body lp-body--wide">
             {SERVED_VARIABLES} of 36 specified variables resolve to real data across{' '}
@@ -490,7 +479,7 @@ function Platform() {
     <section className="lp-section">
       <div ref={ref} className={`lp-surfaces ${revealed ? 'is-in' : ''}`}>
         <div className="lp-surfaces__head">
-          <Eyebrow index="03">Platform</Eyebrow>
+          <Eyebrow index="04">Platform</Eyebrow>
           <KineticText as="h2" className="lp-h2" text="Four ways in." />
         </div>
         <div className="lp-surface-grid">
@@ -590,7 +579,7 @@ function Research() {
     <section className="lp-section lp-section--panel">
       <div ref={ref} className={`lp-research ${revealed ? 'is-in' : ''}`}>
         <div className="lp-research__head">
-          <Eyebrow index="04">Research pipelines</Eyebrow>
+          <Eyebrow index="05">Research pipelines</Eyebrow>
           <KineticText as="h2" className="lp-h2" text="Methodology that survives review." />
           <p className="lp-body lp-body--wide">
             Two offline pipelines share one Marine Data Fusion Layer: ingestion, regridding,
@@ -724,7 +713,7 @@ function Rigour() {
     <section className="lp-section">
       <div ref={ref} className={`lp-principles ${revealed ? 'is-in' : ''}`}>
         <div className="lp-principles__head">
-          <Eyebrow index="05">How it is built</Eyebrow>
+          <Eyebrow index="06">How it is built</Eyebrow>
           <KineticText as="h2" className="lp-h2" text="Honesty is a feature." />
         </div>
         <div className="lp-principle-grid">

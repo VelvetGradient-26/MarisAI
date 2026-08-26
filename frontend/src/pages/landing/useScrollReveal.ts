@@ -114,6 +114,63 @@ export function useScrollProgress<T extends HTMLElement>(
 }
 
 /**
+ * Progress (0 to 1) across a *pinned* section: 0 while its top edge is at the
+ * top of the viewport, 1 once its bottom edge has risen to meet the bottom of
+ * the viewport. Built for a `position: sticky` stage inside a tall wrapper —
+ * `MapDescent` is the one caller — which is a different shape from
+ * `useScrollProgress` above: that hook tracks an element *crossing* the
+ * viewport once, this one tracks scroll position *through* a span the element
+ * holds still for.
+ *
+ * Always driven (`apply`, never React state), for the same reason
+ * `useScrollProgress` prefers it: the caller re-jumps a live MapLibre camera
+ * on every call, and routing that through `setState` would reconcile the
+ * whole subtree per scroll frame to move a camera nothing in React renders.
+ *
+ * Reduced motion resolves to progress 1 — the finished, held frame — once,
+ * matching how the rest of this page treats reduced motion: not hidden, not
+ * mid-animation, the state the visitor would have scrolled to see.
+ */
+export function usePinnedProgress<T extends HTMLElement>(apply: (progress: number) => void) {
+  const ref = useRef<T>(null);
+  const reduced = prefersReducedMotion();
+
+  const applyRef = useRef(apply);
+  applyRef.current = apply;
+
+  useEffect(() => {
+    if (reduced) {
+      applyRef.current(1);
+      return;
+    }
+    const element = ref.current;
+    if (!element) return;
+
+    const update = rafThrottle(() => {
+      const rect = element.getBoundingClientRect();
+      const viewport = window.innerHeight || 800;
+      const span = rect.height - viewport;
+      if (span <= 0) {
+        applyRef.current(1);
+        return;
+      }
+      const raw = -rect.top / span;
+      applyRef.current(Math.max(0, Math.min(1, raw)));
+    });
+
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update, { passive: true });
+    update();
+    return () => {
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [reduced]);
+
+  return { ref, reduced };
+}
+
+/**
  * Counts from 0 to `value` once revealed.
  *
  * Uses an eased elapsed-time ramp rather than a fixed per-frame increment, so
