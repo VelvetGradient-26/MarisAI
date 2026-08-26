@@ -325,6 +325,20 @@ function Provenance({ provenance }: { provenance: TurnProvenance | undefined }) 
               may be worth asking again.
             </span>
           </motion.p>
+        ) : meta.glossary_gaps.length > 0 ? (
+          <motion.p
+            className="chat-flag"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: EASE }}
+          >
+            <TriangleAlert size={14} aria-hidden />
+            <span>
+              {meta.glossary_gaps.length === 1
+                ? `This answer may not have kept "${meta.glossary_gaps[0]}" in English — worth double-checking that part.`
+                : `This answer may not have kept these terms in English: ${meta.glossary_gaps.join(', ')} — worth double-checking those parts.`}
+            </span>
+          </motion.p>
         ) : meta.observations.length > 0 ? (
           <motion.p
             className="chat-traced"
