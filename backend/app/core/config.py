@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     LLM_MODEL: str = ""
     LLM_BASE_URL: str = ""
 
+    # Controlled internet tools for the Ocean Assistant's web_research
+    # specialist (services/web_search.py, services/webpage.py,
+    # services/literature.py — sihtodo.md item 4). Only web_search needs a
+    # key: fetch_webpage has no provider, and services/literature.py's
+    # Crossref backend is keyless. Without this, web_search degrades to a
+    # clear "not configured" tool error rather than failing the assistant.
+    TAVILY_API_KEY: str = ""
+
     # Feedback form email delivery (Gmail SMTP + app password)
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587

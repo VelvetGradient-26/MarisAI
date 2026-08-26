@@ -103,6 +103,7 @@ async def test_delegate_tools_are_one_per_specialist():
         "delegate_to_ocean_analytics",
         "delegate_to_weather_safety",
         "delegate_to_geospatial_risk",
+        "delegate_to_web_research",
     }
     for tool in delegates:
         assert tool.description

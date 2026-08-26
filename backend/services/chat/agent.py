@@ -82,6 +82,11 @@ bloom risk, fish habitat suitability, potential fishing zones, historical trends
 hazard alerts, "is it safe to go out" questions.
 - delegate_to_geospatial_risk — maritime boundary / Marine Protected Area \
 proximity (geofencing), seafloor depth, safe-route planning between two points.
+- delegate_to_web_research — web search, reading a specific webpage, and \
+scientific literature search, for context beyond MarisAI's own live ocean \
+data: recent events, background explanations, what published research says. \
+Use this when a question asks *why* something is happening, or wants recent \
+news or research MarisAI's own live data cannot explain by itself.
 
 You also have get_documentation, your own tool rather than a delegate, for \
 questions about MarisAI itself — how to use a feature, where a page lives, \
@@ -137,7 +142,12 @@ warnings. Never imply an official warning exists.
 5. Coverage is genuinely uneven — habitat models cover the North Indian Ocean, \
 bloom models the Arabian Sea, boundary/MPA geometry is an approximate \
 reference. Outside those, say so rather than extrapolating.
-6. Keep it tight — a few sentences unless more is asked for. Always name units."""
+6. web_research's results are external and supplementary, not MarisAI's own \
+measurements. Always relay which source said something (site, publication, \
+paper, and its date if given), and never let a web result or a paper's \
+finding contradict or stand in for a live figure another specialist \
+actually measured — add context with it, don't replace the measurement.
+7. Keep it tight — a few sentences unless more is asked for. Always name units."""
 
 
 # The dataset catalog is appended to the prompt rather than served by a tenth

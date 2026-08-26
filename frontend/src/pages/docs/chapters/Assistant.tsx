@@ -7,11 +7,12 @@ import { Callout, Table, Term } from '../primitives';
  *
  * A chat interface over scientific data invites exactly one dangerous
  * assumption — that the model knows the ocean. It does not; it knows how to
- * call the same endpoints the map calls. The chapter is organised around making
- * that legible: who actually answers a question (three specialists behind one
- * conversation), how a figure is checked before it is trusted, and the two
- * domains — hazard alerts and geospatial risk — where getting the source
- * wrong is the whole failure mode.
+ * call the same endpoints the map calls (or, for one specialist, the open
+ * web). The chapter is organised around making that legible: who actually
+ * answers a question (four specialists behind one conversation), how a
+ * figure is checked before it is trusted, and the domains — hazard alerts,
+ * geospatial risk, and external sources — where getting the source wrong is
+ * the whole failure mode.
  */
 export function Assistant() {
   return (
@@ -40,14 +41,14 @@ export function Assistant() {
         things the platform can actually measure, which is the correct limit for it to have.
       </Callout>
 
-      <h2 id="specialists">Three specialists behind one conversation</h2>
+      <h2 id="specialists">Four specialists behind one conversation</h2>
       <p>
         A single conversation is handled by an <Term>orchestrator</Term> that does not call the
-        platform's tools itself. It delegates each question to whichever of three specialist
-        agents owns that domain, each with its own system prompt and its own narrower set of
-        tools — and it can ask more than one before answering, which is what makes "is it safe
-        to fish near Kochi today, and where's the nearest good zone" visibly consult two
-        specialists in one turn.
+        platform's tools itself. It delegates each question to whichever specialist agent owns
+        that domain, each with its own system prompt and its own narrower set of tools — and it
+        can ask more than one before answering, which is what makes "is it safe to fish near
+        Kochi today, and where's the nearest good zone" visibly consult two specialists in one
+        turn.
       </p>
       <Table
         headers={['Specialist', 'Answers', 'Tools it can call']}
@@ -67,6 +68,11 @@ export function Assistant() {
             'Distance to a maritime boundary or Marine Protected Area, seafloor depth, safe-route planning',
             'check_geofence, get_seafloor_depth, plan_safe_route',
           ],
+          [
+            <strong>Web Research</strong>,
+            '"Why" questions and recent context the platform’s own data cannot explain by itself: news, background explanations, published research',
+            'web_search, fetch_webpage, search_scientific_literature',
+          ],
         ]}
       />
       <Callout kind="note" title="Why get_historical_series appears twice">
@@ -74,6 +80,15 @@ export function Assistant() {
         a safety one — a wave or wind trend building over days. It is the same tool either way,
         so both specialists carry it rather than one specialist having to ask the other to run
         it on its behalf.
+      </Callout>
+      <Callout kind="warn" title="Web Research reaches outside the platform — treat it differently">
+        Every other specialist answers from MarisAI's own measurements. Web Research answers
+        from the open web and published literature instead, so its answer is only as reliable
+        as whatever it found — always check what source it names, and never read one of its
+        answers as a live ocean measurement. If no search provider is configured for this
+        deployment, <code>web_search</code> says so plainly rather than the assistant going
+        quiet; <code>fetch_webpage</code> and <code>search_scientific_literature</code> need no
+        extra configuration.
       </Callout>
       <p>
         Underneath the answer, a <Term>delegation trace</Term> lists which specialist was asked

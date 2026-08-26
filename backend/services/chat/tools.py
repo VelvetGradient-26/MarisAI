@@ -172,6 +172,30 @@ class DocumentationArgs(BaseModel):
     )
 
 
+class WebSearchArgs(BaseModel):
+    query: str = Field(
+        ..., min_length=1, description="What to search the open web for, in plain language."
+    )
+    max_results: int = Field(5, ge=1, le=10, description="Maximum number of results to return.")
+
+
+class FetchWebpageArgs(BaseModel):
+    url: str = Field(
+        ...,
+        description=(
+            "A real http(s) URL to fetch and read, e.g. one returned by "
+            "web_search or given directly by the user."
+        ),
+    )
+
+
+class LiteratureSearchArgs(BaseModel):
+    query: str = Field(
+        ..., min_length=1, description="Topic or keywords to search scholarly literature for."
+    )
+    max_results: int = Field(5, ge=1, le=10, description="Maximum number of results to return.")
+
+
 class RouteArgs(BaseModel):
     start_latitude: float = Field(..., ge=-90, le=90, description="Start latitude in degrees north.")
     start_longitude: float = Field(..., ge=-180, le=180, description="Start longitude in degrees east.")
@@ -332,6 +356,24 @@ async def _get_documentation(query: str) -> dict[str, Any]:
     }
 
 
+async def _web_search(query: str, max_results: int = 5) -> dict[str, Any]:
+    from services.web_search import search
+
+    return await search(query, max_results=max_results)
+
+
+async def _fetch_webpage(url: str) -> dict[str, Any]:
+    from services.webpage import fetch
+
+    return await fetch(url)
+
+
+async def _literature_search(query: str, max_results: int = 5) -> dict[str, Any]:
+    from services.literature import search
+
+    return await search(query, max_results=max_results)
+
+
 async def _safe_route(
     start_latitude: float, start_longitude: float, end_latitude: float, end_longitude: float
 ) -> dict[str, Any]:
@@ -457,6 +499,34 @@ _SPECS: list[tuple[str, str, type[BaseModel], Any]] = [
         "the search area.",
         RouteArgs,
         _safe_route,
+    ),
+    (
+        "web_search",
+        "Search the open web for current information beyond MarisAI's own "
+        "ocean data — news, background context, explanations for a recent or "
+        "unusual event. Returns titles, URLs, snippets and (where available) "
+        "publication dates. Not for ocean measurements themselves — use the "
+        "ocean_analytics/weather_safety tools for those.",
+        WebSearchArgs,
+        _web_search,
+    ),
+    (
+        "fetch_webpage",
+        "Fetch and read the text content of one specific webpage, e.g. a URL "
+        "returned by web_search or given directly by the user. Only "
+        "http/https pages with HTML or plain-text content; returns the "
+        "page's title and main text, truncated if long.",
+        FetchWebpageArgs,
+        _fetch_webpage,
+    ),
+    (
+        "search_scientific_literature",
+        "Search scholarly literature (via Crossref) for peer-reviewed papers "
+        "and preprints on a topic. Returns title, authors, publication date, "
+        "venue, DOI and an abstract snippet where available. Use for 'what "
+        "does research say' style questions.",
+        LiteratureSearchArgs,
+        _literature_search,
     ),
     (
         "get_documentation",

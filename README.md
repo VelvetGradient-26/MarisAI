@@ -113,15 +113,17 @@ model.
   exported prediction grids are served as map layers, so it is part of the
   running product even though the import boundary holds.
 - **An ocean assistant** — a bounded tool-calling loop over the platform's own
-  services, not RAG. The top-level model holds four tools: three
+  services, not RAG. The top-level model holds five tools: four
   `delegate_to_*` specialists (`ocean_analytics` for forecasts/HAB/habitat/PFZ,
   `weather_safety` for live conditions/cyclones/IMD alerts, `geospatial_risk`
-  for geofencing/depth/routing) plus a self-knowledge tool bound directly,
-  since documentation lookup isn't a live measurement the way the specialists'
-  work is. Each specialist runs its own bounded sub-loop over a shared ledger,
-  which is also what the grounding check reads. Streaming (SSE) and
-  non-streaming endpoints share one loop, and every answer is checked against
-  what the tools actually returned before it's shown as verified.
+  for geofencing/depth/routing, `web_research` for web search/webpage
+  reading/scientific literature — context beyond MarisAI's own live data)
+  plus a self-knowledge tool bound directly, since documentation lookup isn't
+  a live measurement the way the specialists' work is. Each specialist runs
+  its own bounded sub-loop over a shared ledger, which is also what the
+  grounding check reads. Streaming (SSE) and non-streaming endpoints share
+  one loop, and every answer is checked against what the tools actually
+  returned before it's shown as verified.
 
 ## Architecture
 
@@ -199,6 +201,7 @@ a cold cache report themselves as warming until their first fetch lands.
 | `AISSTREAM_API_KEY` | Live AIS websocket feed. Without it the vessel layer serves an empty collection rather than failing |
 | `NASA_BEARER_TOKEN` | NASA Earthdata (GIBS-authenticated layers) |
 | `LLM_PROVIDER` / `LLM_API_KEY` / `LLM_MODEL` / `LLM_BASE_URL` | Assistant and insights provider (Gemini, OpenAI-compatible, or Ollama) |
+| `TAVILY_API_KEY` | The Ocean Assistant's `web_research` specialist (web search). Without it, `web_search` reports itself unavailable rather than failing the assistant; `fetch_webpage` and `search_scientific_literature` need no key |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | Gmail app password, for the feedback form |
 | `DATABASE_URL` | PostgreSQL. Optional — see above |
 | `LOG_LEVEL` / `LOG_JSON` | `INFO` by default; `LOG_JSON=true` emits one JSON object per line |
@@ -266,9 +269,10 @@ backend/
   main.py               FastAPI app; scheduler wiring and cache warming
   routers/               Thin HTTP layer — maps service errors to status codes
   services/              One self-contained module per integration or derived field
-    chat/                orchestrator.py + specialists.py (3 delegated agents), tools.py
+    chat/                orchestrator.py + specialists.py (4 delegated agents), tools.py
     climatology/         OISST (live) and Copernicus reanalysis (measured, unwired)
-    geofencing.py, routing.py, pfz.py, cyclones.py, severe_weather.py
+    geofencing.py, routing.py, pfz.py, cyclones.py, severe_weather.py,
+    web_search.py, webpage.py, literature.py
                           Chat-only tools — no REST router of their own
     eddy_tracking.py      Frame-to-frame tracking over eddies.py's detections
   forecasting/           The forecasting engine (config-driven, one framework)
