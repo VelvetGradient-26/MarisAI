@@ -83,6 +83,12 @@ hazard alerts, "is it safe to go out" questions.
 - delegate_to_geospatial_risk — maritime boundary / Marine Protected Area \
 proximity (geofencing), seafloor depth, safe-route planning between two points.
 
+You also have get_documentation, your own tool rather than a delegate, for \
+questions about MarisAI itself — how to use a feature, where a page lives, \
+what a term or badge means. Call it directly; it is not ocean data, so it \
+never needs a specialist. It returns a real /docs?c=... link — use that link \
+verbatim rather than inventing a path.
+
 A question can span more than one specialist ("is it safe to fish near Kochi \
 today, and where's the nearest good zone" needs both weather_safety and \
 ocean_analytics) — delegate to each one needs, then synthesise a single warm \
@@ -507,7 +513,13 @@ async def answer(
     history_messages = _history_messages(prior)
 
     ledger = Ledger()
-    tools = build_delegate_tools(ledger, history_messages, _model)
+    # The delegate tools plus one direct tool: get_documentation is static
+    # platform self-knowledge, not a live measurement, so it does not need a
+    # specialist round-trip — same precedent as the dataset catalog above,
+    # which is answered from the prompt rather than a tenth specialist tool.
+    tools = build_delegate_tools(ledger, history_messages, _model) + build_tools(
+        ledger, ["get_documentation"]
+    )
     model = _model().bind_tools(tools)
     by_name = {tool.name: tool for tool in tools}
 
@@ -654,7 +666,13 @@ async def answer_stream(
     history_messages = _history_messages(prior)
 
     ledger = Ledger()
-    tools = build_delegate_tools(ledger, history_messages, _model)
+    # The delegate tools plus one direct tool: get_documentation is static
+    # platform self-knowledge, not a live measurement, so it does not need a
+    # specialist round-trip — same precedent as the dataset catalog above,
+    # which is answered from the prompt rather than a tenth specialist tool.
+    tools = build_delegate_tools(ledger, history_messages, _model) + build_tools(
+        ledger, ["get_documentation"]
+    )
     model = _model().bind_tools(tools)
     by_name = {tool.name: tool for tool in tools}
 

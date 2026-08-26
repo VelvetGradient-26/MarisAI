@@ -38,6 +38,15 @@ let cached: IndexEntry[] | null = null;
  * rendering, the child render does not commit before the call returns, and
  * an earlier version of this file read back an empty string on every search
  * as a result. A plain function call has no such timing to get wrong.
+ *
+ * This depends on it being called mid-render (there is *some* fiber
+ * currently rendering, so `Link`'s `useAppRouter()` resolves rather than
+ * hitting a null dispatcher) — safe here since the search box calls this
+ * from inside its own render, but not a general-purpose renderer. The
+ * backend's doc export (`../../../../scripts/export-docs-index.ts`) needs
+ * a real render pass for that reason and uses `react-dom/server` instead of
+ * this function, wrapped in the same `RouterContext` chapters read through
+ * `<Link>`.
  */
 function textOf(node: ReactNode): string {
   if (node == null || typeof node === 'boolean') return '';

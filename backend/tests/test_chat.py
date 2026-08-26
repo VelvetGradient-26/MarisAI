@@ -349,6 +349,46 @@ def test_the_ledger_tags_specialist_observations():
 
 
 @pytest.mark.asyncio
+async def test_get_documentation_is_called_directly_not_delegated(patched, monkeypatch):
+    """get_documentation is bound at the top level alongside the delegate
+    tools (see `agent.answer`), not behind a specialist — it is static
+    platform self-knowledge, not a live measurement, the same reasoning that
+    keeps the dataset catalog out of a tenth specialist tool. A single
+    top-level model is therefore enough to exercise it; there is no
+    specialist sub-loop to script a second model for."""
+    from services import docs
+
+    monkeypatch.setattr(
+        docs,
+        "search",
+        lambda query, limit=3: [
+            {
+                "chapter": "Reading the map",
+                "group": "Using the platform",
+                "url": "/docs?c=map-reading",
+                "snippet": "The map is a stack of layers...",
+            }
+        ],
+    )
+
+    top = ScriptedModel(
+        [
+            _tool_call("get_documentation", {"query": "how do I read the map"}),
+            AIMessage(content="See /docs?c=map-reading for how the map's layers work."),
+        ]
+    )
+    patched(top)
+
+    result = await agent.answer("How do I read the map?")
+
+    assert result["observations"][0]["tool"] == "get_documentation"
+    # Only a specialist's own calls carry an `agent` tag (Ledger.record) —
+    # this one is top-level, so it must not.
+    assert "agent" not in result["observations"][0]
+    assert "/docs?c=map-reading" in result["answer"]
+
+
+@pytest.mark.asyncio
 async def test_an_empty_question_is_rejected(patched):
     patched(ScriptedModel([AIMessage(content="hi")]))
     with pytest.raises(agent.ChatError):
@@ -691,13 +731,14 @@ def test_every_tool_declares_a_description_and_schema():
     """The description is the only thing the model reads to choose a tool.
 
     An undescribed tool is invisible in practice, and the failure is silent —
-    the model simply never calls it. 14 = the original 9, the three PS2
-    additions (find_fishing_zones, check_geofence, plan_safe_route), and the
+    the model simply never calls it. 15 = the original 9, the three PS2
+    additions (find_fishing_zones, check_geofence, plan_safe_route), the
     two cyclone/severe-weather additions (get_cyclone_alerts,
-    get_severe_weather_alerts).
+    get_severe_weather_alerts), and get_documentation (platform
+    self-knowledge, called directly rather than through a specialist).
     """
     tools = build_tools(Ledger())
-    assert len(tools) == 14
+    assert len(tools) == 15
     for tool in tools:
         assert tool.description and len(tool.description) > 30, tool.name
         assert tool.args_schema is not None, tool.name

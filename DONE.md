@@ -1004,6 +1004,65 @@ The third item — a live browser pass on `/assistant` to eyeball the specialist
 pill and the new delegation line — is still owed; see §6, same
 `requestAnimationFrame`-never-fires limitation as the map.
 
+### Ocean Assistant self-knowledge: `get_documentation` — 2026-08-26
+
+Closes the "answer questions about the software itself, with doc links" gap
+TODO.md named: the assistant can now answer "how do I read the map colours",
+"what does grounded mean", "where's the download page" — questions about
+MarisAI itself, not the ocean — and cite a real `/docs?c=<id>` route.
+
+- **A top-level tool, not a fourth specialist.** Self-knowledge about the
+  platform is static, not a live measurement — the same reasoning `agent.py`
+  already used to keep the dataset catalog out of a tenth specialist tool.
+  `get_documentation` is bound directly on the top-level model alongside the
+  three `delegate_to_*` tools (`agent.py::answer`/`answer_stream`) rather than
+  routed through `orchestrator.run_specialist`, so it costs no sub-loop and no
+  new specialist system prompt. `Ledger.record` tags a specialist's own calls
+  with `agent`; this one carries none, and the frontend's `agentLabel()`
+  already renders a `null`/missing agent by hiding the pill — verified no
+  frontend change was needed before shipping this rather than after.
+- **The retrieval question TODO.md left open — index rendered text, or keep a
+  parallel copy — is answered: render, exported once.** The chapters
+  (`frontend/src/pages/docs/chapters/*.tsx`) stay the single source of truth;
+  `frontend/scripts/export-docs-index.ts` (`npm run export-docs`) renders each
+  one and writes plain text to `backend/data/docs_index.json`, which
+  `services/docs.py` loads and word-overlap-searches. A hand-maintained
+  parallel markdown copy was rejected for the reason `searchIndex.tsx`'s own
+  docstring already gives about a second source of truth: it goes stale the
+  moment a chapter changes and nobody remembers the copy.
+- **The exporter renders with `react-dom/server`, not a hand-rolled tree
+  walk, and that was not the first thing tried.** `searchIndex.tsx`'s existing
+  `textOf()` walker (used for the in-browser search index) fails outside a
+  live render: several chapters use `<Link>`, whose `useAppRouter()` is a
+  hook, and a hook needs an active dispatcher, which the walker's plain
+  `type(props)` calls do not provide — it works in-browser only because it is
+  invoked *mid-render*, while `DocsSearch` itself is on the stack. A Node
+  script has no such stack, and `ReferenceError`/`Cannot read properties of
+  null (reading 'useContext')` were both hit before landing on
+  `renderToStaticMarkup` wrapped in the same `RouterContext.Provider` `<Link>`
+  reads through, with a no-op `navigate`. Written with `React.createElement`
+  rather than JSX, because the script lives outside
+  `tsconfig.app.json`'s `"include": ["src"]` (tooling, not app source, and
+  that tsconfig's `noUnusedLocals`/`verbatimModuleSyntax` strictness is tuned
+  for the app) and JSX needs a `jsx` compiler option in scope that only
+  applies there — `createElement` needs no transform at all. The chapter
+  files themselves still need it (they use real JSX), which is why the npm
+  script still passes `--tsconfig tsconfig.app.json` to `tsx`.
+- **Word-overlap ranking, not substring matching**, unlike the in-app search
+  box it otherwise mirrors (title/group match weighted above a body match,
+  same tie-break). A chat tool receives a natural-language question ("how do
+  I read the map colours"), not a search-box phrase, and a real question
+  rarely appears verbatim inside a chapter's own prose the way a typed phrase
+  can.
+- **Degrades rather than fails.** A missing or stale `docs_index.json` — the
+  export has no auto-regeneration hook — makes `get_documentation` report "no
+  chapters matched" rather than breaking chat startup; documentation lookup
+  is not load-bearing the way an ocean-data provider is. `test_docs.py`
+  covers this directly (missing file, empty query, no-match query).
+- 15 tools total now (`test_every_tool_declares_a_description_and_schema`),
+  up from 14: the count test's own docstring names what each addition was,
+  kept current rather than left to say "14" forever.
+
 ### Observability — the request was a bug report
 
 Two logging systems had grown side by side (loguru in 13 modules, stdlib

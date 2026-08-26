@@ -517,24 +517,6 @@ Two separate gaps in `services/chat/`:
   type — this is very likely additive to the existing message-building code,
   not a new client.
 
-### Ocean Assistant: answer questions about the software itself, with doc links
-
-Right now the assistant only reasons about ocean data. It should also be able
-to answer "how do I use X feature" / "where's the download page" /
-"what does the grounding badge mean" and point at the real docs — the
-platform already has a documentation section
-(`frontend/src/pages/docs/`, chapters per feature: `Assistant.tsx`,
-`DashboardCharts.tsx`, `ForecastMap.tsx`, etc., indexed by
-`DocsSearch.tsx`/`searchIndex.tsx`). This is a **self-knowledge** capability,
-distinct from the ocean-data tools: likely a small retrieval step over the
-existing docs chapters (they're already React/TS source, not prose files, so
-decide whether to index rendered text or keep a parallel plain-text/markdown
-copy for retrieval) plus a system-prompt instruction to link `/docs/...`
-routes rather than inventing paths. Scope this as its own tool
-(`get_documentation` or similar) rather than folding it into an existing
-specialist, since its source of truth (the docs pages) is unrelated to any
-ocean-data provider.
-
 ### Data Quality section: each card should open a full model dossier
 
 `services/dashboard/data_quality.py` reports `models_trained` — **116** models

@@ -161,6 +161,17 @@ class CycloneArgs(PointArgs):
     )
 
 
+class DocumentationArgs(BaseModel):
+    query: str = Field(
+        ...,
+        description=(
+            "What the user wants to know about the MarisAI platform itself, "
+            "in their own words, e.g. 'how do I read the map colours' or "
+            "'what does grounded mean'. Not for ocean data or forecasts."
+        ),
+    )
+
+
 class RouteArgs(BaseModel):
     start_latitude: float = Field(..., ge=-90, le=90, description="Start latitude in degrees north.")
     start_longitude: float = Field(..., ge=-180, le=180, description="Start longitude in degrees east.")
@@ -305,6 +316,22 @@ async def _geofence(latitude: float, longitude: float) -> dict[str, Any]:
     return geofencing.check(latitude, longitude)
 
 
+async def _get_documentation(query: str) -> dict[str, Any]:
+    from services import docs
+
+    results = docs.search(query)
+    return {
+        "query": query,
+        "results": results,
+        "note": (
+            "No documentation chapter matched this query."
+            if not results
+            else "Each result names a real /docs?c=<id> route — link to it rather "
+            "than inventing a path."
+        ),
+    }
+
+
 async def _safe_route(
     start_latitude: float, start_longitude: float, end_latitude: float, end_longitude: float
 ) -> dict[str, Any]:
@@ -430,6 +457,17 @@ _SPECS: list[tuple[str, str, type[BaseModel], Any]] = [
         "the search area.",
         RouteArgs,
         _safe_route,
+    ),
+    (
+        "get_documentation",
+        "Look up MarisAI's own documentation for questions about the "
+        "platform itself — how to use a feature, where a page lives, what a "
+        "term or badge means (e.g. 'how do I read the map colours', 'what "
+        "does grounded mean', 'where's the download page'). Returns "
+        "matching doc chapters with an excerpt and a /docs link. Not for "
+        "ocean data — this is about the product, not the ocean.",
+        DocumentationArgs,
+        _get_documentation,
     ),
 ]
 

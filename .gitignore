@@ -251,7 +251,15 @@ Artifacts/
 # Feedback submissions (real user emails/messages, not for version control)
 # Runtime state the backend writes to its own tree (feedback log, and
 # anything else that follows it). Source root stays source.
-backend/data/
+#
+# `backend/data/*`, not `backend/data/`, so the one exception below can still
+# be un-ignored — git cannot re-include a file whose parent directory itself
+# is excluded.
+backend/data/*
+# ...except docs_index.json, which the backend only ever reads — a committed,
+# generated mirror of the docs chapters (frontend/scripts/export-docs-index.ts),
+# not state the server writes to itself. See services/docs.py's docstring.
+!backend/data/docs_index.json
 
 # Forecasting engine artifacts (backend/forecasting/, backend/models/).
 #
