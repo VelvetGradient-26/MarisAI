@@ -13,6 +13,66 @@ it has been a while.
 
 ---
 
+## sihtodo.md items 7 and 10 — shipped 2026-08-26
+
+`services/correlation.py` (cross-variable correlation, chat tool
+`analyze_variable_correlation` + `GET /api/dashboard/trends/correlation`) and
+`services/marine_risk.py` (deterministic risk verdict, chat tool
+`assess_marine_risk` + `GET /api/ocean/risk`). 26 new tests
+(`test_correlation.py`, `test_marine_risk.py`, plus router tests in
+`test_tools_router.py`/`test_dashboard.py`); full backend suite 688/688 green
+after merging. Tool count pin in `test_chat.py` moved 15 -> 17.
+
+**Two finished branches were sitting unmerged on `main` before this work
+started, and `CLAUDE.md` documented them as if shipped.**
+`worktree-sihtodo-item1` (REST/map surfacing for PFZ/geofencing/routing/
+cyclones/severe-weather — `routers/tools.py` and everything CLAUDE.md's
+"Agentic tool surfaces on the map" section describes) and
+`worktree-sih-item-3-glossary` (the regional-language glossary guardrail)
+were both clean, pushed to origin, and simply never merged — `routers/tools.py`
+did not exist on `main` despite the docstring claiming it did. Both merged
+cleanly (`git merge-tree` showed zero conflicts against current `main`) and
+the full suite passed at 662/662 immediately after. **Lesson: a module
+docstring claiming "closed <date>" is a claim about a branch, not proof the
+branch reached `main` — check `git merge-base --is-ancestor` before building
+on top of documented-but-unverified work.**
+
+### sihtodo.md items 5/6/12 — external feed investigation, probed 2026-08-26
+
+**Item 5 (INCOIS/MOSDAC PFZ feed) — infeasible, confirmed.** INCOIS runs a
+real, live, keyless GeoServer (`incois.gov.in/geoserver/PFZ-TUNA-SST-CHL/`):
+both `wms` and `wfs` `GetCapabilities` return 200. But WMS serves only the
+raw SST/chlorophyll satellite rasters (`sst`, `chl` layers) — the same fields
+`copernicus_sst.py`/`copernicus_chlorophyll.py` already fetch — and WFS's
+`GetCapabilities` lists **zero vector FeatureTypes**, so there is no
+queryable PFZ zone geometry at all, anywhere on this server. Two more
+endpoints named in the portal's own JS (`js/jsondata.js`,
+`js/threddsdata.js`) exist in principle but are dead: `/geoportal/
+pfzjsondata/OSF_Json/<date>_00-00-00_current_0m.json` 404'd across every day
+2026-08-16 through 2026-08-26, and `/thredds/wms/pfz/` 500'd on every dataset
+name tried. MOSDAC's "API based Access"/"Order Data" sit behind a login/
+SignUp wall (`mosdac.gov.in`'s own nav requires an account) — Tier 2 gated,
+same as GFW/Movebank/AIMS. `services/pfz.py`'s heuristic proxy remains the
+ceiling.
+
+**Item 12 (INCOIS tsunami feed) — infeasible with a keyless probe, same
+verdict as RSMC New Delhi's cyclone PDFs.** A real bulletin viewer exists
+(`tsunami.incois.gov.in/TEWS/displaybulletinslightweight.jsp`, 200 HTML) but
+only renders given an `eventId` you must already know — no list/latest/index
+endpoint was found to discover one for an active event, and no RSS/CAP feed
+exists at any guessed path (`TEWS/rss.xml`, `itews/api/events`: both 404),
+unlike IMD's own CAP feed which is exactly this shape.
+
+**Item 6 (Indian tide data) — still open, not closed.** No live data
+endpoint was found behind any of the tide-gauge portal pages probed
+(`ITCOocean/tides.jsp` 404s outright; `TEWS/Abouttideguage.jsp` and the
+IOGOOS in-situ sea-level page are informational only; `UpdateReportingStations.do
+?stType=TIDE` 404s). Unlike items 5 and 12, this was a shallower pass — no
+real browser session watching the live TEWS map's own network requests, which
+would likely surface whatever endpoint the map itself calls to plot station
+data. Worth a second pass with actual dev-tools traffic capture before
+concluding this is a dead end.
+
 ## Forecasting engine
 
 ### `wind_u` / `wind_v` — trained 2026-08-15

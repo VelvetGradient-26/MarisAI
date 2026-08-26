@@ -454,3 +454,58 @@ def test_the_station_and_source_endpoints_serve_detail(monkeypatch):
 
     missing_source = client.get("/api/dashboard/sources/not_a_real_provider")
     assert missing_source.status_code == 404
+
+
+# --------------------------------------------------------------------------
+# Router: /trends/correlation (sihtodo.md item 7)
+# --------------------------------------------------------------------------
+
+
+def test_the_correlation_endpoint_returns_the_service_payload(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from routers import dashboard as dashboard_router
+
+    async def fake_analyze(variables, latitude, longitude, range_key):
+        return {"variables_requested": variables, "pairs": [{"available": True, "correlation_r": 0.5}]}
+
+    monkeypatch.setattr(dashboard_router.correlation, "analyze", fake_analyze)
+
+    app = FastAPI()
+    app.include_router(dashboard_router.router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/dashboard/trends/correlation",
+        params={"variables": "sea_surface_temperature,chlorophyll_a", "latitude": 10.0, "longitude": 75.0, "range": "1y"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["variables_requested"] == ["sea_surface_temperature", "chlorophyll_a"]
+
+
+def test_the_correlation_endpoint_maps_correlation_error_to_400(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from routers import dashboard as dashboard_router
+    from services.correlation import CorrelationError
+
+    async def fake_analyze(variables, latitude, longitude, range_key):
+        raise CorrelationError("range must be one of ['30d', '6mo', '1y', '5y', '10y']")
+
+    monkeypatch.setattr(dashboard_router.correlation, "analyze", fake_analyze)
+
+    app = FastAPI()
+    app.include_router(dashboard_router.router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/dashboard/trends/correlation",
+        params={"variables": "a,b", "latitude": 10.0, "longitude": 75.0, "range": "7d"},
+    )
+
+    assert response.status_code == 400
+    assert "range must be one of" in response.json()["detail"]

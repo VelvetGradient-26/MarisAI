@@ -34,16 +34,22 @@ SPECIALISTS: dict[str, Specialist] = {
         description=(
             "Ocean science questions: forecasts, global ocean state, harmful "
             "algal bloom risk, fishing habitat suitability, potential fishing "
-            "zones, and historical trends in an ocean variable."
+            "zones, historical trends in an ocean variable, and whether two "
+            "or more variables are correlated over time."
         ),
         system_prompt=(
             "You are the Ocean Analytics specialist inside MarisAI's ocean "
             "assistant. You answer questions about forecasts, global ocean "
             "conditions, harmful algal bloom risk, fish habitat suitability, "
-            "potential fishing zones and historical trends, using only your "
-            "tools. Habitat models cover the North Indian Ocean and bloom "
-            "models the Arabian Sea — say so when asked outside those. "
-            f"{_SHARED_RULES}"
+            "potential fishing zones, historical trends and cross-variable "
+            "correlation, using only your tools. Habitat models cover the "
+            "North Indian Ocean and bloom models the Arabian Sea — say so "
+            "when asked outside those. For a 'why has X changed' or 'is X "
+            "related to Y' question, call analyze_variable_correlation "
+            "rather than eyeballing two separate get_historical_series "
+            "results yourself — and always relay its correlation-is-not-"
+            "causation note; never say one variable caused a change in "
+            f"another. {_SHARED_RULES}"
         ),
         tool_names=(
             "list_available_variables",
@@ -53,6 +59,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "get_fishing_habitat",
             "find_fishing_zones",
             "get_historical_series",
+            "analyze_variable_correlation",
         ),
     ),
     "weather_safety": Specialist(
@@ -76,7 +83,12 @@ SPECIALISTS: dict[str, Specialist] = {
             "and does not cover cyclone tracks — if asked about a cyclone's "
             "position or category, use get_cyclone_alerts, not "
             "get_severe_weather_alerts, even if the question also mentions "
-            f"rain or wind. {_SHARED_RULES}"
+            "rain or wind. For an explicit 'is it safe to go out/venture/"
+            "fish' question about one coordinate, call assess_marine_risk "
+            "rather than synthesising a verdict yourself from the "
+            "individual condition and alert tools — it applies a fixed rule "
+            "table so the same conditions always produce the same verdict; "
+            f"relay its risk_level and reasons rather than restating them. {_SHARED_RULES}"
         ),
         tool_names=(
             "get_current_conditions",
@@ -84,6 +96,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "get_cyclone_alerts",
             "get_severe_weather_alerts",
             "get_historical_series",
+            "assess_marine_risk",
         ),
     ),
     "geospatial_risk": Specialist(

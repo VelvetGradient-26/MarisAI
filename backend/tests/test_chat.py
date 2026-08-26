@@ -874,14 +874,15 @@ def test_every_tool_declares_a_description_and_schema():
     """The description is the only thing the model reads to choose a tool.
 
     An undescribed tool is invisible in practice, and the failure is silent —
-    the model simply never calls it. 15 = the original 9, the three PS2
+    the model simply never calls it. 17 = the original 9, the three PS2
     additions (find_fishing_zones, check_geofence, plan_safe_route), the
     two cyclone/severe-weather additions (get_cyclone_alerts,
-    get_severe_weather_alerts), and get_documentation (platform
-    self-knowledge, called directly rather than through a specialist).
+    get_severe_weather_alerts), get_documentation (platform self-knowledge,
+    called directly rather than through a specialist), and the sihtodo.md
+    items 7/10 additions (analyze_variable_correlation, assess_marine_risk).
     """
     tools = build_tools(Ledger())
-    assert len(tools) == 15
+    assert len(tools) == 17
     for tool in tools:
         assert tool.description and len(tool.description) > 30, tool.name
         assert tool.args_schema is not None, tool.name

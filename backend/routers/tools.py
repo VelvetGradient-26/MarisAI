@@ -24,9 +24,9 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 from services import geofencing, pfz
-from services.cyclones import CycloneError
+from services.cyclones import CycloneError, get_active_cyclones
 from services.cyclones import check_point as cyclone_check_point
-from services.cyclones import get_active_cyclones
+from services.marine_risk import assess as assess_marine_risk
 from services.routing import RoutingError, plan_route
 from services.severe_weather import SevereWeatherError
 from services.severe_weather import check_point as severe_weather_check_point
@@ -126,3 +126,18 @@ async def get_severe_weather_point(
         return await severe_weather_check_point(lat, lon)
     except SevereWeatherError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/risk")
+async def get_marine_risk(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+):
+    """Deterministic 'is it safe to venture out' verdict for a point.
+
+    Never raises: `assess_marine_risk` isolates each of its four live checks
+    (sea conditions, severe weather, cyclones, geofencing) and degrades a
+    failed one into `could_not_verify` rather than failing the whole call —
+    see `services/marine_risk.py`.
+    """
+    return await assess_marine_risk(lat, lon)

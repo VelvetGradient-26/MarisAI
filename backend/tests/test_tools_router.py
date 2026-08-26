@@ -197,3 +197,26 @@ def test_severe_weather_point_endpoint_returns_covering_alerts(monkeypatch, clie
     payload = response.json()
     assert payload["count"] == 1
     assert payload["active_nationwide"] == 3
+
+
+# --------------------------------------------------------------------------
+# Risk — never raises (see services/marine_risk.py), so a pure passthrough
+# check like PFZ/geofence rather than an error-mapping one.
+# --------------------------------------------------------------------------
+
+
+def test_risk_endpoint_returns_the_service_payload(monkeypatch, client):
+    async def fake_assess(lat, lon):
+        return {"latitude": lat, "longitude": lon, "risk_level": "low", "reasons": []}
+
+    monkeypatch.setattr(tools_router, "assess_marine_risk", fake_assess)
+
+    response = client.get("/api/ocean/risk", params={"lat": 9.9, "lon": 76.2})
+
+    assert response.status_code == 200
+    assert response.json()["risk_level"] == "low"
+
+
+def test_risk_endpoint_rejects_an_out_of_range_latitude(client):
+    response = client.get("/api/ocean/risk", params={"lat": 190, "lon": 76.2})
+    assert response.status_code == 422
