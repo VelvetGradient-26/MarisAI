@@ -718,6 +718,182 @@ function upwellingLayer(): GeoJsonLayerDescriptor {
   };
 }
 
+/**
+ * Potential-fishing-zone screening candidates near the clicked point
+ * (`services/pfz.py`), fed by `usePfzZones` — a diagnostic composed from two
+ * observed fields (chlorophyll, SST), same reasoning that puts eddies in
+ * `flow` rather than `ai`: nothing here is a trained model.
+ */
+const PFZ_COLOR = [
+  'match',
+  ['get', 'score'],
+  2, '#5eead4',
+  1, '#facc15',
+  '#94a3b8',
+];
+
+function pfzZonesLayer(): GeoJsonLayerDescriptor {
+  return {
+    id: 'pfz-zones',
+    name: 'Potential Fishing Zones (near click)',
+    category: 'flow',
+    type: 'geojson',
+    attribution:
+      'Heuristic potential-fishing-zone screening near the clicked point: chlorophyll above ' +
+      'the local sample\'s own median plus sea-surface temperature inside a broad ' +
+      '24-30°C pelagic-favourable band (services/pfz.py). NOT a validated PFZ model or an ' +
+      'official INCOIS advisory — a screening aid over live Copernicus SST and chlorophyll, ' +
+      'ranked by score (2 = both conditions met, 1 = one, 0 = neither).',
+    defaultOpacity: 0.95,
+    defaultVisible: false,
+    interactiveLayerIndices: [0],
+    paintLayers: (opacity: number) => [
+      {
+        type: 'circle',
+        paint: {
+          'circle-color': PFZ_COLOR,
+          'circle-radius': 6,
+          'circle-opacity': opacity,
+          'circle-stroke-width': 1.2,
+          'circle-stroke-color': 'rgba(2,12,27,0.85)',
+          'circle-stroke-opacity': opacity,
+        },
+      },
+    ],
+    legend: {
+      type: 'categories',
+      unit: 'screening score',
+      categories: [
+        { label: 'Both favourable', range: 'chlorophyll + SST', color: '#5eead4' },
+        { label: 'One favourable', range: 'chlorophyll or SST', color: '#facc15' },
+        { label: 'Neither', range: '', color: '#94a3b8' },
+      ],
+    },
+  };
+}
+
+/**
+ * What `services/geofencing.py::check()` found near the clicked point: each
+ * nearby Marine Protected Area as its real box, and a line to the nearest
+ * India-Sri Lanka IMBL point when the query point is near it. Fed by
+ * `useGeofenceStatus`. The India EEZ boundary itself is not re-drawn here —
+ * see that hook's docstring for why the existing `eez` reference layer
+ * already covers it.
+ */
+const GEOFENCE_MPA_COLOR = '#db7c6f';
+const GEOFENCE_IMBL_COLOR = '#f8fafc';
+
+function geofenceStatusLayer(): GeoJsonLayerDescriptor {
+  return {
+    id: 'geofence-status',
+    name: 'Geofence Check (near click)',
+    category: 'reference',
+    type: 'geojson',
+    attribution:
+      'India EEZ / India-Sri Lanka IMBL / Marine Protected Area proximity for the clicked ' +
+      'point (services/geofencing.py). Pure local geometry: EEZ and the IMBL are from Marine ' +
+      'Regions and the 1974/1976 India-Sri Lanka treaty line; Marine Protected Areas remain a ' +
+      'hand-curated list of named sites, not a surveyed footprint — each drawn box is that ' +
+      'site\'s real registered extent, not a simplification. Not a substitute for an official ' +
+      'chart before navigating on it.',
+    defaultOpacity: 0.85,
+    defaultVisible: false,
+    paintLayers: (opacity: number) => [
+      {
+        type: 'fill',
+        filter: ['==', ['geometry-type'], 'Polygon'],
+        paint: { 'fill-color': GEOFENCE_MPA_COLOR, 'fill-opacity': 0.18 * opacity },
+      },
+      {
+        type: 'line',
+        filter: ['==', ['geometry-type'], 'Polygon'],
+        paint: { 'line-color': GEOFENCE_MPA_COLOR, 'line-width': 1.4, 'line-opacity': 0.9 * opacity },
+      },
+      {
+        type: 'line',
+        filter: ['==', ['geometry-type'], 'LineString'],
+        paint: {
+          'line-color': GEOFENCE_IMBL_COLOR,
+          'line-width': 1.4,
+          'line-dasharray': [2, 1.5],
+          'line-opacity': 0.9 * opacity,
+        },
+      },
+    ],
+    legend: {
+      type: 'categories',
+      unit: 'geofence',
+      categories: [
+        { label: 'Nearby Marine Protected Area', range: 'real registered box', color: GEOFENCE_MPA_COLOR },
+        { label: 'Distance to IMBL', range: 'when within 20 km', color: GEOFENCE_IMBL_COLOR },
+      ],
+    },
+  };
+}
+
+/**
+ * The planned A* route between two user-picked points (`services/routing.py`),
+ * fed by `useRoutePlanner`. Distinct from the old three-candidate comparison
+ * it replaced — see that module's docstring — this draws the single found
+ * path, coloured by its overall hazard level.
+ */
+const ROUTE_HAZARD_COLOR = [
+  'match',
+  ['get', 'hazard_level'],
+  'calm', '#5eead4',
+  'caution', '#facc15',
+  'hazardous', '#ef4444',
+  '#94a3b8',
+];
+
+const ROUTE_POINT_COLOR = ['match', ['get', 'role'], 'start', '#5eead4', 'end', '#ef4444', '#94a3b8'];
+
+function plannedRouteLayer(): GeoJsonLayerDescriptor {
+  return {
+    id: 'planned-route',
+    name: 'Planned Route',
+    category: 'reference',
+    type: 'geojson',
+    attribution:
+      'Hazard-aware A* route between two picked points (services/routing.py): land, the ' +
+      'India-Sri Lanka boundary and Marine Protected Areas are excluded from the search graph ' +
+      'outright, and the path prefers lower live wave height when a calmer detour exists. Line ' +
+      'colour is the route\'s overall hazard level. No vessel profile (speed, fuel range, ' +
+      'draft) is modelled — not a substitute for an official chart or a vessel-specific ' +
+      'passage plan.',
+    defaultOpacity: 0.95,
+    defaultVisible: false,
+    paintLayers: (opacity: number) => [
+      {
+        type: 'line',
+        filter: ['==', ['geometry-type'], 'LineString'],
+        paint: { 'line-color': ROUTE_HAZARD_COLOR, 'line-width': 3, 'line-opacity': opacity },
+      },
+      {
+        type: 'circle',
+        filter: ['==', ['geometry-type'], 'Point'],
+        paint: {
+          'circle-color': ROUTE_POINT_COLOR,
+          'circle-radius': 6,
+          'circle-opacity': opacity,
+          'circle-stroke-width': 1.2,
+          'circle-stroke-color': 'rgba(2,12,27,0.85)',
+          'circle-stroke-opacity': opacity,
+        },
+      },
+    ],
+    legend: {
+      type: 'categories',
+      unit: 'hazard level',
+      categories: [
+        { label: 'Calm', range: '', color: '#5eead4' },
+        { label: 'Caution', range: '', color: '#facc15' },
+        { label: 'Hazardous', range: '', color: '#ef4444' },
+      ],
+    },
+  };
+}
+
 function ednaCoverageLayer(): GeoJsonLayerDescriptor {
   return {
     id: 'edna-coverage',
@@ -772,6 +948,75 @@ function ednaCoverageLayer(): GeoJsonLayerDescriptor {
         { label: '100 – 10k', range: 'repeat sampling', color: '#a855f7' },
         { label: '10k – 1M', range: 'a monitoring programme', color: '#d8b4fe' },
         { label: '1M+', range: 'a time-series station', color: '#fce7f3' },
+      ],
+    },
+  };
+}
+
+/**
+ * Active tropical cyclones from GDACS, by GDACS's own three-level alert
+ * scale (Green/Orange/Red — its own escalation classification, not a
+ * category this app assigns). Filed with the reference layers, alongside
+ * vessels: a live external hazard feed, not a diagnostic computed from an
+ * observed field the way eddies is.
+ */
+const CYCLONE_COLOR = [
+  'match',
+  ['coalesce', ['get', 'alert_level'], ''],
+  'Red',
+  '#ef4444',
+  'Orange',
+  '#f97316',
+  'Green',
+  '#facc15',
+  '#94a3b8',
+];
+
+function cycloneLayer(): GeoJsonLayerDescriptor {
+  return {
+    id: 'cyclones',
+    name: 'Active Cyclones',
+    category: 'reference',
+    type: 'geojson',
+    attribution:
+      'Active tropical cyclones from GDACS (Global Disaster Alert and Coordination System), ' +
+      'aggregating JTWC and national tropical cyclone warning centres. Each marker is the ' +
+      "storm's most recently reported fix, not a live track — GDACS updates on the warning " +
+      'centre\'s own bulletin cadence (typically every 6h). Colour is GDACS\'s own three-level ' +
+      'alert scale, not a wind-speed category. Distinct from the severe-weather alerts panel, ' +
+      'which covers IMD rainfall/heatwave/thunderstorm warnings rather than cyclone tracks.',
+    defaultOpacity: 1,
+    defaultVisible: false,
+    interactiveLayerIndices: [1],
+    paintLayers: (opacity: number) => [
+      {
+        type: 'circle',
+        paint: {
+          'circle-color': CYCLONE_COLOR,
+          'circle-radius': 14,
+          'circle-blur': 1,
+          'circle-opacity': 0.35 * opacity,
+        },
+      },
+      {
+        type: 'circle',
+        paint: {
+          'circle-color': CYCLONE_COLOR,
+          'circle-radius': 6,
+          'circle-opacity': opacity,
+          'circle-stroke-width': 1,
+          'circle-stroke-color': 'rgba(2,12,27,0.85)',
+          'circle-stroke-opacity': opacity,
+        },
+      },
+    ],
+    legend: {
+      type: 'categories',
+      unit: 'GDACS alert level',
+      categories: [
+        { label: 'Red', range: 'highest', color: '#ef4444' },
+        { label: 'Orange', range: 'medium', color: '#f97316' },
+        { label: 'Green', range: 'lowest', color: '#facc15' },
       ],
     },
   };
@@ -1280,12 +1525,16 @@ export const layerRegistry: LayerDescriptor[] = [
   ...habitatLayers(),
   ...bloomRiskLayers(),
   liveVesselLayer(),
+  cycloneLayer(),
   // Filed with the flow layers rather than with the AI ones — see the
   // descriptor. It sits here in source order only because it is the newest.
   eddyLayer(),
+  pfzZonesLayer(),
   // Filed with the reference layers: sampling effort is context about how the
   // ocean was observed, not a property of the water.
   marineHeatwaveLayer(),
   upwellingLayer(),
   ednaCoverageLayer(),
+  geofenceStatusLayer(),
+  plannedRouteLayer(),
 ];

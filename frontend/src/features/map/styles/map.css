@@ -595,6 +595,85 @@ body,
   color: var(--ocean-muted);
 }
 
+.selected-location-panel__route {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--ocean-border);
+  font: 12px/1.4 var(--ocean-font-mono);
+}
+
+.selected-location-panel__route-points {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.selected-location-panel__route-point {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.selected-location-panel__route-point-label {
+  color: var(--ocean-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.selected-location-panel__route-point-value {
+  color: var(--ocean-accent);
+  font-weight: 600;
+}
+
+.selected-location-panel__route-set-button {
+  font: 11px/1 var(--ocean-font-mono);
+  color: var(--ocean-muted);
+  background: transparent;
+  border: 1px dashed var(--ocean-border);
+  border-radius: 6px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.selected-location-panel__route-set-button:hover {
+  border-color: var(--ocean-accent);
+  color: var(--ocean-accent);
+}
+
+.selected-location-panel__route-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.selected-location-panel__route-actions .selected-location-panel__brief-button {
+  flex: 1;
+}
+
+.selected-location-panel__route-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--ocean-text);
+}
+
+.selected-location-panel__route-hazard {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.selected-location-panel__route-hazard--calm { color: #5eead4; }
+.selected-location-panel__route-hazard--caution { color: #facc15; }
+.selected-location-panel__route-hazard--hazardous { color: #ef4444; }
+.selected-location-panel__route-hazard--unknown { color: var(--ocean-muted); }
+
 .map-controls h3 {
   font-size: 11px;
   text-transform: uppercase;
@@ -1098,6 +1177,16 @@ body,
   pointer-events: auto;
   /* Without this a flex child refuses to shrink below its content height,
      which is exactly how an overflowing panel escapes its own container. */
+  min-height: 0;
+}
+
+/* Groups the severe-weather badge with the location panel as one rail
+   child — see MapView.tsx's comment on why they can't be two siblings. */
+.map-rail__bottom-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
   min-height: 0;
 }
 
@@ -1752,6 +1841,167 @@ body,
 .selected-location-panel__brief-button:disabled {
   opacity: 0.6;
   cursor: progress;
+}
+
+/* --- Severe-weather alerts panel/badge ---------------------------------
+   Positioned by `.map-rail--right` like `.selected-location-panel`, not by
+   itself — sits above it in the rail so a badge is visible even when the
+   location panel is collapsed. Starts collapsed to a one-line badge; most
+   visits have nothing to report (see useUiStore's hazardsPanelOpen default),
+   and the badge itself already carries the live count. */
+.severe-weather-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100vw - 32px));
+  box-sizing: border-box;
+}
+
+.severe-weather-panel__badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--ocean-text);
+  font: 12px/1.4 var(--ocean-font-mono);
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  text-align: left;
+}
+
+.severe-weather-panel__badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ocean-muted);
+  flex-shrink: 0;
+}
+
+.severe-weather-panel__badge--extreme .severe-weather-panel__badge-dot,
+.severe-weather-panel__alert--extreme {
+  background: #ef4444;
+}
+
+.severe-weather-panel__badge--severe .severe-weather-panel__badge-dot,
+.severe-weather-panel__alert--severe {
+  background: #f97316;
+}
+
+.severe-weather-panel__badge--moderate .severe-weather-panel__badge-dot,
+.severe-weather-panel__alert--moderate {
+  background: #eab308;
+}
+
+.severe-weather-panel__badge--minor .severe-weather-panel__badge-dot,
+.severe-weather-panel__alert--minor {
+  background: var(--ocean-accent);
+}
+
+/* The four selectors above set an alert row's own background (they are not
+   dot-only there); soften it to a tint since the row also carries text. */
+.severe-weather-panel__alert {
+  background: transparent;
+  border-left: 3px solid var(--ocean-muted);
+  border-radius: 4px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.severe-weather-panel__alert--extreme { border-left-color: #ef4444; }
+.severe-weather-panel__alert--severe { border-left-color: #f97316; }
+.severe-weather-panel__alert--moderate { border-left-color: #eab308; }
+.severe-weather-panel__alert--minor { border-left-color: var(--ocean-accent); }
+.severe-weather-panel__alert--quiet { border-left-color: var(--ocean-muted); }
+
+.severe-weather-panel__badge-loading {
+  color: var(--ocean-accent);
+  margin-left: auto;
+}
+
+.severe-weather-panel__body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 10px;
+  padding: 14px;
+  color: var(--ocean-text);
+  backdrop-filter: blur(6px);
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.severe-weather-panel__header h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.severe-weather-panel__subtitle {
+  color: var(--ocean-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.severe-weather-panel__state {
+  font-size: 12px;
+  color: var(--ocean-muted);
+  margin: 0;
+}
+
+.severe-weather-panel__state--error {
+  color: var(--ocean-error);
+}
+
+.severe-weather-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.severe-weather-panel__alert-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.severe-weather-panel__alert-severity {
+  color: var(--ocean-muted);
+  font-weight: 400;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.severe-weather-panel__alert-headline,
+.severe-weather-panel__alert-area {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ocean-muted);
+  line-height: 1.4;
+}
+
+.severe-weather-panel__alert-expires {
+  font-size: 10px;
+  color: var(--ocean-muted);
+}
+
+.severe-weather-panel__attribution {
+  font-size: 10px;
+  color: var(--ocean-muted);
+  border-top: 1px solid var(--ocean-border);
+  padding-top: 8px;
 }
 
 .selected-location-panel__brief-error {

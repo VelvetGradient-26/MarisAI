@@ -35,6 +35,7 @@ from routers.marine import router as marine_router
 from routers.metrics import router as metrics_router
 from routers.predictions import router as predictions_router
 from routers.tiles import router as tiles_router
+from routers.tools import router as tools_router
 from routers.vessels import router as vessels_router
 from services import (
     ais,
@@ -235,6 +236,7 @@ app.add_middleware(
 
 
 app.include_router(marine_router)
+app.include_router(tools_router)
 app.include_router(insights_router)
 app.include_router(tiles_router)
 app.include_router(download_router)
