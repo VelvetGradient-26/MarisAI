@@ -669,6 +669,28 @@ body,
   border-color: var(--ocean-accent);
 }
 
+.map-export-button {
+  width: 100%;
+  background: var(--ocean-bg);
+  border: 1px solid var(--ocean-border);
+  color: var(--ocean-text);
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.map-export-button:hover:not(:disabled) {
+  border-color: var(--ocean-accent);
+  color: var(--ocean-accent);
+}
+
+.map-export-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
 /* Stackable layer groups, collapsed behind a disclosure. The menu expands in
    normal flow rather than overlaying: .map-controls__body is a fixed-width
    scrolling box with overflow-x hidden, so an absolutely positioned popover

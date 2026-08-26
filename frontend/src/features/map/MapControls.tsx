@@ -48,6 +48,7 @@ export function MapControls() {
 
       <div className="map-controls__body" aria-hidden={!panelOpen}>
         <ProjectionToggle manager={manager} />
+        <ExportControl manager={manager} />
 
         <section>
           <h3>Basemap</h3>
@@ -123,6 +124,54 @@ function ProjectionToggle({ manager }: { manager: MapManager }) {
           </button>
         ))}
       </div>
+    </section>
+  );
+}
+
+/**
+ * Downloads the current view — basemap plus every active overlay, exactly
+ * as shown — as a PNG at true 4K pixel density (MapManager.exportHighResImage),
+ * not an upscale of the on-screen canvas. Capture takes a beat (MapLibre has
+ * to actually re-render the scene at the new pixel density and wait for
+ * tiles), so the button disables and reports state instead of firing a
+ * silent download.
+ */
+function ExportControl({ manager }: { manager: MapManager }) {
+  const [status, setStatus] = useState<'idle' | 'exporting' | 'error'>('idle');
+
+  const handleExport = async () => {
+    setStatus('exporting');
+    try {
+      const blob = await manager.exportHighResImage();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `marisai-map-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setStatus('idle');
+    } catch {
+      setStatus('error');
+    }
+  };
+
+  return (
+    <section>
+      <h3>Export</h3>
+      <button
+        type="button"
+        className="map-export-button"
+        onClick={handleExport}
+        disabled={status === 'exporting'}
+      >
+        {status === 'exporting' ? 'Rendering 4K image…' : 'Download 4K image (PNG)'}
+      </button>
+      {status === 'error' && (
+        <p className="layer-status layer-status--error" role="status">
+          <span className="layer-status__dot" aria-hidden="true" />
+          Export failed — try again
+        </p>
+      )}
     </section>
   );
 }
