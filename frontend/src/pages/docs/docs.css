@@ -74,6 +74,132 @@
   color: var(--dc-primary);
 }
 
+/* --- search ---------------------------------------------------------- */
+
+.docs-search {
+  margin: 14px 0 20px;
+}
+
+.docs-search__field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--dc-border);
+  border-radius: 9px;
+  background: var(--dc-surface);
+  transition: border-color 0.15s ease;
+}
+
+.docs-search__field:focus-within {
+  border-color: var(--dc-primary);
+}
+
+.docs-search__icon {
+  flex: none;
+  color: var(--dc-faint);
+}
+
+.docs-search__input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--dc-text);
+  font-family: inherit;
+  font-size: 13.5px;
+}
+
+.docs-search__input:focus {
+  outline: none;
+}
+
+.docs-search__input::placeholder {
+  color: var(--dc-faint);
+}
+
+.docs-search__clear {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--dc-faint);
+  cursor: pointer;
+}
+
+.docs-search__clear:hover {
+  color: var(--dc-text);
+  background: var(--dc-row-hover);
+}
+
+.docs-search__results {
+  margin-top: 8px;
+}
+
+.docs-search__empty {
+  margin: 0;
+  padding: 4px 2px;
+  font-size: 12.5px;
+  color: var(--dc-faint);
+}
+
+.docs-search__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.docs-search__result {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.docs-search__result.is-active {
+  border-color: var(--dc-border);
+  background: var(--dc-row-hover);
+}
+
+.docs-search__result-group {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dc-primary);
+}
+
+.docs-search__result-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dc-heading);
+}
+
+.docs-search__result-snippet {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--dc-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .docs-nav__group + .docs-nav__group {
   margin-top: 26px;
 }
@@ -555,7 +681,7 @@
   margin-bottom: 28px;
 }
 
-.docs-mobile-nav .visually-hidden {
+.visually-hidden {
   position: absolute;
   width: 1px;
   height: 1px;

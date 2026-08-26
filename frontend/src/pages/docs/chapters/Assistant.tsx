@@ -8,7 +8,10 @@ import { Callout, Table, Term } from '../primitives';
  * A chat interface over scientific data invites exactly one dangerous
  * assumption — that the model knows the ocean. It does not; it knows how to
  * call the same endpoints the map calls. The chapter is organised around making
- * that legible, including the case where the check itself is wrong.
+ * that legible: who actually answers a question (three specialists behind one
+ * conversation), how a figure is checked before it is trusted, and the two
+ * domains — hazard alerts and geospatial risk — where getting the source
+ * wrong is the whole failure mode.
  */
 export function Assistant() {
   return (
@@ -36,6 +39,49 @@ export function Assistant() {
         the answer is made of today's ocean — and it means the assistant can only answer
         things the platform can actually measure, which is the correct limit for it to have.
       </Callout>
+
+      <h2 id="specialists">Three specialists behind one conversation</h2>
+      <p>
+        A single conversation is handled by an <Term>orchestrator</Term> that does not call the
+        platform's tools itself. It delegates each question to whichever of three specialist
+        agents owns that domain, each with its own system prompt and its own narrower set of
+        tools — and it can ask more than one before answering, which is what makes "is it safe
+        to fish near Kochi today, and where's the nearest good zone" visibly consult two
+        specialists in one turn.
+      </p>
+      <Table
+        headers={['Specialist', 'Answers', 'Tools it can call']}
+        rows={[
+          [
+            <strong>Ocean Analytics</strong>,
+            'Forecasts, global ocean state, harmful algal bloom risk, fish habitat suitability, potential fishing zones, historical trends',
+            'list_available_variables, get_point_forecast, get_global_ocean_summary, get_bloom_risk, get_fishing_habitat, find_fishing_zones, get_historical_series',
+          ],
+          [
+            <strong>Weather &amp; Safety</strong>,
+            '"Is it safe to go out" questions: present-day sea/weather conditions, active alerts, tropical cyclones, severe-weather warnings',
+            'get_current_conditions, get_active_alerts, get_cyclone_alerts, get_severe_weather_alerts, get_historical_series',
+          ],
+          [
+            <strong>Geospatial Risk</strong>,
+            'Distance to a maritime boundary or Marine Protected Area, seafloor depth, safe-route planning',
+            'check_geofence, get_seafloor_depth, plan_safe_route',
+          ],
+        ]}
+      />
+      <Callout kind="note" title="Why get_historical_series appears twice">
+        "How has X changed" is both an ocean-analytics question — a biogeochemistry trend — and
+        a safety one — a wave or wind trend building over days. It is the same tool either way,
+        so both specialists carry it rather than one specialist having to ask the other to run
+        it on its behalf.
+      </Callout>
+      <p>
+        Underneath the answer, a <Term>delegation trace</Term> lists which specialist was asked
+        and why — one line per delegation, in the order the orchestrator decided them, arriving
+        before that specialist's own tool calls as the answer streams in. It is a record of the
+        orchestrator's own reasoning, not of a result: it says <em>who was asked</em>, and the
+        tool observations below it say what they found.
+      </p>
 
       <h2 id="grounding">The grounding check</h2>
       <p>
@@ -83,10 +129,93 @@ export function Assistant() {
         traceability, not truth.
       </p>
 
+      <h2 id="alerts">Three answers that sound like "any warnings out there"</h2>
+      <p>
+        The Weather &amp; Safety specialist has three tools that all touch on hazards, and
+        they are not interchangeable — each comes from a different source and answers a
+        different question.
+      </p>
+      <Table
+        headers={['Tool', 'Source', 'Answers']}
+        rows={[
+          [
+            <code>get_active_alerts</code>,
+            "The platform's own threshold rules over real fields (heat stress, wave height, bloom risk)",
+            <>Computed rules, not issued marine warnings — the panel never implies otherwise.</>,
+          ],
+          [
+            <code>get_cyclone_alerts</code>,
+            'GDACS, aggregating JTWC and other warning centres',
+            <>
+              Active tropical cyclones worldwide, and proximity to a coordinate. The position is
+              the storm's <em>most recently reported fix</em>, not a live track or forecast
+              cone.
+            </>,
+          ],
+          [
+            <code>get_severe_weather_alerts</code>,
+            "IMD's own CAP feed",
+            <>
+              Nationwide heavy-rain, heatwave, cold-wave and thunderstorm/lightning warnings —
+              land included, not scoped to the coast.
+            </>,
+          ],
+        ]}
+      />
+      <Callout kind="lesson" title="IMD does not publish a cyclone-track feed">
+        It looks like it should: IMD is the issuing authority for North Indian Ocean cyclone
+        bulletins. But checked against five major landfalls — Biparjoy, Michaung, Tauktae,
+        Remal, Dana — IMD's public CAP feed reported every one of them only as a rainfall or
+        heat event, never as a tracked storm with a position or category. So a cyclone question
+        is answered from GDACS, and IMD's feed is the source for the lightning/heatwave/rain
+        half of "any warnings out there" instead. The specialist's own instructions say so
+        explicitly, because the two tools' names alone do not make the split obvious.
+      </Callout>
+
+      <h2 id="geospatial">Geospatial risk: boundaries, depth and routing</h2>
+      <p>
+        The three tools behind "am I near the boundary", "how deep is it here" and "plan me a
+        route" all resolve to local geometry and live conditions — nothing here depends on an
+        external chart provider, which is also why it works even when other tools are down.
+      </p>
+      <Table
+        headers={['Tool', 'Answers']}
+        rows={[
+          [
+            <code>check_geofence</code>,
+            "Proximity to India's EEZ (mainland and the Andaman & Nicobar Islands, as separate zones), the India-Sri Lanka maritime boundary (IMBL), and nine named Marine Protected Areas.",
+          ],
+          [<code>get_seafloor_depth</code>, 'Depth at a coordinate, from GEBCO bathymetry.'],
+          [
+            <code>plan_safe_route</code>,
+            'A route between two coordinates that avoids land, the IMBL and Marine Protected Areas outright, preferring calmer water when a lower-wave detour exists.',
+          ],
+        ]}
+      />
+      <Callout kind="note" title="The boundary geometry is real, not a sketch — with one honest surprise">
+        The EEZ polygons and the IMBL come from Marine Regions and the 1974/1976 India-Sri
+        Lanka treaty line, not a hand-drawn approximation. One consequence of that: a point
+        right around Rameswaram / Adam's Bridge reads as <em>outside</em> the mainland EEZ,
+        because the source polygon carries a genuine interior exclusion there — the same kind
+        of hole it cuts around every river delta and near-shore island on the coast. That is a
+        real, mapped detail a coastline sketch could never have represented, not a bug.
+        Marine Protected Areas remain a hand-curated list of named sites (a box around each
+        one's published centre), because the official WDPA database needs a registered API key
+        this deployment does not have.
+      </Callout>
+      <Callout kind="warn" title="A real search, still not a chart">
+        <code>plan_safe_route</code> runs an A* search over a grid built from live bathymetry
+        and live wave height — a real router, not a comparison between a few fixed candidate
+        paths. It still carries no vessel profile (speed, draft, fuel range) and scores a route
+        on wave hazard alone, and every answer from this specialist says the geometry is a
+        reference, not a substitute for an official chart before anyone sails on it.
+      </Callout>
+
       <h2 id="reading">Reading an answer properly</h2>
       <Table
         headers={['If you want to know…', 'Look at']}
         rows={[
+          ['Which specialist answered, and why it was asked', 'The delegation trace above the tool observations'],
           ['Where a number came from', 'The tool observations, expandable under the answer'],
           ['Which services were consulted', 'The sources list at the end of the turn'],
           ['Whether anything was invented', 'The grounding badge, once the answer has finished'],

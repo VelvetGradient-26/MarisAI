@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Link } from '../../app/router';
 import { useAppRouter } from '../../app/routerContext';
 import { useThemeStore } from '../../store/themeStore';
+import { DocsSearch } from './DocsSearch';
 import {
   CHAPTERS,
   CHAPTER_GROUPS,
@@ -47,6 +48,7 @@ export function DocsPage() {
 
         <main className="docs-article">
           <div className="docs-mobile-nav">
+            <DocsSearch />
             <label className="visually-hidden" htmlFor="docs-chapter-select">
               Chapter
             </label>
@@ -117,6 +119,7 @@ function ChapterNav({ activeId }: { activeId: string }) {
   return (
     <aside className="docs-nav">
       <p className="docs-nav__title">Documentation</p>
+      <DocsSearch />
 
       {CHAPTER_GROUPS.map(({ group, chapters }) => (
         <div className="docs-nav__group" key={group}>

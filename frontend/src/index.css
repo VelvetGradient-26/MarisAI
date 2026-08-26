@@ -237,28 +237,34 @@ body {
    never faked. A placeholder says "still asking"; an em dash says "asked, and
    there is nothing".
 
-   Deliberately not a component: it is one class, and every use site wants a
-   different width/height, which is what inline styles are for.
+   Deliberately not a component: it is one class plus a shape modifier, and
+   every use site wants a different width/height, which is what inline styles
+   are for.
 
-   **It is a scan pass, not a shimmer**, and the change is not only cosmetic.
-   The diagonal grey sweep this replaced is the single most recognisable
-   loading idiom on the web — it reads as "a component library's default",
-   which on a product whose whole argument is that every surface was decided
-   is the wrong thing for the loading state to say. It also carried no meaning:
-   the highlight travelled in a direction unrelated to anything, at a
-   brightness unrelated to anything.
+   **It is a vehicle in a channel, not a shimmer.** The scan-bar this replaced
+   read as "a component library's default" — a diagonal grey sweep, the single
+   most recognisable loading idiom on the web, on a product whose whole
+   argument is that every surface was decided. Before that, it was two
+   detectors' worth of literal marine instrument: `.ma-skeleton--sub` is a
+   submarine patrolling a track (list rows — the session sidebar, the
+   downloader's variable groups); `.ma-skeleton--bubble` is bubbles rising and
+   popping (single inline values — a dashboard stat, a location detail). The
+   choice of which encodes what kind of thing is arriving: a submarine sweeps
+   a *row of things*, bubbles surface *one number*.
 
-   What replaces it is the instrument metaphor the rest of this product already
-   uses. Each placeholder is a channel — a dark track with a hairline floor —
-   and an accent-tinted band passes along it the way a trace advances across a
-   sounder. The band is narrow and the track is visible on either side of it,
-   so the element still reads unambiguously as "a value that is not here yet"
-   rather than as a decorative bar.
+   Both keep the base track's floor line, so a placeholder still reads
+   unambiguously as "a value that is not here yet" even in a screenshot where
+   nothing is mid-motion.
 
-   Same class name and same inline-width API as before, deliberately: the
-   eight call sites across the assistant, the analytics page and the
-   downloader did not have to change, which is what made replacing this
-   affordable at all.
+   Same base class and same inline-width API as before: the eight call sites
+   across the assistant, the analytics page and the downloader only needed the
+   modifier class added, not a rewrite.
+
+   Reduced motion needs no special-casing here — the blanket rule below in
+   this file collapses every animation to one frozen frame, and freezing the
+   submarine or a bubble mid-cycle still reads as "loading", unlike freezing
+   the old scan-bar mid-sweep (an off-screen band on a bar that looked
+   finished), which is why that one had to hide itself instead.
    -------------------------------------------------------------------------- */
 .ma-skeleton {
   position: relative;
@@ -280,54 +286,138 @@ body {
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--ma-accent) 55%, transparent);
 }
 
-.ma-skeleton::after {
+/* ---- submarine: list rows ------------------------------------------------- */
+.ma-skeleton--sub {
+  height: 1.4em;
+  min-width: 4rem;
+}
+
+.ma-skeleton--sub::after {
   content: '';
   position: absolute;
-  inset: 0;
-  /* Widened and strengthened from the first pass. A narrow band at ~30% alpha
-     was, in practice, one dim smudge crossing a dark bar — it needed the
-     animation running to be noticed at all, which a still frame does not
-     have. The band now spans most of the element and peaks near full accent,
-     so the placeholder reads as an instrument channel in a screenshot as well
-     as in motion. */
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in srgb, var(--ma-accent) 30%, transparent) 30%,
-    color-mix(in srgb, var(--ma-accent) 72%, transparent) 50%,
-    color-mix(in srgb, var(--ma-accent) 30%, transparent) 70%,
-    transparent 100%
-  );
-  transform: translateX(-100%);
-  animation: ma-skeleton-scan 1.6s var(--ma-ease) infinite;
+  top: 50%;
+  left: 4%;
+  width: 34%;
+  height: 62%;
+  transform: translateY(-50%);
+  background-color: var(--ma-accent);
+  -webkit-mask-image: var(--ma-sub-mask);
+  mask-image: var(--ma-sub-mask);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--ma-accent) 60%, transparent));
+  animation: ma-sub-cruise 4.8s var(--ma-ease) infinite;
 }
 
-@keyframes ma-skeleton-scan {
-  /* Holds briefly at the end of each pass. A band that restarts the instant it
-     leaves reads as a continuous wash; the pause is what makes it read as
-     discrete passes, which is what a sounder actually does.
-
-     The hold is 12% of the cycle, not the 30% it started at. That is a
-     screenshot decision: at 30% almost a third of all still frames caught the
-     bar with the band off-screen and nothing in it, and this element is going
-     to be photographed as often as it is watched. Short enough to keep the
-     passes discrete, brief enough that a frame grabbed at random has the band
-     in it. */
+@keyframes ma-sub-cruise {
+  /* A patrol, not a one-way pass: it turns around rather than looping, which
+     is what makes it read as *searching* a row rather than as a progress bar
+     borrowing a submarine's silhouette. The flip at each end (`scaleX(-1)`)
+     is the tell that it turned rather than teleported back to the start. */
   0% {
-    transform: translateX(-100%);
+    left: 4%;
+    transform: translateY(-50%) scaleX(1);
   }
-  88%,
+  46% {
+    left: 62%;
+    transform: translateY(-50%) scaleX(1);
+  }
+  50% {
+    left: 62%;
+    transform: translateY(-50%) scaleX(-1);
+  }
+  96% {
+    left: 4%;
+    transform: translateY(-50%) scaleX(-1);
+  }
   100% {
-    transform: translateX(100%);
+    left: 4%;
+    transform: translateY(-50%) scaleX(1);
   }
 }
 
-/* Reduced motion still gets the placeholder — it is conveying "not yet
-   loaded", which is information, not decoration. It just stops moving. */
-@media (prefers-reduced-motion: reduce) {
-  .ma-skeleton::after {
-    animation: none;
-    opacity: 0;
+/* ---- bubbles: a single value ----------------------------------------------
+   Three radial-gradient layers rather than three elements — `.ma-skeleton`
+   has no children at any call site (every one is a bare self-closing span),
+   and adding them would mean touching every JSX call site instead of only
+   its class list. `background-position`/`background-size` accept one value
+   per comma-separated gradient, so one keyframe animates all three bubbles
+   on staggered timing without a second element. Popping is a shrink to
+   `0 0` rather than an opacity fade — opacity lives on the element, which
+   would fade all three bubbles as one unit rather than each on its own
+   count. ------------------------------------------------------------------- */
+.ma-skeleton--bubble {
+  background-color: var(--ma-input-bg);
+  background-image:
+    radial-gradient(circle, var(--ma-accent) 62%, transparent 72%),
+    radial-gradient(circle, var(--ma-accent) 62%, transparent 72%),
+    radial-gradient(circle, var(--ma-accent) 62%, transparent 72%);
+  background-repeat: no-repeat;
+  animation: ma-bubbles 3.4s var(--ma-ease) infinite;
+}
+
+@keyframes ma-bubbles {
+  0% {
+    background-position:
+      18% 100%,
+      52% 108%,
+      82% 104%;
+    background-size:
+      0 0,
+      4px 4px,
+      0 0;
+  }
+  22% {
+    background-position:
+      18% 35%,
+      52% 78%,
+      82% 104%;
+    background-size:
+      5px 5px,
+      5px 5px,
+      0 0;
+  }
+  38% {
+    background-position:
+      18% 6%,
+      52% 42%,
+      82% 90%;
+    background-size:
+      0 0,
+      6px 6px,
+      4px 4px;
+  }
+  62% {
+    background-position:
+      18% 100%,
+      52% 10%,
+      82% 48%;
+    background-size:
+      3px 3px,
+      0 0,
+      6px 6px;
+  }
+  80% {
+    background-position:
+      18% 68%,
+      52% 100%,
+      82% 14%;
+    background-size:
+      5px 5px,
+      0 0,
+      0 0;
+  }
+  100% {
+    background-position:
+      18% 100%,
+      52% 108%,
+      82% 104%;
+    background-size:
+      0 0,
+      4px 4px,
+      0 0;
   }
 }
 

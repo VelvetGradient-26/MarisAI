@@ -1,8 +1,14 @@
 # Publishable research topics in MarisAI
 
-A catalogue of papers this codebase can support, written 2026-08-15. Each entry
-states the **claim**, the **evidence that already exists in this repository**,
-**what is still missing** before it can be written, and a plausible **venue**.
+A catalogue of papers this codebase can support, written 2026-08-15 and revised
+2026-08-17. Each entry states the **claim**, the **evidence that already exists
+in this repository**, **what is still missing** before it can be written, and a
+plausible **venue**.
+
+Entries move between tiers as work lands, and three did on 2026-08-17: the
+percentile climatology and the upwelling detector were built (Tier 3 → 1.10,
+1.11), and one of them returned a **negative** result strong enough to be its own
+paper (1.12). A catalogue whose tiers are not maintained is a wish list.
 
 The organising principle is honesty about distance: Tier 1 topics are results
 already sitting in `machine_learning/reports/`, `research/data/results/` or a
@@ -67,10 +73,27 @@ mackerel 243. Model side: regional CV TSS 0.826 (LightGBM) vs global 0.901, with
 completely different SHAP orderings — regional leads on `depth` and
 `distance_to_coast`, global on dissolved oxygen and 60-day lagged temperature.
 
-**Missing.** The regional-holdout validation of the global model (TODO §1) —
-i.e. does a global model beat the regional one *on the region the regional model
-was built for*? That single number is the paper's headline and is one training
-run away.
+**The headline number now exists, and it is the opposite of the intuition.**
+Measured 2026-08-15 by `scripts/validate_global_on_region.py`, written to
+`reports/global_vs_regional_habitat.csv`: on **identical rows** (the regional
+holdout, 885 rows / 167 presences), the regional ensemble scores **TSS 0.798 /
+Boyce 0.923** against the global ensemble's **0.448 / 0.721** — while the global
+model trained on **123,104 rows against 1,902**, i.e. 64.7× the data for less
+than half the skill on the water that matters. The comparison is only valid
+because the shipped global model had trained on this water, so it is refitted
+with the regional holdout's spatial *blocks* removed — blocks, not rows, since a
+global point 50 km away is the same water.
+
+**And the obvious explanation is ruled out by the same file.** "The global model
+is extrapolating" is the natural defence; the MESS columns say it is not. The
+global model extrapolates *less* — 1.24% of holdout rows outside its training
+envelope against the regional model's 9.04%, median similarity 0.205 vs 0.442.
+It has seen more of the environmental space and still performs worse on it,
+which points at label dilution and at the loss of the coastal-geometry features
+the regional model leads on, not at coverage.
+
+**Missing.** Nothing blocking. A second region would turn one instance into a
+claim about scale.
 
 **Why it is publishable.** "More data is better" is unexamined in SDM practice.
 This is a controlled instance where scale changes the learned mechanism (coastal
@@ -128,8 +151,11 @@ aggregation because derivations are non-linear: `current_speed = hypot(u, v)`,
 and a current rotating through the day at constant 1 m/s averages to ~0
 components and reports as slack water.
 
-**Missing.** The retrain of those 13 variables (TODO §1) so that before/after
-skill numbers exist. Without it the paper says "this is wrong"; with it, it says
+**Missing.** The retrain of those 13 variables so that before/after skill
+numbers exist. (This is no longer scoped anywhere in TODO.md — the cadence bug
+was fixed and the affected variables were left to be retrained on their next
+touch, so the before/after comparison this paper wants has to be run
+deliberately.) Without it the paper says "this is wrong"; with it, it says
 "and it cost this much skill."
 
 **Why it is publishable.** This is a data-engineering hazard that every
@@ -278,7 +304,198 @@ short paper for the contrast half.
 
 ---
 
+### 1.10 A percentile climatology, and the reanalysis that cannot supply one
+
+**Claim.** Percentile-baseline anomaly detection across many variables is
+blocked on one artefact nobody costs — a per-cell, per-day-of-year percentile
+stack — and **the obvious source for it cannot provide it at all**. The
+high-resolution ocean reanalyses everyone reaches for begin far too recently for
+a 30-year baseline, so the baseline has to come from a coarse, old, unglamorous
+satellite analysis instead.
+
+**Evidence in repo.** Built 2026-08-17: `services/climatology/`, 1991–2020, 1°,
+271 MB, fetched in ~25 min and fitted in 761 s. The cost model in the *previous
+revision of this file was wrong in the interesting direction* — it assumed the
+expensive global Copernicus fetch path. Every Copernicus provider here starts
+recently (physics 2022-06-01, waves 2022-11-01, wind 2024-06-13, BGC
+2021-11-01), so a 30-year baseline is not expensive there, it **does not
+exist**. NOAA OISST v2.1 on the ERDDAP host `crw.py` already used gives daily
+0.25° from 1981; one year strided to 1° is 94.6 MB in 51 s.
+
+Three findings came from getting the build wrong first, and all three generalise
+to any long-record fetch: a **5-day probe predicted ~11 min/year against an
+actual ~50 s** (13× off — per-request overhead dominates a small griddap
+request); a **2 s/4 s retry backoff lost a run in six seconds** to a host that
+flaps on the ~100 s scale, converting a recoverable outage into a failed job
+while adding load; and **short years are the archive, not a truncated
+response** — 1993 returns 163 days, re-fetches identically, and the dataset
+itself reports ~1,200 days genuinely absent, so a per-*year* completeness check
+would reject a real baseline forever. What protects a percentile is a floor on
+samples per *estimate*; the shipped fit is 89.3% complete.
+
+Verified against the raw record rather than trusted: a hand-computed p90 at
+20.1°N 65.1°E day 200 over 290 pooled samples reproduces the stored value
+exactly. And **`p90 >= mean` is false** on 1,940 of 15,761,058 finite cells —
+median violation 5e-06 °C (float32 rounding), the largest on the Antarctic ice
+margin where a sample pinned at the freezing point with warm excursions is
+right-skewed enough to put the mean above the 90th percentile. `p10 <= p90`
+holds and is the ordering worth testing.
+
+**Missing.** Nothing for the methods note. The application paper — a
+Hobday-compliant marine-heatwave climatology for the Indian Ocean — needs the
+detector run over a season and written up; `services/heatwaves.py` ships and
+reports 9,003 of 31,830 ocean cells (60°S–60°N) in heatwave on 2026-08-01, with
+the five-day clause removing 6.7 points against a same-day threshold test.
+
+**Venue.** *Environmental Modelling & Software* or SoftwareX (the
+infrastructure); *Progress in Oceanography*, *Frontiers in Marine Science* (the
+MHW application).
+
+---
+
+### 1.11 A detector's corroboration needs a control arm
+
+**Claim.** When a wind-derived index is corroborated against an independent
+observation, the corroborated fraction on its own is uninterpretable and reads
+as confirmation. Reported against a **control arm where the corroborating signal
+is not expected**, the same number can show the agreement is barely better than
+chance — and in the case measured here, it does.
+
+**Evidence in repo.** `services/upwelling.py` ships Bakun's index (Ekman
+transport from bulk wind stress, projected onto a coastal normal derived from
+the model land mask) and, since 2026-08-17, corroborates it against a cold SST
+anomaly scored on the 1.10 climatology. Measured live on the global field:
+**19.9%** of upwelling-favourable coastal cells were cool for the season —
+against **17.2% of downwelling-favourable ones**, where cool water is not
+expected at all. The strong tier is indistinguishable (4.1% vs 3.9% below the
+seasonal 10th percentile) and favourable coasts are on average the *warmer* of
+the two (+0.91 °C vs +0.60 °C). So a corroborated cell is a real observation of
+cool water and a weak coincidence, not evidence that this wind drove it.
+
+`control_cool_fraction` is therefore computed and returned with **every**
+response and rendered beside the count in the UI, on the same rule this
+codebase already applies to HAB precision: a level is not a finding without its
+base rate.
+
+Two constructions make the detector itself worth describing. The coastal normal
+is derived from the ocean mask the currents field already carries, because no
+service here supplies coastline geometry — and the mask cannot come from the
+*wind* field, which is defined over land, so its coverage edge is not a coast.
+And the hemisphere asymmetry falls out of the sign of the Coriolis parameter
+rather than a latitude branch; a test fixture that put land to the west and
+called it an eastern boundary caught the one error that would have reported
+every upwelling coast as downwelling, in an entirely plausible field.
+
+**Missing.** The honest experiment this points at: upwelling responds to wind
+integrated over days, and both arms here are snapshots. A short rolling wind
+history would let the index be computed on a multi-day mean and the control
+re-run — that is the difference between "these two snapshots barely agree" and
+"the wind does not drive the SST response at this resolution".
+
+**Why it is publishable.** Detector papers overwhelmingly report the agreement
+rate and stop. The contribution is the discipline: the control arm is cheap,
+it is computed from data already in hand, and here it converts a
+confident-sounding 20% into a 2.7-point lift. Negative, small, and immediately
+transferable.
+
+**Venue.** *Journal of Atmospheric and Oceanic Technology*, *Remote Sensing of
+Environment* (methods), *Continental Shelf Research*.
+
+---
+
+### 1.12 A baseline fitted on one product cannot score another
+
+**Claim.** Anomaly detection routinely scores an observation against a
+climatology fitted on a *different* product, because the long record and the
+fresh observation rarely come from the same source. The substitution is treated
+as free. It is not: it injects per-cell noise wider than the decision threshold,
+it concentrates on exactly the water such studies care about, and it **inverts a
+tail-based test while leaving a mean-based one apparently unharmed** — which is
+the failure mode most likely to be shipped.
+
+**Evidence in repo.** Measured 2026-08-17 while trying to fix 1.11's weak
+agreement by replacing the 14.5-day-old OISST record with the live hourly
+Copernicus physics field. Both arms over an identical wind field, contrast =
+favourable minus control: the weak tier was unchanged (+0.022 against +0.026)
+and the strong tier **inverted, to −0.149** — downwelling-favourable coasts came
+out below their seasonal 10th percentile three times as often as favourable
+ones.
+
+The cause is measured separately, a full day of hourly physics daily-averaged
+onto the OISST grid: **no systematic offset** (mean +0.005 °C over 60°S–60°N,
+medians ~0, so a bias constant would be a fudge with nothing to fix), but
+per-cell disagreement of **sd 0.467 °C in open water and 0.758 °C across the
+coastal band**, where 24.9% of cells differ by more than 0.5 °C and 10.0% by
+more than 1.0 °C. The threshold being fed was 0.5 °C. A below-percentile test is
+a *tail* test and cannot survive noise the width of its own signal; a
+mean-offset test degrades gracefully and hides it.
+
+**Missing.** The general form: repeat across two or three product pairs and both
+tiers, to state the rule as "the substitution is safe up to threshold ≈ k × the
+inter-product sd" rather than as one instance. Every input is public.
+
+**Why it is publishable.** The practice is near-universal in operational anomaly
+products and the check is almost never reported. It also carries a concrete
+piece of advice — fit the baseline on the product you will score, or quote the
+inter-product spread beside the threshold — and a diagnostic that costs one
+day of overlapping data.
+
+**Venue.** *Journal of Atmospheric and Oceanic Technology*, *Remote Sensing of
+Environment*, *Earth System Science Data*.
+
+---
+
+### 1.13 Bloom-warning precision is set by regional base rate, not by skill
+
+**Claim.** Harmful-algal-bloom early-warning systems are compared across regions
+by precision at a fixed recall, and that comparison is close to meaningless:
+across five regions the operating-point precision tracks the regional bloom
+**base rate** almost monotonically. Two regions at the same prevalence can
+differ threefold in skill over persistence while reporting nearly identical
+precision, so precision ranks the water, not the model.
+
+**Evidence in repo.** Five regions trained, thresholds and climatology fitted
+**per region** because they define what counts as a bloom — one region's
+distribution must not set another's labels. Operating points at target recall
+0.8, from `reports/hab_early_warning_*_summary.json`:
+
+| region | base rate | t+3 | t+5 | t+7 |
+| --- | --- | --- | --- | --- |
+| california_current | 0.266 | 0.950 | 0.904 | **0.844** |
+| benguela | 0.154 | 0.806 | 0.659 | 0.566 |
+| baltic_sea | 0.139 | 0.699 | 0.521 | 0.416 |
+| bay_of_bengal | 0.078 | 0.461 | 0.272 | 0.187 |
+| arabian_sea | 0.076 | 0.449 | 0.280 | 0.202 |
+
+Precision is ordered exactly by base rate at all three horizons, with no
+crossings. **The Bay of Bengal is what makes this a claim rather than an
+observation**: it sits at the Arabian Sea's prevalence (0.078 vs 0.076) and
+reports the same precision — yet carries roughly **three times the lift over
+persistence at t+7** (+0.150 against +0.053). Same apparent performance, very
+different models.
+
+**Why it is publishable.** The literature quotes precision and false-alarm rate
+per system, and systems are built in regions of wildly different prevalence.
+This is a controlled demonstration — one pipeline, one label definition, one
+validation discipline, five basins — that the headline number is dominated by
+the basin. The honest reporting recipe follows directly: quote precision
+*because a user experiences it*, and lift over persistence *because a modeller
+has to judge it*, and never rank regions on the former.
+
+**Missing.** Nothing blocking. The Arabian Sea's "screening only past +3 d"
+caveat is a regional statement and should be labelled as one, not as a property
+of HAB forecasting.
+
+**Venue.** *Harmful Algae*, *Remote Sensing of Environment*, *Ecological
+Informatics*.
+
+---
+
 ## Tier 2 — one bounded experiment away
+
+**2.3 is missing from this tier because it was run.** It is now 1.13; the number
+is left as a gap for the reason given under Tier 3.
+
 
 ### 2.1 The union of OBIS and GBIF runs in both directions
 
@@ -300,7 +517,7 @@ records are republished OBIS datasets — merging naively double-counts *exactly
 where the pseudo-absence scheme is most sensitive to sampling effort*.
 
 **Experiment needed.** Wire the GBIF source, run the dedup, retrain, report
-per-species skill deltas. TODO §5 already scopes it.
+per-species skill deltas. TODO §4 (Machine learning) already scopes it.
 
 **Venue.** *Ecological Informatics*, *Biodiversity Data Journal*, *Scientific
 Data*.
@@ -323,7 +540,7 @@ block CV) already exist and are region-agnostic.
 
 **Experiment needed.** Move the model region to DATRAS coverage, train the same
 architecture twice — once on true absences, once on target-group
-pseudo-absences drawn from the same water — and compare. TODO §5 calls this
+pseudo-absences drawn from the same water — and compare. TODO §6 (Parked) calls this
 "the biggest accuracy lever, and a strategic call."
 
 **Why it is publishable.** It is the control experiment the SDM pseudo-absence
@@ -333,31 +550,6 @@ of where true absences exist at all.
 
 **Venue.** *Ecography*, *Methods in Ecology and Evolution*, *ICES Journal of
 Marine Science*.
-
----
-
-### 2.3 HAB early warning: the recall–precision frontier at 3, 5 and 7 days
-
-**Claim.** A bloom early-warning system pinned at 80% recall degrades in
-precision with horizon in a way that has an operational cliff, and the useful
-statement is where that cliff is, not the AUC.
-
-**Evidence in repo.** `machine_learning/reports/hab_early_warning_summary.json`,
-operating points at target recall 0.8: **t+3 precision 0.449** (false alarm
-0.551, Brier 0.056 raw / 0.038 calibrated), degrading through t+5 (precision
-0.280) to t+7. Reliability curves are exported per horizon
-(`hab_early_warning_reliability_t{3,5,7}.csv`), SHAP per horizon, fold scores
-with the shipping rule (`passes_bar`: skill > 0 **and** ≤1 of 5 folds negative)
-logged as a metric. TODO notes "HAB t+7 sits at the edge of usefulness" — that
-is the paper's honest conclusion, already reached.
-
-**Experiment needed.** The four unrun HAB regions (TODO §1). One region is a
-case study; five with per-region-fitted thresholds and climatology is a paper,
-and the per-region fitting discipline (one region's distribution must not set
-another's labels) is itself a contribution.
-
-**Venue.** *Harmful Algae*, *Remote Sensing of Environment*, *Ecological
-Informatics*.
 
 ---
 
@@ -400,42 +592,11 @@ Software*.
 
 ## Tier 3 — needs a build first, but the build is scoped
 
-### 3.1 A percentile climatology as shared infrastructure, and marine heatwaves
-on top of it
-
-**Claim.** Anomaly detection across many variables is blocked on one artefact
-nobody costs: a per-cell, per-day-of-year **percentile** baseline. A climatology
-of means — which is what NOAA CRW supplies, the only real climatology in this
-codebase — is not sufficient even for the one variable it covers, because the
-Hobday marine-heatwave definition needs a 90th percentile over a 30-year daily
-baseline exceeded for ≥5 days.
-
-**Evidence in repo.** TODO §4 identifies this as a hard prerequisite hiding
-under at least four proposed features (anomaly explorer, regional seasonal
-anomalies, marine heatwaves, cold spells / extreme-wave / low-oxygen events),
-each of which would otherwise discover it independently. The output shape is
-already specified — a percentile stack matching the forecast grids so
-`field_sampling.py` serves it unchanged. The existing masking discipline from
-`crw.py` is measured and transfers unchanged: aggregate over **60°S–60°N** or
-ice-margin cells (anomalies above +15 °C where the climatology expects ice)
-triple the global mean; reef statistics need **30°S–30°N** or the global DHW
-maximum comes from the St. Lawrence estuary, the Caspian and the Gulf of Finland
-at 40–52 °C-weeks; and heat-stress extent must use **HotSpot ≥ 1 °C** (NOAA's
-own criterion, flags ~13% of ocean, correctly zero across the winter Southern
-Ocean) rather than raw anomaly ≥ 1 °C, which flagged **42% of the ocean and
-meant nothing**.
-
-**Build cost.** An offline job over the expensive global fetch path — ~35 min
-per fetch window, independent of output resolution — over enough years for a
-percentile to mean something. Not a UI feature and must not be scheduled as one.
-
-**Paper.** Two papers, really: the infrastructure/method note, and then a
-Hobday-compliant MHW climatology for the Indian Ocean as the application.
-
-**Venue.** *Frontiers in Marine Science*, *Progress in Oceanography* (the MHW
-application); *Environmental Modelling & Software* (the infrastructure).
-
----
+**3.1 and 3.3 are missing from this tier because they were built.** They are now
+1.10 (the percentile climatology) and 1.11 (upwelling detection, plus the
+control-arm result the corroboration produced). The numbers are left as gaps
+rather than closed up, so a reference to "3.1" written before 2026-08-17 still
+resolves to the right topic instead of silently pointing at a different one.
 
 ### 3.2 Eddy tracking validated against an atlas, not against plausibility
 
@@ -457,24 +618,6 @@ ground truth — is more valuable than another matcher.
 
 ---
 
-### 3.3 Upwelling detection and the full observe → detect → explain chain
-
-**Claim.** Alongshore wind stress → Ekman transport, corroborated by the
-SST-down/chlorophyll-up signature, produces the causal chain the platform is
-otherwise missing: **upwelling → productivity → chlorophyll → habitat
-suitability → fisheries**. That end-to-end chain, each link independently
-served and independently validated, is the paper.
-
-**Status.** Unblocked on the modelling side as of 2026-08-15 (`wind_u`/`wind_v`
-trained; grids building). Still needs coastline geometry to resolve the
-alongshore component, which no current service provides. High local relevance:
-Somalia, Oman, southwest India.
-
-**Venue.** *Progress in Oceanography*, *Continental Shelf Research*, *Journal of
-Marine Systems*.
-
----
-
 ### 3.4 ConvLSTM / U-Net spatial forecasting against the per-point tree baseline
 
 **Claim.** The engine's 26 griddable variables are currently forecast per point
@@ -487,9 +630,12 @@ horizon, never random K-fold) against a strong, honestly-baselined tree.
 the subject of the shipped paper, scored against both persistence *and*
 climatology across 13 variables × 4 horizons × 24 sites, with the flattery
 failure mode already documented. That makes it a much better comparison point
-than the persistence-only baselines most spatial-forecasting papers use. 22
-forecast grids are already built; `tests/test_forecast_grid.py` pins the grid
-path to the point path cell-for-cell at 1e-6, so train/serve skew is already
+than the persistence-only baselines most spatial-forecasting papers use. The
+forecast grids are built and the count moves with every incremental `--all` run
+(8 on 2026-08-14, 28 on 2026-08-17), so **count the directory rather than
+quoting a number from a document** — the repo's own rule, and the reason this
+entry no longer states one. `tests/test_forecast_grid.py` pins the grid path to
+the point path cell-for-cell at 1e-6, so train/serve skew is already
 controlled.
 
 **Venue.** *Environmental Data Science*, *Artificial Intelligence for the Earth
@@ -608,14 +754,28 @@ sample as a mean (1.4); the linear interpolation reverses a bearing (1.5); the
 outlier filter deletes clean data (1.7); the eddy detector returns features from
 white noise (1.8); the bilinear resample erases the coastline (1.9); the
 proportional ensemble scores below its best member (1.1); the batched sampler
-measures anomalies against the wrong mean (2.5). In every case the system keeps
-running, produces output of the right shape and units, and looks correct.
+measures anomalies against the wrong mean (2.5); the cross-product baseline
+inverts a tail test while leaving a mean test intact (1.12).
+
+Two more instances are of a different and arguably worse kind, because the
+output is not merely wrong but *rhetorically* wrong: a corroboration rate with
+no control arm reads as confirmation when it is nearly chance (1.11), and a
+model trained on 64.7× the data reads as an upgrade while scoring less than half
+the skill on the water it will be used for (1.2); and a bloom warner reports the
+precision of its *basin* as though it were the precision of its model (1.13). In
+every case the system keeps running, produces output of the right shape and
+units, and looks correct.
 
 A single paper — *"Silent failure modes in operational marine machine
-learning"* — with eight measured instances from one running system, each with
-its detection method and its fix, is probably higher-impact than any individual
+learning"* — with eleven measured instances from one running system, each with its
+detection method and its fix, is probably higher-impact than any individual
 entry above and is **already fully evidenced**. It needs writing, not
 experiments. That is the recommendation.
+
+The sharpest framing available: **every one of these was found by a check that
+was cheap and is almost never reported** — a second baseline, a control arm, a
+hand-computed value, a synthetic field with a known answer, a fixture built
+deliberately backwards. That is a paper about practice, not about the ocean.
 
 **Venue.** *Environmental Modelling & Software*, *Nature Scientific Reports*,
 or a high-visibility perspective slot in *Frontiers in Marine Science*.
@@ -624,15 +784,27 @@ or a high-visibility perspective slot in *Frontiers in Marine Science*.
 
 ## Priority ordering
 
+Revised 2026-08-17. Four entries moved up because the work landed, and the top
+of the table is now unusually cheap: **the first five need writing, not
+experiments.** That is the headline of this revision — the constraint on
+publishing from this repo is no longer evidence, it is prose.
+
 | # | Topic | Distance | Value |
 | --- | --- | --- | --- |
 | 1 | Silent failure modes (cross-cutting) | writing only | highest |
-| 2 | 1.1 Softmax ensemble weighting | one sweep | high, self-contained |
-| 3 | 1.8 + 3.2 Eddy detection, then tracking | atlas validation | high |
-| 4 | 1.2 What going global buys an SDM | one training run | high |
-| 5 | 3.1 Percentile climatology + MHW | offline build | high, unblocks four features |
-| 6 | 2.3 HAB across five regions | four runs | medium-high |
-| 7 | 2.1 GBIF ∪ OBIS | one integration | medium-high |
-| 8 | 2.2 True absences vs pseudo-absences | region change | highest ceiling, highest cost |
-| 9 | 4.5 Data-access survey | writing only | medium, perishable |
-| 10 | 3.4 ConvLSTM vs the tree baseline | large build | medium |
+| 2 | 1.2 What going global buys an SDM | **writing only** — headline measured | high |
+| 3 | 1.12 Cross-product baselines invert tail tests | writing only; generalising is optional | high, transfers widely |
+| 4 | 1.11 Corroboration needs a control arm | writing only | high, small, negative |
+| 5 | 1.13 HAB precision is base rate, not skill | **writing only** — five regions run | high |
+| 6 | 1.1 Softmax ensemble weighting | one sweep | high, self-contained |
+| 7 | 1.10 Percentile climatology + MHW | built; MHW application needs a season | high, unblocked four features |
+| 8 | 1.8 + 3.2 Eddy detection, then tracking | atlas validation | high |
+| 9 | 2.1 GBIF ∪ OBIS | one integration | medium-high |
+| 10 | 2.2 True absences vs pseudo-absences | region change | highest ceiling, highest cost |
+| 11 | 4.5 Data-access survey | writing only | medium, perishable |
+| 12 | 3.4 ConvLSTM vs the tree baseline | large build | medium |
+
+**1.2 changed rank for a reason worth noting**: it was ranked 4th at "one
+training run away", and that run has since been done — and *reversed the
+expected sign*. The paper is now "more data made it worse, and here is why it is
+not extrapolation", which is a better paper than the one originally catalogued.

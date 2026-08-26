@@ -40,7 +40,7 @@ export function MapReading() {
           [
             <strong>Wind &amp; Currents</strong>,
             'Stackable',
-            'The moving fields — wind, surface currents, currents at depth, Stokes drift, combined drift, and detected eddies. They are drawn as particles or outlines rather than as solid colour, which is exactly why several can be legible at once.',
+            'The moving fields — wind, surface currents, currents at depth, Stokes drift, combined drift — plus three detectors drawn over them: eddies, marine heatwaves and coastal upwelling.',
           ],
           [
             <strong>AI (Experimental)</strong>,
@@ -50,15 +50,17 @@ export function MapReading() {
           [
             <strong>Boundaries &amp; Reference</strong>,
             'Stackable, drawn on top',
-            'Marine protected areas, exclusive economic zones, place labels, live AIS vessels. Reference sits above everything so labels and boundaries stay legible over a particle field.',
+            'Marine protected areas, exclusive economic zones, place labels, live AIS vessels, and eDNA sampling coverage. Reference sits above everything so labels and boundaries stay legible over a particle field.',
           ],
         ]}
       />
-      <Callout kind="note" title="Why eddies are filed under currents, not under AI">
-        Eddy detection is a calculation over the observed current field — the same arithmetic
-        an oceanographer would do by hand, not a trained model. Putting it under "AI
-        (Experimental)" would label an observation as an inference. The platform rounds the
-        other way on purpose: something is only called a model when a model produced it.
+      <Callout kind="note" title="Why the detectors are filed under currents, not under AI">
+        Eddy detection, marine-heatwave flags and the upwelling index are each a calculation
+        over an observed field — the same arithmetic an oceanographer would do by hand, not a
+        trained model. Putting any of them under "AI (Experimental)" would label an observation
+        as an inference. The platform rounds the other way on purpose: something is only called
+        a model when a model produced it. Fish habitat and bloom risk stay under AI because
+        those genuinely are trained models.
       </Callout>
 
       <h2 id="basemaps">Basemaps are two different things</h2>

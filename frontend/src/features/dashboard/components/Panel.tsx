@@ -84,19 +84,19 @@ export function PanelHeader({
  * **Each row is a scan channel, not a pulsing block.** The rows used to fade
  * their whole opacity up and down together, which is the most generic loading
  * idiom there is and — worse here — reads as the panel *flickering* rather
- * than as it waiting. What replaces it is the same instrument metaphor the
- * app-wide `.ma-skeleton` uses (see `index.css` for the full reasoning): a
- * dark track with an accent floor, and a narrow band passing along it.
+ * than as it waiting. What replaces it is the same submarine the app-wide
+ * `.ma-skeleton--sub` uses (see `index.css` for the full reasoning): a dark
+ * track with an accent floor, and a small submarine patrolling it.
  *
  * The classes are `oid-scanline`/`oid-scanline__pass` in `styles/tailwind.css`
- * rather than Tailwind utilities, because the band is a pseudo-element with a
- * five-stop gradient and a hold in its keyframe — expressing that inline would
+ * rather than Tailwind utilities, because the submarine is a masked
+ * pseudo-element with a multi-stage keyframe — expressing that inline would
  * be less legible than the CSS it compiles to, which is the line this feature
  * already draws for the panel hover polish.
  *
- * The per-row delay stays: the rows are one placeholder, and passes that
- * arrive together read as a single flashing block rather than as a set of
- * channels being swept.
+ * The per-row delay stays: the rows are one placeholder, and submarines that
+ * turn in lockstep read as a single mechanism rather than as independent rows
+ * each still waiting on its own data.
  */
 export function PanelSkeleton({ rows = 3, className }: { rows?: number; className?: string }) {
   return (

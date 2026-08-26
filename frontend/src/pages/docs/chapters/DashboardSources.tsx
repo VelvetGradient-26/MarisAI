@@ -209,6 +209,34 @@ export function DashboardSources() {
         </p>
       </Callout>
 
+      <h2 id="aisstream">aisstream.io — live AIS vessel positions</h2>
+      <p>
+        The one provider on this list that <em>pushes</em> rather than answers a request. A
+        long-lived background connection to aisstream.io's websocket feed keeps an in-memory
+        picture of every broadcasting vessel, and the dashboard's map and the live feed read
+        from that picture rather than each triggering their own fetch.
+      </p>
+      <p>
+        Two AIS message types are merged into one record per ship, because neither is enough
+        alone: a <strong>position report</strong> arrives every few seconds (position, speed,
+        course, heading, navigational status), while <strong>static data</strong> — name, IMO
+        number, call sign, destination, hull dimensions — arrives on a slower ~6-minute cycle.
+        So a vessel is usually on the map, moving, well before its name is known, and the
+        interface shows whatever has arrived so far rather than withholding it until complete.
+      </p>
+      <Callout kind="note" title="No key, no socket, no error — just an empty map">
+        With no API key configured, or the socket disconnected, the vessel store is simply
+        empty and the endpoint reports <code>connected: false</code>. A live AIS feed is never
+        a prerequisite for the rest of the map working, the same "degrade, do not fail" rule
+        every other provider here follows.
+      </Callout>
+      <p>
+        <strong>Licence:</strong> aisstream.io free tier. <strong>Coverage:</strong> genuinely
+        global but uneven — dense near busy coasts and shipping lanes, thin in open ocean, and
+        entirely absent for small craft that carry no transponder. Absence of a vessel here is
+        never evidence there is none.
+      </p>
+
       <h2 id="gibs">NASA GIBS — Global Imagery Browse Services (USA)</h2>
       <p>
         NASA's imagery service, used here to report which satellite products are current and
@@ -299,6 +327,7 @@ export function DashboardSources() {
           ['Copernicus Marine', 'Model analysis + assimilation', '1–3 hours', 'Account required'],
           ['NOAA Coral Reef Watch', 'Satellite infrared composite', '6 hours', 'None'],
           ['NOAA NDBC', 'In-situ instruments', '10 minutes', 'None'],
+          ['aisstream.io', 'Live AIS websocket feed', 'Continuous (push)', 'API key'],
           ['NASA GIBS', 'Satellite imagery catalogue', '6 hours', 'None'],
           ['Open-Meteo', 'Model + ERA5 reanalysis', 'On demand, cached 10 min', 'None'],
           ['MarisAI ML', 'Offline machine learning', 'On pipeline re-run', 'None'],

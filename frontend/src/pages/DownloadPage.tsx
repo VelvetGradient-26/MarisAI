@@ -433,11 +433,14 @@ export function DownloadPage() {
               {[0, 1, 2, 3].map((group) => (
                 <fieldset key={group} className="download-variable-group">
                   <legend>
-                    <span className="ma-skeleton" style={{ width: '5.5rem' }} />
+                    <span className="ma-skeleton ma-skeleton--sub" style={{ width: '5.5rem' }} />
                   </legend>
                   {[0, 1, 2, 3].map((row) => (
                     <label key={row}>
-                      <span className="ma-skeleton" style={{ width: `${6 + ((row * 3) % 5)}rem` }} />
+                      <span
+                        className="ma-skeleton ma-skeleton--sub"
+                        style={{ width: `${6 + ((row * 3) % 5)}rem` }}
+                      />
                     </label>
                   ))}
                 </fieldset>

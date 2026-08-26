@@ -12,7 +12,7 @@ export function ForecastResults() {
       <h1>What it actually achieves</h1>
       <p className="docs-article__lede">
         Every number here is a validated skill score against persistence, read from each model's{' '}
-        <code>metrics.json</code>. Thirty-one variables are trained and 115 models shipped —
+        <code>metrics.json</code>. Thirty-one variables are trained and 116 models shipped —
         which is <em>not</em> 31 × 4, because a horizon that failed its folds was deleted rather
         than served. The deletions are the more informative half of this page.
       </p>
@@ -33,15 +33,15 @@ export function ForecastResults() {
         </p>
       </Callout>
 
-      <h2 id="distribution">Skill by horizon, across all 115 models</h2>
+      <h2 id="distribution">Skill by horizon, across all 116 models</h2>
       <Table
         headers={['Horizon', 'Models', 'Median skill', 'Weakest', 'Strongest']}
         numeric={[1, 2, 3, 4]}
         rows={[
-          ['+1 day', '30', '+0.231', '+0.063', '+0.529'],
-          ['+3 days', '28', '+0.151', '+0.026', '+0.421'],
-          ['+7 days', '28', '+0.201', '+0.077', '+0.428'],
-          ['+30 days', '29', <Best>+0.357</Best>, '+0.081', '+0.494'],
+          ['+1 day', '30', '+0.252', '+0.069', '+0.532'],
+          ['+3 days', '28', '+0.172', '+0.026', '+0.421'],
+          ['+7 days', '29', '+0.232', '+0.068', '+0.428'],
+          ['+30 days', '29', <Best>+0.380</Best>, '+0.120', '+0.494'],
         ]}
         caption="Every shipped model has positive skill; the weakest thing in the entire set is +0.026."
       />
@@ -63,20 +63,20 @@ export function ForecastResults() {
         headers={['Family', 'Models', 'Weakest', 'Strongest']}
         numeric={[1, 2, 3]}
         rows={[
-          ['Biogeochemistry', '23', '+0.077 (nitrate, +7d)', '+0.429 (silicate, +1d)'],
-          ['Waves', '20', '+0.079 (wave direction, +1d)', '+0.428 (mean wave period, +30d)'],
-          ['Ocean currents', '16', '+0.063 (current direction, +1d)', '+0.411 (current v, +30d)'],
+          ['Biogeochemistry', '24', '+0.068 (nitrate, +7d)', '+0.449 (dissolved oxygen, +30d)'],
+          ['Waves', '20', '+0.098 (wave direction, +1d)', '+0.430 (mean wave period, +30d)'],
+          ['Wind', '16', '+0.217 (wind gust, +1d)', '+0.450 (wind v, +30d)'],
           ['Meteorology', '15', '+0.167 (humidity, +3d)', <Best>+0.494 (air temperature, +30d)</Best>],
-          ['Ocean colour', '12', '+0.026 (diffuse attenuation, +3d)', <Best>+0.529 (chlorophyll-a, +1d)</Best>],
-          ['Wind', '12', '+0.118 (wind direction, +3d)', '+0.412 (wind speed, +30d)'],
-          ['Temperature', '9', '+0.047 (water temperature, +3d)', '+0.439 (water temperature, +30d)'],
-          ['Sea level', '6', '+0.091 (sea surface height, +7d)', '+0.394 (sea level anomaly, +3d)'],
-          ['Salinity', '2', '+0.153 (+30d)', '+0.179 (+1d)'],
+          ['Ocean currents', '12', '+0.065 (current u, +3d)', '+0.411 (current v, +30d)'],
+          ['Ocean colour', '12', '+0.026 (diffuse attenuation, +3d)', <Best>+0.532 (chlorophyll-a, +1d)</Best>],
+          ['Temperature', '8', '+0.065 (sea surface temperature, +3d)', '+0.434 (sea surface temperature, +30d)'],
+          ['Sea level', '7', '+0.091 (sea surface height, +7d)', '+0.388 (sea level anomaly, +3d)'],
+          ['Salinity', '2', '+0.069 (+1d)', '+0.120 (+30d)'],
         ]}
       />
       <p>
-        <strong>Chlorophyll-a at +1 day (+0.529) is the strongest result in the repository</strong>{' '}
-        — a 31% error reduction against persistence — and it is strong for the mirror-image
+        <strong>Chlorophyll-a at +1 day (+0.532) is the strongest result in the repository</strong>{' '}
+        — a 53% error reduction against persistence — and it is strong for the mirror-image
         reason that salinity is weak. Chlorophyll is patchy and advected, it moves between one
         day and the next, so persistence is a weak baseline with real headroom above it. The
         variables where the ocean barely changes are the ones where there is nothing to win.
@@ -90,7 +90,7 @@ export function ForecastResults() {
       <p>
         A horizon ships only if <strong>overall skill is above zero <em>and</em> at most one of
         five validation folds is negative</strong>. The second clause is the load-bearing one:
-        the training log prints the aggregate, and <strong>six</strong> of the rejected horizons
+        the training log prints the aggregate, and <strong>four</strong> of the rejected horizons
         below print <code>beats persistence</code> on it. Every shipped horizon was re-read from
         its per-fold scores rather than accepted from the summary line.
       </p>
@@ -105,12 +105,17 @@ export function ForecastResults() {
           [
             <><code>water_salinity</code> +3d, +7d</>,
             'marginal',
-            <>−0.065 with 3/5 folds negative; −0.029 with 4/5</>,
+            <>−0.131 with 4/5 folds negative; −0.050 with 4/5</>,
           ],
           [
             <><code>bottom_temperature</code> +3d, +7d, +30d</>,
             'marginal',
-            <>−0.056, −0.060, −0.025 (4/5 folds negative)</>,
+            <>−0.061, −0.073 (2/5 folds negative each); −0.060 (3/5)</>,
+          ],
+          [
+            <><code>water_temperature</code> +3d</>,
+            <>+0.018 — barely <em>beats persistence</em></>,
+            <>2/5 folds negative; a positive aggregate with one fold in five wrong is exactly what the bar exists to catch</>,
           ],
           [
             <><code>humidity</code> +1d</>,
@@ -118,41 +123,41 @@ export function ForecastResults() {
             <>−0.020 with 2/5 negative, one at −0.435</>,
           ],
           [
-            <><code>nitrate</code> +3d</>,
-            <>+0.050 — <em>beats persistence</em></>,
-            <>folds span −0.123 to +0.208; the mean is carried by a minority</>,
-          ],
-          [
-            <><code>sea_level_anomaly</code> +7d, +30d</>,
-            <>+0.073 and +0.111 — <em>beats persistence</em></>,
-            <>2/5 folds negative on each; +7d spans −0.296 to +0.222</>,
+            <><code>sea_level_anomaly</code> +30d</>,
+            <>+0.077 — <em>beats persistence</em></>,
+            <>2/5 folds negative, spanning −0.112 to +0.242</>,
           ],
         ]}
-        caption="One variable dropped outright and nine further horizons trained, measured and deleted."
+        caption="One variable dropped outright and eight further horizons trained, measured and deleted. Two rows that once stood here — nitrate +3d and sea_level_anomaly +7d — have since been retrained clean and now ship; this table only ever reflects what is rejected today."
       />
       <Callout kind="lesson" title="An average is not a result">
         <p>
-          <code>sea_level_anomaly</code> at +7 days is the cleanest example in the project. It
-          posted +0.073 overall and the training log said <code>beats persistence</code>. Its
-          five folds were −0.296, +0.186, +0.222, +0.110 and −0.006 — a model that helps in some
-          periods and hurts badly in others, averaged into something that looks like modest
-          competence.
+          <code>sea_level_anomaly</code> at +30 days is the current example in the project. It
+          posted +0.077 overall and the training log said <code>beats persistence</code>. Two of
+          its five folds were negative — +0.009, +0.242, −0.085, +0.233 and −0.112 — a model
+          that helps in most conditions and gives measurable ground back in two out of five,
+          averaged into something that looks like modest, dependable competence.
         </p>
         <p>
-          Shipping it would have put a forecast on the map that is worse than useless whenever
-          conditions resemble fold one, with nothing in the interface to say so. The fold spread
-          is logged beside the mean in experiment tracking for this exact reason, and the
-          shipping rule is itself recorded as a metric.
+          Shipping it would have put a forecast on the map with no way to tell a reader which
+          kind of month they were looking at. The fold spread is logged beside the mean in
+          experiment tracking for this exact reason, and the shipping rule — skill positive{' '}
+          <em>and</em> at most one fold in five negative — is itself recorded as a metric rather
+          than applied by eye. This is also the row most likely to flip: its neighbour at +7 days
+          failed by the same margin in an earlier pass and has since been retrained clean.
         </p>
       </Callout>
 
       <h3>Where the decision differed, and why</h3>
       <p>
         <code>sea_surface_salinity</code> was dropped entirely while <code>water_salinity</code>{' '}
-        kept its +1d and +30d models, which looks inconsistent until you read the folds. Surface
-        salinity's best horizon was a noisy +0.085; water salinity's +1d is +0.179 with zero
-        negative folds, tightly clustered between +0.110 and +0.225. The physics is the same; the
-        evidence is not, and the decision follows the evidence rather than the family.
+        kept its +1d and +30d models — same physics, same covariates, the same target measured
+        at the surface versus at depth, and two different outcomes. Neither surviving{' '}
+        <code>water_salinity</code> horizon is spotless (each still carries one negative fold in
+        five), but both clear the bar the same way every other shipped horizon does, while every
+        attempt at <code>sea_surface_salinity</code> — including its two best, at +0.085 and
+        +0.106 — did not. The physics is the same; the evidence is not, and the decision follows
+        the evidence rather than the family.
       </p>
       <p>
         The weakest thing kept anywhere is <code>diffuse_attenuation</code> at +3 days, +0.026
@@ -200,7 +205,7 @@ export function ForecastResults() {
 
       <h2 id="untrained">What is deliberately not trained</h2>
       <p>
-        One variable of the 32. <code>sea_surface_salinity</code> is configured, its provider
+        One variable of the 34 configured. <code>sea_surface_salinity</code> is configured, its provider
         works, and it will not be trained — the YAML block says so, with the numbers, so that
         nobody retrains it in the belief that it was an oversight. Point salinity barely moves
         day to day, which makes persistence near-unbeatable; retraining reproduces those numbers

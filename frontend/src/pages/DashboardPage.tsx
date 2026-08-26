@@ -429,7 +429,7 @@ function MetricRow({
       <span>{label}</span>
       <strong>
         {pending ? (
-          <span className="ma-skeleton" style={{ width: '3.5rem' }} />
+          <span className="ma-skeleton ma-skeleton--bubble" style={{ width: '3.5rem' }} />
         ) : (
           formatMetric(data, metric, { direction })
         )}
@@ -457,7 +457,7 @@ function StatBlock({
       <span>{label}</span>
       <strong>
         {pending ? (
-          <span className="ma-skeleton" style={{ width: '3rem' }} />
+          <span className="ma-skeleton ma-skeleton--bubble" style={{ width: '3rem' }} />
         ) : (
           formatMetric(data, metric, { direction, visibility })
         )}
@@ -492,8 +492,8 @@ function LocationDetail({
       {icon}
       <div>
         <span>{label}</span>
-        <strong>{pending ? <span className="ma-skeleton" style={{ width: '7rem' }} /> : value}</strong>
-        <p>{pending ? <span className="ma-skeleton" style={{ width: '9rem' }} /> : description}</p>
+        <strong>{pending ? <span className="ma-skeleton ma-skeleton--bubble" style={{ width: '7rem' }} /> : value}</strong>
+        <p>{pending ? <span className="ma-skeleton ma-skeleton--bubble" style={{ width: '9rem' }} /> : description}</p>
       </div>
     </div>
   );

@@ -199,7 +199,7 @@ export function ChatPage() {
             <ul className="chat-sessions" aria-busy="true">
               {[0, 1, 2].map((row) => (
                 <li key={row} className="chat-session chat-session--placeholder">
-                  <span className="ma-skeleton" style={{ width: `${8 - row}rem` }} />
+                  <span className="ma-skeleton ma-skeleton--sub" style={{ width: `${8 - row}rem` }} />
                 </li>
               ))}
             </ul>

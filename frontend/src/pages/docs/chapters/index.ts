@@ -10,6 +10,7 @@ import { DashboardSources } from './DashboardSources';
 import { Data } from './Data';
 import { Downloader } from './Downloader';
 import { Eddies } from './Eddies';
+import { Edna } from './Edna';
 import { Features } from './Features';
 import { ForecastEngine } from './ForecastEngine';
 import { ForecastMap } from './ForecastMap';
@@ -26,6 +27,7 @@ import { Overview } from './Overview';
 import { Primer } from './Primer';
 import { Problems } from './Problems';
 import { Results } from './Results';
+import { UpwellingHeatwaves } from './UpwellingHeatwaves';
 import { Validation } from './Validation';
 
 export interface Chapter {
@@ -241,6 +243,20 @@ export const CHAPTERS: Chapter[] = [
     title: 'Eddies, and what a detector is',
     group: 'Ocean & atmosphere',
     Component: Eddies,
+  },
+  {
+    id: 'upwelling-heatwaves',
+    label: 'Upwelling & heatwaves',
+    title: 'Upwelling and marine heatwaves',
+    group: 'Ocean & atmosphere',
+    Component: UpwellingHeatwaves,
+  },
+  {
+    id: 'edna',
+    label: 'eDNA coverage',
+    title: 'eDNA sampling coverage',
+    group: 'Ocean & atmosphere',
+    Component: Edna,
   },
 ];
 

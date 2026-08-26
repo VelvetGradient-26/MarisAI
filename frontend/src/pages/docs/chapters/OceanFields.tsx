@@ -147,12 +147,36 @@ export function OceanFields() {
       <p>
         The third term is <Term>leeway</Term> — the fraction of the wind speed an object picks
         up directly from air drag on whatever stands above the waterline. Crucially,{' '}
-        <strong>α is a property of the object, not of the ocean</strong>: roughly 1–2% for a
-        swamped hull sitting almost flush, around 3% for a surface slick, several times that
-        for a life raft with freeboard and no drogue. The same water takes them along
-        measurably different tracks, which is why the map offers a layer per object rather
-        than one "drift" layer with a hidden constant baked in.
+        <strong>α is a property of the object, not of the ocean</strong>, so the map offers a
+        layer per preset rather than one "drift" layer with a hidden constant baked in.
       </p>
+      <Table
+        headers={['Preset', 'α', 'Why']}
+        rows={[
+          [
+            'Water only',
+            '0%',
+            'Current + Stokes drift, nothing standing in the wind. The honest default for "what is the water doing" — and the right choice when nobody has said what is actually drifting.',
+          ],
+          [
+            'Swamped hull / submerged debris',
+            '1.5%',
+            'Almost nothing above the waterline, so almost no direct wind drag.',
+          ],
+          ['Oil slick', '3%', 'The long-standing 3% rule of thumb for surface slicks.'],
+          [
+            'Person in the water',
+            '3.5%',
+            'A head and shoulders of freeboard — sensitive to whether a PFD holds the body higher.',
+          ],
+          [
+            'Life raft, no drogue',
+            '6%',
+            'Large freeboard and a canopy. Undrogued rafts are the classic case where leeway dominates the current entirely.',
+          ],
+        ]}
+        numeric={[1]}
+      />
       <Callout kind="warn" title="A field, not a trajectory">
         The drift layers show where the water is going <em>right now, everywhere</em>. They
         are not a prediction of where one object will be in two days: the particles are

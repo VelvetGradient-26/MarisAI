@@ -156,6 +156,41 @@ export function ForecastMap() {
           check would pass happily with the work back on the event loop.
         </p>
       </Callout>
+
+      <h2 id="vectors">Forecast particles are a second, separate case</h2>
+      <p>
+        Everything above is the <em>scalar</em> grid — one raster, one legend, one colour per
+        cell. A forecast of a moving field (wind, currents) is drawn a different way entirely:
+        as forecast particles, the same GPU particle layer the live wind and currents already
+        use, built once both a variable's eastward and northward components are trained{' '}
+        <em>and</em> gridded. It registers at runtime exactly like the scalar layers do, from a
+        separate vector catalog endpoint, so a newly-trained pair becomes a map layer with no
+        frontend edit either.
+      </p>
+      <p>
+        These land in the stackable <strong>Wind &amp; Currents</strong> group, not the
+        exclusive one the scalar forecasts use — deliberately, because the point of a forecast
+        particle layer is running it <em>alongside</em> its live counterpart and watching where
+        the two disagree, which only works if both can be on screen at once.
+      </p>
+      <Callout kind="lesson" title="Every forecast pair used to be drawn as currents, and it looked fine">
+        Before the wind components were trained, the vector layer had only ever drawn currents,
+        so every forecast pair — including an early wind forecast — inherited the currents
+        ramp and speed scale. An 8 m/s wind field on a ramp whose domain tops out at 2 m/s
+        renders as one flat top colour, and at the currents speed scale it advects roughly
+        265 px/s. Both failures animate convincingly: a wrong legend and a wrong pace each look
+        exactly like a working layer, which is the same hazard the scalar grids solve with
+        hatching for a different kind of wrongness. The fix was a lookup keyed on the pair
+        itself, so a forecast field is always drawn with its own live layer's identity — never
+        an unrelated one's.
+      </Callout>
+      <p>
+        Direction still has to be handled as an angle end to end (see{' '}
+        <em>Directions &amp; colour</em>) — which is exactly why these are forecast{' '}
+        <em>components</em> rather than a forecast bearing: a model trained on the raw compass
+        change treats a five-degree veer across north as a 355° swing, an error these particle
+        layers were built to avoid inheriting.
+      </p>
     </>
   );
 }

@@ -77,6 +77,14 @@
   --ma-accent-soft: rgba(79, 209, 255, 0.14);
   --ma-accent-line: rgba(79, 209, 255, 0.3);
 
+  /* Submarine silhouette (hull + conning-tower fin, one path) used by the
+     loading-state channel in index.css and its `--oid-*` counterpart in
+     `features/dashboard/styles/tailwind.css`. Kept here rather than in either
+     theming world because it is shape, not colour — both worlds paint it via
+     `background-color: currentColor` + this as a mask, so it never needs a
+     second copy or a per-theme variant. */
+  --ma-sub-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 22'%3E%3Cpath d='M2 13C2 9 7 6 14 6H20C25 6 29 9 29 13C29 17 25 20 20 20H14C7 20 2 17 2 13Z M13 0H19V7H13Z' fill='%23000'/%3E%3C/svg%3E");
+
   /* --- status ---------------------------------------------------------- */
   --ma-error: #ff8a8a;
   --ma-good: #4ade80;

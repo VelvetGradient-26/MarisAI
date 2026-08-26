@@ -8,7 +8,7 @@ export function DashboardCharts() {
       <p className="docs-article__eyebrow">Ocean intelligence dashboard</p>
       <h1>Charts &amp; historical coverage</h1>
       <p className="docs-article__lede">
-        Ten variables can be charted at any coordinate, over windows from 24 hours to 10 years.
+        Thirteen variables can be charted at any coordinate, over windows from 24 hours to 10 years.
         But the available window differs enormously between them — one reaches back to 1940 and
         another only to 2024 — and that is a property of the underlying products, not a
         limitation of the interface. This chapter explains each variable and why its range
@@ -34,8 +34,12 @@ export function DashboardCharts() {
           ['Sea surface temperature', 'Open-Meteo marine', '2024', '1 year'],
           ['Chlorophyll-a', 'Copernicus BGC', '2021', '1 year'],
           ['Sea surface salinity', 'Copernicus physics', '2022', '1 year'],
-          ['Ocean heat content', 'Copernicus physics', '2022', '1 year'],
+          ['Ocean heat content (0–50 m)', 'Copernicus physics', '2022', '1 year'],
+          ['Ocean heat content (0–100 m)', 'Copernicus physics', '2022', '1 year'],
+          ['Ocean heat content (0–200 m)', 'Copernicus physics', '2022', '1 year'],
+          ['Ocean heat content (0–700 m)', 'Copernicus physics', '2022', '1 year'],
         ]}
+        caption="Ocean heat content ships as four separate charts, one per integration depth — see below."
       />
 
       <Callout kind="jargon" title="Jargon buster — why the atmosphere has a longer memory">
@@ -75,8 +79,9 @@ export function DashboardCharts() {
 
       <h2 id="ohc">Ocean heat content: the one that is computed, not fetched</h2>
       <p>
-        Nine of the ten variables are read from a provider. Ocean heat content is not published
-        by anyone at this resolution — it is derived here from a temperature profile.
+        Nine of the thirteen variables are read from a provider. Ocean heat content is not
+        published by anyone at this resolution — it is derived here from a temperature profile,
+        and offered as <strong>four separate charts</strong> rather than one.
       </p>
       <p>
         <strong>What it means.</strong> Sea surface temperature describes a thin skin. Ocean
@@ -86,21 +91,27 @@ export function DashboardCharts() {
         while a warm 700-metre column cannot.
       </p>
       <Formula
-        expr="OHC = ρ · cₚ · ∫₀⁷⁰⁰ T(z) dz"
+        expr="OHC = ρ · cₚ · ∫₀ᵈ T(z) dz"
         where={
           <>
             ρ = 1025 kg/m³ (seawater density), cₚ = 3985 J/(kg·K) (specific heat capacity),
-            T(z) = temperature at depth z, integrated from the surface to 700 m — the standard
-            reference depth for upper-ocean heat content. Reported in GJ/m².
+            T(z) = temperature at depth z, integrated from the surface to a chosen depth{' '}
+            <em>d</em>. Reported in GJ/m².
           </>
         }
       />
       <p>
         In practice the model supplies about 33 depth levels between 0.5 m and 644 m, unevenly
-        spaced, and the integral is evaluated over them by the trapezoidal rule. Typical values
-        in tropical water are 40–45 GJ/m². For intuition: a 700 m column at a uniform 15 °C
-        works out to 42.9 GJ/m² — roughly the energy in 1,200 litres of petrol, stored under
-        every single square metre of sea.
+        spaced, and the integral is evaluated over them by the trapezoidal rule. 0–700 m is the
+        standard climate-reference depth, and was the first layer this dashboard shipped — but
+        it is not the layer most marine questions are actually about. What feeds a cyclone or
+        shows up as a marine heatwave is the heat in the top ~100 m; 600 m of near-constant deep
+        water underneath averages that signal away. A warming that moves the 0–50 m chart by
+        several percent barely moves the 0–700 m one at all, so the four depths are offered side
+        by side rather than as one number, and reading them together is what separates surface
+        warming from warming through the whole column. For intuition: a 700 m column at a
+        uniform 15 °C works out to 42.9 GJ/m² — roughly the energy in 1,200 litres of petrol,
+        stored under every single square metre of sea.
       </p>
 
       <Callout kind="note" title="Below the seafloor there is no water">

@@ -43,7 +43,7 @@ export function DashboardOverview() {
         </p>
       </Callout>
 
-      <h2 id="sections">The eight sections</h2>
+      <h2 id="sections">The nine sections</h2>
       <Table
         headers={['Section', 'The question it answers', 'How often it updates']}
         rows={[
@@ -87,8 +87,20 @@ export function DashboardOverview() {
             'Whether each provider is reachable and how fresh its data is',
             'Every 5 minutes',
           ],
+          [
+            <strong>Data quality</strong>,
+            'What every dataset actually is (resolution, cadence, coverage, licence) and how every trained forecast model scores',
+            'Every 30 minutes',
+          ],
         ]}
       />
+      <Callout kind="note" title="Data source status and data quality answer different questions">
+        The two provenance panels sit side by side but are not duplicates. Data source status
+        asks "is the feed up right now" — a live health check. Data quality asks the question
+        underneath it: what a dataset resolves to, how far each processing stage actually
+        reaches, and — for every trained forecast model — its skill against persistence and the
+        spread across validation folds, never a single invented confidence percentage.
+      </Callout>
 
       <h2 id="global-vs-point">Global numbers versus point numbers</h2>
       <p>

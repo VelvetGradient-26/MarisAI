@@ -14,8 +14,8 @@ export function ForecastEngine() {
         The two machine learning problems in the previous section each answer one question with
         one purpose-built model. This is the opposite kind of system: a single pipeline that
         forecasts <em>any</em> variable the platform carries, where adding a new one is a block
-        of YAML and a training run rather than a new model implementation. Thirty-one of the
-        thirty-two configured variables are trained today, as 115 models.
+        of YAML and a training run rather than a new model implementation. Thirty-three of the
+        thirty-four configured variables can be forecast today, trained as 116 models.
       </p>
 
       <h2 id="shape">The shape of it</h2>
@@ -133,6 +133,15 @@ python scripts/train_forecasting.py --variable turbidity`}</Code>
         <code>skipped_points</code> and why partial success is treated as a failure mode rather
         than a partial win.
       </p>
+
+      <Callout kind="note" title="Two of the thirty-three have no LightGBM model of their own">
+        <code>current_direction</code> and <code>wind_direction</code> are bearings, and a
+        model fitted on the raw compass change treats a five-degree veer across north as a
+        355° swing — so instead of training on the angle, the engine forecasts the eastward
+        and northward components and derives the bearing from those. Each is available exactly
+        where <em>both</em> of its components are trained, with no model file of its own. See{' '}
+        <em>Directions &amp; colour</em> for the rest of that story.
+      </Callout>
 
       <h2 id="features">Features, and the single forward shift</h2>
       <p>

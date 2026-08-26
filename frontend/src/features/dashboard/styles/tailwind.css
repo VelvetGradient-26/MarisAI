@@ -391,18 +391,21 @@
 /* --------------------------------------------------------------------------
    Scan channel
    --------------------------------------------------------------------------
-   The dashboard's half of the loading treatment described in `index.css`. Same
-   idea, `--oid-*` tokens: a dark track with an accent floor, and a narrow band
-   passing along it.
+   The dashboard's half of the loading treatment described in `index.css`:
+   same `--ma-sub-mask` submarine, `--oid-*` tokens. A dark track with an
+   accent floor, and a submarine patrolling it — used for every `PanelSkeleton`
+   row across the dashboard and for `AiInsights`' text-shaped prose rows, both
+   of which pass their own `.oid-scanline__pass` child with a per-row
+   `animationDelay`, so rows already stagger without any change here.
 
-   Kept in step with `.ma-skeleton` by hand, as the two live in different
+   Kept in step with `.ma-skeleton--sub` by hand, as the two live in different
    theming worlds and a shared class would have to reach across the Tailwind
    boundary this feature exists to keep clean. If the timing changes in one,
    change it in the other — a dashboard panel and the analytics page below it
    are on screen together.
 
-   The row is `overflow: hidden` so the band is clipped to the rounded track;
-   without it the gradient squares off the corners on its way past. */
+   The row is `overflow: hidden` so the submarine is clipped to the rounded
+   track rather than poking out past its rounded corners mid-turn. */
 .oid-scanline {
   position: relative;
   overflow: hidden;
@@ -410,42 +413,47 @@
   box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--oid-accent) 55%, transparent);
 }
 
-/* Alphas kept in step with `.ma-skeleton` in index.css — see the note there on
-   why the first, subtler pass had to be strengthened. Slightly lower at the
-   peak than the app-wide one, because a dashboard panel is a lighter surface
-   than the near-black page ground and the same alpha reads hotter on it. */
 .oid-scanline__pass {
   position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in oklab, var(--oid-accent) 24%, transparent) 30%,
-    color-mix(in oklab, var(--oid-accent) 58%, transparent) 50%,
-    color-mix(in oklab, var(--oid-accent) 24%, transparent) 70%,
-    transparent 100%
-  );
-  transform: translateX(-100%);
-  animation: oid-scan 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  top: 50%;
+  left: 4%;
+  width: 22%;
+  height: 62%;
+  transform: translateY(-50%);
+  background-color: var(--oid-accent);
+  -webkit-mask-image: var(--ma-sub-mask);
+  mask-image: var(--ma-sub-mask);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  filter: drop-shadow(0 0 3px color-mix(in oklab, var(--oid-accent) 55%, transparent));
+  animation: oid-sub-cruise 4.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
-@keyframes oid-scan {
+@keyframes oid-sub-cruise {
+  /* A patrol, not a one-way pass — matches `ma-sub-cruise` in index.css. The
+     flip at each end (`scaleX(-1)`) is the tell that it turned rather than
+     teleported back to the start. */
   0% {
-    transform: translateX(-100%);
+    left: 4%;
+    transform: translateY(-50%) scaleX(1);
   }
-  /* Holds at the end of the pass, so the sweeps read as discrete rather than
-     as one continuous wash — 12% of the cycle, matching `.ma-skeleton`, which
-     carries the note on why the hold is short. */
-  88%,
+  46% {
+    left: 70%;
+    transform: translateY(-50%) scaleX(1);
+  }
+  50% {
+    left: 70%;
+    transform: translateY(-50%) scaleX(-1);
+  }
+  96% {
+    left: 4%;
+    transform: translateY(-50%) scaleX(-1);
+  }
   100% {
-    transform: translateX(100%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .oid-scanline__pass {
-    animation: none;
-    opacity: 0;
+    left: 4%;
+    transform: translateY(-50%) scaleX(1);
   }
 }
 
