@@ -517,33 +517,6 @@ Two separate gaps in `services/chat/`:
   type — this is very likely additive to the existing message-building code,
   not a new client.
 
-### Data Quality section: each card should open a full model dossier
-
-`services/dashboard/data_quality.py` reports `models_trained` — **116** models
-across the forecasting engine's variables x horizons — but
-`DataQualityPanel.tsx` currently surfaces a partial list (checked live:
-**14** of 116). Two asks, and they compound:
-
-- **List all 116, not a subset.** If the panel currently truncates for
-  layout/perf reasons, that needs a paginated or scrollable list instead —
-  dropping 102 trained models from view understates what actually shipped
-  (same "never substitute a number for missing data" principle section 5
-  already holds, applied to *omission* here rather than fabrication).
-- **A per-model detail page**, one click from any card, that makes the model
-  reproducible from what's shown: what water/points it was trained on, the
-  feature list `forecasting/`'s pipeline built (`build_features`), the
-  algorithm (LightGBM, per CLAUDE.md), the delta-vs-level target-mode
-  decision, the CV fold scores and `skill_score` against persistence *and*
-  climatology (the two-baseline point in section — already computed, not
-  fabricated for the page), and a SHAP explainability panel
-  (`forecasting/shap_explainer.py`, already exists and is rendered on metric
-  pages — reuse it rather than rebuilding). This is presentation of numbers
-  already computed and logged (`_reports/runs/<timestamp>/`,
-  `marine_ml.tracking`), **not new modelling work** — the honesty constraint
-  is the same one metric pages already meet ("Ocean Story computes first,
-  phrases second" — every figure on this page must be traceable to a real
-  training-run artifact, none invented for narrative).
-
 ### Live ocean data, satellite products, and data source status: same "click for detail" treatment
 
 Three panels get the same ask — right now clicking a station/product/source

@@ -53,6 +53,11 @@ const MetricsIndexPage = lazy(() =>
     default: module.MetricsIndexPage,
   }))
 );
+const ModelDossierPage = lazy(() =>
+  import('../features/dashboard/metric/ModelDossierPage').then((module) => ({
+    default: module.ModelDossierPage,
+  }))
+);
 
 export function App() {
   const { pathname } = useAppRouter();
@@ -217,6 +222,18 @@ function renderPage(pathname: string) {
     return (
       <Suspense fallback={<RouteLoading label="Loading metrics…" />}>
         <MetricsIndexPage />
+      </Suspense>
+    );
+  }
+  // Reads ?variable=&horizon= from the query string rather than nested path
+  // segments — the generic `/dashboard/<key>` branch below only ever matches
+  // a single segment (`!variableKey.includes('/')`), so `/dashboard/model`
+  // has to be its own exact match, checked before that prefix, or it would
+  // itself be swallowed as variableKey="model".
+  if (pathname === '/dashboard/model') {
+    return (
+      <Suspense fallback={<RouteLoading label="Loading model dossier…" />}>
+        <ModelDossierPage />
       </Suspense>
     );
   }

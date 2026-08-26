@@ -1063,6 +1063,81 @@ MarisAI itself, not the ocean — and cite a real `/docs?c=<id>` route.
   up from 14: the count test's own docstring names what each addition was,
   kept current rather than left to say "14" forever.
 
+### Data Quality: a per-model dossier page — 2026-08-26
+
+TODO.md's "each card should open a full model dossier" carried two asks. Live
+verification before writing any code found the first one already done: both
+`services/dashboard/data_quality.py::models()` and `DataQualityPanel.tsx`'s
+`models` tab already iterate every trained artifact with no slice, no
+`top_n` and no pagination — the panel showed **116/116** live, not the 14 the
+item's own premise stated. Grepped for a truncation and found none; the
+number had gone stale rather than the code. Worth recording so nobody
+"fixes" a bound that no longer exists.
+
+The second ask — a per-model detail page — was the real gap, and shipped:
+`ModelDossierPage.tsx` at `/dashboard/model?variable=<key>&horizon=<n>`,
+reached from every `DataQualityPanel` card (available *and* unavailable
+ones — an unreadable artifact still links through, so its dossier can report
+the real reason rather than the card repeating a truncated one).
+
+- **No new backend endpoint.** `GET /api/v1/forecast/models/{variable}/{horizon}`
+  already returned everything the dossier needed — training points, feature
+  columns, per-fold validation, and the SHAP global-importance ranking — via
+  `model_store.describe()`, which never unpickles the booster
+  (`test_describe_does_not_unpickle_the_booster` already pinned this). The
+  frontend query hook (`useModelDetail`) and type (`ModelDetail`) already
+  existed too, built for `Explainability.tsx` on the metric pages; only
+  `ModelDetail.metadata`'s type needed three more optional fields
+  (`skipped_points`, `covariates`, `training_started`/`training_ended`) that
+  were already in the JSON but untyped.
+- **The climatology half of "skill vs persistence and climatology" turned out
+  not to exist for any of the 116 models, and the honest fix was to say so.**
+  `forecasting/evaluator.py` has a climatology-comparison code path
+  (`climatology_rmse`, `skill_vs_climatology`), but `scripts/train_forecasting.py`
+  never calls it — grepped for `climatology` across all 140 on-disk
+  `metrics.json` files and found zero. Rather than omit the row or approximate
+  a number, the dossier's Skill panel states plainly that the comparison was
+  never computed for this pipeline's models, per the same "never substitute a
+  number for missing data" rule the rest of the dashboard holds — applied here
+  to an absent baseline rather than a stale cache.
+- **`_reports/runs/<timestamp>/` was investigated as a source and rejected.**
+  It is a log of training *invocations*, not an index of *models*: cross-
+  referencing all 22 run directories against the 116 shipped artifacts found
+  only 64 unique (variable, horizon) keys, 59 models with zero record at all
+  (every horizon of `air_temperature`, `current_speed`, `current_u`,
+  `current_v`, `diffuse_attenuation`, and more). Each artifact's own
+  `metadata.json`/`metrics.json` is self-contained and guaranteed to exist for
+  every trained model by construction (`describe()` raises rather than
+  omitting); `_reports/runs/` only adds `git_commit` and wall-clock duration
+  for the invocation, unavailable for half the fleet anyway. Not worth the
+  partial-coverage risk for two nice-to-have fields.
+- **The SHAP panel here is deliberately not `Explainability.tsx` reused
+  verbatim.** That component computes *live, per-point* SHAP
+  (`useBatchForecast` → `top_features`) for "drivers of this forecast" — it
+  needs a coordinate, and a model dossier has none to anchor to. What it
+  reuses instead is the same already-logged number: `metrics.feature_importance`,
+  the mean-|SHAP|-across-validation-rows ranking `ShapExplainer.global_importance()`
+  computes once at training time and `model_store.save()` writes into the
+  artifact — a genuinely different, already-computed figure, not a
+  recomputation. Confirmed live (`ph`/h7): the two panels do not have to
+  agree, and don't need to — one is "what usually matters", the other "what
+  moved this prediction."
+- **Route wiring needed one explicit branch, not a nested segment.** The
+  existing `/dashboard/<key>` handler in `App.tsx::renderPage` only matches a
+  single path segment (`!variableKey.includes('/')`) — `/dashboard/model`
+  reads `variable`/`horizon` from the query string instead, and has to be
+  checked *before* that generic prefix or it would itself be swallowed as
+  `variableKey="model"`.
+- **Verified live in the browser, not just typechecked.** Backend + frontend
+  dev servers, real trained artifacts (`ph`/h7, `chlorophyll_a`/h7 — the
+  latter's fold3 correctly rendered in red for a negative skill score),
+  click-through from an actual `DataQualityPanel` card confirmed the URL and
+  breadcrumb update correctly. One screenshot briefly caught the route
+  transition mid-fade (a known effect of this environment's CDP tabs never
+  firing `requestAnimationFrame` — see the map's own note on this) with the
+  page fully rendered underneath (`get_page_text` returned the complete,
+  correct dossier); a second screenshot after a short wait rendered normally.
+
 ### Observability — the request was a bug report
 
 Two logging systems had grown side by side (loguru in 13 modules, stdlib

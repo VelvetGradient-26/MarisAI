@@ -172,8 +172,12 @@ export interface ModelDetail {
   horizon: number;
   metadata: Record<string, unknown> & {
     trained_at?: string;
+    training_started?: string;
+    training_ended?: string;
     training_rows?: number;
     training_points?: string[];
+    skipped_points?: string[];
+    covariates?: string[];
     model_type?: string;
     target_mode?: string;
   };

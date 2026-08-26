@@ -19,6 +19,7 @@
 
 import { useMemo, useState } from 'react';
 import { Database } from 'lucide-react';
+import { Link } from '../../../app/router';
 import type { DatasetEntry, ModelEntry, ModelGrade } from '../api/types';
 import { useDataQuality } from '../hooks/useDashboardData';
 import { cn } from '../lib/cn';
@@ -106,16 +107,29 @@ function DatasetRow({ dataset }: { dataset: DatasetEntry }) {
   );
 }
 
+/** Every model card opens its full dossier — reproducibility detail that
+ * does not fit a grid card (training points, feature list, CV folds, global
+ * SHAP importance). Wrapping even an `available: false` card is deliberate:
+ * that state means an artifact exists on disk but failed to read, and the
+ * dossier's own error state (same `useModelDetail` query) reports the real
+ * reason rather than this card repeating a truncated one. */
 function ModelRow({ model }: { model: ModelEntry }) {
+  const href = `/dashboard/model?variable=${encodeURIComponent(model.variable)}&horizon=${model.horizon}`;
+
   if (!model.available) {
     return (
-      <li className="rounded-lg border border-[color:var(--color-alert-critical)] p-2.5">
-        <p className="text-[11px] font-medium text-[color:var(--oid-text-strong)]">
-          {model.variable} · h{model.horizon}
-        </p>
-        <p className="mt-1 text-[9.5px] text-[color:var(--color-alert-critical)]">
-          {model.unavailable_reason}
-        </p>
+      <li>
+        <Link
+          to={href}
+          className="block rounded-lg border border-[color:var(--color-alert-critical)] p-2.5 no-underline transition-colors hover:bg-[color:var(--oid-elevated)]"
+        >
+          <p className="text-[11px] font-medium text-[color:var(--oid-text-strong)]">
+            {model.variable} · h{model.horizon}
+          </p>
+          <p className="mt-1 text-[9.5px] text-[color:var(--color-alert-critical)]">
+            {model.unavailable_reason}
+          </p>
+        </Link>
       </li>
     );
   }
@@ -128,47 +142,52 @@ function ModelRow({ model }: { model: ModelEntry }) {
       : '—';
 
   return (
-    <li className="rounded-lg border border-[color:var(--oid-border)] bg-[color:var(--oid-elevated)] p-2.5">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-[11px] font-medium text-[color:var(--oid-text-strong)]">
-            {model.label ?? model.variable}
-          </p>
-          <p className="text-[9px] text-[color:var(--oid-text-faint)]">
-            +{model.horizon}d · {model.model_type ?? 'model'}
-          </p>
+    <li>
+      <Link
+        to={href}
+        className="group block rounded-lg border border-[color:var(--oid-border)] bg-[color:var(--oid-elevated)] p-2.5 no-underline transition-colors hover:border-[color:var(--oid-accent)]"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-[11px] font-medium text-[color:var(--oid-text-strong)] group-hover:text-[color:var(--oid-accent)]">
+              {model.label ?? model.variable}
+            </p>
+            <p className="text-[9px] text-[color:var(--oid-text-faint)]">
+              +{model.horizon}d · {model.model_type ?? 'model'}
+            </p>
+          </div>
+          <span
+            className={cn(
+              'shrink-0 rounded-full border px-1.5 py-0.5 text-[8.5px] font-medium',
+              grade.chip
+            )}
+          >
+            {grade.label}
+          </span>
         </div>
-        <span
-          className={cn(
-            'shrink-0 rounded-full border px-1.5 py-0.5 text-[8.5px] font-medium',
-            grade.chip
-          )}
-        >
-          {grade.label}
-        </span>
-      </div>
 
-      <dl className="mt-2 grid grid-cols-3 gap-1.5">
-        <Stat
-          label="Skill"
-          value={skill != null ? (skill > 0 ? `+${skill.toFixed(3)}` : skill.toFixed(3)) : '—'}
-          hint="vs persistence"
-        />
-        <Stat
-          label="Folds"
-          value={`${(model.n_folds ?? 0) - (model.negative_folds ?? 0)}/${model.n_folds ?? 0}`}
-          hint="positive"
-        />
-        <Stat label="Range" value={spread} hint="fold skill" />
-      </dl>
+        <dl className="mt-2 grid grid-cols-3 gap-1.5">
+          <Stat
+            label="Skill"
+            value={skill != null ? (skill > 0 ? `+${skill.toFixed(3)}` : skill.toFixed(3)) : '—'}
+            hint="vs persistence"
+          />
+          <Stat
+            label="Folds"
+            value={`${(model.n_folds ?? 0) - (model.negative_folds ?? 0)}/${model.n_folds ?? 0}`}
+            hint="positive"
+          />
+          <Stat label="Range" value={spread} hint="fold skill" />
+        </dl>
 
-      {/* A global model that lost points has lost geography, not just rows. */}
-      {(model.points_skipped ?? 0) > 0 && (
-        <p className="mt-1.5 text-[9.5px] text-[color:var(--color-alert-warning)]">
-          Trained on {model.points_used} points, {model.points_skipped} skipped — check coverage
-          before trusting it away from the retained points.
-        </p>
-      )}
+        {/* A global model that lost points has lost geography, not just rows. */}
+        {(model.points_skipped ?? 0) > 0 && (
+          <p className="mt-1.5 text-[9.5px] text-[color:var(--color-alert-warning)]">
+            Trained on {model.points_used} points, {model.points_skipped} skipped — check coverage
+            before trusting it away from the retained points.
+          </p>
+        )}
+      </Link>
     </li>
   );
 }
