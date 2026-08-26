@@ -9,12 +9,15 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import { Activity, Radio, Satellite, Waves } from 'lucide-react';
+import { Link } from '../../../app/router';
 import type { LiveEntry } from '../api/types';
 import { useLive } from '../hooks/useDashboardData';
 import { formatAge, formatValue } from '../lib/format';
 import { cn } from '../lib/cn';
 import { LiveDot, Panel, PanelEmpty, PanelHeader, PanelSkeleton } from './Panel';
 
+/** A real instrument's card links to its dossier — proof of provenance is
+ * the whole point, and a static card can't show a live feed excerpt. */
 function BuoyCard({ entry }: { entry: LiveEntry }) {
   const readings: { label: string; value: string }[] = [
     { label: 'Water', value: formatValue(entry.water_temperature_c, '°C', 1) },
@@ -27,11 +30,12 @@ function BuoyCard({ entry }: { entry: LiveEntry }) {
 
   return (
     <li>
-      <article
+      <Link
+        to={`/dashboard/station?id=${encodeURIComponent(entry.station_id ?? '')}`}
         className={cn(
-          'rounded-xl border border-[color:var(--oid-border)] p-3',
+          'block rounded-xl border border-[color:var(--oid-border)] p-3 no-underline',
           'bg-[color:var(--oid-elevated)] transition-colors',
-          'hover:border-[color:var(--oid-border-hover)]'
+          'hover:border-[color:var(--oid-accent)]'
         )}
       >
         <header className="flex items-start justify-between gap-2">
@@ -67,7 +71,7 @@ function BuoyCard({ entry }: { entry: LiveEntry }) {
             Station reported no usable measurements in this cycle.
           </p>
         )}
-      </article>
+      </Link>
     </li>
   );
 }

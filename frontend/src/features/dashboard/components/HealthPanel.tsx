@@ -6,6 +6,7 @@
  */
 
 import { ServerCog } from 'lucide-react';
+import { Link } from '../../../app/router';
 import type { ProviderStatus } from '../api/types';
 import { useHealth } from '../hooks/useDashboardData';
 import { formatAge, HEALTH_STYLES } from '../lib/format';
@@ -22,13 +23,15 @@ function ProviderCard({ provider }: { provider: ProviderStatus }) {
   const style = HEALTH_STYLES[provider.health];
 
   return (
-    <li
-      className={cn(
-        'rounded-xl border border-[color:var(--oid-border)] p-3',
-        'bg-[color:var(--oid-elevated)] transition-colors',
-        'hover:border-[color:var(--oid-accent-wash-strong)]'
-      )}
-    >
+    <li>
+      <Link
+        to={`/dashboard/source?key=${encodeURIComponent(provider.key)}`}
+        className={cn(
+          'block rounded-xl border border-[color:var(--oid-border)] p-3 no-underline',
+          'bg-[color:var(--oid-elevated)] transition-colors',
+          'hover:border-[color:var(--oid-accent-wash-strong)]'
+        )}
+      >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h4 className="truncate text-[12px] font-medium text-[color:var(--oid-text-strong)]">{provider.name}</h4>
@@ -78,6 +81,7 @@ function ProviderCard({ provider }: { provider: ProviderStatus }) {
       {!provider.error && provider.notes && (
         <p className="mt-2 text-[10px] leading-snug text-[color:var(--oid-text-ghost)]">{provider.notes}</p>
       )}
+      </Link>
     </li>
   );
 }

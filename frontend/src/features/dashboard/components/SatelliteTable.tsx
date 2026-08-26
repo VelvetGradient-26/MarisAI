@@ -6,6 +6,7 @@
  */
 
 import { Satellite } from 'lucide-react';
+import { useAppRouter } from '../../../app/routerContext';
 import type { SatelliteProduct } from '../api/types';
 import { useSatellites } from '../hooks/useDashboardData';
 import { cn } from '../lib/cn';
@@ -41,6 +42,11 @@ function formatAgeDays(days: number | null): string {
 
 export function SatelliteTable() {
   const { data, isPending, isError, error, refetch } = useSatellites();
+  const { navigate } = useAppRouter();
+
+  function openProduct(layerId: string) {
+    navigate(`/dashboard/satellite?layer=${encodeURIComponent(layerId)}`);
+  }
 
   return (
     <Panel className="flex h-full flex-col">
@@ -81,7 +87,17 @@ export function SatelliteTable() {
                 return (
                   <tr
                     key={product.layer_id}
-                    className="border-t border-[color:var(--oid-border)] transition-colors hover:bg-[color:var(--oid-hover)]"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open ${product.title} detail`}
+                    onClick={() => openProduct(product.layer_id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        openProduct(product.layer_id);
+                      }
+                    }}
+                    className="cursor-pointer border-t border-[color:var(--oid-border)] transition-colors hover:bg-[color:var(--oid-hover)]"
                   >
                     <td className="px-3 py-2 text-[11.5px] font-medium text-[color:var(--oid-text)]">
                       {product.satellite}

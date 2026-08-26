@@ -517,26 +517,3 @@ Two separate gaps in `services/chat/`:
   type — this is very likely additive to the existing message-building code,
   not a new client.
 
-### Live ocean data, satellite products, and data source status: same "click for detail" treatment
-
-Three panels get the same ask — right now clicking a station/product/source
-does nothing or shows too little, and it's not verifiable at a glance whether
-what's listed is real:
-
-- **Live ocean stations** (`services/ndbc.py`) — clicking a station should
-  show its real identity (NDBC station ID, coordinates, what it actually
-  measures) and enough of its raw feed/history to visibly confirm it's a real
-  instrument, not a placeholder — this addresses "I don't know if the
-  stations are true or false" directly, so the detail view's whole job is
-  proving provenance.
-- **Recent satellite products** (`services/gibs.py`) — clicking a product
-  should show the source (which GIBS layer), the coverage/resolution, and the
-  actual imagery/tile preview, not just a name and timestamp.
-- **Data source status** — clicking a source should show what's cached, when
-  it last refreshed, and why (the existing `ready`/`warming`/`unavailable`
-  three-way state from section 5 is the right foundation — extend it with
-  detail, don't replace it).
-
-All three are "expose more of what the backend already tracks," not new data
-collection — check what each service already returns/logs before assuming a
-new fetch is needed.

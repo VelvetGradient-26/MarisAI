@@ -1138,6 +1138,74 @@ the real reason rather than the card repeating a truncated one).
   page fully rendered underneath (`get_page_text` returned the complete,
   correct dossier); a second screenshot after a short wait rendered normally.
 
+### Click-for-detail: stations, satellite products, data sources — 2026-08-26
+
+The three-panel item TODO.md named alongside the model dossier above:
+NDBC station cards, GIBS satellite product rows and Data Source Status cards
+all now open a full detail page (`/dashboard/station?id=`,
+`/dashboard/satellite?layer=`, `/dashboard/source?key=`), following the same
+route-per-entity pattern `ModelDossierPage` established. A shared
+`Breadcrumb` component was factored out of it for this (four near-identical
+copies would have been one too many).
+
+- **The station page's whole point — "I don't know if the stations are true
+  or false" — needed one new live fetch, not a new cache.**
+  `services/ndbc.py`'s existing per-observation shape already had everything
+  for identity/readings; what it lacked was proof a reader could check
+  themselves. `ndbc.raw_feed()` fetches that station's own
+  `realtime2/<id>.txt` on demand (not cached — a detail page is opened rarely
+  enough that one small live fetch beats a second resident cache nobody
+  looks at) and shows a short excerpt plus a link to the real NDBC URL.
+  Verified live: station 44488's page rendered its actual recent readings,
+  timestamped and matching the list card exactly.
+  - **Found and fixed during live verification, not before:** the first
+    version leaked a raw `RetryError[<Future ... HTTPStatusError>]` repr to
+    the page when a station had no `realtime2` file (real case — station
+    22102, a partner-network relay, genuinely has none). That is a routine,
+    permanent 404, not a transient failure, so it should not have retried at
+    all. Fixed with `tenacity.retry_if_not_exception_type` gating a new
+    `_RawFeedNotPublished` exception around the 404 check, and a clean
+    "Station X does not publish a live feed file" message. Both the plain
+    message (`test_raw_feed_wraps_a_fetch_failure_rather_than_raising_raw`,
+    now also asserting `RetryError`/`Future` never appear) and the no-retry
+    behaviour (`test_raw_feed_reports_a_missing_file_plainly_and_does_not_retry`,
+    which patches `httpx.Client.get` rather than the decorated function, so
+    the retry policy itself is under test) are pinned.
+- **The satellite preview needed no backend change at all, once the right
+  NASA endpoint was found.** `services/gibs.py` never persisted the raw
+  TileMatrixSet id (only the human label derived from it), which rules out a
+  real WMTS tile URL without a backend change. NASA's Worldview Snapshots
+  API (`wvs.earthdata.nasa.gov/api/v1/snapshot`) sidesteps that entirely —
+  one flat image for a layer/date/bbox, built client-side from fields
+  `products()` already returns (`layer_id`, `latest_date`, `format`). The
+  exact param shape (`BBOX` is `south,west,north,east`, not lon/lat) came
+  from a live web search rather than being guessed, since a wrong query
+  param would have failed silently as a broken image. Verified live: a real
+  MODIS/Aqua true-colour render loaded (visible coastline against dark
+  ocean, `BBOX=-90,-180,90,180`).
+- **The data-source page's one new fact — `recent_health` — reuses the KPI
+  sparkline's own ring buffer rather than building a second one.**
+  `services/dashboard/history.py` (`record`/`series`, already used by
+  `summary.py`'s KPI cards) now also gets a sample from
+  `health.py::_evaluate()` every time `build()` or the new `detail()` runs,
+  keyed `health:<provider>` and scored `healthy=1.0/degraded=0.5/down=0.0`.
+  No new scheduled job: sampling piggybacks on requests the same way the KPI
+  history already does, throttled by the ring buffer's own
+  `MIN_SAMPLE_INTERVAL` — a freshly started server shows "not enough history
+  yet" rather than a fabricated flat line, and says so.
+- **Almost everything else on the source page was already computed and
+  simply never surfaced**: `notes`, `data_timestamp` and `error` were all in
+  `health.build()`'s existing per-provider dict, just not rendered on the
+  list card. The one new derived field is `explanation` — one sentence
+  answering "why" from the health state and cadence, generated server-side
+  so the wording stays consistent with the same threshold logic that set the
+  status light, rather than the frontend re-deriving it.
+- Backend: 9 new tests in `test_dashboard.py` (station lookup, raw feed
+  success/failure/404-no-retry, `health.detail()` healthy/down/unknown-key,
+  and a router-level test for both new endpoints matching
+  `test_data_quality.py`'s own TestClient pattern) — 643 backend tests,
+  all passing.
+
 ### Observability — the request was a bug report
 
 Two logging systems had grown side by side (loguru in 13 modules, stdlib

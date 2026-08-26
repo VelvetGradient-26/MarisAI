@@ -27,6 +27,11 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from services import copernicus_sst, copernicus_wind, crw, gibs, ndbc, ocean_state, predictions
+from services.dashboard import history
+
+
+class HealthError(RuntimeError):
+    """No provider is registered under the requested key."""
 
 
 @dataclass(frozen=True)
@@ -179,45 +184,75 @@ PROVIDERS: tuple[ProviderStatus, ...] = (
 )
 
 
+# Health as a number, purely so a categorical state can ride the same
+# in-process ring buffer `summary.py` already uses for KPI sparklines
+# (`services/dashboard/history.py`) rather than a second history mechanism.
+# "unknown" is deliberately absent — recording it would draw a flat line
+# indistinguishable from "down" on a sparkline that cannot carry a legend.
+_HEALTH_SCORE = {"healthy": 1.0, "degraded": 0.5, "down": 0.0}
+
+
+def _history_key(provider_key: str) -> str:
+    return f"health:{provider_key}"
+
+
+def _explain(health_state: str, stale_after_s: float, connected: bool) -> str:
+    """One sentence for *why* a source reads the way it does — the "why" the
+    data-source detail view exists to answer, beyond the status light alone."""
+    cycle_hours = round(stale_after_s / 3600, 1)
+    if not connected:
+        return "No cache has loaded yet — waiting on the first successful fetch."
+    if health_state == "healthy":
+        return f"Refreshing on schedule, about every {cycle_hours}h."
+    if health_state == "degraded":
+        return f"The last successful sync is older than the expected ~{cycle_hours}h cycle — one refresh may have been missed."
+    if health_state == "down":
+        return f"Several refresh cycles (~{cycle_hours}h each) have passed with no successful sync."
+    return "Health could not be determined from the last probe."
+
+
+def _evaluate(provider: ProviderStatus) -> dict[str, Any]:
+    try:
+        result = provider.probe()
+    except Exception as exc:  # noqa: BLE001 - one bad probe must not 500 the panel
+        result = {
+            "connected": False,
+            "latency_ms": None,
+            "last_sync": None,
+            "records": 0,
+            "error": str(exc),
+        }
+
+    connected = bool(result.get("connected"))
+    health_state = (
+        timestamp_health(result.get("last_sync"), provider.stale_after_s)
+        if connected
+        else "down"
+    )
+    history.record(_history_key(provider.key), _HEALTH_SCORE.get(health_state))
+
+    return {
+        "key": provider.key,
+        "name": provider.name,
+        "category": provider.category,
+        "connected": connected,
+        "health": health_state,
+        "latency_ms": result.get("latency_ms"),
+        "last_sync": result.get("last_sync"),
+        # The age of the data itself, where it differs meaningfully
+        # from the refresh time. Shown, but never used to judge health.
+        "data_timestamp": result.get("data_timestamp"),
+        "records": result.get("records", 0),
+        "notes": provider.notes,
+        "error": result.get("error"),
+        "stale_after_s": provider.stale_after_s,
+        "explanation": _explain(health_state, provider.stale_after_s, connected),
+    }
+
+
 def build() -> dict[str, Any]:
     """Status for every provider the dashboard depends on."""
-    entries = []
-    for provider in PROVIDERS:
-        try:
-            result = provider.probe()
-        except Exception as exc:  # noqa: BLE001 - one bad probe must not 500 the panel
-            result = {
-                "connected": False,
-                "latency_ms": None,
-                "last_sync": None,
-                "records": 0,
-                "error": str(exc),
-            }
-
-        connected = bool(result.get("connected"))
-        health_state = (
-            timestamp_health(result.get("last_sync"), provider.stale_after_s)
-            if connected
-            else "down"
-        )
-
-        entries.append(
-            {
-                "key": provider.key,
-                "name": provider.name,
-                "category": provider.category,
-                "connected": connected,
-                "health": health_state,
-                "latency_ms": result.get("latency_ms"),
-                "last_sync": result.get("last_sync"),
-                # The age of the data itself, where it differs meaningfully
-                # from the refresh time. Shown, but never used to judge health.
-                "data_timestamp": result.get("data_timestamp"),
-                "records": result.get("records", 0),
-                "notes": provider.notes,
-                "error": result.get("error"),
-            }
-        )
+    entries = [_evaluate(provider) for provider in PROVIDERS]
 
     summary = {
         state: sum(1 for entry in entries if entry["health"] == state)
@@ -229,3 +264,21 @@ def build() -> dict[str, Any]:
         "summary": summary,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def detail(key: str) -> dict[str, Any]:
+    """One provider's current status plus a short recent-health sparkline.
+
+    The sparkline is whatever `history.py`'s ring buffer has accumulated from
+    past calls to `build()`/`detail()` — both record a sample (throttled, see
+    `history.MIN_SAMPLE_INTERVAL`), so a freshly started server shows "not
+    enough history yet" rather than a fabricated flat line, the same honesty
+    rule the KPI cards' own sparklines already hold.
+    """
+    provider = next((p for p in PROVIDERS if p.key == key), None)
+    if provider is None:
+        raise HealthError(f"No data source registered under {key!r}")
+
+    entry = _evaluate(provider)
+    entry["recent_health"] = history.series(_history_key(provider.key))
+    return entry

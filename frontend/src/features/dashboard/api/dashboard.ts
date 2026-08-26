@@ -12,6 +12,8 @@ import type {
   LiveResponse,
   MultiTrendsResponse,
   SatellitesResponse,
+  SourceDetail,
+  StationDetailResponse,
   SummaryResponse,
   TrendSeries,
   TrendsCatalogResponse,
@@ -54,6 +56,20 @@ export function fetchDataQuality(signal?: AbortSignal): Promise<DataQualityRespo
 
 export function fetchHealth(signal?: AbortSignal): Promise<HealthResponse> {
   return getJson<HealthResponse>(url('/api/dashboard/health'), signal);
+}
+
+export function fetchSourceDetail(key: string, signal?: AbortSignal): Promise<SourceDetail> {
+  return getJson<SourceDetail>(url(`/api/dashboard/sources/${encodeURIComponent(key)}`), signal);
+}
+
+export function fetchStationDetail(
+  stationId: string,
+  signal?: AbortSignal
+): Promise<StationDetailResponse> {
+  return getJson<StationDetailResponse>(
+    url(`/api/dashboard/stations/${encodeURIComponent(stationId)}`),
+    signal
+  );
 }
 
 export function fetchSatellites(signal?: AbortSignal): Promise<SatellitesResponse> {

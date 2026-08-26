@@ -23,12 +23,19 @@ from typing import Any
 
 import httpx
 from loguru import logger
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 
 LATEST_OBS_URL = "https://www.ndbc.noaa.gov/data/latest_obs/latest_obs.txt"
+REALTIME_URL_TEMPLATE = "https://www.ndbc.noaa.gov/data/realtime2/{station_id}.txt"
 
 SOURCE_LABEL = "NOAA National Data Buoy Center"
 SOURCE_URL = "https://www.ndbc.noaa.gov/"
+
+_RAW_FEED_TIMEOUT = httpx.Timeout(10.0)
+# Header rows plus a handful of the station's own most recent reports — this
+# is provenance, not a chart, so a short excerpt proves the feed is real
+# without turning the response into another observation cache.
+_RAW_FEED_LINES = 15
 
 # The feed is a fixed-width table whose every row carries all 22 columns,
 # missing values included (as "MM"), so a plain split is safe and a short row
@@ -297,6 +304,75 @@ def latest(
 
     ranked = sorted(candidates, key=lambda o: o.observed_at, reverse=True)
     return [observation.to_dict() for observation in ranked[:limit]]
+
+
+def station(station_id: str) -> dict[str, Any]:
+    """One station's latest observation, looked up by id.
+
+    Same fields `latest()` already returns per row — there is no richer
+    per-station record sitting unused, the list view already carries the full
+    shape — just found by id rather than filtered/limited/distance-sorted.
+    """
+    cache = _require_cache()
+    needle = station_id.strip().upper()
+    for observation in cache.observations:
+        if observation.station_id.upper() == needle:
+            now = datetime.now(timezone.utc)
+            return {**observation.to_dict(), "is_fresh": _is_fresh(observation, now)}
+    raise NdbcError(f"No current observation for station {station_id}")
+
+
+class _RawFeedNotPublished(Exception):
+    """This station has no `realtime2` file — a 404, not a transient failure.
+
+    Not every station in `latest_obs.txt` is NDBC's own: some rows relay a
+    partner network's buoy, which never gets a `realtime2/<id>.txt` file at
+    all. That is routine, not an outage, so it must not retry (a 404 will not
+    become a 200) and must not read like one to whoever opens the page.
+    """
+
+
+@retry(
+    stop=stop_after_attempt(2),
+    wait=wait_exponential(multiplier=1, min=1, max=4),
+    retry=retry_if_not_exception_type(_RawFeedNotPublished),
+)
+def _fetch_raw_feed(url: str) -> str:
+    with httpx.Client(timeout=_RAW_FEED_TIMEOUT, follow_redirects=True) as client:
+        response = client.get(url)
+        if response.status_code == 404:
+            raise _RawFeedNotPublished(url)
+        response.raise_for_status()
+        return response.text
+
+
+async def raw_feed(station_id: str) -> dict[str, Any]:
+    """A short excerpt of the station's own live text feed, fetched live.
+
+    Proof this is a real instrument reporting real numbers, not a fixed demo
+    value — `latest_obs.txt` alone gives a plausible-looking row, but nothing
+    a user could independently check. NDBC also publishes this same station's
+    recent reports as its own small text file; fetched on demand rather than
+    cached, because a detail page is opened rarely enough that a live fetch
+    of one ~2-15KB file, only when asked, is cheaper than a second resident
+    cache nobody looks at most of the time.
+    """
+    url = REALTIME_URL_TEMPLATE.format(station_id=station_id.strip().upper())
+    try:
+        text = await asyncio.to_thread(_fetch_raw_feed, url)
+    except _RawFeedNotPublished as exc:
+        raise NdbcError(f"Station {station_id} does not publish a live feed file.") from exc
+    except Exception as exc:  # noqa: BLE001 - surfaced as a service error, not a raw traceback
+        logger.warning(f"NDBC raw feed fetch failed for station {station_id}: {exc}")
+        raise NdbcError(f"Could not fetch the live feed for station {station_id} right now.") from exc
+
+    lines = [line for line in text.splitlines() if line.strip()]
+    return {
+        "url": url,
+        "lines": lines[:_RAW_FEED_LINES],
+        "total_lines": len(lines),
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def meta() -> dict[str, Any]:

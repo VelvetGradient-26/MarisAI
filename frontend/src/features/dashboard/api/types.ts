@@ -207,6 +207,54 @@ export interface HealthResponse {
   generated_at: string;
 }
 
+/** `GET /api/dashboard/sources/{key}` — one provider's status plus why it
+ * reads that way and a short recent-health sparkline. */
+export interface SourceDetail extends ProviderStatus {
+  stale_after_s: number;
+  explanation: string;
+  /** Oldest first, throttled to at most one sample per `MIN_SAMPLE_INTERVAL`
+   * (see `services/dashboard/history.py`) — short or empty on a freshly
+   * started server, never backfilled or estimated. */
+  recent_health: { t: string; v: number }[];
+}
+
+/** `GET /api/dashboard/stations/{station_id}` — one buoy's full latest
+ * observation, matching `LiveEntry`'s buoy fields exactly (same
+ * `BuoyObservation.to_dict()` on the backend), plus a freshness flag the
+ * list view doesn't need since it already filters to fresh-only. */
+export interface StationDetail {
+  station_id: string;
+  latitude: number;
+  longitude: number;
+  observed_at: string;
+  is_fresh: boolean;
+  wind_direction_deg: number | null;
+  wind_speed_ms: number | null;
+  wind_gust_ms: number | null;
+  wave_height_m: number | null;
+  dominant_wave_period_s: number | null;
+  mean_wave_direction_deg: number | null;
+  pressure_hpa: number | null;
+  air_temperature_c: number | null;
+  water_temperature_c: number | null;
+  dewpoint_c: number | null;
+  relative_humidity_pct: number | null;
+  visibility_nmi: number | null;
+}
+
+export interface RawFeed {
+  url: string;
+  lines: string[];
+  total_lines: number;
+  fetched_at: string;
+}
+
+export interface StationDetailResponse {
+  station: StationDetail;
+  raw_feed: RawFeed | null;
+  raw_feed_error: string | null;
+}
+
 export interface TrendVariable {
   key: string;
   label: string;

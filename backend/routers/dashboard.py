@@ -44,6 +44,28 @@ async def get_live(
     return live.build(limit=limit, latitude=latitude, longitude=longitude)
 
 
+@router.get("/stations/{station_id}")
+async def get_station_detail(station_id: str):
+    """One buoy's full latest observation, plus a short excerpt of its own
+    live text feed as provenance — the click-through target from a Live
+    Ocean Feed card."""
+    from services import ndbc
+
+    try:
+        observation = ndbc.station(station_id)
+    except ndbc.NdbcError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    raw_feed_data = None
+    raw_feed_error = None
+    try:
+        raw_feed_data = await ndbc.raw_feed(station_id)
+    except ndbc.NdbcError as exc:
+        raw_feed_error = str(exc)
+
+    return {"station": observation, "raw_feed": raw_feed_data, "raw_feed_error": raw_feed_error}
+
+
 @router.get("/alerts")
 async def get_alerts():
     """Threshold-derived alerts, most severe first."""
@@ -54,6 +76,17 @@ async def get_alerts():
 async def get_health():
     """Per-provider connection, latency and freshness."""
     return health.build()
+
+
+@router.get("/sources/{key}")
+async def get_source_detail(key: str):
+    """One data source's current status, why it reads that way, and a short
+    recent-health sparkline — the click-through target from a Data Source
+    Status card."""
+    try:
+        return health.detail(key)
+    except health.HealthError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/data-quality")

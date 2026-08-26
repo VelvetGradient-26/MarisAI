@@ -58,6 +58,23 @@ const ModelDossierPage = lazy(() =>
     default: module.ModelDossierPage,
   }))
 );
+// The same "click a card, see the full record" treatment as ModelDossierPage,
+// for the three other dashboard panels whose rows didn't link anywhere.
+const StationDossierPage = lazy(() =>
+  import('../features/dashboard/detail/StationDossierPage').then((module) => ({
+    default: module.StationDossierPage,
+  }))
+);
+const SatelliteDossierPage = lazy(() =>
+  import('../features/dashboard/detail/SatelliteDossierPage').then((module) => ({
+    default: module.SatelliteDossierPage,
+  }))
+);
+const SourceDossierPage = lazy(() =>
+  import('../features/dashboard/detail/SourceDossierPage').then((module) => ({
+    default: module.SourceDossierPage,
+  }))
+);
 
 export function App() {
   const { pathname } = useAppRouter();
@@ -234,6 +251,27 @@ function renderPage(pathname: string) {
     return (
       <Suspense fallback={<RouteLoading label="Loading model dossier…" />}>
         <ModelDossierPage />
+      </Suspense>
+    );
+  }
+  if (pathname === '/dashboard/station') {
+    return (
+      <Suspense fallback={<RouteLoading label="Loading station…" />}>
+        <StationDossierPage />
+      </Suspense>
+    );
+  }
+  if (pathname === '/dashboard/satellite') {
+    return (
+      <Suspense fallback={<RouteLoading label="Loading satellite product…" />}>
+        <SatelliteDossierPage />
+      </Suspense>
+    );
+  }
+  if (pathname === '/dashboard/source') {
+    return (
+      <Suspense fallback={<RouteLoading label="Loading data source…" />}>
+        <SourceDossierPage />
       </Suspense>
     );
   }

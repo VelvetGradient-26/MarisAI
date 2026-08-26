@@ -28,12 +28,11 @@
  */
 
 import { useEffect } from 'react';
-import { ChevronRight } from 'lucide-react';
-import { Link } from '../../../app/router';
 import { useAppRouter } from '../../../app/routerContext';
 import { useThemeStore } from '../../../store/themeStore';
 import type { FeatureImportance } from './api/types';
 import { useForecastCatalog, useModelDetail } from './hooks/useMetricData';
+import { Breadcrumb } from '../components/Breadcrumb';
 import { Panel, PanelEmpty, PanelHeader, PanelSkeleton } from '../components/Panel';
 import { cn } from '../lib/cn';
 import '../styles/tailwind.css';
@@ -56,25 +55,6 @@ function fmtDate(value: unknown): string {
   if (!iso) return '—';
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? iso : date.toISOString().slice(0, 10);
-}
-
-function Breadcrumb({ variable, horizon }: { variable: string; horizon: number }) {
-  const crumb = 'text-[color:var(--oid-text-faint)] no-underline hover:text-[color:var(--oid-accent)]';
-  return (
-    <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-[11.5px]">
-      <Link to="/" className={crumb}>
-        Home
-      </Link>
-      <ChevronRight size={12} className="text-[color:var(--oid-text-ghost)]" />
-      <Link to="/dashboard" className={crumb}>
-        Dashboard
-      </Link>
-      <ChevronRight size={12} className="text-[color:var(--oid-text-ghost)]" />
-      <span className="text-[color:var(--oid-text)]">
-        {variable} · +{horizon}d
-      </span>
-    </nav>
-  );
 }
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -234,8 +214,7 @@ export function ModelDossierPage() {
         style={{ paddingTop: 'calc(var(--navbar-h, 64px) + 16px)' }}
       >
         <Breadcrumb
-          variable={catalogEntry?.label ?? (variable || '—')}
-          horizon={Number.isFinite(horizon) ? horizon : 0}
+          current={`${catalogEntry?.label ?? (variable || '—')} · +${Number.isFinite(horizon) ? horizon : 0}d`}
         />
 
         {!validRequest ? (

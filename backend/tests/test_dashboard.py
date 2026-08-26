@@ -8,11 +8,12 @@ serve. Nothing here touches the network — the grids are synthetic.
 
 from datetime import datetime, timedelta, timezone
 
+import httpx
 import numpy as np
 import pytest
 
 from services import crw, ndbc
-from services.dashboard import copernicus_series, history, trends
+from services.dashboard import copernicus_series, health, history, trends
 from services.dashboard.formatting import describe_location
 
 # --------------------------------------------------------------------------
@@ -62,6 +63,82 @@ def test_relative_humidity_is_derived_only_when_both_inputs_exist():
 def test_observation_timestamps_are_utc_aware():
     first = ndbc.parse_latest_obs(_FEED)[0]
     assert first.observed_at == datetime(2026, 8, 4, 1, 0, tzinfo=timezone.utc)
+
+
+# --------------------------------------------------------------------------
+# NDBC station detail and raw feed — the click-through target's backend half
+# --------------------------------------------------------------------------
+
+
+def _install_ndbc_cache(monkeypatch):
+    observations = ndbc.parse_latest_obs(_FEED)
+    cache = ndbc._NdbcCache(
+        observations=observations, fetched_at=datetime.now(timezone.utc), latency_ms=12.0
+    )
+    monkeypatch.setattr(ndbc, "_cache", cache)
+    return cache
+
+
+def test_station_looks_up_by_id_case_insensitively(monkeypatch):
+    _install_ndbc_cache(monkeypatch)
+    result = ndbc.station("41001")
+    assert result["station_id"] == "41001"
+    assert result["water_temperature_c"] == 24.8
+    assert ndbc.station("41001") == result
+
+
+def test_station_raises_for_an_unknown_id(monkeypatch):
+    _install_ndbc_cache(monkeypatch)
+    with pytest.raises(ndbc.NdbcError):
+        ndbc.station("99999")
+
+
+@pytest.mark.asyncio
+async def test_raw_feed_returns_the_fetched_lines_as_provenance(monkeypatch):
+    monkeypatch.setattr(ndbc, "_fetch_raw_feed", lambda url: "header line\nrow1\nrow2\n")
+    result = await ndbc.raw_feed("41001")
+    assert result["lines"] == ["header line", "row1", "row2"]
+    assert result["total_lines"] == 3
+    assert "41001" in result["url"]
+
+
+@pytest.mark.asyncio
+async def test_raw_feed_wraps_a_fetch_failure_rather_than_raising_raw(monkeypatch):
+    def _boom(url):
+        raise RuntimeError("connection reset")
+
+    monkeypatch.setattr(ndbc, "_fetch_raw_feed", _boom)
+    with pytest.raises(ndbc.NdbcError) as excinfo:
+        await ndbc.raw_feed("41001")
+    # Never a raw exception repr leaked to whoever renders this — a
+    # RetryError/Future repr was exactly what a live click-through surfaced
+    # before this test existed.
+    assert "RetryError" not in str(excinfo.value)
+    assert "Future" not in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_raw_feed_reports_a_missing_file_plainly_and_does_not_retry(monkeypatch):
+    """Not every station in `latest_obs.txt` is NDBC's own; a partner-network
+    relay station legitimately has no `realtime2` file. That is routine, not
+    a transient failure — exercised through the real decorated
+    `_fetch_raw_feed` (not a monkeypatched stand-in) so the retry policy
+    itself is under test, not just the error message: retrying it would
+    waste three round trips for the same 404."""
+    calls = 0
+
+    class _FakeResponse:
+        status_code = 404
+
+    def fake_get(self, url, **kwargs):
+        nonlocal calls
+        calls += 1
+        return _FakeResponse()
+
+    monkeypatch.setattr(httpx.Client, "get", fake_get)
+    with pytest.raises(ndbc.NdbcError, match="does not publish a live feed"):
+        await ndbc.raw_feed("41001")
+    assert calls == 1
 
 
 # --------------------------------------------------------------------------
@@ -210,6 +287,45 @@ def test_history_is_bounded():
 
 
 # --------------------------------------------------------------------------
+# Data source detail — the click-through target's backend half
+# --------------------------------------------------------------------------
+
+
+def test_source_detail_reports_healthy_and_records_history(monkeypatch):
+    """Exercises the real `noaa_ndbc` provider's probe closure end to end —
+    it was bound to `ndbc.is_available`/`ndbc.health` at import time, so this
+    has to drive it through `ndbc._cache` rather than monkeypatching those
+    names directly, which the closure would no longer be looking at."""
+    history.reset()
+    _install_ndbc_cache(monkeypatch)
+
+    result = health.detail("noaa_ndbc")
+
+    assert result["key"] == "noaa_ndbc"
+    assert result["connected"] is True
+    assert result["health"] == "healthy"
+    assert result["explanation"]
+    assert len(result["recent_health"]) == 1
+    assert result["recent_health"][0]["v"] == 1.0
+
+
+def test_source_detail_reports_down_when_the_cache_is_empty(monkeypatch):
+    history.reset()
+    monkeypatch.setattr(ndbc, "_cache", None)
+
+    result = health.detail("noaa_ndbc")
+
+    assert result["connected"] is False
+    assert result["health"] == "down"
+    assert "no cache" in result["explanation"].lower()
+
+
+def test_source_detail_raises_for_an_unregistered_key():
+    with pytest.raises(health.HealthError):
+        health.detail("not_a_real_provider")
+
+
+# --------------------------------------------------------------------------
 # Trend coverage gating
 # --------------------------------------------------------------------------
 
@@ -298,3 +414,43 @@ def test_ocean_heat_content_needs_more_than_one_valid_level():
 )
 def test_location_labels(latitude, longitude, expected):
     assert describe_location(latitude, longitude) == expected
+
+
+# --------------------------------------------------------------------------
+# Router: the two "click for detail" endpoints
+# --------------------------------------------------------------------------
+
+
+def test_the_station_and_source_endpoints_serve_detail(monkeypatch):
+    """Thin-router check, same shape as `test_data_quality.py`'s: 200 with
+    the full payload on the happy path, 404 (not a 500) on an unknown id."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from routers import dashboard as dashboard_router
+
+    _install_ndbc_cache(monkeypatch)
+    # No real network call: a router test staying off the network is this
+    # file's own stated rule (see its module docstring).
+    monkeypatch.setattr(ndbc, "_fetch_raw_feed", lambda url: "header\nrow1\n")
+
+    app = FastAPI()
+    app.include_router(dashboard_router.router)
+    client = TestClient(app)
+
+    response = client.get("/api/dashboard/stations/41001")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["station"]["station_id"] == "41001"
+    assert payload["raw_feed"]["lines"] == ["header", "row1"]
+    assert payload["raw_feed_error"] is None
+
+    missing_station = client.get("/api/dashboard/stations/00000")
+    assert missing_station.status_code == 404
+
+    source = client.get("/api/dashboard/sources/noaa_ndbc")
+    assert source.status_code == 200
+    assert source.json()["key"] == "noaa_ndbc"
+
+    missing_source = client.get("/api/dashboard/sources/not_a_real_provider")
+    assert missing_source.status_code == 404

@@ -21,6 +21,8 @@ import {
   fetchHealth,
   fetchLive,
   fetchSatellites,
+  fetchSourceDetail,
+  fetchStationDetail,
   fetchSummary,
   fetchTrend,
   fetchTrendsCatalog,
@@ -66,6 +68,28 @@ export function useHealth() {
     queryFn: ({ signal }) => fetchHealth(signal),
     refetchInterval: REFRESH.health,
     staleTime: REFRESH.health / 2,
+  });
+}
+
+export function useSourceDetail(key: string, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ['dashboard', 'source', key],
+    queryFn: ({ signal }) => fetchSourceDetail(key, signal),
+    enabled: (options.enabled ?? true) && key.length > 0,
+    // Same cadence as the list panel — a detail view of a live status is
+    // stale exactly as fast as the status itself is.
+    refetchInterval: REFRESH.health,
+    staleTime: REFRESH.health / 2,
+  });
+}
+
+export function useStationDetail(stationId: string, options: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ['dashboard', 'station', stationId],
+    queryFn: ({ signal }) => fetchStationDetail(stationId, signal),
+    enabled: (options.enabled ?? true) && stationId.length > 0,
+    refetchInterval: REFRESH.live,
+    staleTime: REFRESH.live / 2,
   });
 }
 
