@@ -1176,6 +1176,43 @@ Likewise **`models/` was not renamed** despite colliding with `app/models/`; the
 README's structure listing disambiguates them, which buys most of the clarity for
 none of the risk.
 
+### Playful, non-decorative loading states — 2026-08-24
+
+Replaced the generic diagonal scan-bar skeleton (`.ma-skeleton::after` /
+`.oid-scanline__pass`) with two marine-instrument variants, one per shape of
+thing arriving: `.ma-skeleton--sub` / the dashboard's `.oid-scanline__pass` is
+a submarine patrolling a track for *list rows* (session sidebar, downloader
+variable groups, dashboard panel rows), `.ma-skeleton--bubble` is bubbles
+rising and popping for a *single value* (a dashboard stat, a location detail).
+Both keep the base track's dark floor line, so a placeholder still reads as
+"not here yet" in a still screenshot.
+
+Both worlds (`index.css`'s app-wide `--ma-*` tokens and the dashboard's
+`--oid-*` Tailwind layer) share one SVG mask, `--ma-sub-mask` in `tokens.css`
+— kept there rather than in either theming world because it is shape, not
+colour, and both worlds paint it via `background-color: currentColor` plus
+this as a mask. Kept in step by hand across the two CSS files, since a shared
+class would have to reach across the Tailwind boundary `features/dashboard/`
+exists to keep clean.
+
+**No new reduced-motion media query needed.** `tokens.css`'s existing blanket
+rule (`*:not([data-motion='essential']) { animation-duration: 0.01ms !important
+}`) already collapses every animation in the app to one frozen frame, and
+freezing the submarine or a bubble mid-cycle still reads as "loading" —
+unlike the old scan-bar, whose frozen mid-sweep read as an off-screen band on
+a finished-looking bar, which is why that one needed to hide itself instead.
+
+### Docs: eDNA and upwelling/heatwaves chapters, plus in-docs search — 2026-08-24
+
+Two chapters added to `frontend/src/pages/docs/chapters/` (`Edna.tsx`,
+`UpwellingHeatwaves.tsx`), registered in `index.ts`'s `CHAPTERS` under "Ocean &
+atmosphere". `DocsSearch.tsx` + `searchIndex.tsx` add a search box mounted in
+both the desktop sidebar nav and the mobile chapter picker in `DocsPage.tsx`.
+Several existing chapters (`Assistant`, `ForecastEngine`, `ForecastMap`,
+`ForecastResults`, `DashboardSources`/`Overview`/`Charts`, `MapReading`,
+`OceanFields`) updated to describe what actually shipped since they were
+written (specialist delegation, forecast grid hatching, etc.).
+
 ### The botocore connection pool — 2026-08-17
 
 copernicusmarine builds its S3 client without `max_pool_connections`, so it

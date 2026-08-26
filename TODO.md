@@ -493,22 +493,6 @@ pattern — background thread, never on the event loop, per
 warmed on a schedule. Whichever: the click should always read a cache, never
 originate a computation.
 
-### Fun, non-decorative loading states
-
-Section 5's "visual standard" already drew this line and it still holds:
-**no fake confidence, no skeleton implying data that isn't coming.** The
-constraint here is animating the *wait*, not the *data* — a fish swimming
-across the panel, bubbles rising, a submarine sweeping a light back and forth
-while a real fetch is in flight is fine, because it makes no claim about the
-data's shape or value. A shimmering skeleton row that mimics a chart's
-eventual layout is the thing to avoid, because it implies specific content is
-about to resolve. Scope: replace the current skeleton loaders (dashboard
-panels, metric pages) with a small set of playful SVG/CSS loop animations,
-picked contextually (e.g. a submarine light-sweep for a map/geo fetch, bubbles
-for a numeric KPI). Keep them opacity/transform-safe per the existing
-`LazyMount`-measures-geometry constraint in section 5, and give every one a
-reduced-motion resting frame.
-
 ### Ocean Assistant: general questions without forcing a tool call, plus image upload
 
 Two separate gaps in `services/chat/`:
