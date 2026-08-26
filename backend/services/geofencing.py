@@ -242,12 +242,23 @@ def check(latitude: float, longitude: float) -> dict[str, Any]:
         nearest = area.polygon.exterior.interpolate(area.polygon.exterior.project(point))
         distance_km = 0.0 if inside else _haversine_km(latitude, longitude, nearest.y, nearest.x)
         if inside or distance_km <= PROXIMITY_THRESHOLD_KM:
+            min_lon, min_lat, max_lon, max_lat = area.polygon.bounds
             areas.append(
                 {
                     "name": area.name,
                     "state": area.state,
                     "inside": inside,
                     "distance_km": round(distance_km, 1),
+                    # Every entry here is a hand-drawn box (see `_box()`), so its
+                    # bounds *are* its real geometry — not a simplification —
+                    # which is what lets a caller draw it directly rather than
+                    # re-deriving a shape from a name and a centre point.
+                    "bounds": {
+                        "south": round(min_lat, 4),
+                        "west": round(min_lon, 4),
+                        "north": round(max_lat, 4),
+                        "east": round(max_lon, 4),
+                    },
                 }
             )
     areas.sort(key=lambda entry: entry["distance_km"])
@@ -268,6 +279,13 @@ def check(latitude: float, longitude: float) -> dict[str, Any]:
             "near": imbl_distance_km <= PROXIMITY_THRESHOLD_KM,
             "proximity_threshold_km": PROXIMITY_THRESHOLD_KM,
             "source": IMBL_SOURCE,
+            # The actual nearest point on the treaty line, not just its
+            # distance — added so a caller can draw the segment from the query
+            # point to the boundary rather than only stating a number.
+            "nearest_point": {
+                "latitude": round(nearest_on_imbl.y, 4),
+                "longitude": round(nearest_on_imbl.x, 4),
+            },
         },
         "nearby_protected_areas": areas,
         "note": ACCURACY_NOTE,

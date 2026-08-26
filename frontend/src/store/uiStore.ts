@@ -5,6 +5,8 @@ interface UiStore {
   toggleControlPanel: () => void;
   selectedLocationPanelOpen: boolean;
   toggleSelectedLocationPanel: () => void;
+  hazardsPanelOpen: boolean;
+  toggleHazardsPanel: () => void;
 }
 
 /** UI chrome state that has nothing to do with the map itself, kept in its
@@ -16,4 +18,9 @@ export const useUiStore = create<UiStore>((set) => ({
   selectedLocationPanelOpen: true,
   toggleSelectedLocationPanel: () =>
     set((s) => ({ selectedLocationPanelOpen: !s.selectedLocationPanelOpen })),
+  // Starts collapsed: unlike the location panel (opened by an explicit map
+  // click), this appears unprompted on every visit, and most visits have
+  // nothing to report — a badge with a count is enough until there is.
+  hazardsPanelOpen: false,
+  toggleHazardsPanel: () => set((s) => ({ hazardsPanelOpen: !s.hazardsPanelOpen })),
 }));

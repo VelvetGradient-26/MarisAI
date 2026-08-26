@@ -7,7 +7,11 @@ import { useSelectedLocationFocus } from './hooks/useSelectedLocationFocus';
 import { useClickDive } from './hooks/useClickDive';
 import { useLiveVessels } from './hooks/useLiveVessels';
 import { useEddies } from './hooks/useEddies';
+import { useCyclones } from './hooks/useCyclones';
+import { usePfzZones } from './hooks/usePfzZones';
+import { useGeofenceStatus } from './hooks/useGeofenceStatus';
 import { useEdnaCoverage } from './hooks/useEdnaCoverage';
+import { useMapStore } from '../../store/mapStore';
 import { useDetectorCells } from './hooks/useDetectorCells';
 import {
   fetchHeatwaveCells,
@@ -21,6 +25,9 @@ import { VesselTooltip } from './VesselTooltip';
 import { VesselFeedStatus } from './VesselFeedStatus';
 import { EddyTooltip } from './EddyTooltip';
 import { EddyDetectionStatus } from './EddyDetectionStatus';
+import { CycloneTooltip } from './CycloneTooltip';
+import { CycloneStatus } from './CycloneStatus';
+import { PfzTooltip } from './PfzTooltip';
 import { EdnaTooltip } from './EdnaTooltip';
 import { EdnaCoverageStatus } from './EdnaCoverageStatus';
 import { MarineHeatwaveStatus, UpwellingStatus } from './DetectorCellStatus';
@@ -46,7 +53,14 @@ export function Map({ children }: MapProps) {
   useClickDive(manager, ready);
   const vessels = useLiveVessels(manager, ready);
   const eddies = useEddies(manager, ready);
+  const cyclones = useCyclones(manager, ready);
   const edna = useEdnaCoverage(manager, ready);
+  // Click-triggered, unlike every other layer above: they read the shared
+  // `selectedLocation` and are gated on their own layer toggle, mirroring how
+  // `SelectedLocationPanel` already fetches SST/wind/currents at a click.
+  const selectedLocation = useMapStore((s) => s.selectedLocation);
+  const pfz = usePfzZones(manager, ready, selectedLocation);
+  useGeofenceStatus(manager, ready, selectedLocation);
   // Both refresh on a timer rather than on pan: the payload is global and a few
   // thousand cells, so a bbox would make every pan a request for data already
   // in memory. The cadences match how fast each backend cache can change —
@@ -81,6 +95,9 @@ export function Map({ children }: MapProps) {
       {ready && vessels.hovered && <VesselTooltip hovered={vessels.hovered} />}
       {ready && <EddyDetectionStatus state={eddies} />}
       {ready && eddies.hovered && <EddyTooltip hovered={eddies.hovered} />}
+      {ready && <CycloneStatus state={cyclones} />}
+      {ready && cyclones.hovered && <CycloneTooltip hovered={cyclones.hovered} />}
+      {ready && pfz.hovered && <PfzTooltip hovered={pfz.hovered} />}
       {ready && <MarineHeatwaveStatus state={heatwaves} />}
       {ready && <UpwellingStatus state={upwelling} />}
       {ready && <EdnaCoverageStatus state={edna} />}

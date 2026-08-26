@@ -79,3 +79,29 @@ def test_an_andaman_marine_park_is_reported():
 def test_every_response_carries_the_accuracy_caveat():
     result = geofencing.check(0.0, 0.0)
     assert result["note"] == geofencing.ACCURACY_NOTE
+
+
+def test_a_nearby_protected_area_carries_its_own_drawable_bounds():
+    """Added so the frontend can draw the matched MPA as a box directly,
+    rather than re-deriving a shape from just a name and a distance."""
+    result = geofencing.check(9.05, 79.05)  # Gulf of Mannar Marine National Park centre
+    area = next(a for a in result["nearby_protected_areas"] if a["name"] == "Gulf of Mannar Marine National Park")
+    bounds = area["bounds"]
+    assert bounds["west"] < 79.05 < bounds["east"]
+    assert bounds["south"] < 9.05 < bounds["north"]
+
+
+def test_the_imbl_result_carries_the_actual_nearest_point():
+    result = geofencing.check(9.6, 79.4)
+    nearest = result["india_sri_lanka_imbl"]["nearest_point"]
+    # The nearest point on the treaty line must itself be closer to the query
+    # point than the line's own endpoints are — a weak but real sanity check
+    # that this is a genuine projection, not a hardcoded coordinate.
+    from services.geofencing import _haversine_km
+
+    endpoint_distance = min(
+        _haversine_km(9.6, 79.4, 11.44333, 83.36667),
+        _haversine_km(9.6, 79.4, 4.79, 77.02333),
+    )
+    reported_distance = _haversine_km(9.6, 79.4, nearest["latitude"], nearest["longitude"])
+    assert reported_distance <= endpoint_distance

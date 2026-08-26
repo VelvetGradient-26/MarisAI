@@ -13,6 +13,8 @@ import { downloadBriefPdf } from './api/brief';
 import type { CurrentsPointResponse } from './api/currents';
 import { useSelectedLocationPredictions } from './hooks/useSelectedLocationPredictions';
 import type { PredictionPointResult } from './hooks/useSelectedLocationPredictions';
+import { useToolsStore } from '../../store/toolsStore';
+import { useRoutePlanner } from './hooks/useRoutePlanner';
 import type { NearestPort, RealtimeOceanConditions, RealtimeOceanUnits } from './types';
 
 const METRICS: Array<{
@@ -118,6 +120,19 @@ export function SelectedLocationPanel() {
   }, [currentsLayerActive, selectedLocation]);
 
   const predictions = useSelectedLocationPredictions(selectedLocation);
+  const pfz = useToolsStore((s) => s.pfz);
+  const geofence = useToolsStore((s) => s.geofence);
+  const {
+    start: routeStart,
+    end: routeEnd,
+    status: routeStatus,
+    result: routeResult,
+    error: routeError,
+    setStart: setRouteStart,
+    setEnd: setRouteEnd,
+    planRoute,
+    clear: clearRoute,
+  } = useRoutePlanner();
   // Three-way rather than a boolean: 'building' and 'failed' are different
   // answers, and a brief takes long enough (bathymetry plus a point API) that
   // a button with no feedback reads as broken.
@@ -281,6 +296,132 @@ export function SelectedLocationPanel() {
           </div>
         )}
 
+        {pfz.active && selectedLocation && (
+          <div className="selected-location-panel__predictions">
+            <span className="selected-location-panel__predictions-label">
+              Potential Fishing Zones (screening)
+            </span>
+            {pfz.loading && <span className="selected-location-panel__state">Scanning…</span>}
+            {!pfz.loading && pfz.unavailableReason && (
+              <span className="selected-location-panel__state--error">{pfz.unavailableReason}</span>
+            )}
+            {!pfz.loading && pfz.response?.available && (pfz.response.zones?.length ?? 0) === 0 && (
+              <span className="selected-location-panel__state">
+                No open-ocean cells with data in this radius.
+              </span>
+            )}
+            {!pfz.loading &&
+              pfz.response?.available &&
+              (pfz.response.zones ?? []).map((zone) => (
+                <div key={`${zone.latitude}-${zone.longitude}`} className="selected-location-panel__prediction">
+                  <span className="selected-location-panel__prediction-name">
+                    {zone.latitude.toFixed(2)}°, {zone.longitude.toFixed(2)}°
+                  </span>
+                  <span className="selected-location-panel__prediction-value">
+                    {zone.chlorophyll_mg_m3.toFixed(3)} mg/m³
+                    <span className="selected-location-panel__prediction-unit">chl · {zone.sst_c.toFixed(1)}°C</span>
+                  </span>
+                </div>
+              ))}
+            <span className="selected-location-panel__predictions-note">
+              Heuristic screening, not a validated PFZ advisory or an official INCOIS product.
+            </span>
+          </div>
+        )}
+
+        {geofence.active && selectedLocation && (
+          <div className="selected-location-panel__predictions">
+            <span className="selected-location-panel__predictions-label">Geofence Check</span>
+            {geofence.loading && <span className="selected-location-panel__state">Checking…</span>}
+            {!geofence.loading && geofence.unavailableReason && (
+              <span className="selected-location-panel__state--error">{geofence.unavailableReason}</span>
+            )}
+            {!geofence.loading && geofence.response && (
+              <>
+                <div className="selected-location-panel__prediction">
+                  <span className="selected-location-panel__prediction-name">India EEZ</span>
+                  <span className="selected-location-panel__prediction-value">
+                    {geofence.response.india_eez.inside
+                      ? geofence.response.india_eez.zone === 'andaman_and_nicobar'
+                        ? 'Inside — Andaman & Nicobar'
+                        : 'Inside — mainland'
+                      : 'Outside'}
+                  </span>
+                </div>
+                <div className="selected-location-panel__prediction">
+                  <span className="selected-location-panel__prediction-name">India-Sri Lanka IMBL</span>
+                  <span className="selected-location-panel__prediction-value">
+                    {geofence.response.india_sri_lanka_imbl.distance_km.toFixed(1)} km
+                    {geofence.response.india_sri_lanka_imbl.near && (
+                      <span className="selected-location-panel__prediction-unit">near</span>
+                    )}
+                  </span>
+                </div>
+                {geofence.response.nearby_protected_areas.map((area) => (
+                  <div key={area.name} className="selected-location-panel__prediction">
+                    <span className="selected-location-panel__prediction-name">{area.name}</span>
+                    <span className="selected-location-panel__prediction-value">
+                      {area.inside ? 'Inside' : `${area.distance_km.toFixed(1)} km away`}
+                    </span>
+                  </div>
+                ))}
+              </>
+            )}
+            <span className="selected-location-panel__predictions-note">
+              {geofence.response?.note ??
+                'EEZ boundary is shown by the "Exclusive Economic Zones" reference layer; MPAs are a hand-curated list, not a surveyed footprint.'}
+            </span>
+          </div>
+        )}
+
+        {selectedLocation && (
+          <div className="selected-location-panel__route">
+            <span className="selected-location-panel__predictions-label">Plan a Route</span>
+            <div className="selected-location-panel__route-points">
+              <RoutePointRow
+                label="Start"
+                point={routeStart}
+                onSet={() => setRouteStart(selectedLocation)}
+              />
+              <RoutePointRow
+                label="Destination"
+                point={routeEnd}
+                onSet={() => setRouteEnd(selectedLocation)}
+              />
+            </div>
+            <div className="selected-location-panel__route-actions">
+              <button
+                type="button"
+                className="selected-location-panel__brief-button"
+                disabled={!routeStart || !routeEnd || routeStatus === 'loading'}
+                onClick={() => void planRoute()}
+              >
+                {routeStatus === 'loading' ? 'Planning…' : 'Plan route'}
+              </button>
+              {(routeStart || routeEnd) && (
+                <button type="button" className="selected-location-panel__brief-button" onClick={clearRoute}>
+                  Clear
+                </button>
+              )}
+            </div>
+            {routeStatus === 'error' && (
+              <span className="selected-location-panel__state--error">
+                {routeError ?? 'Route planning failed.'}
+              </span>
+            )}
+            {routeStatus === 'success' && routeResult && (
+              <div className="selected-location-panel__route-result">
+                <span>{routeResult.distance_km.toFixed(1)} km (direct: {routeResult.great_circle_km.toFixed(1)} km)</span>
+                <span className={`selected-location-panel__route-hazard selected-location-panel__route-hazard--${routeResult.hazard_level}`}>
+                  {routeResult.hazard_level}
+                  {routeResult.max_wave_height_m != null &&
+                    ` · max wave ${routeResult.max_wave_height_m.toFixed(1)} m`}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
         {!selectedLocation && (
           <p className="selected-location-panel__state">
             Click any ocean location on the map to load sea surface temperature, wave, current, wind,
@@ -348,6 +489,31 @@ export function SelectedLocationPanel() {
         )}
       </div>
     </aside>
+  );
+}
+
+function RoutePointRow({
+  label,
+  point,
+  onSet,
+}: {
+  label: string;
+  point: { lat: number; lng: number } | null;
+  onSet: () => void;
+}) {
+  return (
+    <div className="selected-location-panel__route-point">
+      <span className="selected-location-panel__route-point-label">{label}</span>
+      {point ? (
+        <span className="selected-location-panel__route-point-value">
+          {formatCoordinates(point.lat, point.lng)}
+        </span>
+      ) : (
+        <button type="button" className="selected-location-panel__route-set-button" onClick={onSet}>
+          Set as {label.toLowerCase()}
+        </button>
+      )}
+    </div>
   );
 }
 
