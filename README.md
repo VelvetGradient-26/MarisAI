@@ -18,22 +18,48 @@ model.
 
 | Surface | Route | What it answers |
 |---|---|---|
-| Map | `/map` | What is happening, spatially — observations, forecasts and model output as layers on a 3D globe |
+| Map | `/map` | What is happening, spatially — observations, forecasts, detections and model output as layers on a 3D globe |
 | Ocean Intelligence Dashboard | `/dashboard` | What is happening globally, right now |
 | Metric intelligence | `/dashboard/<variable>` | Everything known about one variable — history, forecast, drivers |
+| Model dossier | `/dashboard/model` | Everything reproducible about one trained forecasting artifact |
 | Point analytics | `/analytics` | Every metric at one coordinate |
 | Compare | `/compare` | How one place differs from another |
-| Assistant | `/assistant` | The whole platform through one conversational interface |
+| Assistant | `/assistant` | The whole platform through one conversational interface — including route planning, geofencing, and cyclone/weather alerts that have no other UI |
 | Downloader | `/download` | Bulk export of 34 ocean variables as CSV/JSON/PDF |
-| Docs | `/docs` | How everything here works, was built, validated, and where it fails |
+| Docs | `/docs` | How everything here works, was built, validated, and where it fails — full-text searchable |
 
 ### The pieces
 
 - **Live observation layers.** Sea surface temperature, wind, surface currents,
-  Stokes drift, currents at six depth levels, and a combined drift field
-  (current + Stokes + wind leeway), plus bathymetry, vessel density and marine
+  Stokes drift, and a combined drift field (current + Stokes + wind leeway,
+  selectable per object type), plus bathymetry, vessel density and marine
   boundaries. The vector fields are one GPU particle engine (WebGL2, transform
-  feedback) over a texture encoded server-side.
+  feedback) over a texture encoded server-side. The current view — basemap plus
+  whatever overlays are active — can be exported as a true ~4K PNG, a real
+  higher-density re-render rather than an upscaled screenshot.
+- **Mesoscale eddy detection and tracking.** Eddies are detected in the live
+  surface-current field by the Okubo-Weiss method (position, size, polarity,
+  intensity) and, separately, tracked frame to frame — nearest-neighbour
+  matching within a polarity-separated, detector-jitter-sized gate, ambiguous
+  clusters solved exactly via the Hungarian algorithm, tracks retired after two
+  consecutive misses. Verified live on 2,177 real detections: matched through a
+  synthetic jittered frame in 16 ms at 100% continuity. What tracking does
+  *not* yet have is validation against a real reference: the per-frame
+  detector's accuracy against AVISO+'s Mesoscale Eddy Trajectory Atlas is
+  blocked on that dataset requiring a registered account, and the tracker's own
+  matcher is presently unit-tested on synthetic data only.
+- **Coastal upwelling and marine heatwave detection.** A Bakun wind-derived
+  upwelling index, corroborated by whether the water is actually cool against
+  an OISST-fitted climatology — two separate claims, reported separately,
+  including a control showing the correlation is real but weak. A parallel
+  attempt to fit that climatology against Copernicus reanalysis instead (to cut
+  OISST's multi-day lag) was built, measured, and shelved: it did not improve
+  the corroboration signal and is deliberately not wired into the live path.
+- **eDNA sampling coverage.** Where the ocean has been sampled *molecularly* —
+  not a biodiversity layer. Measured live: eDNA records cover a few hundredths
+  of a percent of the ocean at a meaningful grid resolution, so the map is
+  mostly blank on purpose, and that blankness is stated rather than left to
+  read as a failed load.
 - **A forecasting engine** (`backend/forecasting/`) — one framework for *every*
   variable rather than one model per variable. Adding a variable is a YAML block
   naming a code the download registry already serves, plus a training run; the
@@ -50,25 +76,52 @@ model.
   vector, they compose into a forecast *particle* field instead, drawn exactly
   like its live counterpart so the two can be compared. Grids are built offline
   and refreshed on a schedule.
-- **Detection, not just fields.** Mesoscale eddies are detected in the live
-  surface-current field by the Okubo-Weiss method and served as things with a
-  position, a size, a polarity and an intensity. It detects and does not track:
-  age and trajectory are a frame-to-frame assignment problem, and a matcher that
-  flickers identity produces tracks that are artefacts presented as
-  observations.
+- **Voyage planning and safety tools — conversational only.** Reached
+  exclusively through the assistant; none of these has a REST endpoint or map
+  layer of its own. Hazard-aware route planning does an A* search over a live
+  grid that excludes land, the India–Sri Lanka maritime boundary and marine
+  protected areas outright, weighting the remaining edges by live wave height.
+  Geofencing checks a point against India's EEZ (mainland plus Andaman &
+  Nicobar), that same boundary line, and a curated protected-area list, using
+  real geometry from Marine Regions rather than hand-sketched polygons.
+  Potential-fishing-zone screening is an explicit heuristic (above-median
+  chlorophyll in a 24–30°C band) — stated as a screening aid, not the validated
+  model INCOIS ships, and independent of the trained fish-habitat model below.
+  Cyclone alerts come from GDACS (since India's IMD publishes no machine-
+  readable track feed); severe weather alerts come from IMD's own CAP feed —
+  and are a genuinely different signal, verified against five real cyclone
+  landfalls that IMD's feed reported only as "Heavy Rain," never "Cyclone."
 - **A point brief, and a comparison.** One coordinate rendered as a document
   (on screen or as a PDF), and two coordinates aligned row by row. Both are
   composition rather than computation — every number already has an endpoint —
   and a row only one point has is kept and labelled rather than dropped, because
   the asymmetry is often the most informative part.
+- **The Ocean Intelligence Dashboard.** Global KPIs, live provider health, and
+  threshold-based alerts that state their own basis rather than reading as an
+  issued warning — plus per-entity dossier pages (one trained model, one NDBC
+  buoy, one satellite product) reached by clicking through, not a separate
+  section to navigate to. Every KPI and provider distinguishes "still warming
+  up" from "unavailable" rather than looking alike.
+- **Universal Ocean Data Downloader.** 34 of 36 spec variables against real
+  data, across 14 providers with independently varying cadence and grid
+  spacing, reconciled correctly (aggregate before merge, not after) rather than
+  silently mixing an hourly field's instantaneous sample where a daily mean
+  belongs. Exports as CSV, JSON or PDF.
 - **Offline ML** (`machine_learning/`) — harmful algal bloom early warning and
   fish habitat / potential fishing zones, on a shared Marine Data Fusion Layer.
   It has its own environment and is **not imported by the backend**; its
   exported prediction grids are served as map layers, so it is part of the
   running product even though the import boundary holds.
 - **An ocean assistant** — a bounded tool-calling loop over the platform's own
-  services, not RAG. Streaming (SSE) and non-streaming endpoints share one loop,
-  and every answer is checked against what the tools actually returned.
+  services, not RAG. The top-level model holds four tools: three
+  `delegate_to_*` specialists (`ocean_analytics` for forecasts/HAB/habitat/PFZ,
+  `weather_safety` for live conditions/cyclones/IMD alerts, `geospatial_risk`
+  for geofencing/depth/routing) plus a self-knowledge tool bound directly,
+  since documentation lookup isn't a live measurement the way the specialists'
+  work is. Each specialist runs its own bounded sub-loop over a shared ledger,
+  which is also what the grounding check reads. Streaming (SSE) and
+  non-streaming endpoints share one loop, and every answer is checked against
+  what the tools actually returned before it's shown as verified.
 
 ## Architecture
 
@@ -91,7 +144,10 @@ Two boundaries are load-bearing and easy to erode:
 - **Cached, scheduled, never fetched per request.** Global fields are tens of
   megabytes per timestep and take minutes to fetch; every one of them is warmed
   by a scheduler and served from memory. A cold cache reports itself as warming
-  — distinct from failed.
+  — distinct from failed. The one exception by design is the voyage-planning
+  chat tools (geofencing, routing, PFZ, cyclones, severe weather), which are
+  either pure local computation or backed by their own short-lived in-memory
+  caches rather than the scheduler.
 
 ## Tech stack
 
@@ -101,7 +157,7 @@ Two boundaries are load-bearing and easy to erode:
 | Dashboard (scoped exception) | Tailwind v4, React Query, Recharts, uPlot |
 | Assistant | `@assistant-ui/react` headless primitives |
 | Backend | FastAPI, httpx, loguru, APScheduler, SQLAlchemy (async) + Alembic |
-| Data processing | xarray, NumPy, SciPy, Pillow, copernicusmarine |
+| Data processing | xarray, NumPy, SciPy, Shapely, Pillow, copernicusmarine |
 | Modelling | LightGBM, SHAP, scikit-learn; MLflow for experiment tracking |
 | Database | PostgreSQL — used for chat sessions only, and optional |
 
@@ -148,7 +204,9 @@ a cold cache report themselves as warming until their first fetch lands.
 | `LOG_LEVEL` / `LOG_JSON` | `INFO` by default; `LOG_JSON=true` emits one JSON object per line |
 | `FORECAST_GRID_REFRESH_ON_BOOT` | Set `false` on a small machine — a rebuild peaks around 3 GB per variable |
 
-Never commit real values; `backend/.env` is untracked.
+No key is needed for the voyage-planning chat tools: GDACS, IMD's CAP feed and
+Marine Regions' WFS are all unauthenticated reads. Never commit real values;
+`backend/.env` is untracked.
 
 ### Frontend
 
@@ -206,22 +264,30 @@ Prefer it to any count written in documentation.
 ```
 backend/
   main.py               FastAPI app; scheduler wiring and cache warming
-  routers/              Thin HTTP layer — maps service errors to status codes
-  services/             One self-contained module per integration or derived field
-  forecasting/          The forecasting engine (config-driven, one framework)
-  app/core/             Settings, logging, middleware
-  app/models/           SQLAlchemy schema (chat sessions are the live part)
-  models/               Trained artifacts and built grids (not source)
-  scripts/              Offline training, grid builds, exports
+  routers/               Thin HTTP layer — maps service errors to status codes
+  services/              One self-contained module per integration or derived field
+    chat/                orchestrator.py + specialists.py (3 delegated agents), tools.py
+    climatology/         OISST (live) and Copernicus reanalysis (measured, unwired)
+    geofencing.py, routing.py, pfz.py, cyclones.py, severe_weather.py
+                          Chat-only tools — no REST router of their own
+    eddy_tracking.py      Frame-to-frame tracking over eddies.py's detections
+  forecasting/           The forecasting engine (config-driven, one framework)
+  app/core/               Settings, logging, middleware
+  app/models/            SQLAlchemy schema (chat sessions are the live part)
+  models/                Trained artifacts and built grids (not source)
+  scripts/               Offline training, grid builds, exports, validation
 frontend/src/
-  features/map/         Map engine: managers, layer registry, GPU vector fields
-  features/dashboard/   Ocean Intelligence Dashboard and metric pages
-  features/assistant/   Chat thread
-  pages/                Hand-rolled pages (landing, download, compare, docs, …)
+  features/map/           Map engine: managers, layer registry, GPU vector fields
+  features/dashboard/      Ocean Intelligence Dashboard, metric pages, dossiers
+  features/assistant/      Chat thread
+  pages/                  Hand-rolled pages (landing, download, compare, docs, …)
+    docs/                  Chapters + DocsSearch.tsx (full-text, evaluates chapter
+                           components directly rather than reading static text)
 machine_learning/
-  marine_ml/            Shared spine: ingestion, fusion, features, validation
-  hab_early_warning/    Bloom risk
-  fish_habitat_prediction/  Habitat suitability / PFZ
+  marine_ml/              Shared spine: ingestion, fusion, features, validation
+  hab_early_warning/      Bloom risk
+  fish_habitat_prediction/  Habitat suitability / PFZ (the validated model —
+                           independent of the assistant's PFZ heuristic above)
 research/               Papers, reproducible notebooks and exported datasets
 ```
 
@@ -241,17 +307,23 @@ models had "learned what month it is"; a three-arm feature ablation showed 10 of
 the 11 affected cases keep their skill with every calendar feature removed, so
 losing to climatology reports the *baseline's* strength rather than the model's
 mechanism. `research/research.md` catalogues the other papers this repository
-already holds the artefacts for, and how far each one is from being writable.
+already holds the artefacts for, and how far each one is from being writable —
+including two recent negative results kept for the same reason: fitting
+upwelling's SST-corroboration climatology against Copernicus reanalysis instead
+of OISST measurably failed to help, and eddy detection's accuracy against a real
+reference atlas (AVISO+) remains unmeasured because that dataset requires
+registered access.
 
 ## Data sources and attribution
 
 Only real, publicly documented sources — nothing synthetic is ever presented as
 live. Copernicus Marine Service, NOAA Coral Reef Watch, NOAA NDBC, GEBCO (via
 Ifremer ERDDAP), Open-Meteo, NASA EOSDIS GIBS, Global Fishing Watch, OBIS,
-Flanders Marine Institute (Marine Regions), and UNEP-WCMC/IUCN's World Database
-on Protected Areas. Per-dataset attribution — including product identifiers,
-grid spacing and cadence — is shown in the application's layer panel and served
-by `/api/dashboard/data-quality`.
+GDACS, India Meteorological Department (public CAP feed), Flanders Marine
+Institute (Marine Regions), and UNEP-WCMC/IUCN's World Database on Protected
+Areas. Per-dataset attribution — including product identifiers, grid spacing
+and cadence — is shown in the application's layer panel and served by
+`/api/dashboard/data-quality`.
 
 ## Contributing
 
