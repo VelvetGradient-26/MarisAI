@@ -6,7 +6,6 @@ import type {
 import { API_BASE_URL } from '../../../utils/apiBase';
 import { createWindParticleLayer } from '../vectorField/windLayer';
 import {
-  createCurrentsDepthParticleLayer,
   createCurrentsParticleLayer,
   createDriftParticleLayer,
   createStokesParticleLayer,
@@ -163,15 +162,6 @@ const HAB_HORIZONS = [3, 5, 7];
 
 function habitatLayerId(speciesKey: string): string {
   return `habitat-${speciesKey.replace(/_/g, '-')}`;
-}
-
-/** The depth levels the backend offers, mirroring `DEPTH_LADDER` in
- *  `services/currents_depth.py`. Six rather than the product's fifty because
- *  each is an independent whole-globe fetch — see that module for why these. */
-const CURRENTS_DEPTH_LEVELS = [50, 100, 200, 500, 1000];
-
-function currentsDepthLayerId(depth: number): string {
-  return `currents-${depth}m`;
 }
 
 /**
@@ -1150,50 +1140,6 @@ export const layerRegistry: LayerDescriptor[] = [
       ],
     },
   },
-
-  // Currents below the surface, one layer per offered level.
-  //
-  // A different *product* from the surface layer, and necessarily so: the hourly
-  // physics dataset carries one singleton surface level, so there is nothing
-  // beneath it to draw. These come from the daily depth-resolved currents, which
-  // is the trade the layer names — hourly at the surface, daily at depth.
-  //
-  // Six levels rather than the product's fifty: each is an independent
-  // whole-globe fetch, and the interesting comparison is surface-against-depth,
-  // not a continuous profile. The requested depth snaps to the nearest model
-  // level and the meta reports which one answered (200 m resolves to 186.13 m).
-  ...CURRENTS_DEPTH_LEVELS.map((depth) => ({
-    id: currentsDepthLayerId(depth),
-    name: `Currents at ${depth} m`,
-    category: 'flow' as const,
-    type: 'custom' as const,
-    attribution:
-      `Copernicus Marine Service — GLOBAL_ANALYSISFORECAST_PHY_001_024 daily depth-resolved ` +
-      `currents (uo/vo), 0.083°, at the model level nearest ${depth} m. DAILY MEAN, unlike ` +
-      `the hourly surface currents layer. Direction is the direction the water flows toward. ` +
-      `A level that has not been opened before takes a few minutes to fetch the first time.`,
-    defaultOpacity: 0.9,
-    defaultVisible: false,
-    createLayer: (id: string) => createCurrentsDepthParticleLayer(id, depth, 0.9),
-    legend: {
-      type: 'gradient' as const,
-      unit: 'm/s',
-      min: 0,
-      max: 2,
-      // Deliberately the surface layer's scale and ramp. Comparing one level
-      // against another is the whole point of the control, and a legend that
-      // rescaled per level would make that comparison meaningless.
-      stops: [
-        { offset: 0, color: '#96601c' },
-        { offset: 0.075, color: '#b87410' },
-        { offset: 0.15, color: '#dc9418' },
-        { offset: 0.3, color: '#f5b73c' },
-        { offset: 0.5, color: '#ffd47a' },
-        { offset: 0.75, color: '#ffeab8' },
-        { offset: 1, color: '#fff6e0' },
-      ],
-    },
-  })),
 
   // The combined drift field — current + Stokes drift + wind leeway.
   //
