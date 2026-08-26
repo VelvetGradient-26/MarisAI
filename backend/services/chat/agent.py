@@ -114,6 +114,12 @@ language, including Indian regional languages (Hindi, Tamil, Telugu, Bengali, \
 Malayalam, Kannada, Marathi, Gujarati, Odia, Punjabi, and others). Units and \
 place names may stay as commonly written. If the language is ambiguous, match \
 the script of the question.
+- A fixed set of technical terms must stay in English even inside a \
+non-English answer, exactly as written here, because a translated or \
+transliterated version is ambiguous or misleading: SST, chlorophyll, wave \
+height, wind speed, cyclone, PFZ, marine advisory. Say them in English, then \
+explain in the local language if that helps — do not replace the English \
+term itself.
 
 Where the friendliness stops — these are absolute, and being agreeable never \
 overrides them:
@@ -405,6 +411,89 @@ def _false_refusal(text: str, ledger: Ledger) -> bool:
     return True
 
 
+# Unicode blocks for the scripts `_SYSTEM_PROMPT`'s language list names
+# (Hindi and Marathi share Devanagari; Punjabi is Gurmukhi). Latin-script
+# Hindi ("Hinglish") is not caught by this — solving that needs real
+# language-ID, out of scope for a glossary guardrail — so the check below is
+# script-gated, not language-gated, and stays silent on any Latin-script
+# answer.
+_INDIC_SCRIPT = re.compile(
+    "["
+    r"ऀ-ॿ"  # Devanagari (Hindi, Marathi)
+    r"ঀ-৿"  # Bengali
+    r"਀-੿"  # Gurmukhi (Punjabi)
+    r"઀-૿"  # Gujarati
+    r"଀-୿"  # Oriya
+    r"஀-௿"  # Tamil
+    r"ఀ-౿"  # Telugu
+    r"ಀ-೿"  # Kannada
+    r"ഀ-ൿ"  # Malayalam
+    "]"
+)
+
+# The seven terms sihtodo.md item 3 names verbatim, and nothing more — this
+# guardrail is scoped to exactly what was asked for, not every technical word
+# the assistant might use. Each tuple is the aliases, matched
+# case-insensitively, that mean two things depending on which side they are
+# checked against: found in `ledger.as_text()`, they mean "this turn's tool
+# data touched this concept"; found in the answer, they mean "the concept was
+# kept in English." Drawn from actually reading the tool result shapes:
+# `services/openmeteo.py`'s `sea_surface_temperature`/`wave_height`/
+# `wind_speed`, `services/pfz.py`'s `chlorophyll_mg_m3`/`sst_c` and its prose
+# `reasons`, `services/cyclones.py`'s `active_cyclones_worldwide`. PFZ and
+# "marine advisory" are coarser proxies than the other five — keyed off the
+# `find_fishing_zones` tool name and the alert tools' own vocabulary
+# respectively, since neither literal phrase reliably appears in a tool
+# result the way "sst_c" or "wave_height" do.
+_GLOSSARY: dict[str, tuple[str, ...]] = {
+    "SST": ("sst", "sea_surface_temperature", "sea surface temperature"),
+    "chlorophyll": ("chlorophyll",),
+    "wave height": ("wave_height", "wave height"),
+    "wind speed": ("wind_speed", "wind speed"),
+    "cyclone": ("cyclone",),
+    "PFZ": ("fishing_zones", "fishing zone", "potential fishing", "pfz"),
+    "marine advisory": ("advisory", "alert"),
+}
+
+
+def _untranslated_glossary_terms(text: str, ledger: Ledger) -> list[str]:
+    """Glossary concepts this turn's tool data touched that never appear in
+    English anywhere in a non-English answer.
+
+    Informational only, same as `_false_refusal` — this never blocks or
+    rewrites the answer, it annotates it. It also cannot fire on an English
+    (or Latin-script/Hinglish) answer at all: `_INDIC_SCRIPT` is checked
+    first, so the overwhelming majority of turns never reach the per-term
+    loop. That is the deliberate defence against the cry-wolf failure
+    `_ungrounded_numbers` documents at length — a checker that flags correct
+    answers teaches people to ignore the one that matters.
+
+    The `_SYSTEM_PROMPT` instruction to keep these terms in English is the
+    primary defence; this is the secondary, informational backstop, exactly
+    as `_ungrounded_numbers` backstops "never state a number you did not get
+    from a tool."
+
+    A term's own alias list is used on *both* sides of the check: present in
+    the ledger it means the concept was used, present in the answer it means
+    the concept was kept in English — so an answer that writes "sea surface
+    temperature" instead of the bare abbreviation "SST" still passes, and one
+    that calls a wave-height forecast a "lehar ki uchai" without ever writing
+    the English phrase does not.
+    """
+    if not ledger.observations or not _INDIC_SCRIPT.search(text):
+        return []
+
+    block = ledger.as_text().lower()
+    lowered = text.lower()
+    gaps: list[str] = []
+    for term, aliases in _GLOSSARY.items():
+        if not any(alias in block for alias in aliases):
+            continue  # this turn never touched the concept
+        if not any(alias in lowered for alias in aliases):
+            gaps.append(term)
+    return gaps
+
+
 def _schema_prose(tool: Any) -> str:
     """The `description` strings from a tool's argument schema, and nothing else.
 
@@ -591,11 +680,16 @@ async def answer(
             "successful tool call(s) this turn"
         )
 
+    glossary_gaps = _untranslated_glossary_terms(text, ledger)
+    if glossary_gaps:
+        logger.warning(f"chat answer may have mistranslated: {glossary_gaps}")
+
     reply = {
         "answer": text,
         "grounded": not unsupported,
         "unsupported_numbers": unsupported,
         "possible_false_refusal": possible_false_refusal,
+        "glossary_gaps": glossary_gaps,
         "observations": ledger.observations,
         "sources": ledger.sources(),
         "delegations": delegations,
@@ -778,11 +872,16 @@ async def answer_stream(
             "successful tool call(s) this turn"
         )
 
+    glossary_gaps = _untranslated_glossary_terms(text, ledger)
+    if glossary_gaps:
+        logger.warning(f"chat answer may have mistranslated: {glossary_gaps}")
+
     reply = {
         "answer": text,
         "grounded": not unsupported,
         "unsupported_numbers": unsupported,
         "possible_false_refusal": possible_false_refusal,
+        "glossary_gaps": glossary_gaps,
         "observations": ledger.observations,
         "sources": ledger.sources(),
         "delegations": delegations,

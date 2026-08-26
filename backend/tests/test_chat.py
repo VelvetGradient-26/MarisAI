@@ -558,6 +558,149 @@ async def test_a_partial_failure_that_still_reports_a_figure_is_not_flagged(patc
     assert result["possible_false_refusal"] is False
 
 
+@pytest.fixture
+def conditions(monkeypatch):
+    """Stand in for the Open-Meteo realtime-conditions provider `_current_
+    conditions` calls, the same lazy-import-patch shape `depth` above uses."""
+
+    def install(result: dict) -> None:
+        async def fake(*, latitude: float, longitude: float):
+            return result
+
+        monkeypatch.setattr("services.openmeteo.get_realtime_ocean_conditions", fake)
+
+    return install
+
+
+@pytest.fixture
+def cyclones(monkeypatch):
+    """Stand in for the GDACS cyclone-check provider `_cyclone_alerts` calls."""
+
+    def install(result: dict) -> None:
+        async def fake(latitude: float, longitude: float, radius_km: float):
+            return result
+
+        monkeypatch.setattr("services.cyclones.check_point", fake)
+
+    return install
+
+
+@pytest.mark.asyncio
+async def test_a_glossary_term_kept_in_english_is_not_flagged(patched, conditions):
+    """A Hindi answer that keeps "SST" in English, exactly as the prompt asks,
+    is not a gap — the check must not cry wolf on compliant behaviour."""
+    conditions({"current": {"sea_surface_temperature": 28.4}, "units": {"sea_surface_temperature": "C"}})
+
+    top = ScriptedModel(
+        [
+            _delegate_call("weather_safety", "Kochi ke paas SST kya hai?"),
+            AIMessage(content="Kochi ke pass samudra ka SST 28.4°C hai."),
+        ]
+    )
+    specialist = ScriptedModel(
+        [
+            _tool_call("get_current_conditions", {"latitude": 10.0, "longitude": 76.0}),
+            AIMessage(content="SST 28.4°C hai."),
+        ]
+    )
+    patched(top, specialist)
+
+    result = await agent.answer("Kochi ke paas SST kya hai?")
+
+    assert result["glossary_gaps"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_glossary_term_is_flagged(patched, conditions):
+    """The same SST data, but the top-level answer never writes "SST" (or
+    "sea surface temperature") in English anywhere — only a vernacular
+    paraphrase. That is exactly the mistranslation risk the glossary guards
+    against, and it must be reported, not hidden."""
+    conditions({"current": {"sea_surface_temperature": 28.4}, "units": {"sea_surface_temperature": "C"}})
+
+    top = ScriptedModel(
+        [
+            _delegate_call("weather_safety", "Kochi ke paas SST kya hai?"),
+            AIMessage(content="कोच्चि के पास समुद्र का तापमान 28.4 डिग्री है।"),
+        ]
+    )
+    specialist = ScriptedModel(
+        [
+            _tool_call("get_current_conditions", {"latitude": 10.0, "longitude": 76.0}),
+            AIMessage(content="28.4°C hai."),
+        ]
+    )
+    patched(top, specialist)
+
+    result = await agent.answer("Kochi ke paas SST kya hai?")
+
+    assert result["glossary_gaps"] == ["SST"]
+
+
+@pytest.mark.asyncio
+async def test_an_english_answer_is_never_flagged_for_glossary(patched, conditions):
+    """The script gate, not term presence, is what does the work: an English
+    answer that never once writes "SST" is still not a glossary gap, because
+    there was no non-English translation to check fidelity on."""
+    conditions({"current": {"sea_surface_temperature": 28.4}, "units": {"sea_surface_temperature": "C"}})
+
+    top = ScriptedModel(
+        [
+            _delegate_call("weather_safety", "What's the water temperature near Kochi?"),
+            AIMessage(content="The water temperature near Kochi is 28.4°C."),
+        ]
+    )
+    specialist = ScriptedModel(
+        [
+            _tool_call("get_current_conditions", {"latitude": 10.0, "longitude": 76.0}),
+            AIMessage(content="28.4°C."),
+        ]
+    )
+    patched(top, specialist)
+
+    result = await agent.answer("What's the water temperature near Kochi?")
+
+    assert result["glossary_gaps"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_second_glossary_term_is_flagged(patched, cyclones):
+    """The alias table beyond SST: a cyclone-touching turn answered entirely
+    in Tamil, with no English "cyclone" anywhere, flags "cyclone". It also
+    flags "marine advisory" — the tool is literally named
+    `get_cyclone_alerts`, so its own name touches that concept's "alert"
+    alias too, and the Tamil answer never writes "alert" either. That is the
+    coarser-proxy trade-off the glossary table's own comment documents, not a
+    bug: both concepts genuinely were touched and neither was kept in
+    English."""
+    cyclones(
+        {
+            "active_cyclones_worldwide": 2,
+            "nearest": None,
+            "within_watch_radius": False,
+            "watch_radius_km": 300,
+        }
+    )
+
+    top = ScriptedModel(
+        [
+            _delegate_call("weather_safety", "Any storms near Chennai?"),
+            AIMessage(content="சென்னைக்கு அருகில் இப்போது எந்த புயலும் இல்லை."),
+        ]
+    )
+    specialist = ScriptedModel(
+        [
+            _tool_call("get_cyclone_alerts", {"latitude": 13.0, "longitude": 80.0, "radius_km": 500}),
+            AIMessage(content="No active storms nearby."),
+        ]
+    )
+    patched(top, specialist)
+
+    result = await agent.answer("Any storms near Chennai?")
+
+    assert result["glossary_gaps"] == ["cyclone", "marine advisory"]
+
+
 class ScriptedStreamModel(ScriptedModel):
     """`ScriptedModel` that also answers `astream`.
 

@@ -29,6 +29,12 @@ export interface ChatStreamMeta {
   // states no numbers to check — so it rides as its own flag; see
   // `services/chat/agent.py::_false_refusal`.
   possible_false_refusal: boolean;
+  // Glossary concepts (SST, chlorophyll, wave height, wind speed, cyclone,
+  // PFZ, marine advisory) this turn's tool data touched that never appear in
+  // English anywhere in a non-English answer — empty on any English answer,
+  // since the backend check is script-gated. See
+  // `services/chat/agent.py::_untranslated_glossary_terms`.
+  glossary_gaps: string[];
   observations: ChatObservation[];
   sources: string[];
   delegations: ChatDelegation[];

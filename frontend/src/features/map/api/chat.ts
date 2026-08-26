@@ -58,6 +58,12 @@ export interface ChatReply {
   /** A refusal despite the ledger already holding real tool results this
    * turn — `grounded` cannot catch this since a refusal states no numbers. */
   possible_false_refusal: boolean;
+  /** Glossary concepts (SST, chlorophyll, wave height, wind speed, cyclone,
+   * PFZ, marine advisory) this turn's tool data touched that never appear in
+   * English anywhere in a non-English answer. Always empty on an English
+   * answer — the backend check only ever fires on a non-Latin-script reply.
+   * See `services/chat/agent.py::_untranslated_glossary_terms`. */
+  glossary_gaps: string[];
   observations: ChatObservation[];
   sources: string[];
   delegations: ChatDelegation[];
