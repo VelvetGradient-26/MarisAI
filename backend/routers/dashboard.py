@@ -13,6 +13,8 @@ product's coverage) is a 4xx, and only a wholly unavailable aggregate is 503.
 
 from fastapi import APIRouter, HTTPException, Query
 
+from services import correlation
+from services.correlation import CorrelationError
 from services.dashboard import alerts, data_quality, health, live, summary, trends
 from services.dashboard.trends import TrendsError
 
@@ -166,3 +168,23 @@ async def get_trends_multi(
         raise HTTPException(status_code=422, detail="At most 8 variables per request")
 
     return await trends.multi_series(keys, latitude, longitude, range_key)
+
+
+@router.get("/trends/correlation")
+async def get_trends_correlation(
+    variables: str = Query(..., description="2-4 comma-separated variable keys"),
+    latitude: float = Query(..., ge=-90, le=90),
+    longitude: float = Query(..., ge=-180, le=180),
+    range_key: str = Query("1y", alias="range"),
+):
+    """Pairwise correlation between 2-4 variables at a point, on a shared
+    daily-aggregated window. See `services/correlation.py` for why hourly
+    ranges are refused and why fishing effort / upwelling are not offered.
+    """
+    keys = [key.strip() for key in variables.split(",") if key.strip()]
+    try:
+        return await correlation.analyze(keys, latitude, longitude, range_key)
+    except CorrelationError as exc:
+        # Malformed request (variable count, hourly-only range) — the same
+        # client-correctable class TrendsError already gets 400 for above.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

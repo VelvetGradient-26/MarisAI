@@ -6,6 +6,7 @@ import { Map } from './Map';
 import { MapControls } from './MapControls';
 import { CoordinateDisplay } from './CoordinateDisplay';
 import { SelectedLocationPanel } from './SelectedLocationPanel';
+import { SevereWeatherPanel } from './SevereWeatherPanel';
 import { ForecastHorizonControl } from './ForecastHorizonControl';
 import { SstLegend } from './SstLegend';
 import { WindLegend } from './WindLegend';
@@ -41,7 +42,15 @@ export function MapView() {
               legends because it always appears beside one. */}
           <ForecastHorizonControl />
         </div>
-        <SelectedLocationPanel />
+        {/* One rail child, not two: `.map-rail--right` uses
+            `justify-content: space-between` to pin the legends to the top and
+            the last child to the bottom, so a bare sibling here would float in
+            the middle of whatever space is left rather than sitting with the
+            panel it belongs beside. */}
+        <div className="map-rail__bottom-group">
+          <SevereWeatherPanel />
+          <SelectedLocationPanel />
+        </div>
       </div>
       {/* Last child so it stacks above the panels above — it is the only
           overlay that deliberately takes precedence over the others. */}

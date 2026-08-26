@@ -196,6 +196,30 @@ class LiteratureSearchArgs(BaseModel):
     max_results: int = Field(5, ge=1, le=10, description="Maximum number of results to return.")
 
 
+class CorrelationArgs(PointArgs):
+    variables: list[str] = Field(
+        ...,
+        min_length=2,
+        max_length=4,
+        description=(
+            "2-4 variable keys to correlate at this point, e.g. "
+            "['sea_surface_temperature', 'chlorophyll_a']. Call "
+            "list_available_variables or get_historical_series first if unsure "
+            "of a key. Not every ocean variable is available here — only ones "
+            "with a point historical series (fishing effort and the upwelling "
+            "index have none in this codebase and cannot be requested)."
+        ),
+    )
+    range_key: str = Field(
+        "1y",
+        description=(
+            "Named daily-resolution time range: '30d', '6mo', '1y', '5y' or "
+            "'10y'. Hourly ranges ('24h', '7d') are not supported — a "
+            "correlation needs a shared daily cadence."
+        ),
+    )
+
+
 class RouteArgs(BaseModel):
     start_latitude: float = Field(..., ge=-90, le=90, description="Start latitude in degrees north.")
     start_longitude: float = Field(..., ge=-180, le=180, description="Start longitude in degrees east.")
@@ -382,6 +406,20 @@ async def _safe_route(
     return await plan_route(start_latitude, start_longitude, end_latitude, end_longitude)
 
 
+async def _assess_risk(latitude: float, longitude: float) -> dict[str, Any]:
+    from services.marine_risk import assess
+
+    return await assess(latitude, longitude)
+
+
+async def _correlate(
+    variables: list[str], latitude: float, longitude: float, range_key: str
+) -> dict[str, Any]:
+    from services.correlation import analyze
+
+    return await analyze(variables, latitude, longitude, range_key)
+
+
 # --------------------------------------------------------------------------
 # Wiring
 # --------------------------------------------------------------------------
@@ -538,6 +576,29 @@ _SPECS: list[tuple[str, str, type[BaseModel], Any]] = [
         "ocean data — this is about the product, not the ocean.",
         DocumentationArgs,
         _get_documentation,
+    ),
+    (
+        "assess_marine_risk",
+        "Deterministic 'is it safe to go out' verdict for a coordinate: a "
+        "fixed rule table over live sea conditions, IMD severe-weather "
+        "alerts, active cyclones and boundary/Marine Protected Area "
+        "proximity, producing a risk_level (low/moderate/high/extreme) that "
+        "does not vary with how the model phrases it. Prefer this over "
+        "combining the individual condition/alert tools yourself when the "
+        "question is explicitly about safety.",
+        PointArgs,
+        _assess_risk,
+    ),
+    (
+        "analyze_variable_correlation",
+        "Align 2-4 ocean variables in time at one coordinate and measure "
+        "whether they moved together (Pearson correlation on a shared daily "
+        "cadence). Use for 'why has X changed' questions that need more than "
+        "one variable, e.g. does chlorophyll track sea surface temperature "
+        "here. Reports strength and statistical significance, never a causal "
+        "claim — correlation is not causation.",
+        CorrelationArgs,
+        _correlate,
     ),
 ]
 
