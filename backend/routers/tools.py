@@ -17,6 +17,20 @@ geometry that touches no network. The other three (`routing`, `cyclones`,
 is a cache this server warms — so a failure there is mapped to 502, the same
 split `routers/marine.py` already draws between `/biodiversity` (502, live
 OBIS call) and `/eddies` (503, a cache this server warms).
+
+`/search`, `/fetch-page` and `/literature` (sihtodo.md item 4) followed later
+and are not chat-only tools becoming REST — they were built as REST and chat
+tools together (`services/web_search.py`, `webpage.py`, `literature.py`), for
+the same reason as everything above: a REST route makes a service directly
+curl-able for testing and reuse without driving the whole chat loop.
+`/fetch-page` is the one endpoint in this router whose failure can be a
+caller error (a disallowed URL) rather than only an upstream one, so it alone
+maps to 422 as well as 502 — see its own docstring.
+
+`/tide` (sihtodo.md item 6) is the same "REST and chat tool together" shape,
+over `services/tides.py` — see that module's docstring for the live-browser
+investigation that found INCOIS's tide-gauge feed, the timestamp-decoding
+quirk in its response, and the TLS workaround needed to reach it from Python.
 """
 
 from __future__ import annotations
@@ -26,11 +40,19 @@ from fastapi import APIRouter, HTTPException, Query
 from services import geofencing, pfz
 from services.cyclones import CycloneError, get_active_cyclones
 from services.cyclones import check_point as cyclone_check_point
+from services.literature import LiteratureError
+from services.literature import search_literature as run_literature_search
 from services.marine_risk import assess as assess_marine_risk
 from services.routing import RoutingError, plan_route
 from services.severe_weather import SevereWeatherError
 from services.severe_weather import check_point as severe_weather_check_point
 from services.severe_weather import get_active_alerts as get_severe_weather_alerts
+from services.tides import TideError
+from services.tides import nearest_station as get_nearest_tide_station
+from services.web_search import WebSearchError
+from services.web_search import search as run_web_search
+from services.webpage import WebpageError
+from services.webpage import fetch as fetch_webpage_content
 
 router = APIRouter(prefix="/api/ocean", tags=["ocean-tools"])
 
@@ -141,3 +163,77 @@ async def get_marine_risk(
     see `services/marine_risk.py`.
     """
     return await assess_marine_risk(lat, lon)
+
+
+@router.get("/search")
+async def get_web_search(
+    q: str = Query(..., min_length=1, description="Search query."),
+    max_results: int = Query(5, ge=1, le=10),
+):
+    """General web search (sihtodo.md item 4), via Tavily.
+
+    502 covers both a live-fetch failure and a missing `TAVILY_API_KEY` —
+    see `services/web_search.py`'s own docstring on why no keyless general
+    web search API exists to fall back to.
+    """
+    try:
+        return await run_web_search(q, max_results)
+    except WebSearchError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/fetch-page")
+async def get_fetch_page(url: str = Query(..., min_length=1, description="A public http(s) URL.")):
+    """Fetch one webpage and return its title and readable text.
+
+    422, not 502, for a disallowed URL (bad scheme, unresolvable host, or one
+    that resolves to a non-public address) — that is a caller error the same
+    way a malformed bbox is elsewhere in this router, not an upstream
+    failure. A genuine fetch failure (timeout, 4xx/5xx from the target site)
+    is 502. See `services/webpage.py`'s docstring for the SSRF guard this
+    endpoint depends on.
+    """
+    try:
+        return await fetch_webpage_content(url)
+    except WebpageError as exc:
+        message = str(exc)
+        if "Only http/https" in message or "non-public address" in message or "no host" in message:
+            raise HTTPException(status_code=422, detail=message) from exc
+        raise HTTPException(status_code=502, detail=message) from exc
+
+
+@router.get("/tide")
+async def get_tide(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    radius_km: float = Query(200.0, ge=10, le=500),
+):
+    """Current sea level at the nearest INCOIS tide-gauge station (sihtodo.md
+    item 6), within `radius_km` of a point.
+
+    502 for a genuine feed failure (the station list or a station's own
+    reading feed could not be reached); a 200 with `available: false` for
+    "nothing within radius" or "nearest station not reporting" — those are
+    ordinary answers, not errors, the same split `/pfz` draws.
+    """
+    try:
+        return await get_nearest_tide_station(lat, lon, radius_km)
+    except TideError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/literature")
+async def get_literature_search(
+    q: str = Query(..., min_length=1, description="Topic, species, or research question."),
+    max_results: int = Query(5, ge=1, le=10),
+):
+    """Published scientific literature search (sihtodo.md item 4), via CrossRef.
+
+    502: CrossRef is a live upstream call on every request, the same class
+    as `/cyclones` and `/severe-weather` above — no key required, but not a
+    cache this server warms either.
+    """
+    try:
+        return await run_literature_search(q, max_results)
+    except LiteratureError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc

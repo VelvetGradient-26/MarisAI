@@ -1,5 +1,6 @@
 """routers/tools.py: thin-router checks over the five previously chat-only
-services (pfz, geofencing, routing, cyclones, severe_weather).
+services (pfz, geofencing, routing, cyclones, severe_weather), plus the
+later sihtodo.md item 4 additions (web_search, fetch_webpage, literature).
 
 Same shape as `test_dashboard.py`'s router tests: mount the router alone on a
 bare FastAPI app, monkeypatch the service call the router itself holds a
@@ -219,4 +220,153 @@ def test_risk_endpoint_returns_the_service_payload(monkeypatch, client):
 
 def test_risk_endpoint_rejects_an_out_of_range_latitude(client):
     response = client.get("/api/ocean/risk", params={"lat": 190, "lon": 76.2})
+    assert response.status_code == 422
+
+
+# --------------------------------------------------------------------------
+# Search / fetch-page / literature (sihtodo.md item 4) — all three depend on
+# a live upstream call on every request, so failures map to 502, same as
+# routing/cyclones/severe-weather above.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_search_endpoint_returns_the_service_payload(monkeypatch, client):
+    async def fake_search(query, max_results):
+        return {"query": query, "results": [], "result_count": 0, "source": "Tavily web search"}
+
+    monkeypatch.setattr(tools_router, "run_web_search", fake_search)
+
+    response = client.get("/api/ocean/search", params={"q": "arabian sea warming"})
+
+    assert response.status_code == 200
+    assert response.json()["query"] == "arabian sea warming"
+
+
+def test_search_endpoint_maps_web_search_error_to_502(monkeypatch, client):
+    from services.web_search import WebSearchError
+
+    async def fake_search(*args, **kwargs):
+        raise WebSearchError("Web search is not configured (set TAVILY_API_KEY in backend/.env).")
+
+    monkeypatch.setattr(tools_router, "run_web_search", fake_search)
+
+    response = client.get("/api/ocean/search", params={"q": "x"})
+
+    assert response.status_code == 502
+    assert "TAVILY_API_KEY" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_page_endpoint_returns_the_service_payload(monkeypatch, client):
+    async def fake_fetch(url):
+        return {"url": url, "title": "A page", "text": "hello", "truncated": False, "source": url}
+
+    monkeypatch.setattr(tools_router, "fetch_webpage_content", fake_fetch)
+
+    response = client.get("/api/ocean/fetch-page", params={"url": "https://example.org/"})
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "A page"
+
+
+def test_fetch_page_endpoint_maps_a_disallowed_url_to_422(monkeypatch, client):
+    from services.webpage import WebpageError
+
+    async def fake_fetch(url):
+        raise WebpageError(f"Host 'internal' resolves to a non-public address (10.0.0.1); refusing to fetch.")
+
+    monkeypatch.setattr(tools_router, "fetch_webpage_content", fake_fetch)
+
+    response = client.get("/api/ocean/fetch-page", params={"url": "http://internal/"})
+
+    assert response.status_code == 422
+
+
+def test_fetch_page_endpoint_maps_a_live_fetch_failure_to_502(monkeypatch, client):
+    from services.webpage import WebpageError
+
+    async def fake_fetch(url):
+        raise WebpageError("Fetching https://example.org/ failed with status 500.")
+
+    monkeypatch.setattr(tools_router, "fetch_webpage_content", fake_fetch)
+
+    response = client.get("/api/ocean/fetch-page", params={"url": "https://example.org/"})
+
+    assert response.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_literature_endpoint_returns_the_service_payload(monkeypatch, client):
+    async def fake_search(query, max_results):
+        return {"query": query, "results": [], "result_count": 0, "source": "CrossRef (api.crossref.org)"}
+
+    monkeypatch.setattr(tools_router, "run_literature_search", fake_search)
+
+    response = client.get("/api/ocean/literature", params={"q": "oil sardine habitat"})
+
+    assert response.status_code == 200
+    assert response.json()["source"] == "CrossRef (api.crossref.org)"
+
+
+def test_literature_endpoint_maps_literature_error_to_502(monkeypatch, client):
+    from services.literature import LiteratureError
+
+    async def fake_search(*args, **kwargs):
+        raise LiteratureError("CrossRef search failed (503): Service Unavailable")
+
+    monkeypatch.setattr(tools_router, "run_literature_search", fake_search)
+
+    response = client.get("/api/ocean/literature", params={"q": "x"})
+
+    assert response.status_code == 502
+
+
+# --------------------------------------------------------------------------
+# Tide (sihtodo.md item 6) — a live feed fetch on every call, so failures
+# map to 502; "no station nearby"/"not reporting" are ordinary 200 answers.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_tide_endpoint_returns_the_service_payload(monkeypatch, client):
+    async def fake_nearest(lat, lon, radius_km):
+        return {"available": True, "station": "Chennai", "water_level_m": 1.2}
+
+    monkeypatch.setattr(tools_router, "get_nearest_tide_station", fake_nearest)
+
+    response = client.get("/api/ocean/tide", params={"lat": 13.08, "lon": 80.27})
+
+    assert response.status_code == 200
+    assert response.json()["station"] == "Chennai"
+
+
+@pytest.mark.asyncio
+async def test_tide_endpoint_passes_through_an_unavailable_answer(monkeypatch, client):
+    async def fake_nearest(lat, lon, radius_km):
+        return {"available": False, "reason": "No INCOIS tide-gauge station is within 200 km."}
+
+    monkeypatch.setattr(tools_router, "get_nearest_tide_station", fake_nearest)
+
+    response = client.get("/api/ocean/tide", params={"lat": -10, "lon": -150})
+
+    assert response.status_code == 200
+    assert response.json()["available"] is False
+
+
+def test_tide_endpoint_maps_tide_error_to_502(monkeypatch, client):
+    from services.tides import TideError
+
+    async def fake_nearest(*args, **kwargs):
+        raise TideError("The INCOIS tide-station list could not be reached: timeout")
+
+    monkeypatch.setattr(tools_router, "get_nearest_tide_station", fake_nearest)
+
+    response = client.get("/api/ocean/tide", params={"lat": 13.08, "lon": 80.27})
+
+    assert response.status_code == 502
+
+
+def test_tide_endpoint_rejects_an_out_of_range_radius(client):
+    response = client.get("/api/ocean/tide", params={"lat": 13.08, "lon": 80.27, "radius_km": 5000})
     assert response.status_code == 422

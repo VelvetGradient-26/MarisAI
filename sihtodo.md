@@ -78,7 +78,7 @@ cheapest of the three genuinely-missing capabilities, since the LLM
 both detection and generation directly with a prompt change plus a
 terminology-consistency check — no new data source, no new algorithm.
 
-## 4. Controlled internet tools
+## 4. Controlled internet tools — closed 2026-08-27
 
 `web_search`, `fetch_webpage`, `search_scientific_literature` — confirmed
 absent (no hits under `backend/services`). Needed for the guide's example
@@ -88,6 +88,28 @@ guide, and the response must distinguish retrieved facts from model
 inference — this codebase already has that discipline for tool-grounded chat
 (`agent.py`'s grounding check), so the new tools need to feed the same
 mechanism rather than bypass it.
+
+**Built**: a fourth specialist, `external_research`
+(`services/chat/specialists.py`), holding all three tools, plus a matching
+REST endpoint per tool on `routers/tools.py` (`/api/ocean/search`,
+`/fetch-page`, `/literature`) — the same "chat tool and REST endpoint
+together" shape items 7 and 10 used, not a chat-only addition. Full design
+notes, including why no keyless general web search API exists (so
+`web_search` needs `TAVILY_API_KEY`, empty default, degrading to a clear
+"not configured" error rather than a silent empty result) and the SSRF guard
+`fetch_webpage` needed for a caller-supplied URL, are in CLAUDE.md's
+"Controlled internet tools" section. `search_scientific_literature`
+(CrossRef) is genuinely keyless and was verified against the live API;
+`web_search` (Tavily) was not, for lack of a provisioned key in this
+environment — verified via a mocked-transport test harness instead, the same
+caveat CLAUDE.md already states for the glossary guardrail's untested-
+against-live-Gemini gap. Provenance is preserved per-result (title/url/
+snippet/published_date for web search; title/authors/journal/doi/url for
+literature) and the grounding/attribution discipline is enforced at three
+layers: the tool descriptions, the specialist's own system prompt, and a new
+absolute rule in the top-level orchestrator's prompt. Tests:
+`test_web_search.py`, `test_literature.py`, `test_webpage.py`, plus
+additions to `test_orchestrator.py`, `test_chat.py` and `test_tools_router.py`.
 
 ## 5. Direct INCOIS/MOSDAC advisory ingestion — investigated 2026-08-26, no usable feed found
 
@@ -122,7 +144,7 @@ integration.
 was a real possible outcome the item itself named ("may turn out infeasible")
 and it is what was found — not a shortcut skipped.
 
-## 6. Tide data — a hard gap, and the PS names it explicitly — investigated 2026-08-26, still open
+## 6. Tide data — a hard gap, and the PS names it explicitly — closed 2026-08-27
 
 `services/download/registry.py`'s `tidal_height` entry is `available=False` —
 no global source is wired at all (per CLAUDE.md, no global tidal product was
@@ -132,24 +154,33 @@ fully answered today; the tide half is silently missing. Investigated a
 source hunt scoped to Indian ports (INCOIS/IHO tide-station feeds are
 typically per-station, not global — fine for a fisherman's near-coast query).
 
-**No live, keyless, machine-readable INCOIS tide feed was found, probed
-2026-08-26.** `incois.gov.in/ITCOocean/tides.jsp` (astronomical tide
-predictions) 404s outright. The real-time tide-gauge network genuinely exists
-— 36 stations, 1-5 min cadence, per INCOIS's own published description — but
-every portal page probed (`tsunami.incois.gov.in/TEWS/Abouttideguage.jsp`,
-`services.incois.gov.in/iogoos/indoos/insitu_sealevel.jsp`, the TEWS map
-app's `app.js`/`custom.js`) is either informational-only or renders without
-an inspectable JS-driven data endpoint; a `UpdateReportingStations.do?stType=
-TIDE` URL surfaced by search 404s. Full probe log in DONE.md.
+**2026-08-26 static-probe pass found nothing** — see the original note this
+replaces, preserved in DONE.md. It was explicitly left open rather than
+closed as infeasible, on the theory that a real browser session watching the
+TEWS map's own network traffic would find the per-station endpoint a static
+probe couldn't. That is exactly what a 2026-08-27 session found.
 
-**Still open, not closed as infeasible** — unlike item 5's PFZ verdict, this
-was a shallower pass (no account/dev-tools session against the live TEWS map
-to watch its actual network requests, which would likely reveal the real
-per-station data endpoint the map itself must be calling). A `WorldTides`/
-harmonic-constituent-model alternative (global tide prediction independent of
-INCOIS) was noted but not evaluated — a materially larger scope, not a
-source-hunt shortcut. Worth a second pass with a real browser session before
-concluding this is a dead end the way item 5 was.
+**Built**: `services/tides.py` (`nearest_station()`), over a real, live,
+keyless feed discovered by watching `tsunami.incois.gov.in/TEWS/`'s own
+network requests while clicking a tide-gauge marker: `/itews/homexmls/
+TideStations.xml` lists ~50 Indian stations with position and Reporting/Not
+Reporting status, and `/itews/JSONS/{STATION_NAME}_1.json` returns a genuine
+1-minute-cadence sea-level series with no auth. Three non-obvious things had
+to be worked out before this was usable, all documented in the module's own
+docstring: the series' timestamp field decodes to a year exactly 1900 short
+of the real one (a legacy `java.util.Date(year-1900, ...)` bug, fixed by
+correcting only the year field); a "Not Reporting" station's series is a
+clean empty array rather than a 404; and `tsunami.incois.gov.in` fails
+Python's default TLS verification because the server never sends its
+GlobalSign intermediate certificate (curl and browsers tolerate this, httpx
+does not) — worked around with a bundled intermediate rather than weakening
+verification. Chat tool `get_tide_level`, wired into `weather_safety`; REST
+at `GET /api/ocean/tide`. This is measured real-time sea level (tide + surge
++ wave setup), not a predicted tide table — INCOIS's actual astronomical
+tide-prediction page still 404s, and every response says so. Scoped to the
+India-only station list; the same feed's 832-station international list
+(`TideIntStations.xml`) is left for later. `tests/test_tides.py` plus
+additions to `test_tools_router.py` and `test_chat.py`.
 
 ## 7. No causal/correlation tool for "why has X declined" — closed 2026-08-26
 

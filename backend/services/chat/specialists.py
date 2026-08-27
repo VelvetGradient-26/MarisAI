@@ -66,8 +66,8 @@ SPECIALISTS: dict[str, Specialist] = {
         name="weather_safety",
         description=(
             "Present-day sea/weather conditions, active hazard alerts "
-            "including cyclones and severe weather, and 'is it safe to go "
-            "out' style questions."
+            "including cyclones and severe weather, tide-gauge sea level, "
+            "and 'is it safe to go out' style questions."
         ),
         system_prompt=(
             "You are the Weather & Safety specialist inside MarisAI's ocean "
@@ -76,18 +76,25 @@ SPECIALISTS: dict[str, Specialist] = {
             "blooms — these are computed rules, not issued marine warnings, "
             "never imply otherwise), active tropical cyclones, IMD "
             "severe-weather warnings (including thunderstorm/lightning), "
-            "and how conditions have trended, using only your tools. "
+            "tide-gauge sea level at Indian coastal stations, and how "
+            "conditions have trended, using only your tools. "
             "get_cyclone_alerts is a global GDACS feed (position is the "
             "storm's last reported fix, not a live track); "
             "get_severe_weather_alerts is IMD's own nationwide warning feed "
             "and does not cover cyclone tracks — if asked about a cyclone's "
             "position or category, use get_cyclone_alerts, not "
             "get_severe_weather_alerts, even if the question also mentions "
-            "rain or wind. For an explicit 'is it safe to go out/venture/"
-            "fish' question about one coordinate, call assess_marine_risk "
-            "rather than synthesising a verdict yourself from the "
-            "individual condition and alert tools — it applies a fixed rule "
-            "table so the same conditions always produce the same verdict; "
+            "rain or wind. get_tide_level reports measured real-time sea "
+            "level from the nearest of ~50 Indian tide-gauge stations, not a "
+            "predicted tide table — say so plainly if asked for a future "
+            "tide time or a prediction, which this cannot give; only India's "
+            "coast is covered, and it may report the nearest station is out "
+            "of range or currently not reporting rather than a value. For an "
+            "explicit 'is it safe to go out/venture/fish' question about one "
+            "coordinate, call assess_marine_risk rather than synthesising a "
+            "verdict yourself from the individual condition and alert tools "
+            "— it applies a fixed rule table so the same conditions always "
+            "produce the same verdict; "
             f"relay its risk_level and reasons rather than restating them. {_SHARED_RULES}"
         ),
         tool_names=(
@@ -95,6 +102,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "get_active_alerts",
             "get_cyclone_alerts",
             "get_severe_weather_alerts",
+            "get_tide_level",
             "get_historical_series",
             "assess_marine_risk",
         ),
@@ -134,6 +142,49 @@ SPECIALISTS: dict[str, Specialist] = {
             "check_geofence",
             "get_seafloor_depth",
             "plan_safe_route",
+        ),
+    ),
+    "external_research": Specialist(
+        name="external_research",
+        description=(
+            "Information MarisAI's own ocean data cannot provide: web "
+            "search for news or explanations of a current event, fetching a "
+            "specific webpage, and searching published scientific "
+            "literature. Not for live ocean measurements, forecasts, or "
+            "anything another specialist can answer from MarisAI's own data."
+        ),
+        system_prompt=(
+            "You are the External Research specialist inside MarisAI's "
+            "ocean assistant. You answer questions that need information "
+            "from outside MarisAI's own services: recent news, an "
+            "explanation of a current event, background context, or "
+            "published research — using only your tools. You are the "
+            "sihtodo.md item 4 'controlled internet' specialist: unlike "
+            "every other specialist here, your tools return other people's "
+            "claims, not MarisAI's own measurements, so the discipline is "
+            "different in one specific way — always say where a fact came "
+            "from (the source's name, and its URL if you have one) rather "
+            "than stating it as something MarisAI observed, and never "
+            "present a single web result or one paper's finding as settled "
+            "scientific consensus. web_search is for open questions and "
+            "current events; search_scientific_literature is for 'what does "
+            "the research say about X' questions and returns papers, not "
+            "news; fetch_webpage only reads a URL you already have (e.g. "
+            "from a web_search result or one the user gave you) — it is not "
+            "a search tool. A 'why is the water near X unusually warm this "
+            "week' question typically needs a MarisAI measurement first (an "
+            "SST anomaly from another specialist) before a web search for "
+            "an explanation is even meaningful — if you were not given a "
+            "measured anomaly to explain, say that plainly rather than "
+            "guessing why. "
+            "Never state a number you did not get from a tool. If a tool "
+            "fails or returns nothing, say so plainly. Keep it tight and "
+            "always name units and sources."
+        ),
+        tool_names=(
+            "web_search",
+            "fetch_webpage",
+            "search_scientific_literature",
         ),
     ),
 }

@@ -203,6 +203,35 @@ class RouteArgs(BaseModel):
     end_longitude: float = Field(..., ge=-180, le=180, description="Destination longitude in degrees east.")
 
 
+class WebSearchArgs(BaseModel):
+    query: str = Field(..., description="What to search for on the open web.")
+    max_results: int = Field(5, ge=1, le=10, description="Maximum number of results to return.")
+
+
+class FetchWebpageArgs(BaseModel):
+    url: str = Field(
+        ...,
+        description=(
+            "A specific http(s) URL to fetch and read, e.g. one returned by "
+            "web_search. Not a search query."
+        ),
+    )
+
+
+class LiteratureArgs(BaseModel):
+    query: str = Field(..., description="Topic, species, or research question to search for.")
+    max_results: int = Field(5, ge=1, le=10, description="Maximum number of papers to return.")
+
+
+class TideArgs(PointArgs):
+    radius_km: float = Field(
+        200.0,
+        ge=10,
+        le=500,
+        description="How far from the point to look for an INCOIS tide-gauge station, in km.",
+    )
+
+
 # --------------------------------------------------------------------------
 # Tool implementations
 # --------------------------------------------------------------------------
@@ -378,6 +407,30 @@ async def _correlate(
     return await analyze(variables, latitude, longitude, range_key)
 
 
+async def _web_search(query: str, max_results: int) -> dict[str, Any]:
+    from services.web_search import search
+
+    return await search(query, max_results)
+
+
+async def _fetch_webpage(url: str) -> dict[str, Any]:
+    from services.webpage import fetch
+
+    return await fetch(url)
+
+
+async def _search_literature(query: str, max_results: int) -> dict[str, Any]:
+    from services.literature import search_literature
+
+    return await search_literature(query, max_results)
+
+
+async def _tide_level(latitude: float, longitude: float, radius_km: float) -> dict[str, Any]:
+    from services.tides import nearest_station
+
+    return await nearest_station(latitude, longitude, radius_km)
+
+
 # --------------------------------------------------------------------------
 # Wiring
 # --------------------------------------------------------------------------
@@ -529,6 +582,47 @@ _SPECS: list[tuple[str, str, type[BaseModel], Any]] = [
         "claim — correlation is not causation.",
         CorrelationArgs,
         _correlate,
+    ),
+    (
+        "web_search",
+        "Search the open web for current information MarisAI's own ocean "
+        "data cannot provide — news, explanations of an unusual event, "
+        "context beyond a measured number. Returns a ranked list of "
+        "{title, url, snippet, published_date}. Always attribute what you "
+        "relay to its source; a web result is a claim someone made, not a "
+        "MarisAI measurement.",
+        WebSearchArgs,
+        _web_search,
+    ),
+    (
+        "fetch_webpage",
+        "Fetch one specific webpage (e.g. a URL web_search returned, or one "
+        "the user gave you) and return its title and readable text. Only "
+        "plain public http(s) HTML/text pages can be fetched — not a search "
+        "query, and not a PDF or image.",
+        FetchWebpageArgs,
+        _fetch_webpage,
+    ),
+    (
+        "search_scientific_literature",
+        "Search published, peer-reviewed scientific literature (via "
+        "CrossRef) for a topic, species or research question. Returns "
+        "{title, authors, journal, published, doi, url} per paper — use the "
+        "DOI/URL to cite it, never restate a finding as MarisAI's own.",
+        LiteratureArgs,
+        _search_literature,
+    ),
+    (
+        "get_tide_level",
+        "Current measured sea level at the nearest INCOIS tide-gauge station "
+        "to a coordinate (~50 Indian coastal stations), with a rising/"
+        "falling/steady trend. This is a real-time gauge reading — it folds "
+        "in storm surge and wave setup along with the astronomical tide — "
+        "not a predicted tide table; no keyless Indian tide-prediction feed "
+        "exists. Reports if the nearest station is out of range or not "
+        "currently reporting rather than guessing a value.",
+        TideArgs,
+        _tide_level,
     ),
 ]
 
