@@ -3,8 +3,7 @@ import type { LayerLegend } from './types';
 type GradientLegend = Extract<LayerLegend, { type: 'gradient' }>;
 
 /** Renders the color ramp + min/max/unit for a `gradient`-type LayerLegend.
- * Shared by the inline legend in MapControls.tsx and the floating SstLegend,
- * so both stay visually identical without duplicating the gradient math. */
+ * Used by the inline legend in MapControls.tsx. */
 export function GradientBar({ legend }: { legend: GradientLegend }) {
   const gradient = `linear-gradient(to right, ${legend.stops
     .map((s) => `${s.color} ${(s.offset * 100).toFixed(1)}%`)

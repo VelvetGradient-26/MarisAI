@@ -1227,6 +1227,16 @@ body,
   min-height: 0;
 }
 
+/* `.map-rail > *` only reaches its own direct children, and this group
+   nests severe-weather/boundary-watch/selected-location one level deeper —
+   so without this, each panel's default `min-height: auto` refused to
+   shrink below its content height, growing past the rail's bottom edge
+   instead of capping itself and letting its own `overflow-y: auto` body
+   scroll. Same fix as `.map-rail > *`, one level down. */
+.map-rail__bottom-group > * {
+  min-height: 0;
+}
+
 .legend-stack {
   display: flex;
   flex-direction: column;
@@ -1240,58 +1250,6 @@ body,
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
-}
-
-.sst-legend,
-.wind-legend {
-  width: 220px;
-  background: var(--ocean-panel-bg);
-  border: 1px solid var(--ocean-border);
-  border-radius: 10px;
-  padding: 12px 14px;
-  color: var(--ocean-text);
-  backdrop-filter: blur(6px);
-  box-sizing: border-box;
-}
-
-.sst-legend__title,
-.wind-legend__title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ocean-muted);
-  margin-bottom: 8px;
-}
-
-.sst-legend__meta,
-.wind-legend__meta {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: 8px;
-  color: var(--ocean-muted);
-  font: 10px/1.4 var(--ocean-font-mono);
-}
-
-.sst-legend__error,
-.wind-legend__error {
-  color: var(--ocean-warn);
-}
-
-.sst-legend__source,
-.wind-legend__source {
-  opacity: 0.8;
-}
-
-.wind-legend__beaufort {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--ocean-border);
-  font: 10px/1.4 var(--ocean-font-mono);
-  color: var(--ocean-muted);
 }
 
 /* --- Map hover tooltips ------------------------------------------------ */
@@ -1627,11 +1585,6 @@ body,
     align-items: stretch;
     width: calc(50vw - 20px - (var(--map-ctrl-gutter) - 16px));
     max-width: 220px;
-  }
-
-  .sst-legend,
-  .wind-legend {
-    width: 100%;
   }
 
   /* Bottom row: readout left, feed status right. The status normally centres
