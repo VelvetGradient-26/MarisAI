@@ -745,12 +745,20 @@
   box-shadow: 0 0 0 4px var(--chat-focus-ring);
 }
 
+/* Reserves room on the left for `.chat-attach-btn` (assistant.css), the same
+   way the base rule's right padding reserves the send button's corner. */
+.chat-input-wrap--has-attach .chat-input {
+  padding-left: 50px;
+}
+
 .chat-input {
   display: block;
   width: 100%;
   min-height: 52px;
   max-height: 260px;
-  /* Right padding reserves the embedded send button's corner. */
+  /* Right padding reserves the embedded send button's corner; left padding
+     (only on the main composer — see `.chat-input-wrap--has-attach`) reserves
+     the attach button's. */
   padding: 15px 54px 15px 20px;
   border: none;
   border-radius: 20px;

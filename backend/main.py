@@ -57,6 +57,7 @@ from services.copernicus_chlorophyll import refresh_chlorophyll_cache
 from services.copernicus_currents import refresh_currents_cache
 from services.copernicus_sst import refresh_sst_cache
 from services.copernicus_wind import refresh_wind_cache
+from services.dashboard import history
 
 SST_REFRESH_INTERVAL_HOURS = 3
 # The BGC-PFT product this feeds is daily, so anything faster re-fetches a
@@ -210,6 +211,14 @@ async def lifespan(_app: FastAPI):
         "interval",
         minutes=watch_alerts.EVALUATION_INTERVAL_MINUTES,
     )
+    # KPI ring buffer: reload the in-process sparkline history the dashboard
+    # already had before this restart. Fire-and-forget like the caches above —
+    # a fresh boot still starts serving immediately and shows "collecting
+    # history" for the moment this takes. A no-op when DATABASE_URL is unset.
+    asyncio.create_task(history.hydrate_from_db())
+    # Keeps the table a bounded backstop for the ring buffer's own window
+    # rather than an unbounded log — see history.prune_db's docstring.
+    scheduler.add_job(history.prune_db, "interval", hours=6)
     scheduler.start()
 
     # Long-lived websocket to aisstream.io. Self-supervising and a no-op

@@ -36,10 +36,11 @@ reused here) — an averaging product does not need to keep the wind field's
 own native resolution to be a fair test of "does a multi-day mean help".
 
 **State does not survive a restart** — an in-process ring buffer, the same
-limitation and the same reason `services/eddy_tracking.py` and
-`services/dashboard/history.py`'s KPI buffer both already carry: there is no
-upstream that can answer "what was the wind six hours ago" for this to fall
-back to.
+limitation `services/eddy_tracking.py` carries and for the same reason: there
+is no upstream that can answer "what was the wind six hours ago" for this to
+fall back to. (`services/dashboard/history.py`'s KPI buffer used to be this
+same shape; it now also persists to Postgres, since a card's sparkline is
+worth surviving a restart in a way this diagnostic buffer is not.)
 """
 
 from __future__ import annotations

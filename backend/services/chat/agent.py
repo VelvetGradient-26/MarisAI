@@ -588,6 +588,33 @@ def _record_delegation(call: dict[str, Any], delegations: list[dict[str, Any]]) 
     delegations.append({"agent": name[len(_DELEGATE_PREFIX):], "question": question})
 
 
+def _question_message(question: str, image: str | None) -> HumanMessage:
+    """The turn's `HumanMessage` — multimodal only when an image is attached.
+
+    The content-block shape (`{"type": "image_url", "image_url": {"url": ...}}`)
+    is the one LangChain standardised across `ChatOpenAI` and
+    `ChatGoogleGenerativeAI`; the Ollama path is served through the OpenAI
+    adapter (see `_model()`) against an OpenAI-compatible endpoint, so the same
+    shape applies there too — whether the *configured model itself* understands
+    an image is a property of that model, not of this plumbing.
+
+    **Scope, deliberately**: the image is not persisted to the chat transcript
+    (`store.record` only ever took question/answer text) and is not forwarded
+    to a delegate specialist's own sub-loop — each specialist already "does not
+    see the rest of this conversation" per the system prompt, and the ask this
+    implements is "describe/answer about an attached image" as a direct,
+    top-level capability, not a new image-analysis tool for every specialist.
+    """
+    if not image:
+        return HumanMessage(content=question)
+    return HumanMessage(
+        content=[
+            {"type": "text", "text": question},
+            {"type": "image_url", "image_url": {"url": image}},
+        ]
+    )
+
+
 def _history_messages(history: list[dict[str, str]]) -> list[BaseMessage]:
     messages: list[BaseMessage] = []
     for turn in history[-10:]:
@@ -608,6 +635,7 @@ async def answer(
     *,
     session_id: str | None = None,
     client_id: str | None = None,
+    image: str | None = None,
 ) -> dict[str, Any]:
     """Run one conversation turn to completion.
 
@@ -619,6 +647,10 @@ async def answer(
     forgetting itself: the browser's copy is lost on reload, and trusting it
     also let a client silently rewrite what the model believed it had said.
     `history` remains the fallback for a deployment with no database.
+
+    `image`, when given, is a `data:image/...;base64,...` URL attached to this
+    turn — see `_question_message`'s docstring for the multimodal content
+    shape and what is deliberately out of scope.
     """
     question = (question or "").strip()
     if not question:
@@ -644,7 +676,7 @@ async def answer(
 
     messages: list[BaseMessage] = [SystemMessage(content=_SYSTEM_PROMPT)]
     messages.extend(history_messages)
-    messages.append(HumanMessage(content=question))
+    messages.append(_question_message(question, image))
 
     delegations: list[dict[str, Any]] = []
     truncated = False
@@ -741,6 +773,7 @@ async def answer_stream(
     *,
     session_id: str | None = None,
     client_id: str | None = None,
+    image: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """`answer()`, yielded as it happens.
 
@@ -802,7 +835,7 @@ async def answer_stream(
 
     messages: list[BaseMessage] = [SystemMessage(content=_SYSTEM_PROMPT)]
     messages.extend(history_messages)
-    messages.append(HumanMessage(content=question))
+    messages.append(_question_message(question, image))
 
     delegations: list[dict[str, Any]] = []
     truncated = False

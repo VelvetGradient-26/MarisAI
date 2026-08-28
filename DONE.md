@@ -126,12 +126,58 @@ items, re-triggered because `sihtodo.md` was merged into `TODO.md` on
   actually samples (`GRID_DIVISIONS = 22` over a bbox a few degrees across).
   Correctness fix, not a behavior change; full `test_routing.py` suite (9/9)
   still green.
-- **Not implemented, on purpose: converting the landing page's remaining
-  `useReveal`-based reveals to scroll-driven CSS.** Re-examined rather than
-  ported straight from TODO.md's phrasing — see TODO.md's own entry for why
-  this one is a real design conflict (a one-shot "never flips back" guarantee
-  vs. a scroll-linked timeline's inherently replayable progress), left as a
-  product call rather than defaulted into.
+- **Landing page's remaining reveals converted to scroll-driven CSS — 2026-08-28,
+  by explicit product call.** Asked directly (the tradeoff below is real, not
+  a default to implement silently) and told to convert anyway, for consistency,
+  accepting that a scroll-linked timeline's progress is a pure function of
+  current scroll position and so can replay if a visitor scrolls back above a
+  section and down again — the one property a pure CSS timeline cannot
+  reproduce from `useReveal`'s one-shot "never flips back" guarantee.
+  - **Not a uniform conversion.** Three of the eight call sites
+    (`Metrics`/`.lp-metrics`, `Forecasting`/`.lp-feature`, `Research`/
+    `.lp-research`) keep `useReveal` — not for their own wrapper fade, which is
+    now CSS like the rest, but because each drives a JS-only sub-behaviour with
+    no CSS equivalent: `Metrics`' `useCountUp` number ramp, `Forecasting`'s
+    skill-bar width (`(row.skill / 0.6) * 100%`), and `Research`'s
+    `.lp-diagram__fold`/`.lp-diagram__block` stagger (JS-computed per-element
+    delays over a variable, non-fixed count of SVG nodes). Their existing
+    nested selectors (`.lp-metrics.is-in .lp-metric::before`,
+    `.lp-research.is-in .lp-diagram__fold`) were left untouched and still work,
+    since `revealed`/`is-in` is still computed and applied exactly as before —
+    only now redundantly with, not in place of, the wrapper's own CSS animation.
+  - **The other five** (`Coverage`, `Platform`, `Rigour`, `Closing` in
+    `LandingPage.tsx`, plus `ComparePage.tsx`'s `SectionTable`) had `useReveal`
+    removed entirely. Their list/grid children (`.lp-provider`, `.lp-surface`,
+    `.lp-principle`) get their own self `animation-timeline: view()` rather
+    than subscribing to a named ancestor timeline — matching the existing
+    `.lp-glyph__stage` precedent in the same file, and simpler than named
+    view-timeline propagation (the newer, less battle-tested half of the spec).
+  - **Base state is always the fully-visible one**, exactly like the existing
+    hero/platform-card blocks: `@supports (animation-timeline: view())` is what
+    adds the hidden-then-reveal animation, so a browser without support renders
+    every section as authored rather than a permanently blank one — this
+    matters more here than for the hero, since five of these sections no
+    longer have any JS fallback path at all.
+  - **A defensible simplification, not yet re-confirmed with the user**:
+    `.lp-metric`'s existing 90/180/270ms `nth-child` stagger (a wall-clock
+    `transition-delay`) was left as-is rather than reproduced for the
+    scroll-timeline versions of `.lp-provider`/`.lp-surface`/`.lp-principle` —
+    `animation-delay` on a non-monotonic timeline is a percentage of the
+    timeline's own range, not a wall-clock offset, and re-deriving an
+    equivalent stagger per section was judged not worth the added CSS for a
+    cosmetic difference on grids/lists whose items already sit close enough
+    together to enter the viewport within one scroll frame of each other.
+  - **Verified in a real foregrounded browser, not the claude-in-chrome
+    extension.** The extension's tabs are always `visibilityState: "hidden"`
+    ([[reference_cdp_raf_frozen]]) — confirmed mid-check that this doesn't just
+    freeze `requestAnimationFrame`-driven JS, it also froze `getComputedStyle`
+    at a stale, wrong-looking `opacity: 1` for elements thousands of pixels
+    below the fold that had never scrolled into view. Re-verified instead with
+    real headless Chrome over CDP ([[reference_headless_visual_check]]):
+    `.lp-coverage` (and the rest) correctly read `opacity: 0` off-screen,
+    `opacity: 1` once scrolled to centre, `0` again after scrolling back to the
+    top, and `1` again on re-entry — the accepted replay tradeoff, working as
+    described, not stuck either direction.
 
 **The same staleness check, applied to the "Medium" section before starting
 the next batch, found two more already-shipped items** in the same
@@ -559,6 +605,125 @@ provider into three, and force a full retrain of everything carrying SST /
 salinity / currents as a covariate. Revisit only if the grid builder becomes
 fetch-bound again, or if a *new* variable needs a daily-only field.
 
+### KPI ring buffer given real persistence — 2026-08-28
+
+Scoped down from the former "Postgres for persistence" TODO item, by explicit
+product decision: feedback is mail-only (no local log at all — see
+`services/feedback.py`), and download history is out of scope for now.
+Only the KPI ring buffer (`services/dashboard/history.py`) got a database.
+
+**The in-process ring buffer stays the read path — this adds a durability
+backstop, not a rewrite.** `record()`/`series()`/`trend()`/`reset()` are all
+still plain, synchronous, in-process calls; `summary.py`, `health.py` and
+their routers needed *zero* changes. `record()` additionally schedules a
+background write (`loop.create_task`, following `main.py`'s existing
+fire-and-forget convention for cache warming) into a new
+`dashboard.points` table when `DATABASE_URL` is configured and a loop is
+running — a plain sync caller (this module's own unit tests included) or a
+missing database just skips the write, exactly `services/chat/store.py`'s
+"degrade rather than fail" shape. `app/models/dashboard/kpi_point.py` /
+migration `4cfe6c59327f` (chained after the alert-subscriptions migration,
+`CREATE SCHEMA`/`DROP SCHEMA ... RESTRICT` by hand exactly like the two
+migrations before it needed) — both `upgrade()`/`downgrade()` verified against
+a real local Postgres, not just read.
+
+- `hydrate_from_db()` runs once at boot (`main.py`'s `lifespan`, fire-and-forget
+  like every other cache warm there) and reloads `_series`/`_last_sample` from
+  the persisted rows, so a restart resumes the sparkline instead of starting
+  over. `prune_db()` runs on a 6-hourly scheduler job and deletes rows beyond
+  `MAX_POINTS` per key (a `row_number() OVER (PARTITION BY key ...)` delete) —
+  the table is a bounded backstop for the same window the ring buffer already
+  keeps, not an unbounded log.
+- **A real bug caught by the new test suite, not by inspection**: the first
+  version of `hydrate_from_db()` checked `if key in _series: continue` against
+  the *same* dict the loop was populating, so a key's first persisted row made
+  every later row for that key look "already there" and get silently skipped —
+  a two-point series hydrated back as one point. Fixed by snapshotting
+  `_series.keys()` once before the loop starts. Caught by
+  `test_hydrate_from_db_reloads_after_a_simulated_restart` in the new
+  `tests/test_dashboard_history_db.py` (four tests, same real-Postgres/
+  skip-if-absent convention as `test_chat_store.py`, including its
+  asyncpg-binds-to-the-opening-loop fixture fix) before this ever reached a
+  real restart.
+- **Live-verified against a running server, not just the test suite**: booted
+  `uvicorn`, watched `hydrate_from_db()`'s query run at startup in the log,
+  hit `GET /api/dashboard/summary` and `GET /api/dashboard/health`, and
+  confirmed real rows landed in `dashboard.points` (`psql` query against the
+  live table) with the correct keys (`sea_surface_temperature`,
+  `health:copernicus_sst`, etc.) and values, then confirmed `GET
+  /api/dashboard/sources/noaa_ndbc`'s `recent_health` sparkline reads them back.
+- Three other modules' docstrings (`wind_history.py`, `eddy_tracking.py`,
+  `heatwave_tracking.py`) cited this buffer's old "does not survive a restart"
+  as shared precedent for *their own* unpersisted state being an acceptable
+  choice — updated to stop citing a property this module no longer has,
+  pointing at each other instead where the reasoning still holds.
+
+### Ocean Assistant: image upload / vision — 2026-08-28
+
+Attach an image to a chat turn and have the assistant describe/answer about
+it. Additive, as TODO.md's own note predicted: the provider client
+(`langchain_openai`/`langchain_google_genai`, both reached the same way
+through `agent._model()`) already speaks LangChain's standard multimodal
+content-block shape, so this needed no new client.
+
+- **Backend**: `ChatRequest.image` (`routers/chat.py`) — an optional
+  `data:image/{png,jpeg,webp};base64,...` URL, validated at the request
+  boundary (mime-type prefix, ~6 MB decoded size cap so an unauthenticated
+  endpoint cannot push an oversized inline payload through a paid LLM call).
+  Threaded through `answer()`/`answer_stream()` to a new
+  `agent._question_message()`, which builds a plain-string `HumanMessage` as
+  before with no image, or `content: [{"type": "text", ...}, {"type":
+  "image_url", "image_url": {"url": ...}}]` with one — the shape LangChain
+  standardised across `ChatOpenAI` and `ChatGoogleGenerativeAI`, so it applies
+  unchanged to the Ollama path too (served through the OpenAI adapter against
+  an OpenAI-compatible endpoint). Whether the *configured model* understands
+  an image is then a property of that model, not of this plumbing.
+- **Scoped deliberately, not by oversight**: the image is not persisted to the
+  chat transcript (`store.record` still only ever takes question/answer text
+  — a resumed session replays the question but not the original picture) and
+  is not forwarded into a delegate specialist's own sub-loop (each specialist
+  already "does not see the rest of this conversation" per the system prompt;
+  this implements a direct, top-level capability, not a new tool for every
+  specialist).
+- **Frontend** (`features/assistant/`): `SimpleImageAttachmentAdapter`
+  (`@assistant-ui/react`, already a dependency) wired into `useLocalRuntime`'s
+  `adapters.attachments` — no upload endpoint, the picked file becomes a
+  `data:` URL client-side and travels inline in the same request body as the
+  composer's text. `ComposerPrimitive.AddAttachment`/`.Attachments` and
+  `AttachmentPrimitive.Root`/`.Remove` are the headless primitives used, per
+  this codebase's existing `@assistant-ui/react` convention — a ghost icon
+  button mirroring the send button's corner position, a small thumbnail row
+  above the input with a remove control, styled entirely through the existing
+  `chat.css`/`assistant.css` tokens.
+- **A real bug the composer's own data model exposed, not an edge case**:
+  the first version read the image off `message.content`, following the same
+  shape a text part has. Wrong — a composer attachment lives in a *separate*
+  `message.attachments: CompleteAttachment[]` array, each carrying its own
+  `content: ThreadUserMessagePart[]`; `message.content` only ever holds what
+  the text input produced. `imageOf()` in `runtime.ts` reads `attachments`
+  instead. Caught by inspecting the real network request body in a live
+  browser test, not by reading the types — the wrong version typechecked
+  fine and silently sent no image at all.
+- **The sent image is also shown back in the user's own bubble**
+  (`MessagePrimitive.Attachments` in `UserMessage`), reading the *sent* form's
+  data URL rather than the composer's `File` object — a historical message
+  never has the original `File` to hand, only what the attachment adapter's
+  `send()` produced.
+- **Live-verified end to end**, not just unit-tested: headless Chrome over
+  CDP ([[reference_headless_visual_check]] — the claude-in-chrome extension's
+  hidden tabs cannot open a native file-picker dialog at all) clicked the real
+  attach button, injected a real PNG via `DOM.setFileInputFiles` on the
+  input the button's own handler creates, confirmed the thumbnail preview and
+  captured the actual `POST /api/v1/chat/stream` body: `image` present, correct
+  `data:image/png;base64,...` prefix, matching length. Confirmed the request
+  reaches the real (currently configured) Ollama cloud model
+  (`gpt-oss:20b-cloud`, text-only) without crashing — it replied "I'm not able
+  to see the image you're referring to", the honest degradation a non-vision
+  model should give, not a 500. **What this does *not* prove**: genuine visual
+  understanding, since no vision-capable model is currently configured to test
+  against — swapping in `gemini-2.0-flash`/`gpt-4o`-class model would exercise
+  the real path this plumbing was built for.
+
 ---
 
 ## Detection
@@ -974,6 +1139,54 @@ and everything else is ready."
   TODO.md's still-open "closed-SSH-contour detection as a cross-check on the
   count" item should try this before writing a contour detector from
   scratch.
+
+### `py-eddy-tracker` cross-check — tried, and not viable without a legacy environment — 2026-08-28
+
+The lead above, followed up: **the PyPI package is `pyeddytracker` (no
+hyphens) — `py-eddy-tracker` finds nothing.** `uv add pyeddytracker` resolves
+to 3.5.0 against this project's numpy/matplotlib/zarr, since the actual
+latest release (3.6.1, confirmed live against PyPI's JSON API) fails to
+resolve at all: it declares `numpy<1.23`, which this project's `numpy>=1.26`
+(resolved 2.4.6 here) directly conflicts with. That is the library's own
+maintainers' constraint, not a guess from trial and error.
+
+**3.5.0 installs, but does not run, on this stack — six separate breaks
+surfaced in sequence, working *into* the library rather than stopping at the
+first one**:
+
+1. `zarr.Delta` (a v2 codec class the package's own `__init__.py` uses in a
+   module-level NetCDF-field-encoding dict) does not exist in zarr 3.1.6.
+2. `matplotlib.cm.get_cmap` (removed in matplotlib 3.9+) — used at import time
+   in `observations/observation.py`.
+3. `numpy.in1d` (removed in numpy 2.0, renamed `isin`).
+4. `numpy.float_` (removed in numpy 2.0, renamed `float64`).
+5. `numpy.round_` (removed in numpy 2.0, renamed `round`).
+6. **The one that actually stops this working**: `eddy_feature.py`'s
+   `Contours.__init__` reads `self.contours.collections` off a Matplotlib
+   `QuadContourSet` — an attribute matplotlib removed as part of a real
+   internal restructuring of how contour paths are exposed (not a rename),
+   somewhere in the 3.8-3.9 range. The first five are one-line monkeypatches
+   (shim the old name to the new one) and were applied and confirmed working,
+   in order, against a synthetic Gaussian-bump SSH grid built specifically to
+   smoke-test the import and call path before spending a real Copernicus
+   fetch on it. The sixth is not a rename to shim — it is a different data
+   shape, inside the package's own contour-extraction algorithm, and fixing
+   it means patching that algorithm, not routing around a renamed symbol.
+
+**Verdict: not worth pursuing further without a dedicated, numpy<1.23-pinned
+environment isolated from this project's real dependency set** (the same
+shape of isolation `machine_learning/` already uses for its own venv, for an
+unrelated reason) — and even then, whichever matplotlib version ships with a
+numpy<1.23-era environment would need to predate the `.collections` removal
+too, so the two constraints have to be satisfied together, not
+independently. That is a real, but bounded, amount of future work if someone
+wants this cross-check badly enough to give it its own environment; it is
+not a quick pip install into this backend. No code from this attempt was
+kept — `services/climatology/copernicus_reanalysis.py` was extended with a
+`fetch_ssh_and_currents_day` helper to feed the comparison, then reverted
+once the library itself proved non-functional, since a fetch helper with no
+working caller and no live verification of its own is exactly the
+half-finished code this codebase's own conventions rule out.
 
 ### Eddy tracking: frame-to-frame identity over a live detection grid — 2026-08-24
 

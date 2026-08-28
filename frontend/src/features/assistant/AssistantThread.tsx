@@ -1,6 +1,7 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import {
   ActionBarPrimitive,
+  AttachmentPrimitive,
   AuiIf,
   BranchPickerPrimitive,
   ComposerPrimitive,
@@ -16,11 +17,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  ImagePlus,
   Pencil,
   RefreshCw,
   ShieldCheck,
   Square,
   TriangleAlert,
+  X,
 } from 'lucide-react';
 import { Markdown } from '../../components/Markdown';
 import ShinyText from '../../components/reactbits/ShinyText/ShinyText';
@@ -242,7 +245,12 @@ function Composer({ variant }: { variant: 'centered' | 'docked' }) {
         className={`chat-composer${variant === 'centered' ? ' chat-composer--centered' : ''}`}
         transition={{ duration: 0.5, ease: EASE }}
       >
-        <div className="chat-input-wrap">
+        <ComposerAttachments />
+        <div className="chat-input-wrap chat-input-wrap--has-attach">
+          <ComposerPrimitive.AddAttachment className="chat-attach-btn" aria-label="Attach an image">
+            <ImagePlus size={17} aria-hidden />
+          </ComposerPrimitive.AddAttachment>
+
           <ComposerPrimitive.Input
             className="chat-input"
             rows={1}
@@ -271,6 +279,50 @@ function Composer({ variant }: { variant: 'centered' | 'docked' }) {
       </motion.form>
     </ComposerPrimitive.Root>
   );
+}
+
+/**
+ * Pending image attachments, previewed above the input before the turn is
+ * sent. Renders nothing at all (not even an empty wrapper) with zero
+ * attachments — gated on the composer's own attachment count rather than on
+ * whether children exist, so an empty row never adds spacing above the input.
+ */
+function ComposerAttachments() {
+  const hasAttachments = useAuiState((s) => s.composer.attachments.length > 0);
+  if (!hasAttachments) return null;
+
+  return (
+    <div className="chat-attachments">
+      <ComposerPrimitive.Attachments>
+        {({ attachment }) => (
+          <AttachmentPrimitive.Root className="chat-attachment">
+            <ChatAttachmentThumb file={attachment.file} name={attachment.name} />
+            <AttachmentPrimitive.Remove className="chat-attachment-remove" aria-label="Remove image">
+              <X size={12} aria-hidden />
+            </AttachmentPrimitive.Remove>
+          </AttachmentPrimitive.Root>
+        )}
+      </ComposerPrimitive.Attachments>
+    </div>
+  );
+}
+
+/** An attachment's own thumbnail. `file` is only present on a *pending*
+ * attachment (before send); a `CompleteAttachment` (already sent) has none,
+ * which never happens here since sending clears the composer immediately —
+ * kept as a fallback to the plain name rather than assumed. */
+function ChatAttachmentThumb({ file, name }: { file?: File; name: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!file) return;
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+
+  if (!url) return <span className="chat-attachment-name">{name}</span>;
+  return <img className="chat-attachment-thumb" src={url} alt="" />;
 }
 
 /** The composer swapped in for a user turn mid-edit — same shape as the
@@ -417,6 +469,7 @@ function UserMessage() {
         <div className="chat-col chat-col--user">
           <AuiIf condition={(s) => !s.message.composer.isEditing}>
             <div className="chat-bubble chat-bubble--user">
+              <UserMessageAttachments />
               <MessagePrimitive.Parts components={{ Text: PlainText }} />
             </div>
             <div className="chat-msg-controls chat-msg-controls--user">
@@ -441,6 +494,30 @@ function UserMessage() {
         </div>
       </motion.div>
     </MessagePrimitive.Root>
+  );
+}
+
+/** The image(s) a user turn was sent with, shown as small thumbnails above its
+ * text — mirrors `ComposerAttachments`' preview, but reads the *sent* form
+ * (`CompleteAttachment.content`, a data: URL) rather than a `File`, since a
+ * historical message never has the original `File` object to hand. Renders
+ * nothing for a text-only turn, or for a past turn resumed from a stored
+ * session — the backend does not persist the image bytes (see
+ * `agent._question_message`'s docstring), so a reloaded conversation shows
+ * the question text only, honestly reflecting what was actually kept. */
+function UserMessageAttachments() {
+  return (
+    <MessagePrimitive.Attachments>
+      {({ attachment }) => {
+        const part = attachment.content?.find((candidate) => candidate.type === 'image');
+        if (!part || part.type !== 'image') return null;
+        return (
+          <div className="chat-attachments chat-attachments--sent">
+            <img className="chat-attachment-thumb chat-attachment-thumb--sent" src={part.image} alt="" />
+          </div>
+        );
+      }}
+    </MessagePrimitive.Attachments>
   );
 }
 

@@ -27,53 +27,6 @@ check `main`, not a doc, before starting an "easy" item.
 
 ## Easy
 
-### Motion: finish converting the landing page's remaining reveals
-
-The three named targets ship (hero parallax, platform-card 3D glyphs, all
-CSS scroll-driven, see DONE.md). The rest of the landing page's reveals
-(`Metrics`, and seven more `useReveal<HTMLDivElement>()` call sites in
-`pages/LandingPage.tsx`, plus one in `ComparePage.tsx`) are still driven by
-`useReveal` — a JS scroll/resize listener plus `IntersectionObserver` as a
-backup trigger — rather than pure `animation-timeline: view()` CSS.
-
-**Re-examined 2026-08-28 and *not* converted — this is a real conflict, not
-just unfinished polish.** `useReveal`'s own docstring documents two
-deliberate properties: reveal only forward ("a reveal never flips back...an
-entrance that replays every time you scroll past is a distraction"), and
-geometry measured directly rather than trusting `IntersectionObserver` alone
-(written after `AnalyticsGrid` shipped with an observer that never fired,
-leaving every chart unmounted — see `hooks/useReveal.ts`). A pure scroll-linked
-CSS timeline can't reproduce the first property: its progress is a function
-of *current* scroll position only, so scrolling back above an entry range and
-back down again necessarily replays the animation — exactly the flicker
-`useReveal` was written to prevent. Converting these eight call sites the
-same way the hero/platform-card *continuous* effects were converted would
-trade a documented reliability fix for a real regression, not just change
-the implementation technique.
-
-If this is still wanted for consistency, the open question is a product
-one, not an engineering one: accept occasional replay-on-scroll-back for a
-one-less-hook codebase, or keep `useReveal` for one-shot reveals and reserve
-`animation-timeline: view()` for continuous/non-monotonic effects (its
-current, working use). Needs a call from whoever wants "consistency" enough
-to accept the tradeoff — not a default to implement silently.
-
-- **`overflow: hidden` on any ancestor silently freezes a view timeline** —
-  it makes that element a scroll container, and `view()` measures the
-  nearest scrollport rather than the viewport. Use `overflow: clip`.
-- **A screenshot cannot verify a scroll-driven animation.** Sample the
-  computed matrix at several scroll positions; a static pose looks identical
-  to a moving one in any single frame.
-- **Reduced motion resolves to the finished state**, never to a faster
-  animation.
-- **Never wrap the `/map` route in a keyed animated wrapper** — a remount
-  destroys and rebuilds the MapLibre WebGL context and discards the layer
-  state `mapPreferencesStore` exists to preserve.
-- **No JS mount animation on dashboard panels** — `AnalyticsGrid`'s
-  `LazyMount` decides what to render by measuring geometry; moving/rescaling
-  the thing being measured, as it is measured, is the hazard. Hover and
-  opacity are safe (`.oid-swap-in` fades, never slides).
-
 ### Documentation drift
 
 CLAUDE.md's forecast-map section already avoids quoting a grid count and
@@ -111,54 +64,18 @@ cyclonic / 1143 anticyclonic — same order as the live cache's 2177. What's
 left is registering an AVISO+ account, downloading the two files, and
 running the script — not writing any more code.
 
-- Also open: closed-SSH-contour detection as a cross-check on the count —
-  `py-eddy-tracker` (github.com/AntSimi/py-eddy-tracker), the actual
-  open-source algorithm AVISO's own atlas is built from, is pip-installable
-  and unblocked by the AVISO+ account wall entirely. Worth trying against
-  the live SSH-adjacent field this platform already has before assuming a
-  from-scratch contour detector is needed.
+- Closed-SSH-contour detection as a cross-check on the count — tried
+  2026-08-28, not viable as a quick addition. See DONE.md's "`py-eddy-tracker`
+  cross-check — tried, and not viable without a legacy environment": the
+  PyPI package (`pyeddytracker`) is numpy<1.23-pinned by its own maintainers
+  and, even shimmed past that, breaks inside Matplotlib's own contour
+  internals (not a renamed symbol — a real structural change). Revisit only
+  with a dedicated legacy-pinned environment, not as an addition to this
+  backend's own dependencies.
 - **No map layer or chat tool yet** for eddy tracks — `GET
   /api/ocean/eddies/tracks` exists and is tested, but nothing visualises a
   track's path the way `/eddies` itself is drawn. Do this once the atlas
   comparison above says the tracks are trustworthy enough to show.
-
-### A rolling wind history, so upwelling corroboration can be tested fairly
-
-**Both baseline levers have now been tried and both failed** — see
-`services/sst_anomaly.py`'s docstring and DONE.md for the full numbers.
-Neither closing the OISST/live-field latency gap (2026-08-17) nor fitting
-the climatology on the Copernicus reanalysis instead of OISST (2026-08-25, a
-real 30-year build, measured against a paired same-snapshot control) widened
-the favourable/downwelling contrast; the second attempt made the strong
-(below-p10) tier substantially worse (-0.051 against OISST's -0.001). Both
-the product and the baseline it is scored against are now ruled out, which
-points at what's left: the wind and SST snapshots on both sides of the
-control are instantaneous.
-
-Upwelling responds to wind *integrated over days*, not to instantaneous
-stress. Nothing here keeps more than the latest wind timestep. A short
-trailing wind buffer (the KPI ring buffer in `services/dashboard/history.py`
-is the shape) would let the index be computed on a multi-day mean and the
-control re-run against it. This is the only untried lever — re-run
-`scripts/measure_sst_corroboration.py` (either source) once it exists,
-rather than reaching for a third SST variant.
-
-### Saved locations, and the regional brief
-
-Two features that share one unresolved question, so do them together or not
-at all.
-
-- Saved **points** are small: a table and a sidebar, following
-  `app/models/chat/session.py` as the DB-backed reference.
-- A **regional brief** extends `services/brief.py` from a point to a bbox,
-  mostly the same document over reduced fields.
-- **Both need a reduction named.** Mean, max and area-over-threshold are
-  three different answers and a user will assume whichever one confirms
-  their fear. A polygon-clipped seasonal anomaly additionally needs a
-  climatology per variable, which does not exist yet (see the anomaly-explorer
-  and eddy-atlas items above).
-
-Reuse `DrawableAreaMap` rather than building a second drawing surface.
 
 ### The visual standard — a standard, not a task
 
@@ -186,23 +103,6 @@ The actionable, auditable half:
   every panel; the contrast floors the map ramps already meet (≥3:1 against
   the Abyss basemap, ≥2:1 for the hatched unforecastable mark) applied to the
   chrome too.
-
-### Postgres for persistence
-
-For *records* rather than cache or features: download history/audit,
-feedback (currently `feedback_log.jsonl`), and the KPI ring buffer that does
-not survive a restart. Chat sessions are already there and are the reference
-implementation.
-
-### Ocean Assistant: image upload / vision
-
-The user wants to attach an image and have the assistant describe/answer
-about it. Means passing image content through to the LLM provider's
-multimodal input on a turn (provider-dependent content-block shape), plus a
-composer affordance in `features/assistant/` to attach a file. Check the
-provider client already in use in `services/chat/` for whether it already
-exposes an image content type — this is very likely additive to the
-existing message-building code, not a new client.
 
 ---
 

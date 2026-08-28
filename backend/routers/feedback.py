@@ -7,9 +7,8 @@ from services.rate_limit import RateLimiter, enforce
 router = APIRouter(prefix="/api/v1", tags=["feedback"])
 
 # The only unauthenticated endpoint that spends a real resource: it sends mail
-# through the project's Gmail account and appends to an on-disk log. Without a
-# cap it is an open relay for filling that mailbox — which gets the account
-# throttled or blocked by Google — and for growing the log file without bound.
+# through the project's Gmail account. Without a cap it is an open relay for
+# filling that mailbox, which gets the account throttled or blocked by Google.
 # Five an hour sits far above genuine use and far below automated abuse.
 _FEEDBACK_LIMITER = RateLimiter(limit=5, window_seconds=3600)
 

@@ -41,9 +41,8 @@ started earlier still; `possibly_started_earlier` says so on exactly that
 case, the same honesty `run_days_censored` gave the old window-only field,
 just narrowed from "recurring every `WINDOW_DAYS`" to "once, at boot".
 **State does not survive a restart** — an in-process dict of arrays, the
-same limitation `eddy_tracking.py` and `services/dashboard/history.py`'s KPI
-ring buffer both already carry, and for the same reason: there is no
-upstream that can answer "how long has this cell really been in heatwave"
+same limitation `eddy_tracking.py` accepts and for the same reason: there is
+no upstream that can answer "how long has this cell really been in heatwave"
 for this to fall back to, and a database record implies a durability
 guarantee a computed, re-derivable-from-history series does not need to make.
 """
