@@ -1163,12 +1163,12 @@ body,
  * is already owned by .selected-location-panel, whose height varies with
  * its open/collapsed state and content. */
 /* Inset by the control column rather than sitting at the edge: MapLibre's
-   NavigationControl / GeolocateControl / FullscreenControl stack is also
-   top-right (ControlManager.ts adds all three there), and at `right: 16px` the
-   legends were drawn straight over it — measured, the controls occupy 10-41px
-   from the right edge and the legends covered 16-236px. `--map-ctrl-gutter` is
-   that measured column plus a gap, named so the two stay in step if a control
-   is ever added or removed. */
+   NavigationControl / FullscreenControl stack is also top-right
+   (ControlManager.ts adds both there), and at `right: 16px` the legends were
+   drawn straight over it — measured, the controls occupy 10-41px from the
+   right edge and the legends covered 16-236px. `--map-ctrl-gutter` is that
+   measured column plus a gap, named so the two stay in step if a control is
+   ever added or removed. */
 /* The right-hand rail: legends at the top, the selected-location panel at the
    bottom, in one column that owns the vertical space between the navbar and
    the viewport floor.
@@ -1199,11 +1199,11 @@ body,
 
 .map-rail--right {
   /* Inset by the control column rather than sitting at the edge: MapLibre's
-     NavigationControl / GeolocateControl / FullscreenControl stack is also
-     top-right (ControlManager.ts adds all three there), and at `right: 16px`
-     the legends were drawn straight over it — measured, the controls occupy
-     10-41px from the right edge. `--map-ctrl-gutter` is that measured column
-     plus a gap, named so the two stay in step if a control is ever added or
+     NavigationControl / FullscreenControl stack is also top-right
+     (ControlManager.ts adds both there), and at `right: 16px` the legends
+     were drawn straight over it — measured, the controls occupy 10-41px
+     from the right edge. `--map-ctrl-gutter` is that measured column plus a
+     gap, named so the two stay in step if a control is ever added or
      removed. */
   right: var(--map-ctrl-gutter);
   align-items: flex-end;

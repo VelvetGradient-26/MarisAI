@@ -5,7 +5,6 @@ export interface ControlManagerOptions {
   navigation?: boolean;
   fullscreen?: boolean;
   scale?: boolean;
-  geolocate?: boolean;
 }
 
 /**
@@ -20,19 +19,10 @@ export class ControlManager {
 
   constructor(map: MapLibreMap, options: ControlManagerOptions = {}) {
     this.map = map;
-    const opts = { navigation: true, fullscreen: true, scale: true, geolocate: true, ...options };
+    const opts = { navigation: true, fullscreen: true, scale: true, ...options };
 
     if (opts.navigation) {
       this.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
-    }
-    if (opts.geolocate) {
-      this.addControl(
-        new maplibregl.GeolocateControl({
-          positionOptions: { enableHighAccuracy: true },
-          trackUserLocation: true,
-        }),
-        'top-right'
-      );
     }
     if (opts.fullscreen) {
       this.addControl(new maplibregl.FullscreenControl(), 'top-right');
