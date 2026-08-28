@@ -46,6 +46,28 @@ def _series_json(points: list[tuple[int, int, int, int, int, float]]) -> list[di
     return [{"data": [[_encode_time(*p[:5]), p[5]] for p in points]}]
 
 
+def _recent_series(minutes_ago_and_values: list[tuple[float, float]]) -> tuple[list[dict], object]:
+    """Like `_series_json`, but points are `minutes_ago` before the real
+    current time rather than a fixed calendar date — for the one test that
+    asserts `stale` (computed against `datetime.now()`), a fixed date rots:
+    it read as fresh when written and, within a few hours of wall-clock time
+    passing, silently started asserting the opposite of what it meant to
+    test. Returns `(series_json, last_reported_datetime)` since the caller
+    needs the real last timestamp to assert `last_reported` against.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    points = []
+    last_dt = None
+    for minutes_ago, value in minutes_ago_and_values:
+        dt = now - timedelta(minutes=minutes_ago)
+        last_dt = dt
+        wrong_year_dt = dt.replace(year=dt.year - 1900)
+        points.append([wrong_year_dt.timestamp() * 1000, value])
+    return [{"data": points}], last_dt
+
+
 def _install(monkeypatch: pytest.MonkeyPatch, stations_xml: str, series_by_station: dict[str, list]):
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
@@ -77,13 +99,10 @@ async def test_decode_timestamp_reproduces_the_encoder_exactly():
 async def test_nearest_reporting_station_returns_latest_reading_and_trend(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    series = _series_json(
-        [
-            (2026, 8, 27, 4, 40, 1.00),
-            (2026, 8, 27, 5, 10, 1.20),
-            (2026, 8, 27, 5, 12, 1.25),
-        ]
-    )
+    # Minutes-ago-from-real-now, not a fixed calendar date — see
+    # `_recent_series`'s own docstring for why: a fixed date's `stale`
+    # assertion silently rots as wall-clock time passes it by.
+    series, last_dt = _recent_series([(32, 1.00), (2, 1.20), (0, 1.25)])
     _install(monkeypatch, _STATIONS_XML, {"CHENNAI": series})
 
     result = await tides.nearest_station(13.08, 80.27, 200)
@@ -92,7 +111,7 @@ async def test_nearest_reporting_station_returns_latest_reading_and_trend(
     assert result["station"] == "Chennai"
     assert result["water_level_m"] == 1.25
     assert result["trend"] == "rising"
-    assert result["last_reported"] == "2026-08-27T05:12:00+00:00"
+    assert result["last_reported"] == last_dt.isoformat()
     assert result["stale"] is False
 
 
