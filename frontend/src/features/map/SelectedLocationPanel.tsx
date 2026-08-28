@@ -15,6 +15,7 @@ import { useSelectedLocationPredictions } from './hooks/useSelectedLocationPredi
 import type { PredictionPointResult } from './hooks/useSelectedLocationPredictions';
 import { useToolsStore } from '../../store/toolsStore';
 import { useRoutePlanner } from './hooks/useRoutePlanner';
+import { subscribeWatch } from './api/watch';
 import type { NearestPort, RealtimeOceanConditions, RealtimeOceanUnits } from './types';
 
 const METRICS: Array<{
@@ -137,6 +138,13 @@ export function SelectedLocationPanel() {
   // answers, and a brief takes long enough (bathymetry plus a point API) that
   // a button with no feedback reads as broken.
   const [briefStatus, setBriefStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+
+  // sihtodo.md item 8 — proactive alert watches. Local state, not a store:
+  // this is a one-shot form submission, the same shape `briefStatus` above
+  // already uses, not something another component needs to read.
+  const [watchEmail, setWatchEmail] = useState('');
+  const [watchStatus, setWatchStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [watchError, setWatchError] = useState<string | null>(null);
 
   return (
     <aside className={`selected-location-panel ${panelOpen ? 'open' : 'collapsed'}`}>
@@ -418,6 +426,65 @@ export function SelectedLocationPanel() {
                     ` · max wave ${routeResult.max_wave_height_m.toFixed(1)} m`}
                 </span>
               </div>
+            )}
+          </div>
+        )}
+
+        {selectedLocation && (
+          <div className="selected-location-panel__watch">
+            <span className="selected-location-panel__predictions-label">Watch This Location</span>
+            <span className="selected-location-panel__predictions-note">
+              Get an email when severe weather, a cyclone, or harmful algal bloom risk appears
+              here — a threshold rule, not an issued marine warning.
+            </span>
+            {watchStatus === 'success' ? (
+              <span className="selected-location-panel__state">
+                Check your email to confirm this watch.
+              </span>
+            ) : (
+              <>
+                <div className="selected-location-panel__watch-form">
+                  <input
+                    type="email"
+                    className="selected-location-panel__watch-input"
+                    placeholder="you@example.com"
+                    value={watchEmail}
+                    disabled={watchStatus === 'loading'}
+                    onChange={(e) => setWatchEmail(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="selected-location-panel__brief-button"
+                    disabled={!watchEmail || watchStatus === 'loading'}
+                    onClick={() => {
+                      if (!selectedLocation) return;
+                      setWatchStatus('loading');
+                      setWatchError(null);
+                      const label = data?.location_context.nearest_port
+                        ? `Near ${data.location_context.nearest_port.name}`
+                        : formatCoordinates(selectedLocation.lat, selectedLocation.lng);
+                      subscribeWatch({
+                        email: watchEmail,
+                        label,
+                        latitude: selectedLocation.lat,
+                        longitude: selectedLocation.lng,
+                      })
+                        .then(() => setWatchStatus('success'))
+                        .catch((err) => {
+                          setWatchStatus('error');
+                          setWatchError(err instanceof Error ? err.message : 'Could not create the watch.');
+                        });
+                    }}
+                  >
+                    {watchStatus === 'loading' ? 'Sending…' : 'Watch this location'}
+                  </button>
+                </div>
+                {watchStatus === 'error' && (
+                  <span className="selected-location-panel__state--error">
+                    {watchError ?? 'Could not create the watch.'}
+                  </span>
+                )}
+              </>
             )}
           </div>
         )}

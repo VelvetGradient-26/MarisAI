@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     # it risks the shared anonymous pool's lower rate limit under load.
     CROSSREF_MAILTO: str = ""
 
+    # HMAC key for services/watch_tokens.py's signed confirm/unsubscribe
+    # tokens (sihtodo.md item 8). Not an external credential — a locally
+    # generated app secret (any random string) — but treated the same way:
+    # empty by default, and the create-a-watch endpoint raises a clear "not
+    # configured" error rather than signing tokens with an empty key.
+    WATCH_TOKEN_SECRET: str = ""
+
     # LLM insights provider (swap providers without touching code)
     LLM_PROVIDER: str = "gemini"
     LLM_API_KEY: str = ""

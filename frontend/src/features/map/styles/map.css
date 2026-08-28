@@ -674,6 +674,43 @@ body,
 .selected-location-panel__route-hazard--hazardous { color: #ef4444; }
 .selected-location-panel__route-hazard--unknown { color: var(--ocean-muted); }
 
+/* --- Watch this location (sihtodo.md item 8) ----------------------------
+   Same card shape as .selected-location-panel__route immediately above. */
+.selected-location-panel__watch {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--ocean-border);
+  font: 12px/1.4 var(--ocean-font-mono);
+}
+
+.selected-location-panel__watch-form {
+  display: flex;
+  gap: 8px;
+}
+
+.selected-location-panel__watch-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--ocean-panel-solid);
+  border: 1px solid var(--ocean-border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  color: var(--ocean-text);
+  font: 12px/1.4 var(--ocean-font-mono);
+}
+
+.selected-location-panel__watch-input:focus {
+  outline: none;
+  border-color: var(--ocean-accent);
+}
+
+.selected-location-panel__watch-input:disabled {
+  opacity: 0.6;
+}
+
 .map-controls h3 {
   font-size: 11px;
   text-transform: uppercase;
@@ -1998,6 +2035,137 @@ body,
 }
 
 .severe-weather-panel__attribution {
+  font-size: 10px;
+  color: var(--ocean-muted);
+  border-top: 1px solid var(--ocean-border);
+  padding-top: 8px;
+}
+
+/* --- Boundary watch panel/badge -----------------------------------------
+   sihtodo.md item 9. Same shape and rail placement as the severe-weather
+   panel above — collapsed to a badge by default, most visits have nothing
+   to report. */
+.boundary-watch-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100vw - 32px));
+  box-sizing: border-box;
+}
+
+.boundary-watch-panel__badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--ocean-text);
+  font: 12px/1.4 var(--ocean-font-mono);
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  text-align: left;
+}
+
+.boundary-watch-panel__badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ocean-muted);
+  flex-shrink: 0;
+}
+
+.boundary-watch-panel__badge--alert .boundary-watch-panel__badge-dot {
+  background: var(--ocean-accent);
+}
+
+.boundary-watch-panel__badge--error .boundary-watch-panel__badge-dot {
+  background: var(--ocean-error);
+}
+
+.boundary-watch-panel__body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 10px;
+  padding: 14px;
+  color: var(--ocean-text);
+  backdrop-filter: blur(6px);
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.boundary-watch-panel__header h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.boundary-watch-panel__subtitle {
+  color: var(--ocean-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.boundary-watch-panel__toggle-button {
+  background: var(--ocean-accent);
+  color: var(--ocean-bg);
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font: 12px/1.4 var(--ocean-font-mono);
+  font-weight: 600;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.boundary-watch-panel__state {
+  font-size: 12px;
+  color: var(--ocean-muted);
+  margin: 0;
+}
+
+.boundary-watch-panel__state--error {
+  color: var(--ocean-error);
+}
+
+.boundary-watch-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.boundary-watch-panel__alert {
+  background: transparent;
+  border-left: 3px solid var(--ocean-accent);
+  border-radius: 4px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.boundary-watch-panel__alert--eez_crossing {
+  border-left-color: #ef4444;
+}
+
+.boundary-watch-panel__alert-message {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.boundary-watch-panel__alert-time {
+  font-size: 10px;
+  color: var(--ocean-muted);
+}
+
+.boundary-watch-panel__attribution {
   font-size: 10px;
   color: var(--ocean-muted);
   border-top: 1px solid var(--ocean-border);

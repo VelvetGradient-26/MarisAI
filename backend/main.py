@@ -37,6 +37,7 @@ from routers.predictions import router as predictions_router
 from routers.tiles import router as tiles_router
 from routers.tools import router as tools_router
 from routers.vessels import router as vessels_router
+from routers.watch import router as watch_router
 from services import (
     ais,
     crw,
@@ -50,6 +51,7 @@ from services import (
     ndbc,
     ocean_state,
     stokes_drift,
+    watch_alerts,
 )
 from services.copernicus_chlorophyll import refresh_chlorophyll_cache
 from services.copernicus_currents import refresh_currents_cache
@@ -197,6 +199,17 @@ async def lifespan(_app: FastAPI):
         "interval",
         hours=forecast_warm.REFRESH_INTERVAL_HOURS,
     )
+    # Proactive alert watches (sihtodo.md item 8) — evaluates confirmed
+    # subscriptions against severe-weather/cyclone/bloom-risk signals and
+    # emails on a change. No boot-time fire-and-forget call like the caches
+    # above: unlike those, a cold start here costs nothing to wait out (the
+    # first tick runs on the interval, not immediately), and firing it at
+    # boot would mean every deploy/restart double-evaluates within minutes.
+    scheduler.add_job(
+        watch_alerts.evaluate_and_notify,
+        "interval",
+        minutes=watch_alerts.EVALUATION_INTERVAL_MINUTES,
+    )
     scheduler.start()
 
     # Long-lived websocket to aisstream.io. Self-supervising and a no-op
@@ -247,6 +260,7 @@ app.include_router(chat_router)
 app.include_router(vessels_router)
 app.include_router(dashboard_router)
 app.include_router(brief_router)
+app.include_router(watch_router)
 # Serves precomputed models from `models/forecasting/`. Nothing is trained at
 # request time and nothing is scheduled — an untrained variable answers 404
 # with the command to train it, so mounting this is safe on a cold install.

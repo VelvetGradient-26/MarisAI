@@ -24,6 +24,12 @@ const FeedbackPage = lazy(() =>
 const ContactPage = lazy(() =>
   import('../pages/ContactPage').then((module) => ({ default: module.ContactPage }))
 );
+const ConfirmWatchPage = lazy(() =>
+  import('../pages/ConfirmWatchPage').then((module) => ({ default: module.ConfirmWatchPage }))
+);
+const UnsubscribeWatchPage = lazy(() =>
+  import('../pages/UnsubscribeWatchPage').then((module) => ({ default: module.UnsubscribeWatchPage }))
+);
 const DocsPage = lazy(() =>
   import('../pages/docs/DocsPage').then((module) => ({ default: module.DocsPage }))
 );
@@ -211,6 +217,20 @@ function renderPage(pathname: string) {
     return (
       <Suspense fallback={<RouteLoading label="Loading…" />}>
         <ContactPage />
+      </Suspense>
+    );
+  }
+  if (pathname === '/confirm-watch') {
+    return (
+      <Suspense fallback={<RouteLoading label="Loading…" />}>
+        <ConfirmWatchPage />
+      </Suspense>
+    );
+  }
+  if (pathname === '/unsubscribe-watch') {
+    return (
+      <Suspense fallback={<RouteLoading label="Loading…" />}>
+        <UnsubscribeWatchPage />
       </Suspense>
     );
   }

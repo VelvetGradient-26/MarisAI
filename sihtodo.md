@@ -207,7 +207,7 @@ neither has a point historical series in this codebase (see the module
 docstring). `tests/test_correlation.py` + two router tests in
 `test_dashboard.py`.
 
-## 8. Alerts are pull, not proactive
+## 8. Alerts are pull, not proactive — closed 2026-08-27
 
 The PS asks for "*proactive alerts for adverse weather, high waves, lightning,
 cyclones*." Today `get_active_alerts`/`get_cyclone_alerts`/
@@ -222,7 +222,60 @@ weather services and a place to store "this user cares about this location"
 sessions — reuse it, but note a delivery target raises the stakes the same
 way CLAUDE.md's chat-session section already warns about).
 
-## 9. Geofencing is a snapshot, not a boundary-crossing trigger
+**This item was explicitly designed once before (2026-08-17) and then
+dropped at the user's request** (`git show 8618f77`) — its scoping notes
+(double opt-in, a signed unsubscribe token independent of `client_id`, no
+webhooks, +3d-only bloom alerts, point triggers only) survived in git
+history and are exactly what got built here. Rediscovering that history —
+and finding orphaned DB schema in the local dev Postgres left over from the
+earlier attempt (`alerts.subscriptions` table + a phantom `alembic_version`,
+confirmed empty and cleaned up: dropped, Alembic re-stamped to the real head
+`0148ba922c31`) — happened before this build; full detail in CLAUDE.md.
+
+**Built**: `app/models/alerts/subscription.py` (new `alerts` Postgres
+schema, one table), `services/watch_tokens.py` (hand-rolled HMAC-SHA256
+signed tokens — no signed-token library existed anywhere in this backend),
+`services/watch_alerts.py` (create/confirm/unsubscribe/list plus the
+scheduler job `evaluate_and_notify`), `routers/watch.py`
+(`POST /api/v1/watch`, `GET /api/v1/watch/{confirm,unsubscribe}`,
+`GET /api/v1/watch`), and on the frontend: a "Watch this location" section
+in `SelectedLocationPanel.tsx`, and two standalone pages
+(`ConfirmWatchPage.tsx`/`UnsubscribeWatchPage.tsx`) reached from the
+confirm/unsubscribe links every email carries.
+
+**v1's three signals are severe weather (IMD CAP), cyclones (GDACS), and
+bloom risk at +3d — "high waves" is a stated scope cut, not a silent
+one.** Verified this session: `services/ocean_state.py` (which backs the
+dashboard's own wave alert) reduces its global wave grid to summary
+statistics and discards the grid, so there is nothing left to sample at an
+arbitrary point — `assess_marine_risk`/`get_active_alerts` remain the
+pull-based way to check wave height. The other two signals' "must not fetch"
+constraint is satisfied because `severe_weather.check_point`/
+`cyclones.check_point` are each backed by a single worldwide feed behind an
+in-process TTL cache (10/15 min) — checking N subscriptions in one tick
+costs at most one real fetch per feed, not N.
+
+**Verified live** (both servers against the real local Postgres, real Gmail
+SMTP): the full create → confirm → unsubscribe round trip through the real
+browser (not just curl), including the invalid/expired-token error path;
+the dedup-by-signature logic against a mocked "cyclone stays active across
+two ticks" scenario (one email, not two); CORS confirmed working from the
+frontend origin. **One real, measured finding from that pass**: a
+confirmation-email send takes **~17 seconds** in this environment (real
+Gmail SMTP round-trip) — slow enough to misread as a hung request while
+testing (several curl/browser timeouts of 5-45s fired before the request
+actually completed). Not a bug — `services/feedback.py`'s form-submit
+endpoint has the identical synchronous-within-request shape already, this
+is just the first place the latency was actually measured. Worth a future
+pass if a snappier submit affordance matters more than matching the
+existing pattern.
+
+Tests: `test_watch_tokens.py`, `test_watch_alerts.py` (mocked-signal logic
+plus DB-backed create/confirm/unsubscribe/dedup tests against the real
+Postgres, same `pytest.mark.skipif(not enabled(), ...)` convention
+`test_chat_store.py` uses), `test_watch_router.py`.
+
+## 9. Geofencing is a snapshot, not a boundary-crossing trigger — closed 2026-08-27
 
 `check_geofence` answers "is this point inside a zone" for one coordinate on
 demand. The PS wants "*notifications when approaching* international maritime
@@ -233,6 +286,45 @@ point-in-time query answered once in chat. Meaningfully harder than item 1's
 codebase currently ingests a user's own vessel position (no AIS/GPS input
 exists here — GFW's AIS data is about *other* vessels' effort, not the
 user's own location).
+
+**Built, and entirely frontend — no backend change.** The missing "position
+feed" this item worried about is the browser's own Geolocation API: the
+fisherman's own device running this app *is* the position source, so no new
+server-side ingestion, storage, or external data source was needed.
+`useBoundaryWatch` (`frontend/src/features/map/hooks/useBoundaryWatch.ts`)
+calls `navigator.geolocation.watchPosition`, throttles to one check per 15s,
+and re-calls the already-existing `GET /api/ocean/geofence` (item 1) on each
+fix. A pure function, `evaluateBoundaryEvents`, does edge-triggered detection
+(fires once on the false->true transition into "near", not every tick spent
+lingering there) for three event types: an actual EEZ inside/outside
+crossing, approaching the India-Sri Lanka IMBL, and approaching/entering a
+Marine Protected Area. Surfaced as `BoundaryWatchPanel`, a badge+panel
+mirroring `SevereWeatherPanel`'s existing convention exactly (collapsed by
+default). State lives in a new `boundaryWatchStore` (deliberately not
+persisted — a location-permission session must default off on every fresh
+load, not silently resume).
+
+Verified live via the dev server (`npm run dev` + a stubbed
+`navigator.geolocation` driven through Chrome DevTools' protocol, since real
+GPS movement isn't available here): stepping through real coordinates near
+Rameswaram/Adam's Bridge correctly fired an MPA-approach event (Gulf of
+Mannar, 5.6 km), then an IMBL-approach event (14.6 km) without re-firing the
+already-active MPA one, then an EEZ-crossing event when the point left
+India's mainland zone — with the already-near IMBL event correctly not
+re-firing either. That same live testing caught a real bug before it shipped:
+the permission-denied path called two separate store writes in sequence
+(set the error message, then a generic `disable()`) and the second call
+silently reset the first's message back to null — invisible from reading
+either function alone. Fixed with one atomic `disableWithError` action.
+`npx tsc -b` passes; no frontend test runner exists in this repo to add an
+automated test to (confirmed via `package.json`), so `evaluateBoundaryEvents`
+is kept as a standalone pure export for whenever one exists.
+
+No live position marker is drawn on the map (item 9 asks for notifications,
+not a tracking display — see CLAUDE.md's "Boundary watch" section for the
+reasoning); polygon/route-ahead prediction is likewise out of scope, the
+same discipline the earlier (dropped) subscribable-alerts design applied to
+its own point-vs-polygon scoping.
 
 ## 10. No deterministic risk-assessment tool for "is it safe to venture" — closed 2026-08-26
 
@@ -290,7 +382,7 @@ real browser session watching TEWS's own network traffic, so "no feed found"
 is not certain to survive a deeper look — but nothing found here is buildable
 today.
 
-## 13. Everything above is static review — nothing has been run live yet
+## 13. Everything above is static review — nothing has been run live yet — closed 2026-08-27
 
 No Dockerfile/render/fly/vercel config exists anywhere in the repo, and every
 finding in this file came from reading code, not from executing it. Two
@@ -303,3 +395,58 @@ building on top of `pfz.py`/`geofencing.py`/`routing.py`, boot the backend and
 frontend and actually run a few of the guide's ten "definition of success"
 queries against a live instance to confirm the baseline still holds, rather
 than assuming the dated docstrings are still accurate.
+
+**Done: booted both servers (real Postgres, real `LLM_API_KEY` configured —
+Gemini) and drove real questions through `POST /api/v1/chat` end-to-end,
+rather than testing endpoints in isolation.** Full findings in CLAUDE.md's
+"Live verification pass" section; summary:
+
+- **Confirmed working, live, with real tool calls and grounded answers**:
+  present-day sea conditions ("Kochi ke paas...", Hinglish, correctly used
+  `assess_marine_risk`); depth + EEZ geospatial query (`geospatial_risk`,
+  both tools, grounded); the platform's own self-documentation tool; the new
+  item-6 tide tool (`get_tide_level`) — English phrasing worked first try,
+  including the model correctly explaining "measured, not predicted" per the
+  tool's own description; the new item-4 tools — `search_scientific_literature`
+  returned real CrossRef papers, `web_search` correctly reported "not
+  configured" (no `TAVILY_API_KEY` here) rather than failing silently.
+- **Found and fixed a real bug**: "what is the SST/tide right now at this
+  point" misrouted to `ocean_analytics` instead of `weather_safety` on every
+  attempt (`ocean_analytics` has no tool for a point-in-time reading — its
+  "global ocean state" tool is a single worldwide summary number). Root
+  cause was the top-level prompt's own specialist descriptions in
+  `agent.py` being genuinely ambiguous between "global state" and "current
+  point reading." One prompt clarification fixed it: 4/4 correct afterward
+  for the English case that was previously 0/2, and 3/4 for a Hindi
+  (Devanagari-script) phrasing of the same question that was previously
+  0/2 — the residual 1-in-4 miss is ordinary LLM non-determinism, not a
+  further code defect, and is stated as such rather than claimed fixed.
+- **Found and fixed a real, unrelated bug this pass surfaced**: an item-6
+  test (`test_tides.py`) hardcoded a fixed calendar timestamp as "recent" for
+  its `stale` assertion — a ticking time bomb that had already gone off
+  (started failing) within hours of being written, as real wall-clock time
+  passed the hardcoded date. Rewritten to compute timestamps relative to the
+  real current time.
+- **A genuine, honest gap, not a bug**: "why is the Arabian Sea unusually
+  warm this week" (the guide's own example) cannot be fully answered today —
+  no MarisAI tool computes an SST *anomaly* at a point or region (only raw
+  current SST exists as a tool, via `get_current_conditions`), and
+  `web_search` has no key configured in this environment either. The
+  assistant's behaviour here was exactly right: it either asked a clarifying
+  question or gave a careful, correctly-`grounded=True` general explanation
+  while explicitly saying it could not pull the real number — never
+  hallucinated a value. Worth a future item: expose
+  `services/heatwaves.py`/`sst_anomaly.py`'s existing anomaly computation as
+  a queryable point tool, since the backend already computes this for the
+  dashboard and just doesn't expose it to chat.
+- **A minor content-accuracy observation, not a platform bug**: asked to
+  find literature on "oil sardine" habitat, `search_scientific_literature`
+  (correctly) returned CrossRef's best keyword matches, several of which were
+  actually about *Sardina pilchardus* (the European sardine) rather than
+  *Sardinella longiceps* (the Indian oil sardine this platform models) — a
+  different genus. The model relayed them without catching the species
+  mismatch. CrossRef's search is keyword-based, not taxonomically aware;
+  this is an inherent limitation of general literature search + LLM
+  synthesis rather than something `services/literature.py` did wrong, but
+  worth knowing before trusting a species-specific literature answer at
+  face value.
