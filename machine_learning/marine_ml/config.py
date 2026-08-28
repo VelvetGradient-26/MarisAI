@@ -245,6 +245,7 @@ PROCESSED_DIR = DATA_DIR / "processed"
 COPERNICUS_RAW_DIR = RAW_DIR / "copernicus"
 GEBCO_RAW_DIR = RAW_DIR / "gebco"
 OBIS_RAW_DIR = RAW_DIR / "obis"
+GBIF_RAW_DIR = RAW_DIR / "gbif"
 
 # The shared (lat, lon, date)-keyed feature store both problems read from.
 FEATURE_STORE_DIR = PROCESSED_DIR / "feature_store"
@@ -254,7 +255,7 @@ REPORTS_DIR = PROJECT_ROOT / "reports"
 
 _ALL_DIRS = (
     DATA_DIR, RAW_DIR, INTERIM_DIR, PROCESSED_DIR,
-    COPERNICUS_RAW_DIR, GEBCO_RAW_DIR, OBIS_RAW_DIR,
+    COPERNICUS_RAW_DIR, GEBCO_RAW_DIR, OBIS_RAW_DIR, GBIF_RAW_DIR,
     FEATURE_STORE_DIR, MODELS_DIR, REPORTS_DIR,
 )
 

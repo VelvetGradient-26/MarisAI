@@ -71,8 +71,27 @@ different one. So the product-mismatch diagnosis was itself incomplete: a
 matched baseline removes the 0.76 degC product-disagreement term, but the
 contrast still does not widen, which means what limits this control is the
 wind/SST snapshots being instantaneous on both sides, not which SST product or
-baseline scores them — see "a rolling wind history" in TODO.md, the lever this
-result actually points at.
+baseline scores them.
+
+**The third lever — a rolling wind history — was tried too, and also did not
+widen the contrast.** `services/wind_history.py` keeps a trailing Ekman-
+transport mean; `scripts/measure_wind_history_corroboration.py` scored a real
+1.21-day trailing mean against the identical instantaneous control (2026-08-28,
+30 backfilled real timesteps):
+
+| wind input | cool contrast | below-p10 contrast |
+| --- | --- | --- |
+| instantaneous | +0.0234 | -0.0061 |
+| 1.2-day trailing mean | +0.0182 | -0.0049 |
+
+Both contrasts moved toward zero. All three diagnosed levers — latency,
+product mismatch, instantaneous wind — are now tried, and none widened the
+contrast. This one run is a single snapshot at a 1.2-day window, not a
+repeated-sampling result, so it does not rule out a longer window (the
+original 3-day target) or a different sampling scheme — but the infrastructure
+to re-ask it (`wind_history.py`, `upwelling.detect_from_history`,
+`scripts/backfill_wind_history.py`) is built, so that is a re-run, not a
+re-build.
 
 `copernicus_sst.anomaly_field()` and the built climatology stay — the
 reanalysis fetch is shared with `scripts/compare_against_eddy_atlas.py`, and

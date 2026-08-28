@@ -11,6 +11,7 @@ from services import (
     eddy_tracking,
     edna,
     heatwaves,
+    ocean_heat_content_field,
     upwelling,
     stokes_drift,
 )
@@ -335,6 +336,44 @@ async def get_upwelling_point(
     try:
         return upwelling.at_point(lat, lon)
     except upwelling.UpwellingError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/ocean-heat-content/cells")
+async def get_ocean_heat_content_cells(
+    depth_m: float = Query(
+        ocean_heat_content_field.OHC_LAYERS_M[-1],
+        description="Which layer (50/100/200/700 m) to draw.",
+    ),
+):
+    """One ocean-heat-content layer as drawable rectangles, over a regional
+    grid built offline (`scripts/build_ocean_heat_content_grid.py`) — see
+    `services/ocean_heat_content_field.py`'s own docstring for why this is
+    regional rather than global and rebuilt on a schedule rather than fetched
+    live.
+
+    503 on a missing or unreadable grid file, the same class as `/eddies` and
+    `/heatwaves`: this reads a build this project produces, not a live feed.
+    """
+    try:
+        return ocean_heat_content_field.cells(depth_m)
+    except ocean_heat_content_field.OceanHeatContentFieldError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/ocean-heat-content/point")
+async def get_ocean_heat_content_point(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+):
+    """Every ocean-heat-content layer at one coordinate.
+
+    Answers "outside this field's region" as a 200 with `available: false`,
+    not an error — the region is a real, stated bound, not a failure.
+    """
+    try:
+        return ocean_heat_content_field.at_point(lat, lon)
+    except ocean_heat_content_field.OceanHeatContentFieldError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 

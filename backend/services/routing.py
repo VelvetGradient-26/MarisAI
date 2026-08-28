@@ -36,10 +36,11 @@ seconds) — a materially finer grid would resolve smaller coastal features
 but cost proportionally more live requests inside one chat turn's latency
 budget.
 
-**Waypoints are still linearly interpolated in lat/lon for bbox/heading math**
-(`_interpolate`), not a true geodesic — fine at the coastal/fishing-vessel
-route lengths this is built for. **No vessel profile** (speed, fuel range,
-draft) is an input; every route is still scored on wave hazard alone.
+**Edge sampling now uses a true great-circle slerp** (`_interpolate`), not a
+lat/lon lerp — the two agreed within measurement noise at this router's
+coastal/fishing-vessel scale (see DONE.md), so this was a correctness fix,
+not a behavior change. **No vessel profile** (speed, fuel range, draft) is an
+input; every route is still scored on wave hazard alone.
 """
 
 from __future__ import annotations
@@ -48,7 +49,7 @@ import asyncio
 import heapq
 import logging
 from dataclasses import dataclass, field
-from math import asin, cos, radians, sin, sqrt
+from math import asin, atan2, cos, radians, sin, sqrt
 from typing import Any
 
 import httpx
@@ -113,13 +114,41 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def _interpolate(lat1: float, lon1: float, lat2: float, lon2: float, fraction: float) -> tuple[float, float]:
-    """A straight lat/lon interpolation, not a true great-circle slerp.
+    """A great-circle slerp between two points, in degrees.
 
-    Fine at the route lengths a coastal/fishing-vessel query implies (tens to
-    a few hundred km) — the distortion a linear lerp introduces versus a
-    geodesic only matters at ocean-basin scale.
+    Was a straight lat/lon lerp — fine at the route lengths a coastal/
+    fishing-vessel query implies (tens to a few hundred km), but wrong in
+    principle and worth doing right for the edge-sampling this feeds
+    (`segment_is_water`): a lerp cuts inside the true great-circle arc, so a
+    high-latitude edge could sample a point that lerp says is water when the
+    real geodesic passes fractionally closer to a coastline.
+
+    Degenerate cases (identical points, or antipodal points where the
+    great-circle path is undefined) fall back to the endpoint itself rather
+    than dividing by a near-zero sine.
     """
-    return (lat1 + (lat2 - lat1) * fraction, lon1 + (lon2 - lon1) * fraction)
+    phi1, phi2 = radians(lat1), radians(lat2)
+    lambda1, lambda2 = radians(lon1), radians(lon2)
+
+    dphi = phi2 - phi1
+    dlambda = lambda2 - lambda1
+    a = sin(dphi / 2) ** 2 + cos(phi1) * cos(phi2) * sin(dlambda / 2) ** 2
+    delta = 2 * asin(sqrt(min(1.0, a)))
+
+    if delta < 1e-12 or abs(delta - np.pi) < 1e-9:
+        return (lat1, lon1) if fraction <= 0.5 else (lat2, lon2)
+
+    sin_delta = sin(delta)
+    coef_a = sin((1 - fraction) * delta) / sin_delta
+    coef_b = sin(fraction * delta) / sin_delta
+
+    x = coef_a * cos(phi1) * cos(lambda1) + coef_b * cos(phi2) * cos(lambda2)
+    y = coef_a * cos(phi1) * sin(lambda1) + coef_b * cos(phi2) * sin(lambda2)
+    z = coef_a * sin(phi1) + coef_b * sin(phi2)
+
+    phi = atan2(z, sqrt(x * x + y * y))
+    lambda_ = atan2(y, x)
+    return (np.degrees(phi), np.degrees(lambda_))
 
 
 def _hazard_level(wave_height_m: float | None) -> str:
@@ -180,7 +209,11 @@ class _DepthGrid:
     lons: np.ndarray
     depth: np.ndarray  # 2-D [lat, lon]; NaN is land.
 
-    def is_water(self, lat: float, lon: float) -> bool:
+    def is_water(self, lat: float, lon: float, min_depth_m: float | None = None) -> bool:
+        """Water, and — when `min_depth_m` is given — deep enough for a
+        vessel of that draft. `min_depth_m` is a literal minimum depth, with
+        no added safety margin: this is a screening aid over GEBCO's coarse
+        terrain model, not a substitute for a real chart's charted depths."""
         if not (self.lats[0] <= lat <= self.lats[-1] and self.lons[0] <= lon <= self.lons[-1]):
             # Off the fetched box entirely (can happen right at a start/end
             # point on the box edge) — unknown-but-passable rather than
@@ -189,14 +222,25 @@ class _DepthGrid:
         i = _nearest_index(self.lats, lat)
         j = _nearest_index(self.lons, lon)
         value = self.depth[i, j]
-        return bool(not np.isnan(value))
+        if np.isnan(value):
+            return False
+        return min_depth_m is None or float(value) > min_depth_m
 
     def segment_is_water(
-        self, a: tuple[float, float], b: tuple[float, float], samples: int = 4, *, skip_first: bool = False
+        self,
+        a: tuple[float, float],
+        b: tuple[float, float],
+        samples: int = 4,
+        *,
+        skip_first: bool = False,
+        min_depth_m: float | None = None,
     ) -> bool:
-        """Every sampled point along `a`-`b` must be water. Two water
-        *nodes* either side of a peninsula do not prove the straight edge
-        between them is water — this is what actually finds the headland.
+        """Every sampled point along `a`-`b` must be water (and, with
+        `min_depth_m`, deep enough). Two water *nodes* either side of a
+        peninsula do not prove the straight edge between them is water —
+        this is what actually finds the headland, and the same reasoning
+        finds a shoal a draft-constrained vessel cannot cross even though
+        both its nodes are deep enough.
 
         `skip_first` exists for connecting the user's own start/end point:
         that coordinate is trusted as navigable by design (a real harbour
@@ -208,7 +252,7 @@ class _DepthGrid:
         for step in range(start_step, samples + 1):
             fraction = step / samples
             lat, lon = _interpolate(a[0], a[1], b[0], b[1], fraction)
-            if not self.is_water(lat, lon):
+            if not self.is_water(lat, lon, min_depth_m=min_depth_m):
                 return False
         return True
 
@@ -401,6 +445,7 @@ async def _connect_endpoint(
     adjacency: dict[Any, list[tuple[Any, float]]],
     depth_grid: _DepthGrid,
     spacing: float,
+    min_depth_m: float | None = None,
 ) -> None:
     """Wire one of the user's exact start/end points into the grid.
 
@@ -420,7 +465,9 @@ async def _connect_endpoint(
                 continue
             if max(abs(grid_node.lat - point[0]), abs(grid_node.lon - point[1])) > radius_deg:
                 continue
-            if not depth_grid.segment_is_water(point, (grid_node.lat, grid_node.lon), skip_first=True):
+            if not depth_grid.segment_is_water(
+                point, (grid_node.lat, grid_node.lon), skip_first=True, min_depth_m=min_depth_m
+            ):
                 continue
             cost = _edge_cost(node, grid_node)
             adjacency[key].append((grid_key, cost))
@@ -430,10 +477,13 @@ async def _connect_endpoint(
             radius_cells *= 2
 
     if not connected:
+        draft_clause = (
+            f" deep enough for a {min_depth_m:g} m draft" if min_depth_m is not None else ""
+        )
         raise RoutingError(
-            f"Could not connect the {label} point to open water on the search "
-            "grid — it may be too enclosed (a narrow inlet or harbour) for "
-            "this grid's resolution."
+            f"Could not connect the {label} point to open water{draft_clause} on "
+            "the search grid — it may be too enclosed (a narrow inlet or harbour) "
+            "for this grid's resolution, or too shallow for the requested draft."
         )
 
 
@@ -469,6 +519,10 @@ async def plan_route(
     start_longitude: float,
     end_latitude: float,
     end_longitude: float,
+    *,
+    vessel_draft_m: float | None = None,
+    vessel_speed_kmh: float | None = None,
+    vessel_fuel_range_km: float | None = None,
 ) -> dict[str, Any]:
     """The lowest-hazard path between two points, found by A* search over a
     live grid — not a comparison of a few fixed shapes.
@@ -477,6 +531,23 @@ async def plan_route(
     bathymetry, no path exists, or an endpoint cannot reach open water). A
     long or hazardous route is not an error; a route that cannot be computed
     at all is.
+
+    All three vessel-profile inputs are optional and independent:
+
+    - `vessel_draft_m` excludes any grid node or edge whose GEBCO depth does
+      not clear it (see `_DepthGrid.is_water`) — the search graph structurally
+      cannot route through water too shallow for the vessel, the same
+      "excluded from the graph, not flagged after" treatment land and
+      geofenced zones already get. No safety margin is added on top of the
+      literal depth; this is a screening aid over a coarse terrain model, not
+      a chart.
+    - `vessel_speed_kmh` only turns the found distance into
+      `estimated_duration_hours` — it does not change which route is chosen;
+      wave hazard is still the only thing scored.
+    - `vessel_fuel_range_km` is checked against the found route's own
+      distance after the fact (`within_fuel_range`) — it does not steer the
+      search toward a shorter path, since "shortest" and "lowest-hazard" can
+      disagree and this function's job is the latter.
     """
     start = (start_latitude, start_longitude)
     end = (end_latitude, end_longitude)
@@ -498,17 +569,18 @@ async def plan_route(
     for i, lat in enumerate(grid_lats):
         for j, lon in enumerate(grid_lons):
             lat_f, lon_f = float(lat), float(lon)
-            if not depth_grid.is_water(lat_f, lon_f):
+            if not depth_grid.is_water(lat_f, lon_f, min_depth_m=vessel_draft_m):
                 continue
             if _is_geofence_excluded(lat_f, lon_f):
                 continue
             nodes[(int(i), int(j))] = _Node(lat=lat_f, lon=lon_f)
 
     if not nodes:
+        draft_clause = f" deep enough for a {vessel_draft_m:g} m draft" if vessel_draft_m is not None else ""
         raise RoutingError(
-            "No navigable water was found in the search area — it may be entirely "
-            "land, inside a Marine Protected Area, or too close to the India-Sri "
-            "Lanka boundary."
+            f"No navigable water{draft_clause} was found in the search area — it "
+            "may be entirely land, too shallow for the requested draft, inside a "
+            "Marine Protected Area, or too close to the India-Sri Lanka boundary."
         )
 
     hazards = await _fetch_hazard_grid([(node.lat, node.lon) for node in nodes.values()])
@@ -525,7 +597,9 @@ async def plan_route(
             neighbor = nodes.get(neighbor_key)
             if neighbor is None:
                 continue
-            if not depth_grid.segment_is_water((node.lat, node.lon), (neighbor.lat, neighbor.lon)):
+            if not depth_grid.segment_is_water(
+                (node.lat, node.lon), (neighbor.lat, neighbor.lon), min_depth_m=vessel_draft_m
+            ):
                 continue
             adjacency[(i, j)].append((neighbor_key, _edge_cost(node, neighbor)))
 
@@ -539,8 +613,12 @@ async def plan_route(
     adjacency[_START_KEY] = []
     adjacency[_END_KEY] = []
 
-    await _connect_endpoint(_START_KEY, _START_KEY, start, nodes, adjacency, depth_grid, spacing)
-    await _connect_endpoint(_END_KEY, _END_KEY, end, nodes, adjacency, depth_grid, spacing)
+    await _connect_endpoint(
+        _START_KEY, _START_KEY, start, nodes, adjacency, depth_grid, spacing, min_depth_m=vessel_draft_m
+    )
+    await _connect_endpoint(
+        _END_KEY, _END_KEY, end, nodes, adjacency, depth_grid, spacing, min_depth_m=vessel_draft_m
+    )
 
     path_keys = _astar(_START_KEY, _END_KEY, nodes, adjacency)
     if path_keys is None:
@@ -560,6 +638,19 @@ async def plan_route(
     waves = [n.hazard.wave_height_m for n in path_nodes if n.hazard.wave_height_m is not None]
     max_wave = max(waves) if waves else None
 
+    vessel_profile: dict[str, Any] = {
+        "draft_m": vessel_draft_m,
+        "speed_kmh": vessel_speed_kmh,
+        "fuel_range_km": vessel_fuel_range_km,
+    }
+    if vessel_speed_kmh is not None and vessel_speed_kmh > 0:
+        vessel_profile["estimated_duration_hours"] = round(path_distance_km / vessel_speed_kmh, 2)
+    if vessel_fuel_range_km is not None:
+        within_range = path_distance_km <= vessel_fuel_range_km
+        vessel_profile["within_fuel_range"] = within_range
+        if not within_range:
+            vessel_profile["fuel_range_exceeded_by_km"] = round(path_distance_km - vessel_fuel_range_km, 1)
+
     return {
         "distance_km": round(path_distance_km, 1),
         "great_circle_km": round(great_circle_km, 1),
@@ -568,14 +659,19 @@ async def plan_route(
         "hazard_level": _hazard_level(max_wave),
         "search_grid_nodes": len(nodes) - 2,  # excluding the start/end keys
         "search_grid_spacing_deg": round(spacing, 3),
+        "vessel_profile": vessel_profile,
         "note": (
             "A* search over a live grid: land, the India-Sri Lanka boundary and "
             "Marine Protected Areas are excluded from the search graph outright, "
             "so this path structurally cannot cross any of them, weighted by live "
-            "wave height so a calmer detour is preferred when one exists. "
-            "distance_km is the found route's length; great_circle_km is the "
-            "direct distance for comparison. Not a substitute for an official "
-            "chart or a vessel-specific passage plan — see services/routing.py "
-            "for the resolution/latency tradeoffs of the search grid."
+            "wave height so a calmer detour is preferred when one exists. A draft "
+            "is likewise excluded outright (too-shallow water is not in the "
+            "graph); speed and fuel range are only applied afterward, to the "
+            "hazard-optimal route this search already found, and never change "
+            "which route that is. distance_km is the found route's length; "
+            "great_circle_km is the direct distance for comparison. Not a "
+            "substitute for an official chart or a vessel-specific passage plan "
+            "— see services/routing.py for the resolution/latency tradeoffs of "
+            "the search grid."
         ),
     }

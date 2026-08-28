@@ -13,7 +13,7 @@ import time
 import pandas as pd
 
 from marine_ml import config, fusion
-from marine_ml.sources import copernicus, gebco, obis
+from marine_ml.sources import copernicus, gbif, gebco, obis
 
 from . import features as feature_lib
 from . import labels as label_lib
@@ -89,7 +89,17 @@ def build(
         region, resolution=config.GRID_RESOLUTION if wide else None
     )
 
-    presences = obis.fetch_all_target_species(None, region, START, END)
+    # Union, not a switch — see `marine_ml.sources.gbif`'s and
+    # `label_lib.union_presences`'s own docstrings for the measured per-
+    # species split that makes this necessary. GBIF has never been probed at
+    # global extent, so the union is scoped to the regional path only; a
+    # `wide` (global) run stays OBIS-only until that is checked.
+    obis_presences = obis.fetch_all_target_species(None, region, START, END)
+    if wide:
+        presences = obis_presences
+    else:
+        gbif_presences = gbif.fetch_all_target_species(None, region, START, END)
+        presences = label_lib.union_presences(obis_presences, gbif_presences)
     if wide:
         # 21.8M records worldwide — enumerating them is not a slow version of
         # this, it is a different thing that never finishes. Sample cells in

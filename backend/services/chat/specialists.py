@@ -94,7 +94,13 @@ SPECIALISTS: dict[str, Specialist] = {
             "coordinate, call assess_marine_risk rather than synthesising a "
             "verdict yourself from the individual condition and alert tools "
             "— it applies a fixed rule table so the same conditions always "
-            "produce the same verdict; "
+            "produce the same verdict. get_argo_profile reports a real ARGO "
+            "float's measured temperature/salinity by depth near a point — "
+            "the only instrument-measured subsurface reading here, distinct "
+            "from get_current_conditions' surface-only model field; ARGO "
+            "coverage is sparse (~10-day cycle, ~1 float per 3 degrees), so "
+            "relay its own distance and timestamp rather than implying it is "
+            "exactly at the requested point or exactly now; "
             f"relay its risk_level and reasons rather than restating them. {_SHARED_RULES}"
         ),
         tool_names=(
@@ -103,6 +109,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "get_cyclone_alerts",
             "get_severe_weather_alerts",
             "get_tide_level",
+            "get_argo_profile",
             "get_historical_series",
             "assess_marine_risk",
         ),
@@ -136,7 +143,13 @@ SPECIALISTS: dict[str, Specialist] = {
             "calls (e.g. start, end, and a midpoint) are enough to describe "
             "the trend — do not call get_seafloor_depth once per waypoint; "
             "you have a small, fixed number of tool calls per answer and "
-            f"must leave one free to actually reply. {_SHARED_RULES}"
+            "must leave one free to actually reply. plan_safe_route takes an "
+            "optional vessel_draft_m, vessel_speed_kmh and vessel_fuel_range_km "
+            "— pass whichever the user gave you (a draft excludes water too "
+            "shallow to cross; speed and fuel range only annotate the result "
+            "with an estimated duration and whether the route fits the range, "
+            "they never change the route itself). Do not invent a vessel "
+            f"figure the user did not give you. {_SHARED_RULES}"
         ),
         tool_names=(
             "check_geofence",

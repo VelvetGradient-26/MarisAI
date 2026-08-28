@@ -201,6 +201,27 @@ class RouteArgs(BaseModel):
     start_longitude: float = Field(..., ge=-180, le=180, description="Start longitude in degrees east.")
     end_latitude: float = Field(..., ge=-90, le=90, description="Destination latitude in degrees north.")
     end_longitude: float = Field(..., ge=-180, le=180, description="Destination longitude in degrees east.")
+    vessel_draft_m: float | None = Field(
+        None,
+        gt=0,
+        description=(
+            "Vessel draft in metres, if given. Water too shallow to clear it is excluded from the "
+            "route outright, so the path may detour around a shoal it would otherwise cross."
+        ),
+    )
+    vessel_speed_kmh: float | None = Field(
+        None,
+        gt=0,
+        description="Vessel speed in km/h, if given. Only used to estimate travel time; never changes the route.",
+    )
+    vessel_fuel_range_km: float | None = Field(
+        None,
+        gt=0,
+        description=(
+            "Vessel fuel range in km, if given. Checked against the found route's own distance "
+            "to say whether it fits within range; never changes the route."
+        ),
+    )
 
 
 class WebSearchArgs(BaseModel):
@@ -229,6 +250,13 @@ class TideArgs(PointArgs):
         ge=10,
         le=500,
         description="How far from the point to look for an INCOIS tide-gauge station, in km.",
+    )
+
+
+class ArgoArgs(PointArgs):
+    radius_km: float = Field(300.0, ge=10, le=1000, description="How far from the point to look for an ARGO float.")
+    lookback_days: int = Field(
+        30, ge=1, le=120, description="How many days back to look for a profile (a float reports roughly every 10 days)."
     )
 
 
@@ -386,11 +414,25 @@ async def _get_documentation(query: str) -> dict[str, Any]:
 
 
 async def _safe_route(
-    start_latitude: float, start_longitude: float, end_latitude: float, end_longitude: float
+    start_latitude: float,
+    start_longitude: float,
+    end_latitude: float,
+    end_longitude: float,
+    vessel_draft_m: float | None = None,
+    vessel_speed_kmh: float | None = None,
+    vessel_fuel_range_km: float | None = None,
 ) -> dict[str, Any]:
     from services.routing import plan_route
 
-    return await plan_route(start_latitude, start_longitude, end_latitude, end_longitude)
+    return await plan_route(
+        start_latitude,
+        start_longitude,
+        end_latitude,
+        end_longitude,
+        vessel_draft_m=vessel_draft_m,
+        vessel_speed_kmh=vessel_speed_kmh,
+        vessel_fuel_range_km=vessel_fuel_range_km,
+    )
 
 
 async def _assess_risk(latitude: float, longitude: float) -> dict[str, Any]:
@@ -429,6 +471,12 @@ async def _tide_level(latitude: float, longitude: float, radius_km: float) -> di
     from services.tides import nearest_station
 
     return await nearest_station(latitude, longitude, radius_km)
+
+
+async def _argo_profile(latitude: float, longitude: float, radius_km: float, lookback_days: int) -> dict[str, Any]:
+    from services.argo import nearest_profile
+
+    return await nearest_profile(latitude, longitude, radius_km, lookback_days)
 
 
 # --------------------------------------------------------------------------
@@ -623,6 +671,18 @@ _SPECS: list[tuple[str, str, type[BaseModel], Any]] = [
         "currently reporting rather than guessing a value.",
         TideArgs,
         _tide_level,
+    ),
+    (
+        "get_argo_profile",
+        "The nearest real ARGO float's measured temperature and salinity by "
+        "depth (roughly surface to 2000 m) near a coordinate — the only "
+        "in-situ, instrument-measured check on subsurface conditions this "
+        "platform has. ARGO floats profile on a ~10-day cycle and are "
+        "sparse (about one per 3 degrees globally), so report if none is "
+        "within range rather than guessing; a profile found may be several "
+        "days old, and its own timestamp says how old.",
+        ArgoArgs,
+        _argo_profile,
     ),
 ]
 

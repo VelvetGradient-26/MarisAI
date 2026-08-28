@@ -35,6 +35,51 @@ class LabelError(RuntimeError):
     """Raised when a usable presence/background set cannot be constructed."""
 
 
+def union_presences(obis_presences: pd.DataFrame, gbif_presences: pd.DataFrame) -> pd.DataFrame:
+    """OBIS and GBIF presences for the same species set, combined and deduplicated.
+
+    **Must be a union, not a switch.** Measured 2026-08-05 over
+    `NORTH_INDIAN_OCEAN`, 2000-2013 (`marine_ml.sources.gbif`'s own docstring
+    carries the full table): GBIF has 3-6x OBIS's records for the three tuna
+    species, OBIS has ~10x GBIF's for Indian mackerel and oil sardine — the
+    two species that matter most for Indian coastal fisheries. Preferring
+    whichever source is larger per species would still discard the smaller
+    source's real, distinct records for the other species.
+
+    **Dedup is occurrenceID-first, falling back second.** Much of GBIF's
+    marine data is OBIS datasets republished under the same Darwin Core
+    `occurrenceID` — when both sides carry one, an exact match is the
+    correct, unambiguous merge key. A record missing it (either source can
+    omit it) falls back to `(dataset_id, catalog_number, latitude,
+    longitude, observation_date)`, the closest identifying tuple both
+    schemas carry. This does not catch the residual case of the *same*
+    specimen carrying an `occurrenceID` on one side and none on the other —
+    a real but narrow gap, not corrected further here.
+
+    Kept row on a match is whichever appears first in `obis_presences`, then
+    `gbif_presences` — an arbitrary but deterministic tie-break, since
+    neither source is more authoritative for a record both report.
+    """
+    combined = pd.concat(
+        [obis_presences.assign(_source="obis"), gbif_presences.assign(_source="gbif")],
+        ignore_index=True,
+    )
+    if combined.empty:
+        raise LabelError("both OBIS and GBIF presence frames are empty")
+
+    for column in ("occurrence_id", "dataset_id", "catalog_number"):
+        if column not in combined.columns:
+            combined[column] = pd.NA
+
+    has_id = combined["occurrence_id"].notna() & (combined["occurrence_id"].astype("string").str.strip() != "")
+    with_id = combined[has_id].drop_duplicates(subset=["occurrence_id"])
+    without_id = combined[~has_id].drop_duplicates(
+        subset=["dataset_id", "catalog_number", "latitude", "longitude", "observation_date"]
+    )
+
+    return pd.concat([with_id, without_id], ignore_index=True).drop(columns="_source")
+
+
 def thin_presences(
     presences: pd.DataFrame,
     resolution: float = config.GRID_RESOLUTION,
