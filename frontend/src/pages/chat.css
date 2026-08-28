@@ -77,6 +77,15 @@
    * to shrink below its content, which let a wide tool result push the whole
    * column past the viewport. */
   height: calc(100vh - var(--navbar-h, 64px) - 52px);
+  /* Animates the rail's own collapse/expand. A browser that does not animate
+   * grid tracks (rare, and this app already relies on newer CSS elsewhere —
+   * see CLAUDE.md's scroll-timeline notes) just snaps between the two widths
+   * instead, which is still fully functional. */
+  transition: grid-template-columns 0.3s ease;
+}
+
+.chat-shell--sidebar-collapsed {
+  grid-template-columns: 64px minmax(0, 1fr);
 }
 
 .chat-main {
@@ -101,6 +110,46 @@
   border: 1px solid var(--chat-border);
   border-radius: 16px;
   background: var(--chat-sidebar-bg);
+  /* Only `overflow-x` — clipping both axes would cut off the session list's
+   * own `overflow-y: auto` scrollbar along with the width it is meant to
+   * hide during the collapse transition. */
+  overflow-x: hidden;
+}
+
+/* Rail mode: icons only, centered, no title text or history — see
+ * AssistantPage.tsx, where the label/list are not rendered at all rather
+ * than hidden, so a screen reader does not still land on them. */
+.chat-sidebar--collapsed {
+  align-items: center;
+  padding: 16px 10px;
+}
+
+.chat-sidebar__top {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.chat-sidebar--collapsed .chat-sidebar__top {
+  justify-content: center;
+}
+
+.chat-sidebar__toggle {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--chat-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chat-sidebar__toggle:hover {
+  background: var(--chat-hover-bg);
+  color: var(--chat-text);
 }
 
 .chat-new {
@@ -122,6 +171,27 @@
 
 .chat-new:hover {
   background: var(--chat-active-bg);
+}
+
+/* Rail mode shrinks it to a square icon button — same visual language
+ * (border, accent fill) as the expanded "New chat" pill, just without the
+ * label there is no room for. */
+.chat-sidebar--collapsed .chat-new {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  gap: 0;
+}
+
+.chat-sidebar__history {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  /* The history block, not the sidebar itself, is what actually scrolls and
+   * shrinks — letting it own `flex: 1 1 auto; min-height: 0` is what lets
+   * `.chat-sessions` below claim `overflow-y: auto` correctly. */
+  flex: 1 1 auto;
 }
 
 .chat-sidebar__label {
@@ -645,6 +715,15 @@
   width: 100%;
   max-width: var(--chat-col-max, 46rem);
   margin: 14px auto 0;
+}
+
+/* The empty-state position — see `Composer`'s `layoutId` in
+ * AssistantThread.tsx for how this becomes the docked one above the instant
+ * a conversation starts, rather than two separately-animated boxes. Sized
+ * the same as the docked composer, deliberately: the input is the same
+ * control in two places, not a bigger "hero" version of itself. */
+.chat-composer--centered {
+  margin: 22px auto 24px;
 }
 
 /* The wrapper carries the border and focus ring so the textarea itself can be

@@ -139,6 +139,15 @@ export function AssistantThread({ error }: { error: string | null }) {
                 <AssistantMark />
               </div>
               <p className="chat-empty__lead">Ask about conditions anywhere in the ocean.</p>
+
+              {/* The same `<Composer>` the docked position below renders —
+                  never both at once (`isEmpty` gates them oppositely), so
+                  `layoutId` gives a real shared-element transition: this one
+                  physically becomes the docked one the moment the first
+                  message lands, rather than one fading while a second one
+                  fades in somewhere else. */}
+              <Composer variant="centered" />
+
               <div className="chat-suggestions">
                 {SUGGESTIONS.map((suggestion, index) => (
                   <motion.div
@@ -197,7 +206,13 @@ export function AssistantThread({ error }: { error: string | null }) {
         ) : null}
       </AnimatePresence>
 
-      <Composer />
+      {/* The centered composer above is unmounted the instant the thread
+          stops being empty (the user's own message landing is what flips
+          `isEmpty`), so this one is never a second, competing input — it is
+          the *only* composer once a conversation exists. */}
+      <AuiIf condition={(s) => !s.thread.isEmpty}>
+        <Composer variant="docked" />
+      </AuiIf>
 
       <p className="chat-disclaimer">
         Alerts shown here are threshold rules computed over real fields, not issued marine
@@ -207,35 +222,53 @@ export function AssistantThread({ error }: { error: string | null }) {
   );
 }
 
-function Composer() {
+/**
+ * `variant` only ever changes *where* this renders, never how it behaves —
+ * `AssistantThread` mounts exactly one of the two at a time, gated on
+ * `thread.isEmpty`, so this is never rendered twice at once. `layoutId`
+ * turns that mount/unmount pair into a single animated element as far as
+ * framer-motion is concerned: the centered composer *becomes* the docked
+ * one, sliding from the middle of the empty state down to the foot of the
+ * page, the same shared-element technique the navbar's active-link
+ * underline already uses (see `Navbar.tsx`).
+ */
+function Composer({ variant }: { variant: 'centered' | 'docked' }) {
+  const reduce = useReducedMotion();
   return (
-    <ComposerPrimitive.Root className="chat-composer">
-      <div className="chat-input-wrap">
-        <ComposerPrimitive.Input
-          className="chat-input"
-          rows={1}
-          autoFocus
-          submitOnEnter
-          placeholder="Ask about ocean conditions, forecasts or alerts…"
-        />
+    <ComposerPrimitive.Root asChild>
+      <motion.form
+        layout={!reduce}
+        layoutId={reduce ? undefined : 'chat-composer'}
+        className={`chat-composer${variant === 'centered' ? ' chat-composer--centered' : ''}`}
+        transition={{ duration: 0.5, ease: EASE }}
+      >
+        <div className="chat-input-wrap">
+          <ComposerPrimitive.Input
+            className="chat-input"
+            rows={1}
+            autoFocus
+            submitOnEnter
+            placeholder="Ask about ocean conditions, forecasts or alerts…"
+          />
 
-        {/* Send and Stop occupy the same slot — a run can take tens of
-            seconds and the composer is where a user looks to stop it.
-            `AuiIf` rather than `ComposerPrimitive.If`: the latter only
-            filters on `editing`/`dictation` and is deprecated in this
-            version, so "is a run in flight" has to come off the thread
-            state. */}
-        <AuiIf condition={(s) => !s.thread.isRunning}>
-          <ComposerPrimitive.Send className="chat-send-btn" aria-label="Send message">
-            <ArrowUp size={17} aria-hidden />
-          </ComposerPrimitive.Send>
-        </AuiIf>
-        <AuiIf condition={(s) => s.thread.isRunning}>
-          <ComposerPrimitive.Cancel className="chat-send-btn chat-send-btn--stop" aria-label="Stop generating">
-            <Square size={12} aria-hidden fill="currentColor" />
-          </ComposerPrimitive.Cancel>
-        </AuiIf>
-      </div>
+          {/* Send and Stop occupy the same slot — a run can take tens of
+              seconds and the composer is where a user looks to stop it.
+              `AuiIf` rather than `ComposerPrimitive.If`: the latter only
+              filters on `editing`/`dictation` and is deprecated in this
+              version, so "is a run in flight" has to come off the thread
+              state. */}
+          <AuiIf condition={(s) => !s.thread.isRunning}>
+            <ComposerPrimitive.Send className="chat-send-btn" aria-label="Send message">
+              <ArrowUp size={17} aria-hidden />
+            </ComposerPrimitive.Send>
+          </AuiIf>
+          <AuiIf condition={(s) => s.thread.isRunning}>
+            <ComposerPrimitive.Cancel className="chat-send-btn chat-send-btn--stop" aria-label="Stop generating">
+              <Square size={12} aria-hidden fill="currentColor" />
+            </ComposerPrimitive.Cancel>
+          </AuiIf>
+        </div>
+      </motion.form>
     </ComposerPrimitive.Root>
   );
 }
