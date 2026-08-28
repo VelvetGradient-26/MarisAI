@@ -1,4 +1,4 @@
-import type { BasemapDefinition } from '../types';
+import type { RasterBasemapDefinition } from '../types';
 
 /**
  * Esri's legacy (unauthenticated) World Imagery service. Free, no API key,
@@ -6,10 +6,14 @@ import type { BasemapDefinition } from '../types';
  * keyed "basemap layer service" with higher resolution — if this endpoint
  * is ever retired, swap the tile URL for the keyed equivalent.
  */
-export const esriSatellite: BasemapDefinition = {
+export const esriSatellite: RasterBasemapDefinition = {
+  kind: 'raster',
   id: 'satellite',
   name: 'Satellite',
   attribution: 'Esri, Maxar, Earthstar Geographics',
+  // Esri World Imagery's open ocean. Shows while tiles load, and is what makes
+  // this basemap render at all on the globe (see BasemapManager.addRaster).
+  backgroundColor: '#0b1a2b',
   source: {
     type: 'raster',
     tiles: [

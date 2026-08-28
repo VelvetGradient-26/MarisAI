@@ -1,0 +1,31 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Helvetica, Arial, sans-serif','fontSize':'15px','primaryColor':'#e8eef5','primaryTextColor':'#1a1a1a','primaryBorderColor':'#1f6fb2','lineColor':'#4a4a4a'}}}%%
+%% Deliberately no subgraphs: this mermaid release does not honour
+%% `direction LR` inside one, which stacks sibling nodes vertically and turns
+%% the figure into an unusable 1:4 column. Parallel branches off a shared
+%% parent lay out side by side on their own, which is the shape wanted here.
+flowchart TB
+    CMEMS["Copernicus Marine<br/>physics · waves · biogeochemistry"]
+    BATHY["GEBCO bathymetry<br/>ERDDAP griddap"]
+
+    ACQ["Acquisition — variable registry to provider,<br/>retrying async fetch, 300 s per-attempt bound"]
+    CACHE[("History cache — parquet, keyed by codes · lat/lon · window<br/>pinned to a fixed as_of snapshot for reproducibility")]
+
+    FEAT["Feature construction — identical for every variable<br/>clean and reindex · lags 1–30 d · rolling mean/sd/min/max<br/>differences · trends · calendar · static site descriptors"]
+    TGT["Delta target   y(t+h) − y(t)<br/>a regression tree cannot represent the identity function,<br/>which is exactly what persistence is"]
+
+    LGBM["LightGBM<br/>one model per variable × horizon,<br/>pooled across all 24 sites"]
+    PERS["Persistence<br/>ŷ = y(t)<br/>no fit required"]
+    CLIM["Climatology<br/>per-site day-of-year, ±15 d<br/>fitted on training rows only"]
+
+    SKILL["Skill scores, on identical rows<br/>S_pers = 1 − RMSE² / RMSE²_pers      S_clim = 1 − RMSE² / RMSE²_clim"]
+
+    CMEMS --> ACQ
+    BATHY --> ACQ
+    ACQ <--> CACHE
+    CACHE --> FEAT --> TGT
+    TGT --> LGBM --> SKILL
+    TGT --> PERS --> SKILL
+    TGT --> CLIM --> SKILL
+
+    classDef contribution fill:#fdf0e6,stroke:#d1611f,stroke-width:2.5px,color:#1a1a1a
+    class CLIM,SKILL contribution

@@ -14,7 +14,16 @@ from app.models.observations.earthquake import EarthquakeEvent
 from app.models.observations.fishing import FishingActivity
 from app.models.observations.satellite_products import SatelliteProduct
 
+# Chat — the first models in this package actually read at runtime.
+from app.models.chat.session import ChatMessage, ChatSession
+
+# Alerts (sihtodo.md item 8)
+from app.models.alerts.subscription import AlertSubscription
+
 __all__ = [
+    "ChatMessage",
+    "ChatSession",
+    "AlertSubscription",
     "DataSource",
     "Dataset",
     "Location",

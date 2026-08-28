@@ -1,784 +1,1792 @@
-.landing-page {
-  --landing-bg: #02060c;
-  --landing-text: #f2f6f8;
-  --landing-muted: rgba(220, 232, 238, 0.72);
-  --landing-primary: oklch(0.78 0.14 195);
-  --landing-accent-2: oklch(0.78 0.14 165);
-  --landing-border: rgba(255, 255, 255, 0.1);
-  --landing-outline: rgba(255, 255, 255, 0.08);
-  --landing-card-bg: oklch(0.19 0.032 240 / 0.72);
-  --landing-panel-bg: oklch(0.13 0.028 240 / 0.88);
-  --landing-panel-grid: oklch(1 0 0 / 0.035);
+/* Landing page — research-oriented, restrained, motion without 3D.
+ *
+ * Design intent: large quiet type, generous vertical space, one accent colour,
+ * hairline rules instead of boxes. Everything moves on scroll, but nothing
+ * illustrates — the only imagery is a vector field, which is what current data
+ * genuinely looks like.
+ *
+ * Theming follows the project's per-page pattern: `--lp-*` custom properties
+ * on the root class, with a `.lp--light` override block, driven by
+ * `useThemeStore`. Dark accent is the navbar cyan; light accent is teal.
+ */
+
+.lp {
+  /* The one page that deliberately does not sit on --ma-bg. Its ground is the
+     shared --ma-bg-deep, which exists precisely so this stays a decision
+     rather than drift — see the token file, and HeroField, which veils its
+     canvas against exactly this colour every frame. */
+  --lp-bg: var(--ma-bg-deep);
+  /* A hair above --lp-bg so alternating panel sections still separate from
+     the ground. Neutral now, like the ground it sits on. */
+  --lp-bg-panel: #08080b;
+  --lp-text: #f6f6f8;
+  /* Raised from 0.62 / 0.38. At 0.38 the labels, chips and spec values were
+     barely present on a near-black background — the page read as washed out
+     rather than as restrained. Restraint is contrast you chose; this was
+     contrast you lost. */
+  --lp-muted: rgba(228, 240, 246, 0.74);
+  --lp-faint: rgba(228, 240, 246, 0.55);
+  --lp-accent: var(--ma-accent);
+  --lp-accent-soft: var(--ma-accent-soft);
+  --lp-rule: rgba(255, 255, 255, 0.1);
+  --lp-rule-soft: rgba(255, 255, 255, 0.06);
+  --lp-card: rgba(255, 255, 255, 0.035);
+  --lp-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  /* Pure black, because the page ground (--ma-bg-deep, #000103) is dark but
+     not black — a shadow darker than the background is what makes elevation
+     legible in dark mode without resorting to a colour wash. The margin is
+     thinner than it was now that the ground is near-black, so the hover
+     shadow leans on the second, tighter layer to read at all. */
+  --lp-shadow-hover: 0 22px 48px rgba(0, 0, 0, 0.72), 0 4px 14px rgba(0, 0, 0, 0.55);
+
+  --lp-gutter: clamp(1.25rem, 5vw, 4rem);
+  --lp-measure: 1180px;
+
+  /* Three roles, because one typeface at one setting is what made the small
+     text read as filler. The stacks themselves now live in styles/tokens.css
+     (this page is where they were first worked out; the rest of the app has
+     since adopted them):
+       display — the system stack, only at large sizes and tight tracking,
+                 where its neutrality is an asset.
+       body    — IBM Plex Sans: a humanist sans with visible character at
+                 16-20px, where the system stack goes generic.
+       mono    — IBM Plex Mono for technical micro-copy (labels, chips, spec
+                 values, legends). It is what makes small text read as
+                 instrument rather than as marketing. */
+  --lp-font-display: var(--ma-font-display);
+  --lp-font-body: var(--ma-font-body);
+  --lp-font-mono: var(--ma-font-mono);
+
+  /* Diagram/glyph ink. Separate from --lp-rule because artwork needs more
+     contrast than a divider does — at rule strength the line art disappeared. */
+  --lp-glyph-line: rgba(226, 238, 244, 0.34);
+  --lp-glyph-muted: rgba(226, 238, 244, 0.2);
+  --lp-glyph-bg: rgba(255, 255, 255, 0.028);
+
   position: relative;
   min-height: 100vh;
-  overflow-x: hidden;
-  background: var(--landing-bg);
-  color: var(--landing-text);
-  font-family: 'IBM Plex Sans', sans-serif;
-  scroll-snap-type: y proximity;
+  /* `clip`, not `hidden`, and it is load-bearing for every scroll-driven
+     animation on this page. `overflow-x: hidden` computes the other axis to
+     `auto`, which makes this element a **scroll container** — and
+     `animation-timeline: view()` resolves against the subject's nearest
+     scrollport, not the viewport. So the hero parallax and the card turns
+     below got a real `ViewTimeline` bound to a box that never scrolls, and sat
+     frozen at progress 0 while `getAnimations()` reported them as running.
+     `clip` suppresses the horizontal overflow the marquee would otherwise
+     cause without creating a scrollport at all. */
+  overflow-x: clip;
+  background: var(--lp-bg);
+  color: var(--lp-text);
+  font-family: var(--lp-font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* The dive backdrop (OceanDiveScene) still darkens toward the abyss in
-   light mode — just to a teal-charcoal floor instead of near-black (see
-   DEPTH_STOPS_LIGHT) — because every section past the hero sits on top of
-   that same animated backdrop, not a flat page background. So only the
-   accent hue shifts to teal here; --landing-text/--landing-muted/card
-   surfaces stay the light-on-dark values from the base class, or the CTA
-   and footer would render dark text on a dark backdrop. */
-.landing-page--light {
-  --landing-primary: #2dd4bf;
-  --landing-accent-2: #5eead4;
+/* Headings keep the system display stack. The Apple-adjacent look at 3-7rem
+   comes from that neutrality plus hard negative tracking; the same face is
+   what looked generic at 15px, which is why only the large sizes use it. */
+.lp-hero__title,
+.lp-h2,
+.lp-closing__title,
+.lp-metric__value {
+  font-family: var(--lp-font-display);
 }
 
-/* ── shared fixed dive layers (OceanDiveScene) ───────────────────────── */
+/* --lp-bg, --lp-accent and --lp-accent-soft are absent here on purpose: they
+   alias shared tokens, which invert themselves from `data-theme` on <html>. */
+.lp--light {
+  --lp-bg-panel: #eef3f5;
+  --lp-text: #0a1418;
+  --lp-muted: rgba(12, 28, 34, 0.76);
+  --lp-faint: rgba(12, 28, 34, 0.58);
+  --lp-rule: rgba(10, 26, 32, 0.14);
+  --lp-rule-soft: rgba(10, 26, 32, 0.08);
+  --lp-card: rgba(10, 26, 32, 0.026);
+  --lp-shadow: 0 24px 60px rgba(12, 40, 50, 0.12);
+  --lp-shadow-hover: 0 20px 42px rgba(12, 40, 50, 0.17), 0 3px 10px rgba(12, 40, 50, 0.09);
+  --lp-glyph-line: rgba(12, 28, 34, 0.42);
+  --lp-glyph-muted: rgba(12, 28, 34, 0.24);
+  --lp-glyph-bg: rgba(10, 26, 32, 0.03);
+}
 
-.dive-layer {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
+/* --------------------------------------------------------------------------
+   Shared type scale
+   -------------------------------------------------------------------------- */
+
+.lp-eyebrow {
+  margin: 0 0 1.25rem;
+  font-family: var(--lp-font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--lp-accent);
+}
+
+.lp-h2 {
+  margin: 0 0 1.5rem;
+  font-size: clamp(2.25rem, 5.4vw, 4rem);
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  font-weight: 600;
+}
+
+.lp-body {
+  margin: 0 0 1.15rem;
+  font-size: clamp(1.0625rem, 1.35vw, 1.1875rem);
+  /* Body copy is the one place tracking goes slightly *positive*: Plex Sans
+     sets tight by default, and at these sizes on a dark ground a hair of
+     extra space is what keeps a paragraph from looking clenched. */
+  letter-spacing: 0.004em;
+  line-height: 1.68;
+  color: var(--lp-muted);
+}
+
+.lp-body--wide {
+  max-width: 62ch;
+}
+
+.lp-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  font-size: 1.0625rem;
+  font-weight: 500;
+  color: var(--lp-accent);
+  text-decoration: none;
+}
+
+.lp-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+/* --------------------------------------------------------------------------
+   Sections
+   -------------------------------------------------------------------------- */
+
+.lp-section {
+  padding: clamp(6rem, 14vh, 11rem) var(--lp-gutter);
+}
+
+.lp-section--tight {
+  padding-top: clamp(3rem, 7vh, 5rem);
+  padding-bottom: clamp(3rem, 7vh, 5rem);
+}
+
+.lp-section--panel {
+  background: var(--lp-bg-panel);
+  border-top: 1px solid var(--lp-rule-soft);
+  border-bottom: 1px solid var(--lp-rule-soft);
+}
+
+.lp-section--closing {
+  text-align: center;
+  /* Containing block for the absolutely positioned aurora, and the clip that
+     keeps it inside this section. `isolation` gives the backdrop its own
+     stacking context so its blending cannot reach the sections above. */
+  position: relative;
+  isolation: isolate;
   overflow: hidden;
 }
 
-.dive-sky-gradient {
+/* The WebGL wash behind the closing call to action (ClosingBackdrop.tsx).
+   Masked to fade out at all four edges rather than ending on a hard line —
+   the canvas is a rectangle and the section is not visually bounded, so
+   without this it reads as a pasted-in box. `pointer-events: none` because
+   the buttons sit on top of it. */
+.lp-closing__backdrop {
   position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 82%;
-  background: linear-gradient(to bottom, #2a7cc2 0%, #4a9fdb 30%, #86caee 60%, #c9e7fa 85%, #e9f7fe 100%);
+  inset: -10% -5%;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.55;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, #000 35%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, #000 35%, transparent 78%);
 }
 
-.dive-sky-horizon {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 74%;
-  height: 12%;
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(232, 247, 254, 0.75) 55%, rgba(232, 247, 254, 0));
-  filter: blur(6px);
+/* The aurora is a light-on-dark effect by construction; on the near-white
+   light theme it needs to sit back much further or it reads as a smudge. */
+.lp--light .lp-closing__backdrop {
+  opacity: 0.34;
 }
 
-.dive-sun {
-  position: absolute;
-  top: 4%;
-  left: 66%;
-  width: 300px;
-  height: 300px;
+/* One shared entrance: fade plus a short rise. Applied by adding `is-in`,
+   which the reveal hook sets once and never removes. */
+.lp-metrics,
+.lp-feature,
+.lp-coverage,
+.lp-surfaces,
+.lp-research,
+.lp-principles,
+.lp-closing {
+  opacity: 0;
+  transform: translate3d(0, 26px, 0);
+  transition:
+    opacity 0.85s cubic-bezier(0.22, 0.61, 0.36, 1),
+    transform 0.85s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-.dive-sun__rays {
-  position: absolute;
-  inset: -120px;
-  animation: raySpin 90s linear infinite;
+.lp-metrics.is-in,
+.lp-feature.is-in,
+.lp-coverage.is-in,
+.lp-surfaces.is-in,
+.lp-research.is-in,
+.lp-principles.is-in,
+.lp-closing.is-in {
+  opacity: 1;
+  transform: none;
 }
 
-.dive-sun__rays-svg {
-  width: 100%;
-  height: 100%;
-  animation: rayPulse 5.5s ease-in-out infinite;
-}
+/* --------------------------------------------------------------------------
+   Hero
+   -------------------------------------------------------------------------- */
 
-.dive-sun__glow {
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  background: radial-gradient(
-    circle,
-    rgba(255, 255, 250, 1) 0%,
-    rgba(255, 251, 225, 0.95) 26%,
-    rgba(255, 243, 196, 0.5) 46%,
-    rgba(255, 238, 180, 0.14) 68%,
-    transparent 80%
-  );
-  filter: blur(3px);
-  animation: sunFlash 4.5s ease-in-out infinite;
-}
-
-.dive-cloud {
-  position: absolute;
-  left: 0;
-  animation-name: cloudFloat;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
-}
-
-.dive-bird {
-  position: absolute;
-  left: 0;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
-}
-
-.dive-shaft {
-  position: absolute;
-  top: -60px;
-  height: 120vh;
-  transform-origin: top center;
-  background: linear-gradient(to bottom, rgba(255, 248, 222, 0.28), rgba(255, 248, 222, 0.06) 55%, transparent 85%);
-  filter: blur(10px);
-  animation-name: shaftShimmer;
-  animation-timing-function: ease-in-out;
-  animation-iteration-count: infinite;
-}
-
-.dive-bubble {
-  position: absolute;
-  bottom: -6vh;
-  border-radius: 999px;
-  background: radial-gradient(
-    circle at 34% 30%,
-    rgba(255, 255, 255, 0.9),
-    rgba(190, 230, 245, 0.28) 55%,
-    rgba(140, 200, 225, 0.08) 78%,
-    transparent
-  );
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  animation-name: bubbleRise;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
-}
-
-.dive-fish-lane {
-  position: absolute;
-  left: 0;
-}
-
-/* WebGL canvas host for the 3D salmon school. Fills its dive-layer; the
-   school's own opacity is driven per-frame in the renderer rather than
-   here, so scrolling never triggers a React re-render of the scene. */
-.dive-salmon-canvas {
-  position: absolute;
-  inset: 0;
-}
-
-.dive-angler {
-  position: absolute;
-  top: 58%;
-  left: 0;
-  animation-name: driftLeft;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
-}
-
-.dive-plankton {
-  position: absolute;
-  border-radius: 999px;
-  animation-name: particleGlow;
-  animation-timing-function: ease-in-out;
-  animation-iteration-count: infinite;
-}
-
-.dive-gauge {
-  position: fixed;
-  right: 20px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 15;
+.lp-hero {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
+  min-height: 100vh;
+  /* The navbar is fixed and overlays every page; content must clear it. */
+  padding: calc(var(--navbar-h, 64px) + clamp(4rem, 12vh, 9rem)) var(--lp-gutter)
+    clamp(6rem, 14vh, 9rem);
+  /* Same reason as `.lp-root` above: this is the hero content's *nearest*
+     ancestor, so `hidden` here freezes the parallax on its own. */
+  overflow: clip;
+}
+
+.lp-hero__field {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Keeps the headline legible without hiding the field.
+   The first version painted an opaque radial of --lp-bg over the left 62% —
+   exactly where the particles are — so the animation was invisible. This
+   scrims only as far as the text column actually extends, fades out well
+   before the right half, and stops short of full opacity anywhere. */
+.lp-hero__veil {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      100deg,
+      color-mix(in srgb, var(--lp-bg) 88%, transparent) 0%,
+      color-mix(in srgb, var(--lp-bg) 62%, transparent) 28%,
+      transparent 58%
+    ),
+    linear-gradient(to bottom, transparent 60%, var(--lp-bg) 100%);
   pointer-events: none;
 }
 
-.dive-gauge__readout {
-  text-align: right;
-  font-family: 'IBM Plex Mono', monospace;
+.lp-hero__content {
+  position: relative;
+  width: 100%;
+  max-width: var(--lp-measure);
+  margin: 0 auto;
+  will-change: transform, opacity;
 }
 
-.dive-gauge__meters {
-  font-size: 15px;
+/* The hero parallax, driven by the browser rather than by a scroll listener.
+   `Hero` writes the same transform from JS where this is unsupported, and
+   disables itself where it is not — see `supportsViewTimeline`.
+
+   **The guarded state is the animated one, never the hidden one.** Everything
+   that could make the headline invisible lives inside this `@supports`; a
+   browser without view timelines gets the element exactly as authored, fully
+   visible, which is the same resolution reduced motion takes below. Authored
+   the other way round — opacity 0 by default, revealed by the animation — an
+   unsupported browser would render a blank hero.
+
+   The range starts at `cover 50%`, i.e. the moment the content is centred in
+   the viewport, because that is where the JS formula reads zero. Starting at
+   `cover 0%` would have the hero already part-faded at the top of the page,
+   since a full-height hero begins its `cover` range above the fold. */
+@supports (animation-timeline: view()) {
+  .lp-hero__content {
+    animation: lp-hero-parallax linear both;
+    animation-timeline: view();
+    animation-range: cover 50% cover 100%;
+  }
+
+  @keyframes lp-hero-parallax {
+    from {
+      transform: translate3d(0, 0, 0);
+      opacity: 1;
+    }
+    /* Gone before it reaches the top edge, so the headline never crosses the
+       navbar at half opacity. */
+    62% {
+      opacity: 0;
+    }
+    to {
+      transform: translate3d(0, -60px, 0);
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lp-hero__content {
+      animation: none;
+    }
+  }
+}
+
+.lp-eyebrow--hero {
+  margin-bottom: 1.5rem;
+}
+
+.lp-hero__title {
+  margin: 0 0 1.75rem;
+  font-size: clamp(3rem, 9.5vw, 7.5rem);
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+  font-weight: 600;
+}
+
+/* Each headline line is its own SplitText, wrapped so the wrapper can be the
+   block element (SplitText forces `display: inline-block` inline on its own
+   node, which no class can outrank).
+
+   The clip gives the characters something to rise *out of* — they tween from
+   y+40 and would otherwise be visible below the line before it starts.
+   `padding-bottom` buys back the descender room the clip takes, or the tail of
+   the "q" in "quantified." is shaved off.
+
+   `vertical-align: top` on the child is what keeps the 0.98 line-height. An
+   inline-block sits on the text baseline by default, so the line box reserves
+   descender space *under* it and the two lines drifted apart — the one thing
+   the wrapper must not cost is the headline's tight leading. */
+.lp-hero__title-line {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.08em;
+}
+
+.lp-hero__title-line > * {
+  vertical-align: top;
+}
+
+.lp-hero__lede {
+  max-width: 58ch;
+  margin: 0 0 2.5rem;
+  font-size: clamp(1.125rem, 1.7vw, 1.5rem);
+  line-height: 1.55;
+  color: var(--lp-muted);
+}
+
+.lp-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+}
+
+.lp-section--closing .lp-hero__actions {
+  justify-content: center;
+}
+
+.lp-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1.6rem;
+  border-radius: 980px; /* Apple's pill radius: any large value clamps to it. */
+  font-size: 1rem;
   font-weight: 500;
+  text-decoration: none;
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.lp-button--primary {
+  background: var(--lp-accent);
+  color: var(--ma-accent-on);
+  border: 1px solid var(--lp-accent);
+}
+
+.lp--light .lp-button--primary {
   color: #ffffff;
 }
 
-.dive-gauge__zone {
-  font-size: 10.5px;
-  letter-spacing: 0.08em;
+.lp-button--ghost {
+  background: transparent;
+  color: var(--lp-text);
+  border: 1px solid var(--lp-rule);
+}
+
+.lp-button:hover {
+  transform: translateY(-1px);
+}
+
+.lp-button--ghost:hover {
+  border-color: var(--lp-accent);
+  color: var(--lp-accent);
+}
+
+.lp-hero__scroll {
+  position: absolute;
+  left: 50%;
+  bottom: 2.5rem;
+  width: 1px;
+  height: 56px;
+  background: var(--lp-rule);
+  overflow: hidden;
+  transform: translateX(-50%);
+}
+
+.lp-hero__scroll span {
+  position: absolute;
+  inset: 0;
+  background: var(--lp-accent);
+  animation: lp-scroll-hint 2.4s cubic-bezier(0.6, 0, 0.4, 1) infinite;
+}
+
+@keyframes lp-scroll-hint {
+  0% {
+    transform: translateY(-100%);
+  }
+  60%,
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Metrics
+   -------------------------------------------------------------------------- */
+
+.lp-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: clamp(1.5rem, 4vw, 3rem);
+  max-width: var(--lp-measure);
+  margin: 0 auto;
+  padding: clamp(2rem, 5vh, 3.25rem) 0;
+  border-top: 1px solid var(--lp-rule-soft);
+  border-bottom: 1px solid var(--lp-rule-soft);
+}
+
+.lp-metric__value {
+  font-size: clamp(2.5rem, 5.5vw, 4.25rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.lp-metric__label {
+  margin-top: 0.7rem;
+  font-family: var(--lp-font-mono);
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+  color: var(--lp-faint);
+}
+
+/* --------------------------------------------------------------------------
+   Forecasting feature
+   -------------------------------------------------------------------------- */
+
+.lp-feature {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(2.5rem, 7vw, 6rem);
+  align-items: center;
+  max-width: var(--lp-measure);
+  margin: 0 auto;
+}
+
+.lp-skill {
+  padding: clamp(1.5rem, 3vw, 2.25rem);
+  border: 1px solid var(--lp-rule);
+  border-radius: 20px;
+  background: var(--lp-card);
+  box-shadow: var(--lp-shadow);
+}
+
+.lp-skill__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--lp-rule-soft);
+  font-family: var(--lp-font-mono);
+  font-size: 0.71875rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: rgba(226, 244, 252, 0.9);
-  margin-top: 3px;
 }
 
-.dive-gauge--light .dive-gauge__meters {
-  color: #06212f;
+.lp-skill__unit {
+  color: var(--lp-faint);
+  font-weight: 400;
 }
 
-.dive-gauge--light .dive-gauge__zone {
-  color: rgba(10, 40, 50, 0.85);
+.lp-skill__list {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0 0;
 }
 
-.dive-gauge__track {
-  position: relative;
-  width: 3px;
-  height: 180px;
+.lp-skill__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'name horizon'
+    'bar  value';
+  gap: 0.35rem 0.75rem;
+  padding: 0.7rem 0;
+  align-items: center;
+}
+
+.lp-skill__name {
+  grid-area: name;
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.lp-skill__horizon {
+  grid-area: horizon;
+  font-family: var(--lp-font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  color: var(--lp-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.lp-skill__bar {
+  grid-area: bar;
+  height: 4px;
   border-radius: 999px;
-  background: rgba(6, 32, 46, 0.28);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+  background: var(--lp-rule-soft);
+  overflow: hidden;
 }
 
-.dive-gauge__fill {
+.lp-skill__fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--lp-accent);
+  width: 0;
+  transition: width 1s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.lp-skill__value {
+  grid-area: value;
+  font-family: var(--lp-font-mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--lp-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.lp-skill__note {
+  margin: 1.25rem 0 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--lp-rule-soft);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--lp-faint);
+}
+
+/* --------------------------------------------------------------------------
+   Coverage
+   -------------------------------------------------------------------------- */
+
+.lp-coverage,
+.lp-surfaces,
+.lp-research,
+.lp-principles {
+  max-width: var(--lp-measure);
+  margin: 0 auto;
+}
+
+.lp-coverage__head {
+  margin-bottom: clamp(2.5rem, 6vw, 4rem);
+}
+
+.lp-provider-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--lp-rule-soft);
+}
+
+.lp-provider {
+  display: grid;
+  grid-template-columns: minmax(0, 18rem) minmax(0, 1fr);
+  gap: 1rem 2rem;
+  padding: 1.4rem 0;
+  border-bottom: 1px solid var(--lp-rule-soft);
+  opacity: 0;
+  transform: translate3d(0, 12px, 0);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s ease;
+}
+
+.lp-coverage.is-in .lp-provider {
+  opacity: 1;
+  transform: none;
+}
+
+.lp-provider__name {
+  font-size: 1.0625rem;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+
+.lp-provider__detail {
+  font-family: var(--lp-font-mono);
+  color: var(--lp-faint);
+  font-size: 0.8125rem;
+  letter-spacing: 0.015em;
+  line-height: 1.6;
+}
+
+/* --------------------------------------------------------------------------
+   Platform surfaces
+   -------------------------------------------------------------------------- */
+
+.lp-surfaces__head,
+.lp-principles__head {
+  margin-bottom: clamp(2.5rem, 6vw, 4rem);
+}
+
+.lp-surface-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(1rem, 2.5vw, 1.75rem);
+}
+
+.lp-surface {
+  display: flex;
+  flex-direction: column;
+  padding: clamp(1.5rem, 3vw, 2.25rem);
+  border: 1px solid var(--lp-rule);
+  border-radius: 20px;
+  background: var(--lp-card);
+  color: inherit;
+  text-decoration: none;
+  opacity: 0;
+  transform: translate3d(0, 18px, 0);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s ease,
+    box-shadow 0.28s ease;
+}
+
+.lp-surfaces.is-in .lp-surface {
+  opacity: 1;
+  transform: none;
+}
+
+/* Elevation only — no colour shift. An accent wash here tinted the whole card
+   blue on hover, which fought the restraint of the rest of the page. */
+.lp-surface:hover {
+  box-shadow: var(--lp-shadow-hover);
+}
+
+.lp-surface__title {
+  margin: 0 0 0.75rem;
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.lp-surface__body {
+  margin: 0 0 1.25rem;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--lp-muted);
+  flex: 1;
+}
+
+.lp-surface__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--lp-accent);
+}
+
+/* Glyph plate: the artwork sits on its own tinted panel so the card reads as
+   "image over text" like a product card, rather than as a wall of copy. */
+.lp-glyph {
+  display: block;
+  margin: 0 0 1.5rem;
+  padding: 0.5rem;
+  border-radius: 14px;
+  background: var(--lp-glyph-bg);
+  border: 1px solid var(--lp-rule-soft);
+
+  /* The camera. Deliberately shallow — a long perspective flattens the object
+     back into the icon it used to be, and a short one distorts the line art
+     into something that reads as a mistake. */
+  perspective: 620px;
+  perspective-origin: 50% 42%;
+}
+
+/* The object itself. `preserve-3d` has to be here rather than on `.lp-glyph`,
+   because the perspective element must stay flat for its children to share one
+   camera. */
+.lp-glyph__stage {
+  position: relative;
+  display: block;
+  transform-style: preserve-3d;
+  /* The pose at rest, and the one a browser without view timelines keeps.
+     Static, but still unmistakably an object seen from an angle. */
+  transform: rotateX(9deg) rotateY(-13deg);
+}
+
+/* Alternate the turn so a row of four does not read as four copies of one
+   rotation. */
+.lp-surface:nth-child(even) .lp-glyph__stage {
+  transform: rotateX(9deg) rotateY(13deg);
+}
+
+/* The pointer's tilt, on its own element. It cannot share `.lp-glyph__stage`
+   with the scroll animation: a running animation wins the cascade for
+   `transform`, so whichever of the two were written there second would simply
+   never appear. Nested, the two compose. */
+.lp-glyph__tilt {
+  position: relative;
+  display: block;
+  transform-style: preserve-3d;
+  transform: rotateY(calc(var(--pxn, 0) * 11deg)) rotateX(calc(var(--pyn, 0) * -9deg));
+  transition: transform 0.4s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* Every layer of the object occupies the same box, so they stack in depth
+   rather than in flow. The front face keeps the box in the layout. */
+.lp-glyph__echo,
+.lp-glyph__gloss,
+.lp-glyph__grid {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+}
+
+.lp-glyph__face {
+  position: relative;
+  display: block;
+  transform: translateZ(0);
+  transition: transform 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* **The artwork repeated into the distance.** This is what makes it an object
+   instead of an icon with a shadow behind it: each surface here *is* a stack of
+   layers, and seeing the same figure recede reads as depth immediately, where
+   an abstract plate reads as a drop shadow. Desaturated and dimmed with
+   distance, which is the cheapest honest depth cue there is. */
+.lp-glyph__echo {
+  opacity: 0.34;
+  filter: saturate(0.35);
+}
+
+.lp-glyph__echo--mid {
+  transform: translateZ(-26px) scale(0.955);
+}
+
+.lp-glyph__echo--far {
+  opacity: 0.16;
+  transform: translateZ(-54px) scale(0.9);
+}
+
+/* A floor under the stack, so the object sits *in* something. Kept faint: at
+   full strength the grid competed with the line art it is supposed to support. */
+.lp-glyph__grid {
+  transform: translateZ(-72px) scale(0.86);
+  border: 1px solid var(--lp-rule-soft);
+  border-radius: 12px;
+  background-image:
+    linear-gradient(var(--lp-rule-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lp-rule-soft) 1px, transparent 1px);
+  background-size: 22px 22px;
+  opacity: 0.5;
+}
+
+/* Specular sheen on the front face, tracking the pointer. It is what sells the
+   faces as physical surfaces rather than as stacked transparencies — a solid
+   turning in light has a highlight that moves across it. */
+.lp-glyph__gloss {
+  transform: translateZ(1px);
+  border-radius: 12px;
+  background: radial-gradient(
+    260px circle at var(--px, 50%) var(--py, 12%),
+    color-mix(in oklab, var(--lp-accent) 22%, transparent),
+    transparent 60%
+  );
+  opacity: 0;
+  transition: opacity var(--ma-duration-slow, 0.42s) var(--ma-ease);
+  mix-blend-mode: screen;
+}
+
+.lp-surface:hover .lp-glyph__gloss {
+  opacity: 1;
+}
+
+.lp-glyph__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Turning the object as the card crosses the viewport.
+   Same shape as the hero: the animated pose is inside `@supports`, so a
+   browser without view timelines keeps the static angled pose above rather
+   than losing the object. The `both` fill matters here — without it the stage
+   snaps back to the rest pose outside the range, which reads as a glitch at
+   the moment the card settles. */
+@supports (animation-timeline: view()) {
+  .lp-glyph__stage {
+    animation: lp-glyph-turn linear both;
+    animation-timeline: view();
+    animation-range: entry 15% exit 85%;
+  }
+
+  .lp-surface:nth-child(even) .lp-glyph__stage {
+    animation-name: lp-glyph-turn-alt;
+  }
+
+  /* Turns toward the reader as the card centres and away at both ends, so
+     scrolling reads as walking past an object on a shelf.
+
+     **The midpoint keeps a residual angle rather than going square-on.** At
+     zero rotation the echoes sit exactly behind the front face and the whole
+     stack collapses into what looks like a blurred icon — the depth is only
+     legible while there is some parallax between the layers. So the object is
+     never quite face-on; it is only ever less turned. */
+  @keyframes lp-glyph-turn {
+    from {
+      transform: rotateX(17deg) rotateY(-27deg);
+    }
+    50% {
+      transform: rotateX(5deg) rotateY(-9deg);
+    }
+    to {
+      transform: rotateX(-13deg) rotateY(21deg);
+    }
+  }
+
+  @keyframes lp-glyph-turn-alt {
+    from {
+      transform: rotateX(17deg) rotateY(27deg);
+    }
+    50% {
+      transform: rotateX(5deg) rotateY(9deg);
+    }
+    to {
+      transform: rotateX(-13deg) rotateY(-21deg);
+    }
+  }
+
+  /* The stack opens as the object turns, so the depth is legible while it
+     moves rather than only being implied by the static offsets. */
+  .lp-glyph__echo--mid {
+    animation: lp-echo-mid linear both;
+    animation-timeline: view();
+    animation-range: entry 15% exit 85%;
+  }
+
+  .lp-glyph__echo--far {
+    animation: lp-echo-far linear both;
+    animation-timeline: view();
+    animation-range: entry 15% exit 85%;
+  }
+
+  @keyframes lp-echo-mid {
+    from {
+      transform: translateZ(-12px) scale(0.98);
+    }
+    50% {
+      transform: translateZ(-34px) scale(0.945);
+    }
+    to {
+      transform: translateZ(-12px) scale(0.98);
+    }
+  }
+
+  @keyframes lp-echo-far {
+    from {
+      transform: translateZ(-24px) scale(0.945);
+    }
+    50% {
+      transform: translateZ(-70px) scale(0.875);
+    }
+    to {
+      transform: translateZ(-24px) scale(0.945);
+    }
+  }
+
+  /* Resolves to the static angled pose, never to a faster turn. */
+  @media (prefers-reduced-motion: reduce) {
+    .lp-glyph__stage,
+    .lp-glyph__echo--mid,
+    .lp-glyph__echo--far {
+      animation: none;
+    }
+  }
+}
+
+/* Hover lifts the front face clear of the stack — the 3D equivalent of the
+   flat glyph's old drift.
+
+   **It is on the face, not on the stage, and that is a constraint rather than
+   a preference.** The stage's transform belongs to the scroll animation, and a
+   running animation beats both a transition and a static rule for the same
+   property: a hover pose written there is simply never seen while the card is
+   in the animated range. The face is a child, so its own translate composes
+   with whatever the stage is doing instead of fighting it. */
+.lp-glyph__face {
+  transition: transform 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.lp-surface:hover .lp-glyph__face {
+  transform: translateZ(22px);
+}
+
+/* Glyph internals drift on card hover — the animation is what separates this
+   from a static icon, and it stays 2D (translate/opacity only). */
+.lp-glyph__layer,
+.lp-glyph__bar,
+.lp-glyph__node,
+.lp-glyph__rows rect {
+  transition:
+    transform 0.45s cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 0.45s ease;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.lp-surface:hover .lp-glyph__layer {
+  transform: translateY(-2px);
+}
+
+.lp-surface:hover .lp-glyph__bar {
+  transform: scaleY(1.14);
+  transform-origin: bottom;
+}
+
+.lp-surface:hover .lp-glyph__node {
+  transform: translateX(3px);
+}
+
+.lp-surface:hover .lp-glyph__rows rect {
+  transform: translateX(3px);
+}
+
+.lp-surface__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1.35rem;
+}
+
+.lp-chip {
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--lp-rule);
+  font-family: var(--lp-font-mono);
+  font-size: 0.71875rem;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  color: var(--lp-faint);
+  white-space: nowrap;
+}
+
+.lp-surface:hover .lp-chip {
+  color: var(--lp-muted);
+}
+
+/* --------------------------------------------------------------------------
+   Research
+   -------------------------------------------------------------------------- */
+
+.lp-research__head {
+  margin-bottom: clamp(2.5rem, 6vw, 4rem);
+}
+
+.lp-research-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(1rem, 2.5vw, 1.75rem);
+}
+
+/* Composed with the vendored SpotlightCard, so the element carries both
+   `.card-spotlight` and `.lp-research-card`. Both classes set padding, border,
+   radius and background, and at one class each they have identical
+   specificity — which would leave the winner decided by stylesheet import
+   order. Naming both classes here settles it explicitly instead.
+
+   The radius is also fed back to the component as `--rb-spotlight-radius`,
+   because the spotlight glow is clipped by `.card-spotlight`'s own
+   `overflow: hidden` + radius; if the two disagree the glow corners square off
+   outside the card's rounded edge. */
+.lp-research-card.card-spotlight,
+.lp-research-card {
+  --rb-spotlight-radius: 20px;
+  padding: clamp(1.5rem, 3vw, 2.25rem);
+  border: 1px solid var(--lp-rule);
+  border-radius: 20px;
+  background: var(--lp-card);
+}
+
+.lp-research-card__eyebrow {
+  margin: 0 0 0.5rem;
+  font-family: var(--lp-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lp-accent);
+}
+
+.lp-research-card__title {
+  margin: 0 0 1.5rem;
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.lp-research-card__body {
+  margin: 1.5rem 0 0;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--lp-muted);
+}
+
+/* --- method diagrams --- */
+
+.lp-diagram {
+  margin: 0;
+  padding: 1rem 1rem 0.75rem;
+  border-radius: 14px;
+  background: var(--lp-glyph-bg);
+  border: 1px solid var(--lp-rule-soft);
+}
+
+.lp-diagram__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Folds and blocks stagger in with the section, so the diagram assembles
+   itself rather than appearing whole. */
+.lp-diagram__fold,
+.lp-diagram__block {
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+
+.lp-research.is-in .lp-diagram__fold,
+.lp-research.is-in .lp-diagram__block {
+  opacity: 1;
+}
+
+.lp-diagram__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1rem;
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--lp-rule-soft);
+  font-family: var(--lp-font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.03em;
+  color: var(--lp-faint);
+}
+
+.lp-diagram__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.lp-diagram__axis {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.lp-swatch {
+  width: 14px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.lp-swatch--muted {
+  background: var(--lp-glyph-muted);
+}
+
+.lp-swatch--accent {
+  background: var(--lp-accent);
+}
+
+.lp-swatch--accent-soft {
+  background: var(--lp-accent-soft);
+  border: 1px solid var(--lp-accent);
+}
+
+.lp-swatch--outline {
+  border: 1px solid var(--lp-glyph-line);
+}
+
+.lp-swatch--dashed {
+  border: 1px dashed var(--lp-glyph-line);
+}
+
+/* --- spec sheet --- */
+
+.lp-spec {
+  margin: 1.35rem 0 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--lp-rule-soft);
+}
+
+.lp-spec__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--lp-rule-soft);
+}
+
+.lp-spec__row:last-child {
+  border-bottom: none;
+}
+
+.lp-spec dt {
+  font-family: var(--lp-font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--lp-faint);
+}
+
+.lp-spec dd {
+  margin: 0;
+  font-family: var(--lp-font-mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-align: right;
+  color: var(--lp-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.lp-research__note {
+  margin: clamp(2rem, 4vw, 3rem) 0 0;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--lp-rule-soft);
+  max-width: 72ch;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--lp-faint);
+}
+
+/* --------------------------------------------------------------------------
+   Principles
+   -------------------------------------------------------------------------- */
+
+.lp-principle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(1.75rem, 4vw, 3.25rem);
+}
+
+.lp-principle {
+  opacity: 0;
+  transform: translate3d(0, 16px, 0);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s ease;
+}
+
+.lp-principles.is-in .lp-principle {
+  opacity: 1;
+  transform: none;
+}
+
+.lp-principle__rule {
+  width: 34px;
+  height: 2px;
+  margin-bottom: 1.25rem;
+  background: var(--lp-accent);
+}
+
+.lp-principle h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.lp-principle p {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.62;
+  color: var(--lp-muted);
+}
+
+/* --------------------------------------------------------------------------
+   Closing
+   -------------------------------------------------------------------------- */
+
+.lp-closing {
+  max-width: 46rem;
+  margin: 0 auto;
+}
+
+.lp-closing__title {
+  margin: 0 0 1.25rem;
+  font-size: clamp(2.5rem, 6.5vw, 4.75rem);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  font-weight: 600;
+}
+
+.lp-closing .lp-body {
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: 2.25rem;
+}
+
+/* --------------------------------------------------------------------------
+   Footer
+   -------------------------------------------------------------------------- */
+
+.lp-footer {
+  padding: clamp(3rem, 7vh, 4.5rem) var(--lp-gutter) 2.5rem;
+  border-top: 1px solid var(--lp-rule-soft);
+  background: var(--lp-bg-panel);
+}
+
+.lp-footer__inner {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2rem;
+  max-width: var(--lp-measure);
+  margin: 0 auto;
+}
+
+.lp-footer__brand {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.lp-footer__copy {
+  margin: 0.5rem 0 0;
+  max-width: 34ch;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--lp-faint);
+}
+
+.lp-footer__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.75rem;
+  align-content: flex-start;
+}
+
+.lp-footer__links a {
+  font-size: 0.9375rem;
+  color: var(--lp-muted);
+  text-decoration: none;
+}
+
+.lp-footer__links a:hover {
+  color: var(--lp-accent);
+}
+
+.lp-footer__base {
+  max-width: var(--lp-measure);
+  margin: clamp(2.5rem, 5vw, 3.5rem) auto 0;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--lp-rule-soft);
+  font-family: var(--lp-font-mono);
+  font-size: 0.71875rem;
+  letter-spacing: 0.02em;
+  line-height: 1.65;
+  color: var(--lp-faint);
+}
+
+/* --------------------------------------------------------------------------
+   Responsive
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .lp-metrics {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 2rem 1.5rem;
+  }
+
+  .lp-feature,
+  .lp-surface-grid,
+  .lp-research-grid,
+  .lp-principle-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lp-provider {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.35rem;
+  }
+
+  .lp-hero {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .lp-hero__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .lp-button {
+    justify-content: center;
+  }
+}
+
+/* Reduced motion: entrances resolve to their final state, the scroll hint
+   stops, and the hero field is drawn once and held (see HeroField). */
+@media (prefers-reduced-motion: reduce) {
+  .lp-metrics,
+  .lp-feature,
+  .lp-coverage,
+  .lp-surfaces,
+  .lp-research,
+  .lp-principles,
+  .lp-closing,
+  .lp-provider,
+  .lp-surface,
+  .lp-principle {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .lp-skill__fill {
+    transition: none;
+  }
+
+  .lp-diagram__fold,
+  .lp-diagram__block {
+    opacity: 1;
+    transition: none;
+  }
+
+  .lp-glyph__layer,
+  .lp-glyph__bar,
+  .lp-glyph__node,
+  .lp-glyph__rows rect {
+    transition: none;
+  }
+
+  .lp-surface:hover .lp-glyph__layer,
+  .lp-surface:hover .lp-glyph__bar,
+  .lp-surface:hover .lp-glyph__node,
+  .lp-surface:hover .lp-glyph__rows rect {
+    transform: none;
+  }
+
+  .lp-hero__scroll span {
+    animation: none;
+  }
+
+  .lp-button:hover {
+    transform: none;
+  }
+}
+
+/* ==========================================================================
+   Craft pass
+   ==========================================================================
+   Everything below was added in one pass over the landing page, and each block
+   says what problem it solves. The rule the pass follows: this page's job is
+   to make a research platform look like one at a glance, so every addition
+   either raises the *information density of the impression* (the live pill,
+   the ticker, the section index) or raises the *quality of the touch* (the
+   button sheen, the card edge, the magnetic pull). Nothing was added because
+   it was fashionable, and nothing here illustrates.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Live pill
+   --------------------------------------------------------------------------
+   Replaces the hero's plain eyebrow. Mono type over a pulsing dot is the
+   cheapest way to say "this is reading from something right now" before the
+   visitor has scrolled at all — and here it is true, which is the only reason
+   it is allowed to be said.
+
+   The dot is two elements: a solid core and a ring that expands and fades. One
+   element cannot do both, because the pulse has to leave the core behind
+   rather than take it along. */
+.lp-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 1.75rem;
+  padding: 0.4rem 0.95rem 0.4rem 0.7rem;
+  border: 1px solid var(--lp-rule);
+  border-radius: 980px;
+  background: var(--lp-card);
+  backdrop-filter: blur(10px);
+  font-family: var(--lp-font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lp-muted);
+}
+
+.lp-live__dot {
+  position: relative;
+  display: block;
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--ma-good);
+}
+
+.lp-live__dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--ma-good);
+  animation: lp-live-pulse 2.4s var(--ma-ease-out) infinite;
+}
+
+@keyframes lp-live-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  /* Ends well before the cycle does, so there is a beat of stillness between
+     pulses. A continuously expanding ring reads as a loading spinner. */
+  70%,
+  100% {
+    transform: scale(3.2);
+    opacity: 0;
+  }
+}
+
+.lp-live__sep {
+  color: var(--lp-faint);
+}
+
+.lp-live strong {
+  font-weight: 500;
+  color: var(--lp-accent);
+}
+
+/* --------------------------------------------------------------------------
+   Section index
+   --------------------------------------------------------------------------
+   A monospaced ordinal in front of every eyebrow. Small, and it does a lot:
+   it turns seven stacked sections into a numbered sequence, which is what
+   makes a long page read as a document someone edited rather than as a scroll
+   of blocks. It also gives the eyebrow line an internal hierarchy instead of
+   one flat run of uppercase mono.
+
+   The rule between number and label is the number's own pseudo-element, so the
+   markup stays two elements rather than three. */
+.lp-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.lp-eyebrow__index {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+  color: var(--lp-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.lp-eyebrow__index::after {
+  content: '';
+  width: 2.25rem;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.5;
+}
+
+/* --------------------------------------------------------------------------
+   Buttons
+   --------------------------------------------------------------------------
+   Two changes, both about the press rather than the look at rest.
+
+   A sheen sweeps across on hover: a gradient pseudo-element travelling left to
+   right once per hover, clipped to the pill. Not a permanent animation — a
+   button that shimmers on its own is asking for attention it has not earned.
+   On the ghost variant the sheen is the accent at low alpha rather than white,
+   because white over a transparent button only lightens the page behind it.
+
+   The lift also grew a shadow. `translateY(-1px)` on its own is a movement
+   with no cause; a shadow deepening with it is the same movement with a
+   reason, and it costs one property.
+
+   `--mag-x`/`--mag-y` are in the transform so `useMagnetic` composes with the
+   hover lift instead of overwriting it (see hooks/useMagnetic.ts). */
+.lp-button {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  transform: translate3d(var(--mag-x, 0px), var(--mag-y, 0px), 0);
+  transition:
+    transform var(--ma-duration) var(--ma-ease-out),
+    background var(--ma-duration) var(--ma-ease),
+    border-color var(--ma-duration) var(--ma-ease),
+    box-shadow var(--ma-duration) var(--ma-ease);
+}
+
+.lp-button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.35) 50%,
+    transparent 80%
+  );
+  transform: translateX(-100%);
+  transition: transform 0.65s var(--ma-ease-out);
+}
+
+.lp-button:hover::before {
+  transform: translateX(100%);
+}
+
+.lp-button--ghost::before {
+  background: linear-gradient(100deg, transparent 20%, var(--lp-accent-soft) 50%, transparent 80%);
+}
+
+.lp-button:hover {
+  transform: translate3d(var(--mag-x, 0px), calc(var(--mag-y, 0px) - 2px), 0);
+}
+
+.lp-button--primary:hover {
+  box-shadow: 0 10px 30px -8px color-mix(in srgb, var(--lp-accent) 55%, transparent);
+}
+
+/* The arrow leads the button. Small enough to be felt rather than seen, which
+   is the difference between a control that responds and one that performs. */
+.lp-button svg {
+  transition: transform var(--ma-duration) var(--ma-ease-out);
+}
+
+.lp-button:hover svg {
+  transform: translateX(3px);
+}
+
+/* --------------------------------------------------------------------------
+   Ticker
+   --------------------------------------------------------------------------
+   A marquee of variables the platform actually serves, directly under the four
+   headline metrics.
+
+   It exists because the metrics answer "how many" and nothing on the page
+   answered "of what". A number without its nouns is a claim; the same number
+   with thirty of its nouns sliding past is evidence. It is also the only
+   horizontal motion on a page that is otherwise entirely vertical, which keeps
+   four screens of stacked sections from reading as one texture.
+
+   Every entry is a real registry key. If one leaves the backend it should
+   leave here, exactly like every other figure on this page. */
+.lp-ticker {
+  border-bottom: 1px solid var(--lp-rule-soft);
+  padding: clamp(1.1rem, 3vh, 1.8rem) 0;
+}
+
+.lp-ticker__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 1.5rem;
+  font-family: var(--lp-font-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.02em;
+  color: var(--lp-faint);
+  white-space: nowrap;
+}
+
+.lp-ticker__item::after {
+  content: '';
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--lp-accent);
+  opacity: 0.45;
+}
+
+.lp-ticker__unit {
+  color: var(--lp-accent);
+  opacity: 0.85;
+}
+
+/* --------------------------------------------------------------------------
+   Metric hairlines
+   --------------------------------------------------------------------------
+   Each headline number gets a rule above it that draws in from the left as the
+   row reveals, staggered across the four. The row already had a border top and
+   bottom; this is the same line made to *arrive* rather than to be there,
+   which is what ties the count-up to the layout instead of leaving a number
+   animating inside a static box. */
+.lp-metric {
+  position: relative;
+  padding-top: 1.4rem;
+}
+
+.lp-metric::before {
+  content: '';
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
-  min-height: 8px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #ffe9a3, oklch(0.85 0.19 165));
-  transition: height 0.15s linear;
+  height: 1px;
+  background: var(--lp-accent);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform 0.9s var(--ma-ease-out);
 }
 
-/* ── hero ─────────────────────────────────────────────────────────────── */
+.lp-metrics.is-in .lp-metric::before {
+  transform: scaleX(1);
+}
 
-.dive-hero {
+.lp-metric:nth-child(2)::before {
+  transition-delay: 0.09s;
+}
+.lp-metric:nth-child(3)::before {
+  transition-delay: 0.18s;
+}
+.lp-metric:nth-child(4)::before {
+  transition-delay: 0.27s;
+}
+
+/* --------------------------------------------------------------------------
+   Surface cards
+   --------------------------------------------------------------------------
+   A pointer-tracked wash behind the card, and a gradient hairline that lights
+   along its top edge.
+
+   The edge is a pseudo-element rather than an animated `border-color`, because
+   what should light is a *gradient* — brightest under the pointer, fading to
+   nothing across the card — and a border cannot hold one. Animating the real
+   border gives a uniform ring instead, which reads as a selected state rather
+   than as a highlight.
+
+   Both read `--px`/`--py`, written by the card's pointer handler, and both
+   fall back to the card's centre so a keyboard-focused card still lights. */
+.lp-surface {
   position: relative;
-  z-index: 2;
-  height: 100vh;
-  min-height: 560px;
-  overflow: hidden;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: calc(var(--navbar-h, 64px) + 4vh);
-  box-sizing: border-box;
+  isolation: isolate;
+  /* `clip` rather than `hidden`, for the reason `.lp-root` carries at length:
+     `hidden` makes the card a scroll container, and the glyph's
+     `animation-timeline: view()` then measures the *card's* box — which never
+     scrolls — so the 3D turn froze at one pose while still reporting itself as
+     a running animation. This still clips the pointer wash to the radius. */
+  overflow: clip;
 }
 
-.dive-buoy {
-  position: absolute;
-  top: 80%;
-  left: 88%;
-  animation: floatY 5s ease-in-out infinite;
-}
-
-.dive-buoy__dot {
-  position: relative;
-  width: 10px;
-  height: 10px;
-}
-
-.dive-buoy__ring,
-.dive-buoy__core {
+.lp-surface::before {
+  content: '';
   position: absolute;
   inset: 0;
-  border-radius: 999px;
+  z-index: -1;
+  opacity: 0;
+  background: radial-gradient(
+    380px circle at var(--px, 50%) var(--py, 0%),
+    var(--lp-accent-soft),
+    transparent 65%
+  );
+  transition: opacity var(--ma-duration-slow) var(--ma-ease);
 }
 
-.dive-buoy__ring {
-  border: 1.5px solid oklch(0.85 0.16 165);
-  animation: buoyPulse 2.6s ease-out infinite;
+.lp-surface:hover::before,
+.lp-surface:focus-visible::before {
+  opacity: 1;
 }
 
-.dive-buoy__core {
-  background: oklch(0.85 0.16 165);
-  box-shadow: 0 0 10px oklch(0.85 0.16 165 / 0.9);
-}
-
-.dive-buoy__label {
+.lp-surface::after {
+  content: '';
   position: absolute;
-  top: 16px;
-  left: 16px;
-  white-space: nowrap;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  color: rgba(240, 250, 255, 0.9);
-  background: rgba(8, 32, 46, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 4px;
-  padding: 4px 8px;
-  animation: shimmer 4s ease-in-out infinite;
-}
-
-.dive-pier {
-  position: absolute;
+  top: 0;
   left: 0;
-  bottom: 12vh;
-  height: min(19vh, 190px);
-  width: min(34%, 470px);
-  z-index: 1;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--lp-accent) var(--px, 50%), transparent);
+  opacity: 0;
+  transition: opacity var(--ma-duration) var(--ma-ease);
 }
 
-.dive-pier-light {
-  animation: shimmer 5s ease-in-out infinite;
+.lp-surface:hover::after,
+.lp-surface:focus-visible::after {
+  opacity: 1;
 }
 
-.dive-waves {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 40%;
-}
-
-.dive-wave {
-  position: absolute;
-  bottom: 0;
-  width: 200%;
-  height: 100%;
-}
-
-.dive-wave--one {
-  animation: waveDrift1 28s linear infinite;
-}
-
-.dive-wave--two {
-  animation: waveDrift2 20s linear infinite;
-}
-
-.dive-wave--three {
-  animation: waveDrift3 13s linear infinite;
-}
-
-.dive-hero__content {
-  position: relative;
-  z-index: 3;
-  max-width: 1040px;
-  margin: 0 auto;
-  padding: 0 24px;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
-  text-align: center;
-}
-
-.dive-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12.5px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #0a4257;
-  border: 1px solid rgba(10, 66, 87, 0.28);
-  background: rgba(255, 255, 255, 0.55);
-  border-radius: 999px;
-  padding: 8px 18px;
-}
-
-.dive-badge span {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: #0d7c9e;
-  box-shadow: 0 0 8px rgba(13, 124, 158, 0.8);
-}
-
-.dive-hero__content h1 {
-  font-family: 'Space Grotesk', sans-serif;
-  font-weight: 600;
-  font-size: clamp(34px, 5vw, 52px);
-  line-height: 1.1;
-  margin: 0;
-  letter-spacing: -0.01em;
-  color: #06212f;
-  text-shadow: 0 2px 18px rgba(255, 255, 255, 0.45);
+/* --------------------------------------------------------------------------
+   Kinetic headings
+   --------------------------------------------------------------------------
+   `text-wrap: balance` is applied here rather than to headings generally,
+   because a masked heading is the one place an orphaned last word is
+   unmissable: it arrives alone, half a second after the line it belongs to. */
+.lp-h2,
+.lp-closing__title {
   text-wrap: balance;
 }
 
-.dive-hero__content p {
-  font-size: 18px;
-  line-height: 1.6;
-  max-width: 560px;
-  color: #10405a;
-  margin: 0;
-  text-shadow: 0 1px 10px rgba(255, 255, 255, 0.4);
-}
-
-.dive-cta-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 14.5px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #04121a;
-  background: linear-gradient(120deg, oklch(0.78 0.14 195), oklch(0.7 0.13 210));
-  border: none;
-  border-radius: 999px;
-  padding: 15px 30px;
-  cursor: pointer;
-  margin-top: 6px;
-  box-shadow: 0 10px 30px rgba(6, 33, 47, 0.22);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.dive-cta-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 14px 34px rgba(6, 33, 47, 0.3);
-  color: #04121a;
-}
-
-.dive-cta-button--abyss {
-  background: linear-gradient(120deg, oklch(0.85 0.19 165), oklch(0.78 0.14 195));
-}
-
-.dive-scroll-hint {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11.5px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: rgba(6, 33, 47, 0.6);
-  margin-top: 18px;
-  animation: floatY 3.2s ease-in-out infinite;
-}
-
-/* ── content sections ────────────────────────────────────────────────── */
-
-.dive-section {
-  position: relative;
-  z-index: 2;
-  min-height: 100vh;
-  scroll-snap-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  padding: 60px 24px;
-  overflow: hidden;
-}
-
-.dive-stats,
-.dive-features,
-.dive-platform {
-  width: 100%;
-  max-width: 1240px;
-  transition: transform 0.2s ease-out;
-}
-
-.dive-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 32px;
-}
-
-.dive-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  border-left: 1px solid var(--landing-border);
-  padding-left: 24px;
-}
-
-.dive-stat__value {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 34px;
-  font-weight: 600;
-  color: var(--landing-text);
-}
-
-.dive-stat__label {
-  font-size: 14px;
-  color: var(--landing-muted);
-}
-
-.dive-eyebrow {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12.5px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--landing-accent-2);
-  margin-bottom: 14px;
-}
-
-.dive-features__head {
-  max-width: 620px;
-  margin-bottom: 56px;
-}
-
-.dive-features__head h2 {
-  font-family: 'Space Grotesk', sans-serif;
-  font-weight: 600;
-  font-size: 36px;
-  line-height: 1.2;
-  margin: 0;
-  color: var(--landing-text);
-  text-wrap: balance;
-}
-
-.dive-feature-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
-}
-
-.dive-feature-card {
-  background: var(--landing-card-bg);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--landing-border);
-  border-radius: 10px;
-  padding: 28px;
-}
-
-.dive-feature-card__icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-}
-
-.dive-feature-card__icon--cyan {
-  background: color-mix(in oklch, var(--landing-primary) 15%, transparent);
-  border: 1px solid color-mix(in oklch, var(--landing-primary) 30%, transparent);
-}
-
-.dive-feature-card__icon--teal {
-  background: color-mix(in oklch, var(--landing-accent-2) 15%, transparent);
-  border: 1px solid color-mix(in oklch, var(--landing-accent-2) 30%, transparent);
-}
-
-.dive-feature-card h3 {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 19px;
-  font-weight: 600;
-  margin: 0 0 10px;
-  color: var(--landing-text);
-}
-
-.dive-feature-card p {
-  font-size: 14.5px;
-  line-height: 1.6;
-  color: var(--landing-muted);
-  margin: 0;
-}
-
-.dive-platform {
-  display: grid;
-  grid-template-columns: 0.85fr 1.15fr;
-  gap: 64px;
-  align-items: center;
-}
-
-.dive-platform h2 {
-  font-family: 'Space Grotesk', sans-serif;
-  font-weight: 600;
-  font-size: 32px;
-  line-height: 1.25;
-  margin: 0 0 18px;
-  color: var(--landing-text);
-  text-wrap: balance;
-}
-
-.dive-platform p {
-  font-size: 15.5px;
-  line-height: 1.7;
-  color: var(--landing-muted);
-  margin: 0 0 24px;
-}
-
-.dive-doc-link {
-  font-size: 14.5px;
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--landing-primary);
-  text-decoration: none;
-}
-
-.dive-doc-link:hover {
-  color: var(--landing-accent-2);
-}
-
-.dive-platform__panel {
-  position: relative;
-  aspect-ratio: 16 / 10;
-  border-radius: 12px;
-  border: 1px solid var(--landing-border);
-  background:
-    repeating-linear-gradient(0deg, var(--landing-panel-grid) 0px, var(--landing-panel-grid) 1px, transparent 1px, transparent 32px),
-    repeating-linear-gradient(90deg, var(--landing-panel-grid) 0px, var(--landing-panel-grid) 1px, transparent 1px, transparent 32px),
-    var(--landing-panel-bg);
-  overflow: hidden;
-  backdrop-filter: blur(6px);
-}
-
-.dive-platform__chart {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.dive-platform__caption {
-  position: absolute;
-  top: 18px;
-  left: 18px;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  color: var(--landing-muted);
-  letter-spacing: 0.04em;
-}
-
-.dive-platform__tags {
-  position: absolute;
-  bottom: 18px;
-  left: 18px;
-  display: flex;
-  gap: 10px;
-}
-
-.dive-tag {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  padding: 4px 9px;
-  border-radius: 4px;
-}
-
-.dive-tag--cyan {
-  background: color-mix(in oklch, var(--landing-primary) 15%, transparent);
-  border: 1px solid color-mix(in oklch, var(--landing-primary) 30%, transparent);
-  color: var(--landing-primary);
-}
-
-.dive-tag--teal {
-  background: color-mix(in oklch, var(--landing-accent-2) 15%, transparent);
-  border: 1px solid color-mix(in oklch, var(--landing-accent-2) 30%, transparent);
-  color: var(--landing-accent-2);
-}
-
-.dive-cta {
-  max-width: 640px;
-  transition: transform 0.2s ease-out;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 22px;
-}
-
-.dive-cta h2 {
-  font-family: 'Space Grotesk', sans-serif;
-  font-weight: 600;
-  font-size: 34px;
-  margin: 0;
-  color: var(--landing-text);
-  text-wrap: balance;
-}
-
-/* ── footer ───────────────────────────────────────────────────────────── */
-
-.dive-footer {
-  position: relative;
-  z-index: 2;
-  border-top: 1px solid var(--landing-outline);
-}
-
-.dive-footer > div:first-child {
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 32px 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 20px;
-}
-
-.dive-footer__brand {
-  font-family: 'Space Grotesk', sans-serif;
-  font-weight: 700;
-  font-size: 13px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--landing-primary);
-  margin-bottom: 6px;
-}
-
-.dive-footer__copy {
-  font-size: 13.5px;
-  color: var(--landing-muted);
-}
-
-.dive-footer__links {
-  display: flex;
-  gap: 24px;
-  font-size: 13.5px;
-}
-
-.dive-footer__links a {
-  color: var(--landing-muted);
-  text-decoration: none;
-}
-
-.dive-footer__links a:hover {
-  color: var(--landing-primary);
-}
-
-/* ── keyframes (ported from the prototype) ───────────────────────────── */
-
-@keyframes waveDrift1 { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-@keyframes waveDrift2 { from { transform: translateX(-50%); } to { transform: translateX(0); } }
-@keyframes waveDrift3 { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-@keyframes buoyPulse { 0% { transform: scale(0.6); opacity: .8; } 100% { transform: scale(2.4); opacity: 0; } }
-@keyframes floatY { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
-@keyframes shimmer { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
-@keyframes shaftShimmer {
-  0%, 100% { opacity: .28; transform: scaleY(1) skewX(var(--sk, 0deg)); }
-  50% { opacity: .62; transform: scaleY(1.06) skewX(var(--sk, 0deg)); }
-}
-@keyframes driftLeft { from { transform: translate3d(125vw, 0, 0); } to { transform: translate3d(-30vw, 4vh, 0); } }
-@keyframes tailWag { 0%, 100% { transform: rotate(-3.5deg); } 50% { transform: rotate(3.5deg); } }
-@keyframes flukeWag { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
-@keyframes hover3 { 0%, 100% { transform: translateY(-14px); } 50% { transform: translateY(14px); } }
-@keyframes tentacleSway { 0%, 100% { transform: translateY(0) rotate(-2.5deg); } 50% { transform: translateY(7px) rotate(2.5deg); } }
-@keyframes lureGlow { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
-@keyframes bubbleRise {
-  0% { transform: translate3d(0, 18vh, 0) scale(.7); opacity: 0; }
-  12% { opacity: .75; }
-  88% { opacity: .55; }
-  100% { transform: translate3d(4vw, -112vh, 0) scale(1.15); opacity: 0; }
-}
-@keyframes particleGlow { 0%, 100% { opacity: .2; transform: scale(0.7); } 50% { opacity: 1; transform: scale(1.35); } }
-@keyframes swimR { from { transform: translate3d(-32vw, 0, 0) scaleX(1); } to { transform: translate3d(128vw, -6vh, 0) scaleX(1); } }
-@keyframes swimL { from { transform: translate3d(128vw, 0, 0) scaleX(-1); } to { transform: translate3d(-32vw, 5vh, 0) scaleX(-1); } }
-@keyframes cloudFloat { from { transform: translate3d(-45vw, 0, 0); } to { transform: translate3d(135vw, 0, 0); } }
-@keyframes sunFlash { 0%, 100% { transform: scale(1); opacity: .9; } 50% { transform: scale(1.07); opacity: 1; } }
-@keyframes raySpin { to { transform: rotate(360deg); } }
-@keyframes rayPulse { 0%, 100% { opacity: .22; } 50% { opacity: .55; } }
-@keyframes wingFlap { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(-0.55); } }
-
-@media (max-width: 900px) {
-  .dive-stats,
-  .dive-feature-grid {
-    grid-template-columns: 1fr;
+/* --------------------------------------------------------------------------
+   Reduced motion additions
+   --------------------------------------------------------------------------
+   This pass's own moving parts, resolved to their end states. The live dot
+   stops entirely rather than slowing — it is decorative, and the word beside
+   it already carries the meaning. */
+@media (prefers-reduced-motion: reduce) {
+  .lp-live__dot::after {
+    animation: none;
+    opacity: 0;
   }
-  .dive-platform {
-    grid-template-columns: 1fr;
-  }
-}
 
-@media (max-width: 640px) {
-  .dive-hero__content h1 {
-    font-size: clamp(30px, 9vw, 40px);
+  .lp-metric::before {
+    transform: scaleX(1);
+    transition: none;
   }
-  .dive-gauge {
+
+  .lp-button::before {
     display: none;
   }
-  .dive-footer > div:first-child {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
 
-@media (prefers-reduced-motion: reduce) {
-  .dive-sun__rays,
-  .dive-sun__rays-svg,
-  .dive-sun__glow,
-  .dive-cloud,
-  .dive-bird svg g,
-  .dive-shaft,
-  .dive-bubble,
-  .dive-fish-lane svg,
-  .dive-fish-lane > div,
-  .dive-angler,
-  .dive-plankton,
-  .dive-buoy,
-  .dive-buoy__ring,
-  .dive-buoy__label,
-  .dive-pier-light,
-  .dive-scroll-hint {
-    animation: none !important;
+  .lp-button:hover svg {
+    transform: none;
+  }
+
+  .lp-surface::before,
+  .lp-surface::after {
+    transition: none;
   }
 }

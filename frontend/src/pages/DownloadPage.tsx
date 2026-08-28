@@ -5,10 +5,10 @@ import { Link } from '../app/router';
 import { DrawableAreaMap } from '../features/map/DrawableAreaMap';
 import type { DrawnBbox } from '../features/map/DrawableAreaMap';
 import { useThemeStore } from '../store/themeStore';
-import { useAuthStore } from '../store/authStore';
-import { loginUrl } from '../features/map/api/auth';
+import { useToastStore } from '../store/toastStore';
 import {
   downloadOceanData,
+  fetchDownloadProgress,
   fetchVariableCategories,
   type Area,
   type OutputFormat,
@@ -16,6 +16,25 @@ import {
   type VariableCategory,
 } from '../features/map/api/download';
 import './download.css';
+
+/**
+ * How often to ask the server where the download has got to.
+ *
+ * The signal being watched is one upstream provider finishing, of which there
+ * are at most fourteen across a request measured in tens of seconds — so this
+ * is fast enough that the bar never visibly lags a real step, and slow enough
+ * that a two-minute download costs ~160 dict lookups rather than thousands.
+ */
+const PROGRESS_POLL_MS = 750;
+
+/** Plain-language stage names. The API's own words are internal. */
+const STAGE_LABELS: Record<string, string> = {
+  preparing: 'Checking coverage and limits',
+  fetching: 'Fetching from data providers',
+  merging: 'Merging and cleaning',
+  formatting: 'Formatting your file',
+  done: 'Finishing up',
+};
 
 type AreaMode = 'point' | 'draw';
 
@@ -47,7 +66,10 @@ function parseNumber(value: string): number | null {
 
 export function DownloadPage() {
   const isDark = useThemeStore((s) => s.dark);
-  const authStatus = useAuthStore((s) => s.status);
+  const pushToast = useToastStore((s) => s.push);
+  const updateToast = useToastStore((s) => s.update);
+  const patchToast = useToastStore((s) => s.patch);
+  const dismissToast = useToastStore((s) => s.dismiss);
   const [areaMode, setAreaMode] = useState<AreaMode>('draw');
   const [lat, setLat] = useState('10.0');
   const [lon, setLon] = useState('75.0');
@@ -68,6 +90,20 @@ export function DownloadPage() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    document.title = 'Maris AI | Download Ocean Data';
+  }, []);
+
+  // A pending toast is owned by the request that raised it, so a user who
+  // navigates away mid-download would otherwise leave a spinner up forever.
+  useEffect(() => {
+    return () => {
+      useToastStore.getState().toasts.forEach((toast) => {
+        if (toast.tone === 'pending') dismissToast(toast.id);
+      });
+    };
+  }, [dismissToast]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -174,6 +210,51 @@ export function DownloadPage() {
     }
 
     setSubmitStatus('loading');
+    // A real request fetches from up to 14 upstream providers and can run well
+    // past 30 seconds. The button's label changing was the only sign anything
+    // was happening, and the *result* — a file landing in the browser's
+    // download tray — happened entirely off-page. The toast covers both: it
+    // stays pending for the duration, then reports the outcome.
+    const variableCount = selectedVariables.size;
+    const summary = `${variableCount} variable${variableCount === 1 ? '' : 's'}, ${startDate} to ${endDate}`;
+    const toastId = pushToast({
+      tone: 'pending',
+      title: 'Preparing your download…',
+      detail: summary,
+      // No `progress` yet, so the bar starts indeterminate. Nothing is known
+      // until the server has registered the request — see ToastProgress.
+    });
+
+    // The id is generated here rather than returned by the server because the
+    // POST does not resolve until the entire download is finished; by the time
+    // it could hand back an id, there would be nothing left to report on.
+    const requestId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `dl-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    // Polls alongside the download. `stopped` guards the tail: the interval is
+    // cleared in `finally`, but a poll already awaiting a response would
+    // otherwise resolve afterwards and overwrite the finished toast's title
+    // with a stage that is no longer true.
+    let stopped = false;
+    const poll = window.setInterval(async () => {
+      const state = await fetchDownloadProgress(requestId);
+      if (stopped || !state.tracked || state.failed) return;
+
+      const stageLabel = state.stage ? STAGE_LABELS[state.stage] : null;
+      const sourceCount =
+        state.stage === 'fetching' && state.providersTotal
+          ? ` · ${state.providersDone ?? 0} of ${state.providersTotal} sources`
+          : '';
+
+      patchToast(toastId, {
+        title: stageLabel ? `${stageLabel}…` : 'Preparing your download…',
+        detail: `${summary}${sourceCount}`,
+        progress: state.fraction,
+      });
+    }, PROGRESS_POLL_MS);
+
     try {
       const { blob, filename } = await downloadOceanData({
         area,
@@ -183,12 +264,21 @@ export function DownloadPage() {
         variables: Array.from(selectedVariables),
         format,
         depth_m: needsDepth ? (parsedDepth ?? 0) : 0,
+        request_id: requestId,
       });
       saveBlob(blob, filename);
       setSubmitStatus('idle');
+      updateToast(toastId, { tone: 'success', title: 'Download ready', detail: filename });
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Download failed.';
       setSubmitStatus('error');
-      setSubmitError(err instanceof Error ? err.message : 'Download failed.');
+      // Kept inline as well as in the toast: the inline copy sits with the
+      // form the user is about to correct, and does not time out.
+      setSubmitError(message);
+      updateToast(toastId, { tone: 'error', title: 'Download failed', detail: message });
+    } finally {
+      stopped = true;
+      window.clearInterval(poll);
     }
   }
 
@@ -314,8 +404,16 @@ export function DownloadPage() {
         </section>
 
         <section className="download-section">
-          <h2>Temporal Resolution</h2>
-          <select value={resolution} onChange={(e) => setResolution(e.target.value as Resolution)}>
+          <h2 id="download-resolution-heading">Temporal Resolution</h2>
+          {/* Every other control on this form nests its own <label>; this one
+              is labelled by the section heading instead, since the heading is
+              already the field's name and a second visible label would only
+              repeat it. It was the form's one unlabelled control. */}
+          <select
+            aria-labelledby="download-resolution-heading"
+            value={resolution}
+            onChange={(e) => setResolution(e.target.value as Resolution)}
+          >
             <option value="hourly">Hourly</option>
             <option value="daily">Daily</option>
             <option value="weekly">Weekly</option>
@@ -326,6 +424,29 @@ export function DownloadPage() {
         <section className="download-section">
           <h2>Variables</h2>
           {categoriesError && <p className="download-error">{categoriesError}</p>}
+          {/* The variable catalogue is fetched, so this section was an empty
+              box until it arrived — indistinguishable from "the catalogue came
+              back empty". The placeholder mirrors the real grid's shape so the
+              layout does not jump when it resolves. */}
+          {categories.length === 0 && !categoriesError && (
+            <div className="download-variable-groups" aria-busy="true">
+              {[0, 1, 2, 3].map((group) => (
+                <fieldset key={group} className="download-variable-group">
+                  <legend>
+                    <span className="ma-skeleton ma-skeleton--sub" style={{ width: '5.5rem' }} />
+                  </legend>
+                  {[0, 1, 2, 3].map((row) => (
+                    <label key={row}>
+                      <span
+                        className="ma-skeleton ma-skeleton--sub"
+                        style={{ width: `${6 + ((row * 3) % 5)}rem` }}
+                      />
+                    </label>
+                  ))}
+                </fieldset>
+              ))}
+            </div>
+          )}
           <div className="download-variable-groups">
             {categories.map((cat) => (
               <fieldset key={cat.category} className="download-variable-group">
@@ -454,18 +575,13 @@ export function DownloadPage() {
 
         {submitError && <p className="download-error">{submitError}</p>}
 
-        {/* Downloads pull real provider data and require sign-in. The form
-            above stays usable signed-out (/api/v1/variables is public) so the
-            selection isn't lost across the round trip to Google. */}
-        {authStatus === 'anonymous' ? (
-          <a className="download-submit download-submit--signin" href={loginUrl()}>
-            Sign in to download
-          </a>
-        ) : (
-          <button type="submit" className="download-submit" disabled={submitStatus === 'loading'}>
-            {submitStatus === 'loading' ? 'Preparing download…' : 'Download Dataset'}
-          </button>
-        )}
+        {/* Downloads are open to everyone since authentication was removed
+            (docs/AUTH_REMOVAL.md); the backend rate-limits them per address
+            instead, and returns a 429 with an explanation this form surfaces
+            through `submitError`. */}
+        <button type="submit" className="download-submit" disabled={submitStatus === 'loading'}>
+          {submitStatus === 'loading' ? 'Preparing download…' : 'Download Dataset'}
+        </button>
       </form>
     </div>
   );

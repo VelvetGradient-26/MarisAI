@@ -204,6 +204,40 @@ MODEL_BUILDERS = {
 }
 
 
+# Softmax temperature for ensemble weighting, in TSS units.
+#
+# It sets how much a given skill gap is worth. The spread that has to be
+# resolved on this problem is LightGBM 0.826 / Random Forest 0.821 / MaxEnt
+# 0.619 — i.e. two models that are genuinely interchangeable and one that is
+# not. At 0.05 the two leaders stay within a few points of each other (they
+# differ by 0.005, a tenth of a temperature unit) while MaxEnt, 4 temperature
+# units back, falls to ~2% of the vote.
+#
+# Smaller would collapse to winner-take-all and throw away the ensemble's whole
+# reason for existing; larger drifts back toward the uniform average that let a
+# half-as-good model hold a quarter of the vote.
+#
+# Measured on the held-out spatial block (2026-08-13), same folds, same fitted
+# members, only the weighting changed:
+#
+#   rule          weights (lgbm/rf/maxent)   holdout TSS   Boyce   ROC-AUC
+#   proportional  0.364 / 0.362 / 0.273      0.694         0.936   0.917
+#   softmax       0.519 / 0.473 / 0.008      0.792         0.905   0.944
+#
+# The defect this fixes is the first column: the ensemble used to score *below
+# its own best member* (0.694 against LightGBM's 0.788), which is the one thing
+# an ensemble may not do, since the exported product is the ensemble. At softmax
+# weights it is 0.792 — finally above every member, if only by 0.004.
+#
+# The cost is real and is the reason this is a constant rather than a hardcoded
+# choice: Boyce falls 0.936 -> 0.905, so the old ensemble was the better
+# *spatially calibrated* surface. It is still better calibrated than LightGBM
+# alone (0.895), so the trade buys discrimination for a calibration penalty that
+# does not take it below its best member on either axis. Raise the temperature
+# to trade back.
+TSS_SOFTMAX_TEMPERATURE = 0.05
+
+
 @dataclass
 class EnsembleWeights:
     """Cross-validated skill weights for the ensemble."""
@@ -212,26 +246,63 @@ class EnsembleWeights:
 
     @classmethod
     def from_scores(
-        cls, scores: dict[str, float], floor: float = 0.0
+        cls,
+        scores: dict[str, float],
+        floor: float = 0.0,
+        method: str = "softmax",
+        temperature: float = TSS_SOFTMAX_TEMPERATURE,
     ) -> "EnsembleWeights":
-        """Weight each model by its skill above ``floor``.
+        """Weight each model by its cross-validated skill.
 
-        Models at or below the floor get zero weight rather than a small
-        negative one — a model no better than chance should not drag the
-        ensemble, and biomod2's convention is the same.
+        ``proportional`` is the original rule — weight is skill above ``floor``,
+        normalised. It has one property that turned out to matter: because TSS is
+        0 at chance and the floor is 0, the weights are proportional to the raw
+        scores, so a *large* quality gap compresses into a *small* weight gap.
+        Measured on this problem, MaxEnt scored CV TSS 0.619 against LightGBM's
+        0.826 — it is less than half as good on the holdout (0.365 vs 0.788) —
+        and still collected 27% of the vote, because 0.619 is 75% of 0.826.
+
+        ``softmax`` weights ``exp(score / temperature)``, which makes the gap a
+        tunable decision rather than an artefact of where zero happens to sit.
+        See ``TSS_SOFTMAX_TEMPERATURE`` for the choice of temperature.
+
+        Neither rule is obviously right, and that is the point of making it an
+        argument: the ensemble is not a pure loss at proportional weights — it
+        has the *best* Boyce index of any member (0.936 vs LightGBM's 0.895), so
+        it is better spatially calibrated while being worse at discrimination.
+        What was wrong was that the trade was being made implicitly, by a
+        normalisation constant, rather than chosen.
         """
-        clipped = {
-            name: max(0.0, score - floor)
-            for name, score in scores.items()
-            if np.isfinite(score)
-        }
-        total = sum(clipped.values())
-        if total <= 0:
+        finite = {name: score for name, score in scores.items() if np.isfinite(score)}
+        # A model at or below the floor gets zero weight rather than a small
+        # negative one — no better than chance should not drag the ensemble, and
+        # biomod2's convention is the same. Applied under both rules, so the
+        # floor keeps meaning the same thing.
+        eligible = {name: score for name, score in finite.items() if score > floor}
+
+        if not eligible:
             # Every model failed; fall back to an unweighted mean so the
             # ensemble still produces something rather than dividing by zero.
             n = len(scores) or 1
             return cls({name: 1.0 / n for name in scores})
-        return cls({name: value / total for name, value in clipped.items()})
+
+        if method == "proportional":
+            raw = {name: score - floor for name, score in eligible.items()}
+        elif method == "softmax":
+            # Shifted by the maximum before exponentiating: standard softmax
+            # underflow guard, and it cancels in the normalisation.
+            best = max(eligible.values())
+            raw = {
+                name: float(np.exp((score - best) / temperature))
+                for name, score in eligible.items()
+            }
+        else:
+            raise ValueError(
+                f"unknown weighting method {method!r}; expected 'softmax' or 'proportional'"
+            )
+
+        total = sum(raw.values())
+        return cls({name: value / total for name, value in raw.items()})
 
     def combine(self, predictions: dict[str, np.ndarray]) -> np.ndarray:
         stacked = np.zeros(len(next(iter(predictions.values()))))

@@ -73,15 +73,15 @@ export function VesselTooltip({ hovered }: { hovered: HoveredVessel }) {
   const top = Math.max(8, Math.min(hovered.y + OFFSET, window.innerHeight - estimatedHeight - 8));
 
   return (
-    <div className="vessel-tooltip" style={{ left, top, width: WIDTH }} role="tooltip">
-      <div className="vessel-tooltip__header">
-        <span className="vessel-tooltip__name">{v.name ?? `MMSI ${v.mmsi}`}</span>
-        {v.ship_type && <span className="vessel-tooltip__type">{v.ship_type}</span>}
+    <div className="map-tooltip" style={{ left, top, width: WIDTH }} role="tooltip">
+      <div className="map-tooltip__header">
+        <span className="map-tooltip__name">{v.name ?? `MMSI ${v.mmsi}`}</span>
+        {v.ship_type && <span className="map-tooltip__type">{v.ship_type}</span>}
       </div>
 
-      <dl className="vessel-tooltip__rows">
+      <dl className="map-tooltip__rows">
         {rows.map((row) => (
-          <div key={row.label} className="vessel-tooltip__row">
+          <div key={row.label} className="map-tooltip__row">
             <dt>{row.label}</dt>
             <dd>{row.value}</dd>
           </div>
@@ -91,13 +91,13 @@ export function VesselTooltip({ hovered }: { hovered: HoveredVessel }) {
       {/* Static data lags position by up to ~6 minutes, so a vessel with no
           name yet is normal and worth explaining rather than looking broken. */}
       {!v.name && (
-        <p className="vessel-tooltip__pending">
+        <p className="map-tooltip__pending">
           Identity not broadcast yet — AIS static data follows position by up to ~6 min.
         </p>
       )}
 
       {v.last_report && (
-        <p className="vessel-tooltip__footer">Last broadcast {v.last_report.slice(11, 19)} UTC</p>
+        <p className="map-tooltip__footer">Last broadcast {v.last_report.slice(11, 19)} UTC</p>
       )}
     </div>
   );

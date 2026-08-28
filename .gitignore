@@ -249,4 +249,44 @@ test.py
 Artifacts/
 
 # Feedback submissions (real user emails/messages, not for version control)
-backend/feedback_log.jsonl
+# Runtime state the backend writes to its own tree (feedback log, and
+# anything else that follows it). Source root stays source.
+#
+# `backend/data/*`, not `backend/data/`, so the one exception below can still
+# be un-ignored — git cannot re-include a file whose parent directory itself
+# is excluded.
+backend/data/*
+# ...except docs_index.json, which the backend only ever reads — a committed,
+# generated mirror of the docs chapters (frontend/scripts/export-docs-index.ts),
+# not state the server writes to itself. See services/docs.py's docstring.
+!backend/data/docs_index.json
+
+# Forecasting engine artifacts (backend/forecasting/, backend/models/).
+#
+# `backend/models/forecasting/` used to be ignored here on the reasoning that
+# the models are reproducible from config, so they should be built rather than
+# committed. They are now tracked through Git LFS instead — see .gitattributes.
+# Reproducible is not the same as cheap: a full retrain is hours of Copernicus
+# fetching, and a single forecast grid is ~35 min of it, so "rebuild it" is a
+# real cost to impose on a fresh clone. The rejected horizons are kept for the
+# same reason CLAUDE.md gives for not deleting them — the artifact is the
+# evidence for the shipping-bar decision.
+#
+# The fetch cache below stays ignored: it is a local disk cache keyed on a
+# fetch window, not an artifact anyone would want back. It also holds the
+# climatology build's OISST year cache (~2.8 GB of raw daily fields); the
+# *fitted* climatology in backend/models/climatology/ is the artifact, and that
+# is version-controlled.
+backend/forecasting/.cache/
+
+# Experiment tracking store (machine_learning/marine_ml/tracking.py).
+# Local run history — SQLite plus per-run artifacts. Machine-specific and it
+# grows without bound, so it is not version controlled. Nothing here is a
+# source of truth: every run is reproducible, and the backend's runs can be
+# rebuilt at any time with `python -m marine_ml.ingest_forecasting`.
+machine_learning/mlruns.db
+machine_learning/mlruns/
+
+# Claude Code worktrees — full checkouts of this repo (~1 GB), created and
+# removed by the agent harness. Never version-controlled inside itself.
+.claude/worktrees/

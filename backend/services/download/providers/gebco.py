@@ -24,7 +24,19 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-ERDDAP_URL = "https://coastwatch.pfeg.noaa.gov/erddap/griddap/GEBCO_2020.csv"
+# Ifremer's ERDDAP, serving GEBCO_2021. The previous host was NOAA CoastWatch
+# `GEBCO_2020`, which was long believed retired because it answered 404 — but
+# that server *flaps*: probed over one session it went fully 503, then served
+# `GEBCO_2020` at 200 for minutes, then 404'd it again for minutes. ERDDAP
+# answers 404 "Currently unknown datasetID" while reloading a dataset, which
+# is indistinguishable from removal. GEBCO_2020 is alive; Ifremer is used
+# because it is the newer release and stayed up throughout. See
+# `forecasting/history.is_retryable`, which allows a 404 one retry for exactly
+# this reason.
+#
+# GEBCO_2021 is a drop-in: same 15-arc-second grid, same `elevation` variable
+# on `[latitude][longitude]`, same griddap CSV shape, so nothing below changes.
+ERDDAP_URL = "https://erddap.ifremer.fr/erddap/griddap/gebco2021.csv"
 
 # GEBCO's native grid is 15 arc-seconds.
 NATIVE_SPACING_DEG = 1.0 / 240.0
@@ -100,9 +112,13 @@ async def fetch(
     is the only field this provider serves.
     """
     stride = choose_stride(west, south, east, north)
-    query = (
-        f"elevation[({south}):{stride}:({north})][({west}):{stride}:({east})]"
-    )
+    # The subscript brackets must be percent-encoded. NOAA's ERDDAP accepted
+    # them raw; Ifremer's fronting Tomcat rejects a bare `[` in a query with
+    # a 400 before ERDDAP ever sees the request. Everything else in a griddap
+    # selector — `(`, `)`, `:` — is a legal query character and is left alone
+    # so the URL stays readable in logs and error messages.
+    selector = f"elevation[({south}):{stride}:({north})][({west}):{stride}:({east})]"
+    query = selector.replace("[", "%5B").replace("]", "%5D")
 
     async with httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=True) as client:
         try:

@@ -1,0 +1,243 @@
+/* Shared design tokens — the one place a colour, typeface or step of the type
+ * scale is *chosen*. Everything else aliases these.
+ *
+ * Why this exists: every page defined its own private palette
+ * (`--dl-*`, `--ct-*`, `--fb-*`, `--dash-*`, `--chat-*`, `--dc-*`, `--lp-*`,
+ * `--ocean-*`), and seven independent copies of "the same" palette drifted.
+ * Measured before this file landed: four different dark canvases (#121414,
+ * #0e1116, #02060c, #0a1420), four different body-text greys, and an accent
+ * that was #4fd1ff everywhere except the map's #22d3ee. Navigating between
+ * pages stepped through all of them, under one fixed translucent navbar.
+ *
+ * The per-page token convention documented in CLAUDE.md is *kept* — pages
+ * still read `--dl-bg`, not `--ma-bg`. What changed is that a page's token
+ * block now aliases this file instead of restating literals, so a page can
+ * still deviate deliberately (and several do) but can no longer deviate by
+ * accident.
+ *
+ * Theme is driven by `data-theme` on <html>, stamped by App.tsx from
+ * `useThemeStore` and pre-stamped by an inline script in index.html so the
+ * first paint is already the right theme. Pages keep their own `--light`
+ * class as well: it costs nothing and keeps each page's stylesheet readable
+ * on its own.
+ */
+
+:root {
+  /* Tells the browser which way its *own* chrome should render — scrollbars,
+     `<input type="date">` pickers, `<select>` popups, form control defaults.
+     Without it, every dark page rendered light-on-dark native widgets; the
+     download page alone has two date inputs and six selects. Previously this
+     was set only for the dashboard (`:root:has(.oid-root)`). */
+  color-scheme: dark;
+
+  /* --- surfaces --------------------------------------------------------
+     Near-black and near-neutral, not the blue-grey this used to be (#0e1116
+     ground, #02060c deep, #171b21 solid). Two things about the choice:
+
+     Not `#000`. The elevation model below is white-alpha surfaces over the
+     ground *plus* pure-black shadows reading darker than it; at #000 the
+     shadow half collapses and every card loses its edge. A ground a few
+     points off black keeps both halves working, and avoids the smear
+     large #000 areas produce on OLED during scroll.
+
+     Not blue. The old ramp carried a blue cast at every step, which is what
+     made the app read "dark blue" rather than "dark" — so the greys below
+     moved with it. The cyan accent is untouched: it is the one place colour
+     is wanted, and it reads better against a neutral ground than it did
+     against a blue one. */
+  --ma-bg: #060607;
+  /* The landing hero's deeper ground. Deliberately not --ma-bg: the hero
+     canvas veils itself against this colour every frame (HeroField's
+     TRAIL_FADE), and the page's elevation model depends on pure-black shadows
+     reading darker than the ground. Named here so it stays a decision. */
+  --ma-bg-deep: #000103;
+  --ma-surface: rgba(255, 255, 255, 0.03);
+  --ma-surface-strong: rgba(255, 255, 255, 0.055);
+  --ma-surface-solid: #101012;
+  --ma-input-bg: rgba(255, 255, 255, 0.04);
+  --ma-hover-bg: rgba(255, 255, 255, 0.05);
+
+  /* --- lines ----------------------------------------------------------- */
+  --ma-border: rgba(255, 255, 255, 0.1);
+  --ma-border-soft: rgba(255, 255, 255, 0.06);
+  --ma-border-strong: rgba(255, 255, 255, 0.16);
+
+  /* --- ink ------------------------------------------------------------- */
+  /* Measured against the new #060607 ground, not eyeballed: muted 7.3:1 and
+     faint 4.4:1 (the old blue-grey pair scored 7.8:1 and 4.0:1 on the old
+     ground, so faint is slightly *better* than it was). */
+  --ma-heading: #f6f6f8;
+  --ma-text: #e4e4e6;
+  --ma-muted: #9a9aa2;
+  --ma-faint: #75757d;
+
+  /* --- accent ---------------------------------------------------------- */
+  --ma-accent: #4fd1ff;
+  --ma-accent-on: #001b22;
+  --ma-accent-soft: rgba(79, 209, 255, 0.14);
+  --ma-accent-line: rgba(79, 209, 255, 0.3);
+
+  /* Submarine silhouette (hull + conning-tower fin, one path) used by the
+     loading-state channel in index.css and its `--oid-*` counterpart in
+     `features/dashboard/styles/tailwind.css`. Kept here rather than in either
+     theming world because it is shape, not colour — both worlds paint it via
+     `background-color: currentColor` + this as a mask, so it never needs a
+     second copy or a per-theme variant. */
+  --ma-sub-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 22'%3E%3Cpath d='M2 13C2 9 7 6 14 6H20C25 6 29 9 29 13C29 17 25 20 20 20H14C7 20 2 17 2 13Z M13 0H19V7H13Z' fill='%23000'/%3E%3C/svg%3E");
+
+  /* --- status ---------------------------------------------------------- */
+  --ma-error: #ff8a8a;
+  --ma-good: #4ade80;
+  --ma-warn: #fbbf24;
+
+  --ma-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+
+  /* --- type ------------------------------------------------------------
+     Four roles, all already loaded by index.html — no extra request.
+       ui       Space Grotesk. The app's interface face; every page root sets
+                it, which is why body's system-ui below is only a fallback for
+                anything that escapes a page root.
+       body     IBM Plex Sans, for long-form prose (landing, docs).
+       display  the system stack, used only at large sizes where its
+                neutrality is an asset (see landing.css's note).
+       mono     IBM Plex Mono for technical micro-copy — labels, chips, spec
+                values, legends, coordinates. */
+  --ma-font-ui: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ma-font-body: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    sans-serif;
+  --ma-font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --ma-font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* One scale, so heading sizes stop being re-picked per page. The two top
+     steps are fluid because they are used at hero scale where a fixed rem
+     value overflows narrow screens. */
+  --ma-text-2xs: 0.6875rem; /* 11px — chips, eyebrow labels */
+  --ma-text-xs: 0.75rem; /* 12px */
+  --ma-text-sm: 0.8125rem; /* 13px */
+  --ma-text-base: 0.9375rem; /* 15px — body default */
+  --ma-text-md: 1.0625rem; /* 17px */
+  --ma-text-lg: 1.25rem; /* 20px — h3 */
+  --ma-text-xl: 1.5rem; /* 24px — h2 */
+  --ma-text-2xl: clamp(1.7rem, 3.2vw, 2.125rem); /* h1 on a content page */
+  --ma-text-3xl: clamp(2.25rem, 5.4vw, 4rem); /* hero */
+
+  /* --- motion ------------------------------------------------------------
+     A budget, not a palette. Durations were two values (`--ma-duration` and
+     whatever each component invented), which is how a page ends up with a
+     120ms hover next to a 400ms one doing the same job. Four steps, chosen by
+     what the motion is *for* rather than by how they look:
+
+       instant   a state flip the user caused and is already looking at —
+                 checkbox, toggle, focus ring. Long enough to avoid a jump,
+                 short enough to feel like the click did it.
+       fast      hover and small affordances. The default.
+       base      something appearing or leaving: a panel, a tooltip, a row.
+       slow      something that moves a meaningful distance across the screen,
+                 or a scroll-triggered entrance, where a fast move reads as a
+                 flicker rather than as an arrival.
+
+     Anything slower than `slow` belongs to the map camera, which is measured
+     in its own module because it is animating geography rather than UI.
+
+     Easings: `--ma-ease` stays the standard both-ends curve. `--ma-ease-out`
+     is for anything entering — it decelerates into place, which is what makes
+     an entrance read as arriving rather than as being thrown. `--ma-ease-in`
+     is for leaving, and is deliberately rare: most exits should be `out` too,
+     because the user has already moved on. */
+  --ma-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ma-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ma-ease-in: cubic-bezier(0.4, 0, 1, 1);
+
+  --ma-duration-instant: 0.09s;
+  --ma-duration-fast: 0.15s;
+  --ma-duration: 0.2s; /* base; kept as the bare name, which existing CSS uses */
+  --ma-duration-slow: 0.42s;
+
+  /* How far a revealing element travels before settling. Small on purpose:
+     entrance animations that move a long way turn a page into a carousel. */
+  --ma-reveal-shift: 14px;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --ma-bg: #f4f7f8;
+  --ma-bg-deep: #f7fafb;
+  --ma-surface: #fff;
+  --ma-surface-strong: #fff;
+  --ma-surface-solid: #fff;
+  --ma-input-bg: rgba(15, 30, 30, 0.04);
+  --ma-hover-bg: rgba(15, 30, 30, 0.05);
+
+  --ma-border: rgba(15, 30, 30, 0.1);
+  --ma-border-soft: rgba(15, 30, 30, 0.07);
+  --ma-border-strong: rgba(15, 30, 30, 0.18);
+
+  --ma-heading: #0a1514;
+  --ma-text: #12201f;
+  --ma-muted: #5c6b6c;
+  --ma-faint: #85939a;
+
+  --ma-accent: #0f766e;
+  --ma-accent-on: #fff;
+  --ma-accent-soft: rgba(15, 118, 110, 0.1);
+  --ma-accent-line: rgba(15, 118, 110, 0.26);
+
+  --ma-error: #dc2626;
+  --ma-good: #15803d;
+  --ma-warn: #b45309;
+
+  --ma-shadow: 0 14px 32px rgba(15, 30, 30, 0.08);
+}
+
+/* The canvas the browser paints outside any page root — scrollbar gutter and
+   overscroll. `html, body, #root` are exactly 100% tall for the full-bleed map
+   page, so on a page taller than the viewport this is what shows through.
+   The dashboard used to be the only route that got this right. */
+html {
+  background: var(--ma-bg);
+}
+
+/* --------------------------------------------------------------------------
+   Focus
+   --------------------------------------------------------------------------
+   One visible ring for the whole app. Before this, `:focus-visible` was styled
+   in 3 of 13 stylesheets, so tabbing through the download page's 18 controls
+   showed the browser's default ring against a dark card. `:focus-visible`
+   rather than `:focus` so a mouse click on a button does not leave a ring
+   behind. The offset ring reads on both the page ground and a raised card. */
+:focus-visible {
+  outline: 2px solid var(--ma-accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* --------------------------------------------------------------------------
+   Reduced motion
+   --------------------------------------------------------------------------
+   Honoured app-wide instead of in the seven files that happened to remember.
+   Nothing in the app listens for `transitionend`/`animationend` (checked), so
+   collapsing durations cannot strand a state machine mid-transition.
+
+   `[data-motion='essential']` opts an element out, for the case where stopping
+   the motion would misinform: an indeterminate spinner that freezes reads as
+   *hung*, not as calm. Nothing uses the attribute today — the two indeterminate
+   indicators handle themselves. `WarmingProgress` drives its bar from JS via
+   framer-motion (untouched by a CSS rule) and already checks
+   `useReducedMotion`; the toast spinner slows itself in toast.css. The hook is
+   here so the next one does not have to re-litigate the blanket rule. */
+@media (prefers-reduced-motion: reduce) {
+  *:not([data-motion='essential']),
+  *:not([data-motion='essential'])::before,
+  *:not([data-motion='essential'])::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  [data-motion='essential'] {
+    animation-duration: 3s !important;
+  }
+}

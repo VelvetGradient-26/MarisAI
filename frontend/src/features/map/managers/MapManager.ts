@@ -4,6 +4,7 @@ import { BASEMAP_LAYER_ID, BasemapManager } from './BasemapManager';
 import { ControlManager } from './ControlManager';
 import { LayerManager } from '../layers/LayerManager';
 import { basemaps } from '../basemaps';
+import { OPENFREEMAP_GLYPHS } from '../basemaps/vectorSource';
 import { layerRegistry } from '../layers/layerRegistry';
 import { getFirstExistingAnnotationLayerId } from '../layers/annotationLayerIds';
 import type { BasemapId, ProjectionMode } from '../types';
@@ -33,6 +34,7 @@ export class MapManager {
   private map: MapLibreMap | null = null;
   private basemapManager: BasemapManager | null = null;
   private controlManager: ControlManager | null = null;
+  private resizeObserver: ResizeObserver | null = null;
   private layerManager: LayerManager | null = null;
   private projectionMode: ProjectionMode = DEFAULT_PROJECTION;
 
@@ -43,7 +45,7 @@ export class MapManager {
       zoom = 2.2,
       bearing = 0,
       pitch = 0,
-      defaultBasemap = 'satellite',
+      defaultBasemap = 'abyss',
       projection = DEFAULT_PROJECTION,
     } = options;
 
@@ -59,7 +61,13 @@ export class MapManager {
         version: 8,
         sources: {},
         layers: [],
-        glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+        // Set once, at construction. Doing it per-basemap via setGlyphs()
+        // was a race: setGlyphs triggers an asynchronous style reload, and
+        // the sources/layers added immediately afterwards were intermittently
+        // lost — the globe came up as an empty disc with no coastlines and no
+        // marker. Both vector basemaps use this same endpoint, so there is
+        // nothing to switch at runtime.
+        glyphs: OPENFREEMAP_GLYPHS,
       },
       center,
       zoom,
@@ -67,6 +75,11 @@ export class MapManager {
       pitch,
       renderWorldCopies: false,
       attributionControl: { compact: true },
+      // Needed for exportHighResImage()'s canvas.toBlob() capture — without
+      // it the WebGL context is free to discard its backing buffer right
+      // after compositing, and a screenshot taken any time after the
+      // triggering `idle` event comes back blank on some browsers/GPUs.
+      canvasContextAttributes: { preserveDrawingBuffer: true },
     });
     (window as unknown as { __debugMap?: unknown }).__debugMap = map;
 
@@ -93,6 +106,22 @@ export class MapManager {
       basemapManager.init(defaultBasemap);
       layerManager.applyDefaults();
     });
+
+    /**
+     * Re-measure whenever the *container* changes size.
+     *
+     * MapLibre's `trackResize` only listens to `window` resize events, so a
+     * map whose container changes size on its own is never told. That is
+     * exactly the dashboard's embedded panel: it is lazy-loaded into a flex
+     * column whose height settles after the map is constructed (KPI cards
+     * and charts mount above it), so the canvas kept a stale size and the
+     * panel rendered blank until something forced a resize. The full-page
+     * /map view never hit this because it is sized correctly from the start.
+     */
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(() => map.resize());
+      this.resizeObserver.observe(container);
+    }
 
     this.map = map;
     this.layerManager = layerManager;
@@ -136,7 +165,56 @@ export class MapManager {
     map.setProjection({ type: mode });
   }
 
+  /**
+   * Captures the current view (basemap + every active overlay, exactly as
+   * shown) as a PNG at a true higher pixel density, not an upscale of the
+   * on-screen canvas.
+   *
+   * `setPixelRatio` only changes the canvas's backing-store resolution, not
+   * its CSS/layout size, so there is no visible resize/flash — MapLibre just
+   * re-renders every layer (vector geometry, raster tiles) at the new pixel
+   * density, fetching deeper raster tiles where the source's maxzoom allows
+   * it. `targetLongEdge` is a floor on the longer edge, not an exact crop, so
+   * the export keeps the on-screen framing/aspect ratio instead of
+   * distorting it to hit an exact 3840x2160.
+   *
+   * Deliberately does not await `map.once('idle')` — measured live, `idle`
+   * never fires and `map.loaded()` never returns true while in the globe
+   * projection (the app's default), because globe's atmosphere/halo repaints
+   * every frame regardless of whether tiles or camera are still moving. That
+   * would hang this method forever for anyone who hadn't switched to 2D. A
+   * short debounced poll on `areTilesLoaded()` plus a bounded timeout works
+   * in both projections and can't hang the export.
+   */
+  async exportHighResImage(targetLongEdge = 3840): Promise<Blob> {
+    const map = this.map;
+    if (!map) throw new Error('Map not initialized');
+
+    const canvas = map.getCanvas();
+    const originalRatio = map.getPixelRatio();
+    const cssLongEdge = Math.max(canvas.clientWidth, canvas.clientHeight);
+    const scale = Math.max(originalRatio, targetLongEdge / cssLongEdge);
+
+    map.setPixelRatio(scale);
+    try {
+      await waitForTilesSettled(map);
+      // One more repaint so the just-settled tiles are actually composited
+      // into the canvas before capture, not merely marked loaded.
+      map.triggerRepaint();
+      await new Promise<void>((resolve) => map.once('render', () => resolve()));
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, 'image/png')
+      );
+      if (!blob) throw new Error('Canvas capture returned no data');
+      return blob;
+    } finally {
+      map.setPixelRatio(originalRatio);
+    }
+  }
+
   destroy() {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
     this.controlManager?.destroy();
     this.layerManager?.destroy();
     this.basemapManager?.destroy();
@@ -146,6 +224,35 @@ export class MapManager {
     this.controlManager = null;
     this.layerManager = null;
   }
+}
+
+/**
+ * Polls `areTilesLoaded()` until it reports true and holds for one more
+ * check (debounced, since a tile can finish loading and immediately queue a
+ * dependent one), or gives up after `timeoutMs` — this is a best-effort
+ * wait, not a guarantee, since a slow/failing tile source must not be able
+ * to hang the export. See exportHighResImage's docstring for why `idle`
+ * can't be used here.
+ */
+function waitForTilesSettled(map: MapLibreMap, timeoutMs = 8000, pollMs = 150): Promise<void> {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    let sawLoaded = false;
+    const check = () => {
+      const loaded = map.areTilesLoaded();
+      if (loaded && sawLoaded) {
+        resolve();
+        return;
+      }
+      sawLoaded = loaded;
+      if (Date.now() - start >= timeoutMs) {
+        resolve();
+        return;
+      }
+      setTimeout(check, pollMs);
+    };
+    check();
+  });
 }
 
 function getBasemapInsertBeforeId(map: MapLibreMap): string | undefined {

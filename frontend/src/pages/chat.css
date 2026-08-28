@@ -1,0 +1,805 @@
+/* Ocean Assistant.
+ *
+ * Same per-page theming contract as download.css/feedback.css: every colour is
+ * a `--chat-*` token, and nothing below hardcodes one — which is what keeps the
+ * two themes from drifting as the page grows, since a literal added in one
+ * block is invisible until someone toggles the theme.
+ *
+ * Most of those tokens now alias the shared palette in styles/tokens.css and
+ * invert from `data-theme` on <html>. The handful listed under "Local" below
+ * are this page's own and still need `.chat-page--light`.
+ *
+ * Two of them intentionally do NOT simply invert:
+ *   --chat-flag-*  the ungrounded-figure warning stays amber-on-warm in both
+ *                  themes, because it means the same thing in both and an
+ *                  inverted warning reads as decoration.
+ *   --chat-code-*  the provenance JSON keeps a raised surface in light mode
+ *                  rather than going white-on-white with the bubble.
+ */
+
+.chat-page {
+  --chat-bg: var(--ma-bg);
+  --chat-panel: var(--ma-surface);
+  --chat-border: var(--ma-border);
+  --chat-border-soft: var(--ma-border-soft);
+  --chat-text: var(--ma-text);
+  --chat-muted: var(--ma-muted);
+  --chat-faint: var(--ma-faint);
+  --chat-primary: var(--ma-accent);
+  --chat-primary-on: var(--ma-accent-on);
+  --chat-user-bg: var(--ma-accent-soft);
+  --chat-user-border: var(--ma-accent-line);
+  --chat-assistant-bg: var(--ma-input-bg);
+  --chat-input-bg: var(--ma-input-bg);
+  --chat-error: var(--ma-error);
+  --chat-shadow: var(--ma-shadow);
+  --chat-hover-bg: var(--ma-hover-bg);
+
+  /* Local, for the reasons in the file header above. */
+  --chat-flag-bg: rgba(245, 158, 11, 0.12);
+  --chat-flag-border: rgba(245, 158, 11, 0.35);
+  --chat-flag-text: #fbbf24;
+  --chat-code-bg: rgba(0, 0, 0, 0.32);
+  --chat-sidebar-bg: rgba(255, 255, 255, 0.02);
+  --chat-active-bg: rgba(79, 209, 255, 0.14);
+  --chat-focus-ring: rgba(79, 209, 255, 0.18);
+
+  min-height: 100vh;
+  padding: calc(var(--navbar-h, 64px) + 24px) 20px 28px;
+  background: var(--chat-bg);
+  color: var(--chat-text);
+  font-family: var(--ma-font-ui);
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+.chat-page--light {
+  --chat-assistant-bg: #fff;
+  --chat-input-bg: #fff;
+  --chat-flag-bg: rgba(180, 83, 9, 0.1);
+  --chat-flag-border: rgba(180, 83, 9, 0.28);
+  --chat-flag-text: #b45309;
+  --chat-code-bg: rgba(15, 30, 30, 0.05);
+  --chat-sidebar-bg: #fbfdfd;
+  --chat-active-bg: rgba(15, 118, 110, 0.12);
+  --chat-focus-ring: rgba(15, 118, 110, 0.15);
+}
+
+.chat-shell {
+  max-width: 1500px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 20px;
+  /* The log scrolls, the composer stays put. Sizing the shell to the viewport
+   * minus the navbar is what makes the inner overflow work — without a bounded
+   * height the log grows and the whole page scrolls instead. `minmax(0, 1fr)`
+   * rather than `1fr` because a grid item's default `min-width: auto` refuses
+   * to shrink below its content, which let a wide tool result push the whole
+   * column past the viewport. */
+  height: calc(100vh - var(--navbar-h, 64px) - 52px);
+}
+
+.chat-main {
+  /* Both the message column and the composer read this, so a turn's bubble
+   * and the box you type into line up under one shared width — the
+   * assistant-ui-template convention of a centered reading column inside a
+   * wider panel, rather than a bubble stretched to the panel's own edge. */
+  --chat-col-max: 46rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* same reason: let the log scroll rather than the page */
+}
+
+/* --- Sidebar ------------------------------------------------------------ */
+
+.chat-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 16px;
+  border: 1px solid var(--chat-border);
+  border-radius: 16px;
+  background: var(--chat-sidebar-bg);
+}
+
+.chat-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 14px;
+  border: 1px solid var(--chat-user-border);
+  border-radius: 10px;
+  background: var(--chat-user-bg);
+  color: var(--chat-primary);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.chat-new:hover {
+  background: var(--chat-active-bg);
+}
+
+.chat-sidebar__label {
+  margin: 4px 0 0;
+  color: var(--chat-faint);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.chat-sidebar__empty {
+  margin: 0;
+  color: var(--chat-faint);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+/* A failed listing is not the same as an empty one, and must not read as the
+   same quiet grey aside — see ChatPage's `sessionsStatus`. */
+.chat-sidebar__empty--error {
+  color: var(--chat-error);
+}
+
+/* Placeholder rows while the listing is in flight. Shaped like a real session
+   row so the sidebar does not resize under the cursor when they resolve. */
+.chat-session--placeholder {
+  display: flex;
+  align-items: center;
+  padding: 9px 10px;
+  pointer-events: none;
+}
+
+.chat-sessions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  scrollbar-color: var(--chat-border) transparent;
+}
+
+/* The delete control is a sibling of the session button rather than a child of
+   it (see ChatPage), so the row — not the button — is what the two of them
+   share a hover state through. */
+.chat-session-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.chat-session {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  /* Right padding reserves the delete button's lane, so a long title
+     ellipsises before it reaches the icon instead of running under it. */
+  padding: 9px 34px 9px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--chat-muted);
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chat-session-row:hover .chat-session {
+  background: var(--chat-hover-bg);
+  color: var(--chat-text);
+}
+
+.chat-session.is-active {
+  background: var(--chat-active-bg);
+  color: var(--chat-primary);
+}
+
+.chat-session__title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-session__delete {
+  position: absolute;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--chat-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.chat-session-row:hover .chat-session__delete,
+.chat-session__delete:focus-visible {
+  opacity: 1;
+}
+
+.chat-session__delete:hover {
+  background: var(--chat-hover-bg);
+  color: var(--chat-error);
+}
+
+/* A control revealed only on hover is unreachable on a touch screen — there is
+   no hover, and a tap produces no `:focus-visible` either. On a coarse pointer
+   it is simply always visible. */
+@media (hover: none) {
+  .chat-session__delete {
+    opacity: 1;
+  }
+}
+
+.chat-session__delete:hover {
+  color: var(--chat-error);
+}
+
+.chat-header h1 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 6px;
+  font-size: var(--ma-text-2xl);
+  letter-spacing: -0.01em;
+}
+
+.chat-header p {
+  margin: 0 0 18px;
+  max-width: 62ch;
+  color: var(--chat-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+/* --- Log ---------------------------------------------------------------- */
+
+/* Positions the floating scroll-to-bottom button against the log without it
+ * participating in the log's own scroll — see `.chat-scroll-btn` in
+ * assistant.css. */
+.chat-log-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.chat-log {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 24px clamp(16px, 4vw, 40px);
+  border: 1px solid var(--chat-border);
+  border-radius: 16px;
+  background: var(--chat-panel);
+  box-shadow: var(--chat-shadow);
+  scrollbar-color: var(--chat-border) transparent;
+}
+
+.chat-empty {
+  margin: auto 0;
+  text-align: center;
+}
+
+.chat-empty__lead {
+  margin: 0 0 16px;
+  color: var(--chat-muted);
+  font-size: 0.95rem;
+}
+
+.chat-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.chat-suggestion {
+  padding: 9px 14px;
+  border: 1px solid var(--chat-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--chat-muted);
+  font: inherit;
+  font-size: 0.83rem;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+
+.chat-suggestion:hover {
+  border-color: var(--chat-primary);
+  color: var(--chat-primary);
+  background: var(--chat-user-bg);
+}
+
+.chat-turn {
+  display: flex;
+  width: 100%;
+  max-width: var(--chat-col-max, 46rem);
+  margin-inline: auto;
+}
+
+.chat-turn--user {
+  justify-content: flex-end;
+}
+
+/* The avatar mark sits beside the content column rather than above it, so
+ * `align-items: flex-start` pins it to the first line of the answer instead
+ * of centering against the whole (possibly multi-paragraph) turn. */
+.chat-turn--assistant {
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.chat-col {
+  min-width: 0;
+  flex: 1;
+}
+
+.chat-col--user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.chat-bubble {
+  max-width: 84%;
+  padding: 12px 15px;
+  border-radius: 14px;
+  font-size: 0.92rem;
+  line-height: 1.62;
+}
+
+.chat-bubble--user {
+  border: 1px solid var(--chat-user-border);
+  background: var(--chat-user-bg);
+  border-bottom-right-radius: 4px;
+  white-space: pre-wrap;
+}
+
+.chat-bubble--assistant {
+  border: 1px solid var(--chat-border-soft);
+  background: var(--chat-assistant-bg);
+  border-bottom-left-radius: 4px;
+}
+
+/* Markdown output. `white-space: pre-wrap` is gone deliberately — the renderer
+ * now produces real block elements, and pre-wrap would have re-added every
+ * source newline on top of their margins. Only fenced code keeps it. */
+.chat-answer > :first-child {
+  margin-top: 0;
+}
+
+.chat-answer > :last-child {
+  margin-bottom: 0;
+}
+
+.md-p {
+  margin: 0 0 0.7em;
+}
+
+.md-h {
+  margin: 1.1em 0 0.5em;
+  font-size: 0.98rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.md-list {
+  margin: 0 0 0.7em;
+  padding-left: 1.35em;
+}
+
+.md-list li {
+  margin: 0.2em 0;
+}
+
+.md-list li::marker {
+  color: var(--chat-faint);
+}
+
+.chat-answer strong {
+  font-weight: 600;
+  color: var(--chat-text);
+}
+
+.chat-answer a {
+  color: var(--chat-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md-code {
+  padding: 0.1em 0.36em;
+  border-radius: 5px;
+  background: var(--chat-code-bg);
+  font-size: 0.86em;
+  /* Break long identifiers rather than widening the bubble past the column. */
+  overflow-wrap: anywhere;
+}
+
+.md-pre {
+  margin: 0 0 0.7em;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: var(--chat-code-bg);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.md-pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+.md-quote {
+  margin: 0 0 0.7em;
+  padding-left: 0.85em;
+  border-left: 2px solid var(--chat-border);
+  color: var(--chat-muted);
+}
+
+/* Tables scroll inside their own box; the bubble must never widen the page. */
+.md-table-wrap {
+  margin: 0 0 0.7em;
+  overflow-x: auto;
+}
+
+.md-table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.md-table th,
+.md-table td {
+  padding: 6px 11px;
+  border: 1px solid var(--chat-border-soft);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.md-table th {
+  background: var(--chat-hover-bg);
+  font-weight: 600;
+}
+
+/* --- Thinking ----------------------------------------------------------- */
+
+.chat-thinking {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.chat-thinking__label {
+  margin-left: 6px;
+  color: var(--chat-muted);
+  font-size: 0.84rem;
+}
+
+.chat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--chat-primary);
+  animation: chat-pulse 1.3s ease-in-out infinite;
+}
+
+.chat-dot:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.chat-dot:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes chat-pulse {
+  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-dot {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+/* --- Grounding flag ----------------------------------------------------- */
+
+.chat-flag {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 12px 0 0;
+  padding: 8px 11px;
+  border: 1px solid var(--chat-flag-border);
+  border-radius: 9px;
+  background: var(--chat-flag-bg);
+  color: var(--chat-flag-text);
+  font-size: 0.79rem;
+  line-height: 1.5;
+}
+
+.chat-flag svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* --- Provenance --------------------------------------------------------- */
+
+.chat-provenance {
+  margin-top: 12px;
+}
+
+.chat-provenance__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--chat-muted);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.chat-provenance__toggle:hover {
+  color: var(--chat-primary);
+}
+
+.chat-provenance__toggle svg {
+  transition: transform 0.2s ease;
+}
+
+.chat-provenance__toggle.is-open svg {
+  transform: rotate(180deg);
+}
+
+.chat-calls {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chat-call {
+  border-left: 2px solid var(--chat-border);
+  padding-left: 10px;
+}
+
+.chat-call__name {
+  color: var(--chat-primary);
+  font-size: 0.76rem;
+}
+
+.chat-call__args {
+  margin-left: 7px;
+  color: var(--chat-faint);
+  font-size: 0.74rem;
+}
+
+.chat-call__result {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  /* Long JSON scrolls inside its own box; the page must never scroll
+   * sideways because a provider returned a wide result. */
+  max-height: 200px;
+  overflow: auto;
+  border-radius: 7px;
+  background: var(--chat-code-bg);
+  color: var(--chat-muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.chat-sources {
+  margin: 10px 0 0;
+  color: var(--chat-faint);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+/* --- Composer ----------------------------------------------------------- */
+
+.chat-error {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  max-width: var(--chat-col-max, 46rem);
+  margin: 12px auto 0;
+  color: var(--chat-error);
+  font-size: 0.84rem;
+}
+
+.chat-composer {
+  width: 100%;
+  max-width: var(--chat-col-max, 46rem);
+  margin: 14px auto 0;
+}
+
+/* The wrapper carries the border and focus ring so the textarea itself can be
+ * borderless — a border on an auto-growing textarea visibly jumps by a pixel
+ * each time the height is recomputed. `position: relative` is what lets the
+ * circular send button (`.chat-send-btn`, assistant.css) sit *inside* this
+ * card rather than beside it — the single-card-with-an-embedded-button shape
+ * assistant-ui's own composer uses, instead of two boxes side by side. */
+.chat-input-wrap {
+  position: relative;
+  border: 1px solid var(--chat-border);
+  border-radius: 20px;
+  background: var(--chat-input-bg);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.chat-input-wrap:focus-within {
+  border-color: var(--chat-primary);
+  box-shadow: 0 0 0 4px var(--chat-focus-ring);
+}
+
+.chat-input {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  max-height: 260px;
+  /* Right padding reserves the embedded send button's corner. */
+  padding: 15px 54px 15px 20px;
+  border: none;
+  border-radius: 20px;
+  background: none;
+  color: var(--chat-text);
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  /* Height is driven from JS to match content; a manual resize handle would
+   * fight that on the next keystroke. */
+  resize: none;
+  overflow-y: auto;
+
+  /* The caret. `caret-color` is an animatable colour, and animating it
+   * overrides the browser's own hard on/off blink — with ease-in-out that
+   * reads as a fade rather than a flicker. Firefox does not animate
+   * caret-color; there the caret falls back to a normal blink in the accent
+   * colour, which is why the colour is set outside the animation too. */
+  caret-color: var(--chat-primary);
+  transition: caret-color 0.2s ease;
+}
+
+.chat-input:focus {
+  outline: none;
+  animation: chat-caret 1.15s ease-in-out infinite;
+}
+
+@keyframes chat-caret {
+  0%,
+  100% {
+    caret-color: var(--chat-primary);
+  }
+  50% {
+    caret-color: transparent;
+  }
+}
+
+/* While actively typing, a blinking caret is a distraction — hold it steady
+ * and let it resume once the field is merely focused. */
+.chat-input-wrap.is-filled .chat-input:focus {
+  animation-duration: 1.6s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-input:focus {
+    animation: none;
+    caret-color: var(--chat-primary);
+  }
+}
+
+.chat-input::placeholder {
+  color: var(--chat-faint);
+}
+
+.chat-input:disabled {
+  opacity: 0.6;
+}
+
+.chat-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 76px;
+  padding: 0 22px;
+  border: none;
+  border-radius: 12px;
+  background: var(--chat-primary);
+  color: var(--chat-primary-on);
+  font: inherit;
+  font-size: 0.87rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.chat-send:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.chat-send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chat-disclaimer {
+  width: 100%;
+  max-width: var(--chat-col-max, 46rem);
+  margin: 10px auto 0;
+  color: var(--chat-faint);
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+/* The sidebar is the first thing to go on a narrow screen — the conversation
+ * is the point, and session switching is reachable again on a wider one. */
+@media (max-width: 900px) {
+  .chat-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chat-sidebar {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .chat-page {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .chat-bubble {
+    max-width: 92%;
+  }
+
+  .chat-send {
+    height: 64px;
+  }
+
+  .chat-input {
+    min-height: 64px;
+  }
+
+  .chat-send span {
+    display: none;
+  }
+
+  .chat-send {
+    padding: 0 14px;
+  }
+}

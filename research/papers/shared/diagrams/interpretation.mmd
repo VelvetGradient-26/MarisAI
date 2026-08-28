@@ -1,0 +1,24 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Helvetica, Arial, sans-serif','fontSize':'14px','primaryColor':'#e8eef5','primaryTextColor':'#1a1a1a','primaryBorderColor':'#1f6fb2','lineColor':'#4a4a4a'}}}%%
+flowchart TB
+    Q1{"S_pers > 0 ?<br/>beats the last observed value"}
+
+    Q1 -->|no| N1["Do not deploy.<br/>Persistence is cheaper and better.<br/>Typical of high-inertia variables whose<br/>autocorrelation time exceeds the horizon."]
+    Q1 -->|yes| Q2{"S_clim > 0 ?<br/>beats the seasonal cycle"}
+
+    Q2 -->|no| N2["Ship the climatology instead.<br/>It is cheaper to compute, cheaper to serve,<br/>and more accurate. Invisible if only S_pers<br/>is reported.<br/>Note: this does NOT mean the model is<br/>merely seasonal — see the ablation branch."]
+    Q2 -->|yes| N4["Beats both baselines.<br/>Information beyond both the present state<br/>and the seasonal cycle."]
+
+    N2 --> Q3
+    N4 --> Q3
+    Q3{"Mechanism: how much skill<br/>survives removing calendar features ?"}
+    Q3 -->|"most of it"| N3["Skill is not seasonal.<br/>Whatever the model found, the calendar<br/>is not carrying it. Typical even among<br/>models that lose to climatology."]
+    Q3 -->|"little of it"| N7["Seasonally dominated.<br/>A day-of-year lookup reproduces most of<br/>the skill. Can occur even when the model<br/>beats climatology, so S_clim will not<br/>reveal it."]
+
+    N4 --> Q4{"Does it transfer to<br/>a held-out site ?"}
+    Q4 -->|no| N5["Interpolation, not transfer.<br/>Pooled metrics overstate what a user<br/>clicking unseen ocean will get.<br/>Restrict to trained sites, or say so."]
+    Q4 -->|yes| N6["Transfers within the sampled regimes.<br/>Report the held-out figure, not the pooled<br/>one, as the expected skill — and do not<br/>extrapolate beyond those regimes."]
+
+    classDef bad fill:#fdf0e6,stroke:#d1611f,stroke-width:2px,color:#1a1a1a
+    classDef good fill:#e8eef5,stroke:#1f6fb2,stroke-width:2px,color:#1a1a1a
+    class N1,N5,N7 bad
+    class N4,N6,N3 good

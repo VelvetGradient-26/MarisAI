@@ -1,0 +1,4465 @@
+{
+  "validation": {
+    "metrics": {
+      "mae": 0.43879,
+      "rmse": 0.97993,
+      "mape": 0.205,
+      "r2": 0.99807,
+      "n": 11376,
+      "directional_accuracy": 0.76103,
+      "persistence_rmse": 1.22186,
+      "skill_score": 0.35679
+    },
+    "folds": [
+      {
+        "fold": "fold1_2025-04-28_2025-07-31",
+        "train_rows": 7583,
+        "mae": 0.52839,
+        "rmse": 1.19689,
+        "mape": 0.251,
+        "r2": 0.99711,
+        "n": 2275,
+        "directional_accuracy": 0.74989,
+        "persistence_rmse": 1.46932,
+        "skill_score": 0.33645
+      },
+      {
+        "fold": "fold2_2025-07-31_2025-11-03",
+        "train_rows": 9858,
+        "mae": 0.56526,
+        "rmse": 1.34595,
+        "mape": 0.268,
+        "r2": 0.99572,
+        "n": 2275,
+        "directional_accuracy": 0.75814,
+        "persistence_rmse": 1.62274,
+        "skill_score": 0.31204
+      },
+      {
+        "fold": "fold3_2025-11-03_2026-02-06",
+        "train_rows": 12133,
+        "mae": 0.36612,
+        "rmse": 0.70433,
+        "mape": 0.172,
+        "r2": 0.999,
+        "n": 2275,
+        "directional_accuracy": 0.77001,
+        "persistence_rmse": 0.90401,
+        "skill_score": 0.39297
+      },
+      {
+        "fold": "fold4_2026-02-06_2026-05-12",
+        "train_rows": 14408,
+        "mae": 0.34709,
+        "rmse": 0.6332,
+        "mape": 0.155,
+        "r2": 0.99933,
+        "n": 2275,
+        "directional_accuracy": 0.75912,
+        "persistence_rmse": 0.88336,
+        "skill_score": 0.48618
+      },
+      {
+        "fold": "fold5_2026-05-12_2026-08-14",
+        "train_rows": 16683,
+        "mae": 0.3871,
+        "rmse": 0.8126,
+        "mape": 0.178,
+        "r2": 0.99855,
+        "n": 2276,
+        "directional_accuracy": 0.76801,
+        "persistence_rmse": 1.03689,
+        "skill_score": 0.38583
+      }
+    ],
+    "diagnostics": {
+      "prediction_vs_actual": [
+        {
+          "actual": 218.4916,
+          "predicted": 218.4774
+        },
+        {
+          "actual": 196.8614,
+          "predicted": 196.7735
+        },
+        {
+          "actual": 203.504,
+          "predicted": 203.448
+        },
+        {
+          "actual": 225.5932,
+          "predicted": 225.5699
+        },
+        {
+          "actual": 203.9314,
+          "predicted": 203.832
+        },
+        {
+          "actual": 236.5735,
+          "predicted": 236.6946
+        },
+        {
+          "actual": 223.0086,
+          "predicted": 220.4089
+        },
+        {
+          "actual": 204.5277,
+          "predicted": 204.6188
+        },
+        {
+          "actual": 303.4419,
+          "predicted": 303.6456
+        },
+        {
+          "actual": 200.0508,
+          "predicted": 200.2613
+        },
+        {
+          "actual": 226.3701,
+          "predicted": 225.85
+        },
+        {
+          "actual": 226.3966,
+          "predicted": 226.4981
+        },
+        {
+          "actual": 218.0308,
+          "predicted": 221.7248
+        },
+        {
+          "actual": 266.0906,
+          "predicted": 266.0706
+        },
+        {
+          "actual": 198.0556,
+          "predicted": 198.2791
+        },
+        {
+          "actual": 198.1437,
+          "predicted": 197.8661
+        },
+        {
+          "actual": 246.2504,
+          "predicted": 246.0706
+        },
+        {
+          "actual": 223.0362,
+          "predicted": 222.8975
+        },
+        {
+          "actual": 193.3538,
+          "predicted": 193.7892
+        },
+        {
+          "actual": 200.452,
+          "predicted": 200.8777
+        },
+        {
+          "actual": 250.4652,
+          "predicted": 250.3788
+        },
+        {
+          "actual": 210.9453,
+          "predicted": 210.95
+        },
+        {
+          "actual": 198.9578,
+          "predicted": 199.3656
+        },
+        {
+          "actual": 199.676,
+          "predicted": 199.6496
+        },
+        {
+          "actual": 224.1928,
+          "predicted": 224.3771
+        },
+        {
+          "actual": 198.6748,
+          "predicted": 198.461
+        },
+        {
+          "actual": 226.4774,
+          "predicted": 224.6397
+        },
+        {
+          "actual": 196.2317,
+          "predicted": 196.5074
+        },
+        {
+          "actual": 198.6438,
+          "predicted": 198.522
+        },
+        {
+          "actual": 198.1405,
+          "predicted": 197.8288
+        },
+        {
+          "actual": 247.836,
+          "predicted": 247.9186
+        },
+        {
+          "actual": 193.8241,
+          "predicted": 192.3484
+        },
+        {
+          "actual": 198.5833,
+          "predicted": 198.7457
+        },
+        {
+          "actual": 222.7532,
+          "predicted": 222.8842
+        },
+        {
+          "actual": 197.0392,
+          "predicted": 196.7813
+        },
+        {
+          "actual": 198.1468,
+          "predicted": 197.7352
+        },
+        {
+          "actual": 212.1311,
+          "predicted": 211.4367
+        },
+        {
+          "actual": 197.2257,
+          "predicted": 197.7117
+        },
+        {
+          "actual": 204.7352,
+          "predicted": 204.8477
+        },
+        {
+          "actual": 196.9356,
+          "predicted": 197.3649
+        },
+        {
+          "actual": 193.4266,
+          "predicted": 193.8989
+        },
+        {
+          "actual": 224.9807,
+          "predicted": 225.0092
+        },
+        {
+          "actual": 212.3344,
+          "predicted": 212.8217
+        },
+        {
+          "actual": 225.4878,
+          "predicted": 225.4677
+        },
+        {
+          "actual": 196.4117,
+          "predicted": 196.373
+        },
+        {
+          "actual": 220.8977,
+          "predicted": 220.8356
+        },
+        {
+          "actual": 196.4055,
+          "predicted": 196.1628
+        },
+        {
+          "actual": 191.7709,
+          "predicted": 197.9472
+        },
+        {
+          "actual": 208.0151,
+          "predicted": 207.4974
+        },
+        {
+          "actual": 227.949,
+          "predicted": 228.3294
+        },
+        {
+          "actual": 226.5016,
+          "predicted": 226.5239
+        },
+        {
+          "actual": 220.15,
+          "predicted": 220.1941
+        },
+        {
+          "actual": 221.7266,
+          "predicted": 221.5634
+        },
+        {
+          "actual": 224.771,
+          "predicted": 227.1157
+        },
+        {
+          "actual": 193.017,
+          "predicted": 191.5737
+        },
+        {
+          "actual": 199.8821,
+          "predicted": 199.7934
+        },
+        {
+          "actual": 226.4582,
+          "predicted": 226.3298
+        },
+        {
+          "actual": 247.1339,
+          "predicted": 247.4764
+        },
+        {
+          "actual": 199.3832,
+          "predicted": 198.3347
+        },
+        {
+          "actual": 201.9839,
+          "predicted": 201.9364
+        },
+        {
+          "actual": 197.9646,
+          "predicted": 197.4495
+        },
+        {
+          "actual": 194.6868,
+          "predicted": 194.6174
+        },
+        {
+          "actual": 270.3309,
+          "predicted": 270.7383
+        },
+        {
+          "actual": 195.3155,
+          "predicted": 195.1307
+        },
+        {
+          "actual": 203.6484,
+          "predicted": 207.3065
+        },
+        {
+          "actual": 200.2673,
+          "predicted": 200.2198
+        },
+        {
+          "actual": 209.9951,
+          "predicted": 209.7679
+        },
+        {
+          "actual": 273.6388,
+          "predicted": 274.2486
+        },
+        {
+          "actual": 199.453,
+          "predicted": 199.2347
+        },
+        {
+          "actual": 246.3097,
+          "predicted": 245.8085
+        },
+        {
+          "actual": 202.6727,
+          "predicted": 202.5558
+        },
+        {
+          "actual": 202.375,
+          "predicted": 202.4029
+        },
+        {
+          "actual": 214.4563,
+          "predicted": 206.0608
+        },
+        {
+          "actual": 226.3915,
+          "predicted": 226.3518
+        },
+        {
+          "actual": 281.4563,
+          "predicted": 281.9157
+        },
+        {
+          "actual": 202.714,
+          "predicted": 203.2057
+        },
+        {
+          "actual": 207.0794,
+          "predicted": 207.0256
+        },
+        {
+          "actual": 203.1485,
+          "predicted": 201.2485
+        },
+        {
+          "actual": 198.4006,
+          "predicted": 198.3377
+        },
+        {
+          "actual": 200.4053,
+          "predicted": 200.3946
+        },
+        {
+          "actual": 226.352,
+          "predicted": 226.4699
+        },
+        {
+          "actual": 203.6078,
+          "predicted": 203.5192
+        },
+        {
+          "actual": 207.2505,
+          "predicted": 207.3472
+        },
+        {
+          "actual": 193.444,
+          "predicted": 195.0731
+        },
+        {
+          "actual": 210.238,
+          "predicted": 209.9827
+        },
+        {
+          "actual": 200.2633,
+          "predicted": 200.5721
+        },
+        {
+          "actual": 253.8002,
+          "predicted": 254.4029
+        },
+        {
+          "actual": 210.4911,
+          "predicted": 210.8646
+        },
+        {
+          "actual": 252.467,
+          "predicted": 252.8329
+        },
+        {
+          "actual": 249.6281,
+          "predicted": 248.8742
+        },
+        {
+          "actual": 227.3269,
+          "predicted": 228.5155
+        },
+        {
+          "actual": 200.5422,
+          "predicted": 200.4703
+        },
+        {
+          "actual": 209.9632,
+          "predicted": 209.9309
+        },
+        {
+          "actual": 203.4511,
+          "predicted": 204.1162
+        },
+        {
+          "actual": 209.8702,
+          "predicted": 209.9289
+        },
+        {
+          "actual": 203.5656,
+          "predicted": 203.5112
+        },
+        {
+          "actual": 205.2914,
+          "predicted": 205.2361
+        },
+        {
+          "actual": 199.7186,
+          "predicted": 199.9599
+        },
+        {
+          "actual": 208.0799,
+          "predicted": 207.443
+        },
+        {
+          "actual": 230.0447,
+          "predicted": 230.0444
+        },
+        {
+          "actual": 207.0395,
+          "predicted": 206.0748
+        },
+        {
+          "actual": 250.8674,
+          "predicted": 250.2978
+        },
+        {
+          "actual": 209.0822,
+          "predicted": 208.3611
+        },
+        {
+          "actual": 199.4874,
+          "predicted": 199.5714
+        },
+        {
+          "actual": 187.16,
+          "predicted": 188.4471
+        },
+        {
+          "actual": 205.8769,
+          "predicted": 205.6049
+        },
+        {
+          "actual": 206.5128,
+          "predicted": 206.4797
+        },
+        {
+          "actual": 206.9945,
+          "predicted": 207.2802
+        },
+        {
+          "actual": 199.65,
+          "predicted": 199.4679
+        },
+        {
+          "actual": 208.6632,
+          "predicted": 207.971
+        },
+        {
+          "actual": 206.5085,
+          "predicted": 206.4474
+        },
+        {
+          "actual": 220.9005,
+          "predicted": 217.1745
+        },
+        {
+          "actual": 209.4083,
+          "predicted": 208.8679
+        },
+        {
+          "actual": 222.942,
+          "predicted": 222.5405
+        },
+        {
+          "actual": 199.4238,
+          "predicted": 199.8206
+        },
+        {
+          "actual": 214.6137,
+          "predicted": 214.7422
+        },
+        {
+          "actual": 252.5696,
+          "predicted": 252.9762
+        },
+        {
+          "actual": 209.9489,
+          "predicted": 210.0003
+        },
+        {
+          "actual": 231.4338,
+          "predicted": 231.7187
+        },
+        {
+          "actual": 209.7283,
+          "predicted": 209.5473
+        },
+        {
+          "actual": 213.1313,
+          "predicted": 213.1661
+        },
+        {
+          "actual": 207.9488,
+          "predicted": 207.8181
+        },
+        {
+          "actual": 201.1645,
+          "predicted": 199.857
+        },
+        {
+          "actual": 203.6673,
+          "predicted": 203.721
+        },
+        {
+          "actual": 201.8428,
+          "predicted": 201.6817
+        },
+        {
+          "actual": 210.0326,
+          "predicted": 209.9937
+        },
+        {
+          "actual": 201.5152,
+          "predicted": 201.5757
+        },
+        {
+          "actual": 201.8734,
+          "predicted": 201.853
+        },
+        {
+          "actual": 229.4494,
+          "predicted": 229.514
+        },
+        {
+          "actual": 199.7252,
+          "predicted": 200.382
+        },
+        {
+          "actual": 209.0888,
+          "predicted": 208.123
+        },
+        {
+          "actual": 197.9737,
+          "predicted": 201.3099
+        },
+        {
+          "actual": 204.5851,
+          "predicted": 210.306
+        },
+        {
+          "actual": 202.3103,
+          "predicted": 202.4321
+        },
+        {
+          "actual": 238.3298,
+          "predicted": 236.3321
+        },
+        {
+          "actual": 201.6862,
+          "predicted": 201.4599
+        },
+        {
+          "actual": 202.1798,
+          "predicted": 202.2175
+        },
+        {
+          "actual": 280.6671,
+          "predicted": 280.9269
+        },
+        {
+          "actual": 209.5731,
+          "predicted": 209.638
+        },
+        {
+          "actual": 208.5527,
+          "predicted": 208.5719
+        },
+        {
+          "actual": 280.8967,
+          "predicted": 280.5717
+        },
+        {
+          "actual": 210.5829,
+          "predicted": 210.1626
+        },
+        {
+          "actual": 212.31,
+          "predicted": 212.2168
+        },
+        {
+          "actual": 208.4831,
+          "predicted": 208.3696
+        },
+        {
+          "actual": 213.4109,
+          "predicted": 213.51
+        },
+        {
+          "actual": 248.0061,
+          "predicted": 248.3287
+        },
+        {
+          "actual": 201.4802,
+          "predicted": 201.3649
+        },
+        {
+          "actual": 229.4786,
+          "predicted": 229.3593
+        },
+        {
+          "actual": 203.3125,
+          "predicted": 202.9506
+        },
+        {
+          "actual": 229.7261,
+          "predicted": 229.8745
+        },
+        {
+          "actual": 205.3376,
+          "predicted": 205.4155
+        },
+        {
+          "actual": 213.6673,
+          "predicted": 213.5137
+        },
+        {
+          "actual": 202.161,
+          "predicted": 202.8181
+        },
+        {
+          "actual": 201.5053,
+          "predicted": 201.4874
+        },
+        {
+          "actual": 207.8246,
+          "predicted": 207.86
+        },
+        {
+          "actual": 252.2286,
+          "predicted": 252.5311
+        },
+        {
+          "actual": 211.4192,
+          "predicted": 211.9562
+        },
+        {
+          "actual": 209.746,
+          "predicted": 209.5494
+        },
+        {
+          "actual": 257.2249,
+          "predicted": 257.1317
+        },
+        {
+          "actual": 270.8317,
+          "predicted": 270.6593
+        },
+        {
+          "actual": 211.4901,
+          "predicted": 211.3551
+        },
+        {
+          "actual": 209.0366,
+          "predicted": 209.9613
+        },
+        {
+          "actual": 199.5246,
+          "predicted": 199.48
+        },
+        {
+          "actual": 208.0312,
+          "predicted": 207.6734
+        },
+        {
+          "actual": 213.6914,
+          "predicted": 213.7037
+        },
+        {
+          "actual": 254.6052,
+          "predicted": 254.2321
+        },
+        {
+          "actual": 200.2489,
+          "predicted": 198.7627
+        },
+        {
+          "actual": 202.2397,
+          "predicted": 202.3828
+        },
+        {
+          "actual": 202.2574,
+          "predicted": 202.2447
+        },
+        {
+          "actual": 201.3913,
+          "predicted": 201.0228
+        },
+        {
+          "actual": 200.3216,
+          "predicted": 199.6001
+        },
+        {
+          "actual": 208.9607,
+          "predicted": 209.2056
+        },
+        {
+          "actual": 218.4144,
+          "predicted": 218.757
+        },
+        {
+          "actual": 200.0781,
+          "predicted": 199.6326
+        },
+        {
+          "actual": 200.8687,
+          "predicted": 200.9229
+        },
+        {
+          "actual": 197.1272,
+          "predicted": 207.3473
+        },
+        {
+          "actual": 213.409,
+          "predicted": 213.4924
+        },
+        {
+          "actual": 208.5304,
+          "predicted": 208.4286
+        },
+        {
+          "actual": 206.082,
+          "predicted": 205.3559
+        },
+        {
+          "actual": 229.2202,
+          "predicted": 229.0987
+        },
+        {
+          "actual": 200.9754,
+          "predicted": 200.7852
+        },
+        {
+          "actual": 210.6673,
+          "predicted": 210.723
+        },
+        {
+          "actual": 213.8993,
+          "predicted": 213.8487
+        },
+        {
+          "actual": 201.6475,
+          "predicted": 201.5669
+        },
+        {
+          "actual": 209.4263,
+          "predicted": 208.9114
+        },
+        {
+          "actual": 262.0783,
+          "predicted": 262.0629
+        },
+        {
+          "actual": 209.1468,
+          "predicted": 209.5391
+        },
+        {
+          "actual": 262.3936,
+          "predicted": 262.4197
+        },
+        {
+          "actual": 197.9019,
+          "predicted": 197.6739
+        },
+        {
+          "actual": 214.295,
+          "predicted": 214.3312
+        },
+        {
+          "actual": 262.6572,
+          "predicted": 262.6279
+        },
+        {
+          "actual": 262.9783,
+          "predicted": 262.8079
+        },
+        {
+          "actual": 231.5631,
+          "predicted": 230.9743
+        },
+        {
+          "actual": 276.9839,
+          "predicted": 277.1519
+        },
+        {
+          "actual": 198.5102,
+          "predicted": 198.7073
+        },
+        {
+          "actual": 262.2734,
+          "predicted": 262.5208
+        },
+        {
+          "actual": 279.1393,
+          "predicted": 279.0662
+        },
+        {
+          "actual": 201.1728,
+          "predicted": 201.1704
+        },
+        {
+          "actual": 207.8691,
+          "predicted": 207.1862
+        },
+        {
+          "actual": 226.8389,
+          "predicted": 227.7804
+        },
+        {
+          "actual": 201.9989,
+          "predicted": 201.8697
+        },
+        {
+          "actual": 199.3515,
+          "predicted": 199.3417
+        },
+        {
+          "actual": 206.1806,
+          "predicted": 205.9683
+        },
+        {
+          "actual": 279.8053,
+          "predicted": 279.8559
+        },
+        {
+          "actual": 236.6045,
+          "predicted": 234.5457
+        },
+        {
+          "actual": 226.3348,
+          "predicted": 225.8519
+        },
+        {
+          "actual": 227.3849,
+          "predicted": 227.4477
+        },
+        {
+          "actual": 227.1662,
+          "predicted": 227.2512
+        },
+        {
+          "actual": 215.3412,
+          "predicted": 215.4428
+        },
+        {
+          "actual": 205.0874,
+          "predicted": 204.8467
+        },
+        {
+          "actual": 206.9786,
+          "predicted": 206.9883
+        },
+        {
+          "actual": 205.0152,
+          "predicted": 205.1882
+        },
+        {
+          "actual": 201.7732,
+          "predicted": 201.5986
+        },
+        {
+          "actual": 202.8412,
+          "predicted": 202.8947
+        },
+        {
+          "actual": 208.2196,
+          "predicted": 208.6717
+        },
+        {
+          "actual": 211.1525,
+          "predicted": 210.9807
+        },
+        {
+          "actual": 210.9563,
+          "predicted": 211.3059
+        },
+        {
+          "actual": 207.6255,
+          "predicted": 207.084
+        },
+        {
+          "actual": 210.2493,
+          "predicted": 210.7718
+        },
+        {
+          "actual": 226.9999,
+          "predicted": 226.7838
+        },
+        {
+          "actual": 200.8803,
+          "predicted": 200.9947
+        },
+        {
+          "actual": 216.8033,
+          "predicted": 216.8009
+        },
+        {
+          "actual": 202.9557,
+          "predicted": 202.9439
+        },
+        {
+          "actual": 201.0911,
+          "predicted": 200.8988
+        },
+        {
+          "actual": 210.9776,
+          "predicted": 210.098
+        },
+        {
+          "actual": 211.5872,
+          "predicted": 211.2735
+        },
+        {
+          "actual": 216.8825,
+          "predicted": 216.8559
+        },
+        {
+          "actual": 203.341,
+          "predicted": 203.3883
+        },
+        {
+          "actual": 209.1209,
+          "predicted": 209.1689
+        },
+        {
+          "actual": 201.6713,
+          "predicted": 201.1777
+        },
+        {
+          "actual": 205.6952,
+          "predicted": 205.7239
+        },
+        {
+          "actual": 205.5317,
+          "predicted": 200.4378
+        },
+        {
+          "actual": 210.5459,
+          "predicted": 209.5651
+        },
+        {
+          "actual": 207.9447,
+          "predicted": 207.682
+        },
+        {
+          "actual": 202.9368,
+          "predicted": 202.6178
+        },
+        {
+          "actual": 203.1794,
+          "predicted": 203.3192
+        },
+        {
+          "actual": 197.1072,
+          "predicted": 197.1488
+        },
+        {
+          "actual": 210.3612,
+          "predicted": 211.3764
+        },
+        {
+          "actual": 247.2785,
+          "predicted": 247.2461
+        },
+        {
+          "actual": 232.3798,
+          "predicted": 232.1279
+        },
+        {
+          "actual": 274.8954,
+          "predicted": 274.7163
+        },
+        {
+          "actual": 228.9367,
+          "predicted": 228.9441
+        },
+        {
+          "actual": 218.4119,
+          "predicted": 218.2617
+        },
+        {
+          "actual": 211.7857,
+          "predicted": 211.75
+        },
+        {
+          "actual": 282.6021,
+          "predicted": 282.6231
+        },
+        {
+          "actual": 222.2876,
+          "predicted": 222.7938
+        },
+        {
+          "actual": 206.2518,
+          "predicted": 205.5886
+        },
+        {
+          "actual": 205.9684,
+          "predicted": 206.1021
+        },
+        {
+          "actual": 212.7532,
+          "predicted": 212.6566
+        },
+        {
+          "actual": 207.2076,
+          "predicted": 208.0819
+        },
+        {
+          "actual": 219.0282,
+          "predicted": 219.0807
+        },
+        {
+          "actual": 205.0837,
+          "predicted": 205.9196
+        },
+        {
+          "actual": 243.7633,
+          "predicted": 243.8366
+        },
+        {
+          "actual": 214.6161,
+          "predicted": 215.457
+        },
+        {
+          "actual": 233.8008,
+          "predicted": 234.5546
+        },
+        {
+          "actual": 204.7122,
+          "predicted": 205.2236
+        },
+        {
+          "actual": 227.8924,
+          "predicted": 228.111
+        },
+        {
+          "actual": 203.7912,
+          "predicted": 204.9282
+        },
+        {
+          "actual": 204.6578,
+          "predicted": 204.0966
+        },
+        {
+          "actual": 205.2274,
+          "predicted": 205.0093
+        },
+        {
+          "actual": 225.7821,
+          "predicted": 225.8332
+        },
+        {
+          "actual": 219.6372,
+          "predicted": 219.6439
+        },
+        {
+          "actual": 219.6443,
+          "predicted": 219.5498
+        },
+        {
+          "actual": 205.8724,
+          "predicted": 205.4559
+        },
+        {
+          "actual": 199.0673,
+          "predicted": 199.1088
+        },
+        {
+          "actual": 279.4745,
+          "predicted": 279.386
+        },
+        {
+          "actual": 201.8292,
+          "predicted": 201.8028
+        },
+        {
+          "actual": 205.6298,
+          "predicted": 205.4393
+        },
+        {
+          "actual": 204.2703,
+          "predicted": 204.5185
+        },
+        {
+          "actual": 201.4463,
+          "predicted": 201.4065
+        },
+        {
+          "actual": 206.4433,
+          "predicted": 206.3699
+        },
+        {
+          "actual": 279.5718,
+          "predicted": 279.696
+        },
+        {
+          "actual": 201.3423,
+          "predicted": 201.2249
+        },
+        {
+          "actual": 205.7584,
+          "predicted": 205.8564
+        },
+        {
+          "actual": 199.662,
+          "predicted": 200.1256
+        },
+        {
+          "actual": 205.0366,
+          "predicted": 204.7234
+        },
+        {
+          "actual": 201.797,
+          "predicted": 201.4432
+        },
+        {
+          "actual": 208.3681,
+          "predicted": 208.4909
+        },
+        {
+          "actual": 199.1907,
+          "predicted": 199.8507
+        },
+        {
+          "actual": 237.7734,
+          "predicted": 238.0425
+        },
+        {
+          "actual": 285.6767,
+          "predicted": 285.417
+        },
+        {
+          "actual": 217.3593,
+          "predicted": 217.5098
+        },
+        {
+          "actual": 207.2237,
+          "predicted": 207.4581
+        },
+        {
+          "actual": 207.8265,
+          "predicted": 208.1492
+        },
+        {
+          "actual": 201.741,
+          "predicted": 201.3248
+        },
+        {
+          "actual": 215.179,
+          "predicted": 215.1244
+        },
+        {
+          "actual": 223.9875,
+          "predicted": 224.1584
+        },
+        {
+          "actual": 198.548,
+          "predicted": 198.9176
+        },
+        {
+          "actual": 288.8167,
+          "predicted": 288.9149
+        },
+        {
+          "actual": 201.8069,
+          "predicted": 201.5515
+        },
+        {
+          "actual": 288.9679,
+          "predicted": 288.881
+        },
+        {
+          "actual": 215.0501,
+          "predicted": 215.113
+        },
+        {
+          "actual": 216.295,
+          "predicted": 215.9943
+        },
+        {
+          "actual": 225.2251,
+          "predicted": 227.3311
+        },
+        {
+          "actual": 220.3648,
+          "predicted": 222.9986
+        },
+        {
+          "actual": 207.8177,
+          "predicted": 207.8671
+        },
+        {
+          "actual": 206.2392,
+          "predicted": 206.1278
+        },
+        {
+          "actual": 202.3902,
+          "predicted": 202.5259
+        },
+        {
+          "actual": 211.7351,
+          "predicted": 211.7713
+        },
+        {
+          "actual": 238.1453,
+          "predicted": 237.4905
+        },
+        {
+          "actual": 207.1557,
+          "predicted": 207.1354
+        },
+        {
+          "actual": 229.6989,
+          "predicted": 229.4605
+        },
+        {
+          "actual": 205.0179,
+          "predicted": 204.9455
+        },
+        {
+          "actual": 229.5502,
+          "predicted": 229.2848
+        },
+        {
+          "actual": 218.6516,
+          "predicted": 218.0322
+        },
+        {
+          "actual": 200.9757,
+          "predicted": 201.2173
+        },
+        {
+          "actual": 207.0217,
+          "predicted": 207.067
+        },
+        {
+          "actual": 227.5182,
+          "predicted": 227.8034
+        },
+        {
+          "actual": 230.0817,
+          "predicted": 229.9315
+        },
+        {
+          "actual": 206.6941,
+          "predicted": 206.7143
+        },
+        {
+          "actual": 230.4885,
+          "predicted": 230.4301
+        },
+        {
+          "actual": 230.0943,
+          "predicted": 230.1344
+        },
+        {
+          "actual": 219.0328,
+          "predicted": 218.7095
+        },
+        {
+          "actual": 221.4927,
+          "predicted": 221.4097
+        },
+        {
+          "actual": 201.8711,
+          "predicted": 202.0502
+        },
+        {
+          "actual": 199.9641,
+          "predicted": 199.9953
+        },
+        {
+          "actual": 212.4428,
+          "predicted": 212.3849
+        },
+        {
+          "actual": 212.6093,
+          "predicted": 212.6131
+        },
+        {
+          "actual": 207.2375,
+          "predicted": 207.4244
+        },
+        {
+          "actual": 302.1971,
+          "predicted": 302.1498
+        },
+        {
+          "actual": 229.0637,
+          "predicted": 228.9881
+        },
+        {
+          "actual": 210.5714,
+          "predicted": 210.8109
+        },
+        {
+          "actual": 215.9063,
+          "predicted": 216.167
+        },
+        {
+          "actual": 209.1618,
+          "predicted": 208.8334
+        },
+        {
+          "actual": 207.2308,
+          "predicted": 207.2591
+        },
+        {
+          "actual": 213.3847,
+          "predicted": 213.4564
+        },
+        {
+          "actual": 229.1165,
+          "predicted": 229.2452
+        },
+        {
+          "actual": 214.8552,
+          "predicted": 214.5998
+        },
+        {
+          "actual": 199.4869,
+          "predicted": 199.6567
+        },
+        {
+          "actual": 214.8804,
+          "predicted": 214.4411
+        },
+        {
+          "actual": 240.5427,
+          "predicted": 241.9018
+        },
+        {
+          "actual": 208.8265,
+          "predicted": 208.7544
+        },
+        {
+          "actual": 217.6167,
+          "predicted": 217.7006
+        },
+        {
+          "actual": 239.3161,
+          "predicted": 240.6294
+        },
+        {
+          "actual": 198.7766,
+          "predicted": 198.4453
+        },
+        {
+          "actual": 199.789,
+          "predicted": 198.9745
+        },
+        {
+          "actual": 217.7799,
+          "predicted": 217.659
+        },
+        {
+          "actual": 208.5447,
+          "predicted": 208.504
+        },
+        {
+          "actual": 211.465,
+          "predicted": 212.5177
+        },
+        {
+          "actual": 204.3592,
+          "predicted": 204.2619
+        },
+        {
+          "actual": 215.9294,
+          "predicted": 216.028
+        },
+        {
+          "actual": 217.15,
+          "predicted": 217.0497
+        },
+        {
+          "actual": 206.8187,
+          "predicted": 207.3197
+        },
+        {
+          "actual": 202.8906,
+          "predicted": 202.7526
+        },
+        {
+          "actual": 208.9164,
+          "predicted": 209.2557
+        },
+        {
+          "actual": 208.8929,
+          "predicted": 209.513
+        },
+        {
+          "actual": 212.8468,
+          "predicted": 212.6951
+        },
+        {
+          "actual": 200.8319,
+          "predicted": 201.6406
+        },
+        {
+          "actual": 209.8461,
+          "predicted": 209.5877
+        },
+        {
+          "actual": 208.0963,
+          "predicted": 208.2192
+        },
+        {
+          "actual": 204.8666,
+          "predicted": 204.81
+        },
+        {
+          "actual": 200.7203,
+          "predicted": 200.4457
+        },
+        {
+          "actual": 205.8546,
+          "predicted": 205.9238
+        },
+        {
+          "actual": 226.6597,
+          "predicted": 226.4078
+        },
+        {
+          "actual": 208.5289,
+          "predicted": 208.8617
+        },
+        {
+          "actual": 201.4077,
+          "predicted": 201.86
+        },
+        {
+          "actual": 234.0289,
+          "predicted": 234.2119
+        },
+        {
+          "actual": 190.3776,
+          "predicted": 191.5235
+        },
+        {
+          "actual": 306.5823,
+          "predicted": 306.0479
+        },
+        {
+          "actual": 205.2623,
+          "predicted": 205.209
+        },
+        {
+          "actual": 201.7543,
+          "predicted": 201.8044
+        },
+        {
+          "actual": 218.9675,
+          "predicted": 218.4684
+        },
+        {
+          "actual": 192.0181,
+          "predicted": 194.7099
+        },
+        {
+          "actual": 201.8415,
+          "predicted": 201.8811
+        },
+        {
+          "actual": 226.2282,
+          "predicted": 223.4596
+        },
+        {
+          "actual": 226.2415,
+          "predicted": 226.1966
+        },
+        {
+          "actual": 209.1844,
+          "predicted": 208.9905
+        },
+        {
+          "actual": 202.674,
+          "predicted": 202.6817
+        },
+        {
+          "actual": 305.6422,
+          "predicted": 305.5786
+        },
+        {
+          "actual": 224.2517,
+          "predicted": 224.0605
+        },
+        {
+          "actual": 200.8609,
+          "predicted": 200.6822
+        },
+        {
+          "actual": 209.6977,
+          "predicted": 209.0738
+        },
+        {
+          "actual": 200.9216,
+          "predicted": 201.7615
+        },
+        {
+          "actual": 235.9319,
+          "predicted": 235.824
+        },
+        {
+          "actual": 204.0561,
+          "predicted": 204.0495
+        },
+        {
+          "actual": 200.3784,
+          "predicted": 200.202
+        },
+        {
+          "actual": 201.0285,
+          "predicted": 201.8068
+        },
+        {
+          "actual": 204.8322,
+          "predicted": 204.8138
+        },
+        {
+          "actual": 200.3614,
+          "predicted": 200.4587
+        },
+        {
+          "actual": 205.6849,
+          "predicted": 205.8733
+        },
+        {
+          "actual": 230.7977,
+          "predicted": 230.521
+        },
+        {
+          "actual": 229.2223,
+          "predicted": 229.0057
+        },
+        {
+          "actual": 200.0682,
+          "predicted": 200.3008
+        },
+        {
+          "actual": 199.9161,
+          "predicted": 199.8591
+        },
+        {
+          "actual": 223.5759,
+          "predicted": 224.4487
+        },
+        {
+          "actual": 199.971,
+          "predicted": 199.8252
+        },
+        {
+          "actual": 202.1902,
+          "predicted": 202.1983
+        },
+        {
+          "actual": 202.0973,
+          "predicted": 202.0723
+        },
+        {
+          "actual": 228.551,
+          "predicted": 228.6649
+        },
+        {
+          "actual": 199.9368,
+          "predicted": 199.8228
+        },
+        {
+          "actual": 199.5042,
+          "predicted": 199.3511
+        },
+        {
+          "actual": 204.5527,
+          "predicted": 204.6992
+        },
+        {
+          "actual": 200.1538,
+          "predicted": 200.0869
+        },
+        {
+          "actual": 312.8971,
+          "predicted": 312.7892
+        },
+        {
+          "actual": 201.3786,
+          "predicted": 201.192
+        },
+        {
+          "actual": 218.8403,
+          "predicted": 218.373
+        },
+        {
+          "actual": 201.511,
+          "predicted": 201.0476
+        },
+        {
+          "actual": 199.6972,
+          "predicted": 200.0369
+        },
+        {
+          "actual": 218.3061,
+          "predicted": 218.2788
+        },
+        {
+          "actual": 261.3482,
+          "predicted": 261.3726
+        },
+        {
+          "actual": 200.8844,
+          "predicted": 200.789
+        },
+        {
+          "actual": 199.284,
+          "predicted": 199.4647
+        },
+        {
+          "actual": 199.7835,
+          "predicted": 199.2187
+        },
+        {
+          "actual": 199.197,
+          "predicted": 199.1102
+        },
+        {
+          "actual": 230.4795,
+          "predicted": 230.3438
+        },
+        {
+          "actual": 215.1456,
+          "predicted": 213.5811
+        },
+        {
+          "actual": 232.2789,
+          "predicted": 231.0775
+        },
+        {
+          "actual": 309.0544,
+          "predicted": 309.1472
+        },
+        {
+          "actual": 198.4448,
+          "predicted": 198.5008
+        },
+        {
+          "actual": 203.0224,
+          "predicted": 202.5239
+        },
+        {
+          "actual": 262.7092,
+          "predicted": 262.8413
+        },
+        {
+          "actual": 229.3835,
+          "predicted": 229.3765
+        },
+        {
+          "actual": 304.5697,
+          "predicted": 307.658
+        },
+        {
+          "actual": 198.7721,
+          "predicted": 198.8625
+        },
+        {
+          "actual": 206.3864,
+          "predicted": 205.3798
+        },
+        {
+          "actual": 196.6406,
+          "predicted": 196.8348
+        },
+        {
+          "actual": 198.6763,
+          "predicted": 198.454
+        },
+        {
+          "actual": 219.9755,
+          "predicted": 217.0339
+        },
+        {
+          "actual": 227.8884,
+          "predicted": 227.8237
+        },
+        {
+          "actual": 197.9732,
+          "predicted": 198.1326
+        },
+        {
+          "actual": 220.9155,
+          "predicted": 220.586
+        },
+        {
+          "actual": 196.803,
+          "predicted": 197.0053
+        },
+        {
+          "actual": 196.5154,
+          "predicted": 196.5783
+        },
+        {
+          "actual": 201.0475,
+          "predicted": 201.338
+        },
+        {
+          "actual": 200.1785,
+          "predicted": 200.7918
+        },
+        {
+          "actual": 264.4906,
+          "predicted": 264.6782
+        },
+        {
+          "actual": 226.5544,
+          "predicted": 226.6327
+        },
+        {
+          "actual": 200.4237,
+          "predicted": 200.5924
+        },
+        {
+          "actual": 217.9048,
+          "predicted": 217.9474
+        },
+        {
+          "actual": 196.1806,
+          "predicted": 196.346
+        },
+        {
+          "actual": 200.5258,
+          "predicted": 200.4236
+        },
+        {
+          "actual": 198.5036,
+          "predicted": 198.4008
+        },
+        {
+          "actual": 213.974,
+          "predicted": 212.1837
+        },
+        {
+          "actual": 198.5771,
+          "predicted": 198.6311
+        },
+        {
+          "actual": 197.146,
+          "predicted": 196.9104
+        },
+        {
+          "actual": 225.5628,
+          "predicted": 224.7577
+        },
+        {
+          "actual": 215.6873,
+          "predicted": 214.5629
+        },
+        {
+          "actual": 195.8961,
+          "predicted": 195.4914
+        },
+        {
+          "actual": 217.7315,
+          "predicted": 216.9306
+        },
+        {
+          "actual": 266.3648,
+          "predicted": 266.8393
+        },
+        {
+          "actual": 199.5209,
+          "predicted": 199.6132
+        },
+        {
+          "actual": 197.107,
+          "predicted": 197.1234
+        },
+        {
+          "actual": 220.5882,
+          "predicted": 221.0418
+        },
+        {
+          "actual": 197.3225,
+          "predicted": 196.9879
+        },
+        {
+          "actual": 221.1661,
+          "predicted": 220.6929
+        },
+        {
+          "actual": 272.2346,
+          "predicted": 270.9299
+        },
+        {
+          "actual": 207.3405,
+          "predicted": 207.3664
+        },
+        {
+          "actual": 199.5812,
+          "predicted": 199.7374
+        },
+        {
+          "actual": 194.9505,
+          "predicted": 194.9488
+        },
+        {
+          "actual": 201.1965,
+          "predicted": 201.2572
+        },
+        {
+          "actual": 197.5638,
+          "predicted": 197.534
+        },
+        {
+          "actual": 202.0666,
+          "predicted": 202.0001
+        },
+        {
+          "actual": 197.7158,
+          "predicted": 197.7434
+        },
+        {
+          "actual": 246.077,
+          "predicted": 246.1318
+        },
+        {
+          "actual": 195.6717,
+          "predicted": 196.8821
+        },
+        {
+          "actual": 201.3045,
+          "predicted": 202.3413
+        },
+        {
+          "actual": 221.1542,
+          "predicted": 221.4382
+        },
+        {
+          "actual": 197.6765,
+          "predicted": 197.7521
+        },
+        {
+          "actual": 201.9962,
+          "predicted": 202.1092
+        },
+        {
+          "actual": 265.3027,
+          "predicted": 265.3113
+        },
+        {
+          "actual": 199.2692,
+          "predicted": 199.2271
+        },
+        {
+          "actual": 214.9622,
+          "predicted": 214.8496
+        },
+        {
+          "actual": 220.2236,
+          "predicted": 220.219
+        },
+        {
+          "actual": 225.8989,
+          "predicted": 225.9087
+        },
+        {
+          "actual": 200.7393,
+          "predicted": 200.743
+        },
+        {
+          "actual": 200.3322,
+          "predicted": 200.2857
+        },
+        {
+          "actual": 199.5504,
+          "predicted": 200.6017
+        },
+        {
+          "actual": 270.5222,
+          "predicted": 269.3423
+        },
+        {
+          "actual": 269.0363,
+          "predicted": 261.1519
+        },
+        {
+          "actual": 200.2154,
+          "predicted": 200.3674
+        },
+        {
+          "actual": 221.6528,
+          "predicted": 221.9025
+        },
+        {
+          "actual": 211.4902,
+          "predicted": 212.2803
+        },
+        {
+          "actual": 200.4262,
+          "predicted": 200.383
+        },
+        {
+          "actual": 201.9904,
+          "predicted": 202.0311
+        },
+        {
+          "actual": 220.5529,
+          "predicted": 220.5304
+        },
+        {
+          "actual": 201.4782,
+          "predicted": 201.3746
+        },
+        {
+          "actual": 261.9175,
+          "predicted": 262.9951
+        },
+        {
+          "actual": 226.1343,
+          "predicted": 224.4223
+        },
+        {
+          "actual": 227.1567,
+          "predicted": 226.8631
+        },
+        {
+          "actual": 206.5838,
+          "predicted": 206.3187
+        },
+        {
+          "actual": 206.3815,
+          "predicted": 206.2433
+        },
+        {
+          "actual": 204.6396,
+          "predicted": 203.1817
+        },
+        {
+          "actual": 196.2708,
+          "predicted": 195.8071
+        },
+        {
+          "actual": 208.0539,
+          "predicted": 207.9012
+        },
+        {
+          "actual": 199.6659,
+          "predicted": 199.6884
+        },
+        {
+          "actual": 196.3718,
+          "predicted": 196.3503
+        },
+        {
+          "actual": 197.5927,
+          "predicted": 198.6047
+        },
+        {
+          "actual": 263.0169,
+          "predicted": 262.9448
+        },
+        {
+          "actual": 199.5443,
+          "predicted": 199.4679
+        },
+        {
+          "actual": 254.1557,
+          "predicted": 253.9041
+        },
+        {
+          "actual": 254.3183,
+          "predicted": 254.1686
+        },
+        {
+          "actual": 258.3005,
+          "predicted": 259.1699
+        },
+        {
+          "actual": 223.0648,
+          "predicted": 223.1121
+        },
+        {
+          "actual": 199.2286,
+          "predicted": 199.2193
+        },
+        {
+          "actual": 200.6872,
+          "predicted": 200.4756
+        },
+        {
+          "actual": 232.8459,
+          "predicted": 233.5785
+        },
+        {
+          "actual": 217.4584,
+          "predicted": 217.4802
+        },
+        {
+          "actual": 263.8347,
+          "predicted": 264.1021
+        },
+        {
+          "actual": 209.282,
+          "predicted": 210.0697
+        },
+        {
+          "actual": 253.6036,
+          "predicted": 254.0329
+        },
+        {
+          "actual": 209.8087,
+          "predicted": 211.2599
+        },
+        {
+          "actual": 201.4687,
+          "predicted": 201.4701
+        },
+        {
+          "actual": 264.986,
+          "predicted": 265.1037
+        },
+        {
+          "actual": 200.0334,
+          "predicted": 200.073
+        },
+        {
+          "actual": 201.349,
+          "predicted": 201.3709
+        },
+        {
+          "actual": 204.6668,
+          "predicted": 205.2801
+        },
+        {
+          "actual": 251.1392,
+          "predicted": 250.0209
+        },
+        {
+          "actual": 199.6976,
+          "predicted": 199.6869
+        },
+        {
+          "actual": 200.8158,
+          "predicted": 201.1794
+        },
+        {
+          "actual": 200.6053,
+          "predicted": 200.5964
+        },
+        {
+          "actual": 216.0026,
+          "predicted": 215.5322
+        },
+        {
+          "actual": 202.338,
+          "predicted": 202.1307
+        },
+        {
+          "actual": 251.8848,
+          "predicted": 252.1638
+        },
+        {
+          "actual": 201.8911,
+          "predicted": 201.9746
+        },
+        {
+          "actual": 201.616,
+          "predicted": 202.5376
+        },
+        {
+          "actual": 257.4279,
+          "predicted": 256.0126
+        },
+        {
+          "actual": 214.0515,
+          "predicted": 214.0168
+        },
+        {
+          "actual": 202.4422,
+          "predicted": 202.2379
+        }
+      ],
+      "residuals": [
+        {
+          "t": 1745798400,
+          "residual": -0.0142
+        },
+        {
+          "t": 1745798400,
+          "residual": -0.0879
+        },
+        {
+          "t": 1745884800,
+          "residual": -0.056
+        },
+        {
+          "t": 1745971200,
+          "residual": -0.0233
+        },
+        {
+          "t": 1746057600,
+          "residual": -0.0994
+        },
+        {
+          "t": 1746144000,
+          "residual": 0.1211
+        },
+        {
+          "t": 1746230400,
+          "residual": -2.5997
+        },
+        {
+          "t": 1746316800,
+          "residual": 0.0911
+        },
+        {
+          "t": 1746403200,
+          "residual": 0.2037
+        },
+        {
+          "t": 1746489600,
+          "residual": 0.2105
+        },
+        {
+          "t": 1746576000,
+          "residual": -0.5201
+        },
+        {
+          "t": 1746662400,
+          "residual": 0.1015
+        },
+        {
+          "t": 1746748800,
+          "residual": 3.694
+        },
+        {
+          "t": 1746748800,
+          "residual": -0.02
+        },
+        {
+          "t": 1746835200,
+          "residual": 0.2235
+        },
+        {
+          "t": 1746921600,
+          "residual": -0.2776
+        },
+        {
+          "t": 1747008000,
+          "residual": -0.1798
+        },
+        {
+          "t": 1747094400,
+          "residual": -0.1387
+        },
+        {
+          "t": 1747180800,
+          "residual": 0.4354
+        },
+        {
+          "t": 1747267200,
+          "residual": 0.4257
+        },
+        {
+          "t": 1747353600,
+          "residual": -0.0864
+        },
+        {
+          "t": 1747440000,
+          "residual": 0.0047
+        },
+        {
+          "t": 1747526400,
+          "residual": 0.4078
+        },
+        {
+          "t": 1747612800,
+          "residual": -0.0264
+        },
+        {
+          "t": 1747699200,
+          "residual": 0.1843
+        },
+        {
+          "t": 1747699200,
+          "residual": -0.2138
+        },
+        {
+          "t": 1747785600,
+          "residual": -1.8377
+        },
+        {
+          "t": 1747872000,
+          "residual": 0.2757
+        },
+        {
+          "t": 1747958400,
+          "residual": -0.1218
+        },
+        {
+          "t": 1748044800,
+          "residual": -0.3117
+        },
+        {
+          "t": 1748131200,
+          "residual": 0.0826
+        },
+        {
+          "t": 1748217600,
+          "residual": -1.4757
+        },
+        {
+          "t": 1748304000,
+          "residual": 0.1624
+        },
+        {
+          "t": 1748390400,
+          "residual": 0.131
+        },
+        {
+          "t": 1748476800,
+          "residual": -0.2579
+        },
+        {
+          "t": 1748563200,
+          "residual": -0.4116
+        },
+        {
+          "t": 1748649600,
+          "residual": -0.6944
+        },
+        {
+          "t": 1748649600,
+          "residual": 0.486
+        },
+        {
+          "t": 1748736000,
+          "residual": 0.1125
+        },
+        {
+          "t": 1748822400,
+          "residual": 0.4293
+        },
+        {
+          "t": 1748908800,
+          "residual": 0.4723
+        },
+        {
+          "t": 1748995200,
+          "residual": 0.0285
+        },
+        {
+          "t": 1749081600,
+          "residual": 0.4873
+        },
+        {
+          "t": 1749168000,
+          "residual": -0.0201
+        },
+        {
+          "t": 1749254400,
+          "residual": -0.0387
+        },
+        {
+          "t": 1749340800,
+          "residual": -0.0621
+        },
+        {
+          "t": 1749427200,
+          "residual": -0.2427
+        },
+        {
+          "t": 1749513600,
+          "residual": 6.1763
+        },
+        {
+          "t": 1749600000,
+          "residual": -0.5177
+        },
+        {
+          "t": 1749600000,
+          "residual": 0.3804
+        },
+        {
+          "t": 1749686400,
+          "residual": 0.0223
+        },
+        {
+          "t": 1749772800,
+          "residual": 0.0441
+        },
+        {
+          "t": 1749859200,
+          "residual": -0.1632
+        },
+        {
+          "t": 1749945600,
+          "residual": 2.3447
+        },
+        {
+          "t": 1750032000,
+          "residual": -1.4433
+        },
+        {
+          "t": 1750118400,
+          "residual": -0.0887
+        },
+        {
+          "t": 1750204800,
+          "residual": -0.1284
+        },
+        {
+          "t": 1750291200,
+          "residual": 0.3425
+        },
+        {
+          "t": 1750377600,
+          "residual": -1.0485
+        },
+        {
+          "t": 1750464000,
+          "residual": -0.0475
+        },
+        {
+          "t": 1750550400,
+          "residual": -0.5151
+        },
+        {
+          "t": 1750550400,
+          "residual": -0.0694
+        },
+        {
+          "t": 1750636800,
+          "residual": 0.4074
+        },
+        {
+          "t": 1750723200,
+          "residual": -0.1848
+        },
+        {
+          "t": 1750809600,
+          "residual": 3.6581
+        },
+        {
+          "t": 1750896000,
+          "residual": -0.0475
+        },
+        {
+          "t": 1750982400,
+          "residual": -0.2272
+        },
+        {
+          "t": 1751068800,
+          "residual": 0.6098
+        },
+        {
+          "t": 1751155200,
+          "residual": -0.2183
+        },
+        {
+          "t": 1751241600,
+          "residual": -0.5012
+        },
+        {
+          "t": 1751328000,
+          "residual": -0.1169
+        },
+        {
+          "t": 1751414400,
+          "residual": 0.0279
+        },
+        {
+          "t": 1751500800,
+          "residual": -8.3955
+        },
+        {
+          "t": 1751500800,
+          "residual": -0.0397
+        },
+        {
+          "t": 1751587200,
+          "residual": 0.4594
+        },
+        {
+          "t": 1751673600,
+          "residual": 0.4917
+        },
+        {
+          "t": 1751760000,
+          "residual": -0.0538
+        },
+        {
+          "t": 1751846400,
+          "residual": -1.9
+        },
+        {
+          "t": 1751932800,
+          "residual": -0.0629
+        },
+        {
+          "t": 1752019200,
+          "residual": -0.0107
+        },
+        {
+          "t": 1752105600,
+          "residual": 0.1179
+        },
+        {
+          "t": 1752192000,
+          "residual": -0.0886
+        },
+        {
+          "t": 1752278400,
+          "residual": 0.0967
+        },
+        {
+          "t": 1752364800,
+          "residual": 1.6291
+        },
+        {
+          "t": 1752451200,
+          "residual": -0.2553
+        },
+        {
+          "t": 1752451200,
+          "residual": 0.3088
+        },
+        {
+          "t": 1752537600,
+          "residual": 0.6027
+        },
+        {
+          "t": 1752624000,
+          "residual": 0.3735
+        },
+        {
+          "t": 1752710400,
+          "residual": 0.3659
+        },
+        {
+          "t": 1752796800,
+          "residual": -0.7539
+        },
+        {
+          "t": 1752883200,
+          "residual": 1.1886
+        },
+        {
+          "t": 1752969600,
+          "residual": -0.0719
+        },
+        {
+          "t": 1753056000,
+          "residual": -0.0323
+        },
+        {
+          "t": 1753142400,
+          "residual": 0.6651
+        },
+        {
+          "t": 1753228800,
+          "residual": 0.0587
+        },
+        {
+          "t": 1753315200,
+          "residual": -0.0544
+        },
+        {
+          "t": 1753401600,
+          "residual": -0.0553
+        },
+        {
+          "t": 1753401600,
+          "residual": 0.2413
+        },
+        {
+          "t": 1753488000,
+          "residual": -0.6369
+        },
+        {
+          "t": 1753574400,
+          "residual": -0.0003
+        },
+        {
+          "t": 1753660800,
+          "residual": -0.9647
+        },
+        {
+          "t": 1753747200,
+          "residual": -0.5696
+        },
+        {
+          "t": 1753833600,
+          "residual": -0.7211
+        },
+        {
+          "t": 1753920000,
+          "residual": 0.084
+        },
+        {
+          "t": 1754006400,
+          "residual": 1.2871
+        },
+        {
+          "t": 1754092800,
+          "residual": -0.272
+        },
+        {
+          "t": 1754179200,
+          "residual": -0.0331
+        },
+        {
+          "t": 1754265600,
+          "residual": 0.2857
+        },
+        {
+          "t": 1754352000,
+          "residual": -0.1821
+        },
+        {
+          "t": 1754352000,
+          "residual": -0.6922
+        },
+        {
+          "t": 1754438400,
+          "residual": -0.0611
+        },
+        {
+          "t": 1754524800,
+          "residual": -3.726
+        },
+        {
+          "t": 1754611200,
+          "residual": -0.5404
+        },
+        {
+          "t": 1754697600,
+          "residual": -0.4015
+        },
+        {
+          "t": 1754784000,
+          "residual": 0.3968
+        },
+        {
+          "t": 1754870400,
+          "residual": 0.1285
+        },
+        {
+          "t": 1754956800,
+          "residual": 0.4066
+        },
+        {
+          "t": 1755043200,
+          "residual": 0.0514
+        },
+        {
+          "t": 1755129600,
+          "residual": 0.2849
+        },
+        {
+          "t": 1755216000,
+          "residual": -0.181
+        },
+        {
+          "t": 1755302400,
+          "residual": 0.0348
+        },
+        {
+          "t": 1755302400,
+          "residual": -0.1307
+        },
+        {
+          "t": 1755388800,
+          "residual": -1.3075
+        },
+        {
+          "t": 1755475200,
+          "residual": 0.0537
+        },
+        {
+          "t": 1755561600,
+          "residual": -0.1611
+        },
+        {
+          "t": 1755648000,
+          "residual": -0.0389
+        },
+        {
+          "t": 1755734400,
+          "residual": 0.0605
+        },
+        {
+          "t": 1755820800,
+          "residual": -0.0204
+        },
+        {
+          "t": 1755907200,
+          "residual": 0.0646
+        },
+        {
+          "t": 1755993600,
+          "residual": 0.6568
+        },
+        {
+          "t": 1756080000,
+          "residual": -0.9658
+        },
+        {
+          "t": 1756166400,
+          "residual": 3.3362
+        },
+        {
+          "t": 1756252800,
+          "residual": 5.7209
+        },
+        {
+          "t": 1756252800,
+          "residual": 0.1218
+        },
+        {
+          "t": 1756339200,
+          "residual": -1.9977
+        },
+        {
+          "t": 1756425600,
+          "residual": -0.2263
+        },
+        {
+          "t": 1756512000,
+          "residual": 0.0377
+        },
+        {
+          "t": 1756598400,
+          "residual": 0.2598
+        },
+        {
+          "t": 1756684800,
+          "residual": 0.0649
+        },
+        {
+          "t": 1756771200,
+          "residual": 0.0192
+        },
+        {
+          "t": 1756857600,
+          "residual": -0.325
+        },
+        {
+          "t": 1756944000,
+          "residual": -0.4203
+        },
+        {
+          "t": 1757030400,
+          "residual": -0.0932
+        },
+        {
+          "t": 1757116800,
+          "residual": -0.1135
+        },
+        {
+          "t": 1757203200,
+          "residual": 0.0991
+        },
+        {
+          "t": 1757203200,
+          "residual": 0.3226
+        },
+        {
+          "t": 1757289600,
+          "residual": -0.1153
+        },
+        {
+          "t": 1757376000,
+          "residual": -0.1193
+        },
+        {
+          "t": 1757462400,
+          "residual": -0.3619
+        },
+        {
+          "t": 1757548800,
+          "residual": 0.1484
+        },
+        {
+          "t": 1757635200,
+          "residual": 0.0779
+        },
+        {
+          "t": 1757721600,
+          "residual": -0.1536
+        },
+        {
+          "t": 1757808000,
+          "residual": 0.6571
+        },
+        {
+          "t": 1757894400,
+          "residual": -0.0179
+        },
+        {
+          "t": 1757980800,
+          "residual": 0.0354
+        },
+        {
+          "t": 1758067200,
+          "residual": 0.3025
+        },
+        {
+          "t": 1758153600,
+          "residual": 0.537
+        },
+        {
+          "t": 1758153600,
+          "residual": -0.1966
+        },
+        {
+          "t": 1758240000,
+          "residual": -0.0932
+        },
+        {
+          "t": 1758326400,
+          "residual": -0.1724
+        },
+        {
+          "t": 1758412800,
+          "residual": -0.135
+        },
+        {
+          "t": 1758499200,
+          "residual": 0.9247
+        },
+        {
+          "t": 1758585600,
+          "residual": -0.0446
+        },
+        {
+          "t": 1758672000,
+          "residual": -0.3578
+        },
+        {
+          "t": 1758758400,
+          "residual": 0.0123
+        },
+        {
+          "t": 1758844800,
+          "residual": -0.3731
+        },
+        {
+          "t": 1758931200,
+          "residual": -1.4862
+        },
+        {
+          "t": 1759017600,
+          "residual": 0.1431
+        },
+        {
+          "t": 1759104000,
+          "residual": -0.0127
+        },
+        {
+          "t": 1759104000,
+          "residual": -0.3685
+        },
+        {
+          "t": 1759190400,
+          "residual": -0.7215
+        },
+        {
+          "t": 1759276800,
+          "residual": 0.2449
+        },
+        {
+          "t": 1759363200,
+          "residual": 0.3426
+        },
+        {
+          "t": 1759449600,
+          "residual": -0.4455
+        },
+        {
+          "t": 1759536000,
+          "residual": 0.0542
+        },
+        {
+          "t": 1759622400,
+          "residual": 10.2201
+        },
+        {
+          "t": 1759708800,
+          "residual": 0.0834
+        },
+        {
+          "t": 1759795200,
+          "residual": -0.1018
+        },
+        {
+          "t": 1759881600,
+          "residual": -0.7261
+        },
+        {
+          "t": 1759968000,
+          "residual": -0.1215
+        },
+        {
+          "t": 1760054400,
+          "residual": -0.1902
+        },
+        {
+          "t": 1760054400,
+          "residual": 0.0557
+        },
+        {
+          "t": 1760140800,
+          "residual": -0.0506
+        },
+        {
+          "t": 1760227200,
+          "residual": -0.0806
+        },
+        {
+          "t": 1760313600,
+          "residual": -0.5149
+        },
+        {
+          "t": 1760400000,
+          "residual": -0.0154
+        },
+        {
+          "t": 1760486400,
+          "residual": 0.3923
+        },
+        {
+          "t": 1760572800,
+          "residual": 0.0261
+        },
+        {
+          "t": 1760659200,
+          "residual": -0.228
+        },
+        {
+          "t": 1760745600,
+          "residual": 0.0362
+        },
+        {
+          "t": 1760832000,
+          "residual": -0.0293
+        },
+        {
+          "t": 1760918400,
+          "residual": -0.1704
+        },
+        {
+          "t": 1761004800,
+          "residual": -0.5888
+        },
+        {
+          "t": 1761004800,
+          "residual": 0.168
+        },
+        {
+          "t": 1761091200,
+          "residual": 0.1971
+        },
+        {
+          "t": 1761177600,
+          "residual": 0.2474
+        },
+        {
+          "t": 1761264000,
+          "residual": -0.0731
+        },
+        {
+          "t": 1761350400,
+          "residual": -0.0024
+        },
+        {
+          "t": 1761436800,
+          "residual": -0.6829
+        },
+        {
+          "t": 1761523200,
+          "residual": 0.9415
+        },
+        {
+          "t": 1761609600,
+          "residual": -0.1292
+        },
+        {
+          "t": 1761696000,
+          "residual": -0.0098
+        },
+        {
+          "t": 1761782400,
+          "residual": -0.2123
+        },
+        {
+          "t": 1761868800,
+          "residual": 0.0506
+        },
+        {
+          "t": 1761955200,
+          "residual": -2.0588
+        },
+        {
+          "t": 1761955200,
+          "residual": -0.4829
+        },
+        {
+          "t": 1762041600,
+          "residual": 0.0628
+        },
+        {
+          "t": 1762128000,
+          "residual": 0.085
+        },
+        {
+          "t": 1762214400,
+          "residual": 0.1016
+        },
+        {
+          "t": 1762300800,
+          "residual": -0.2407
+        },
+        {
+          "t": 1762387200,
+          "residual": 0.0097
+        },
+        {
+          "t": 1762473600,
+          "residual": 0.173
+        },
+        {
+          "t": 1762560000,
+          "residual": -0.1746
+        },
+        {
+          "t": 1762646400,
+          "residual": 0.0535
+        },
+        {
+          "t": 1762732800,
+          "residual": 0.4521
+        },
+        {
+          "t": 1762819200,
+          "residual": -0.1718
+        },
+        {
+          "t": 1762905600,
+          "residual": 0.3496
+        },
+        {
+          "t": 1762905600,
+          "residual": -0.5415
+        },
+        {
+          "t": 1762992000,
+          "residual": 0.5225
+        },
+        {
+          "t": 1763078400,
+          "residual": -0.2161
+        },
+        {
+          "t": 1763164800,
+          "residual": 0.1144
+        },
+        {
+          "t": 1763251200,
+          "residual": -0.0024
+        },
+        {
+          "t": 1763337600,
+          "residual": -0.0118
+        },
+        {
+          "t": 1763424000,
+          "residual": -0.1923
+        },
+        {
+          "t": 1763510400,
+          "residual": -0.8796
+        },
+        {
+          "t": 1763596800,
+          "residual": -0.3137
+        },
+        {
+          "t": 1763683200,
+          "residual": -0.0266
+        },
+        {
+          "t": 1763769600,
+          "residual": 0.0473
+        },
+        {
+          "t": 1763856000,
+          "residual": 0.048
+        },
+        {
+          "t": 1763856000,
+          "residual": -0.4936
+        },
+        {
+          "t": 1763942400,
+          "residual": 0.0287
+        },
+        {
+          "t": 1764028800,
+          "residual": -5.0939
+        },
+        {
+          "t": 1764115200,
+          "residual": -0.9808
+        },
+        {
+          "t": 1764201600,
+          "residual": -0.2627
+        },
+        {
+          "t": 1764288000,
+          "residual": -0.319
+        },
+        {
+          "t": 1764374400,
+          "residual": 0.1398
+        },
+        {
+          "t": 1764460800,
+          "residual": 0.0416
+        },
+        {
+          "t": 1764547200,
+          "residual": 1.0152
+        },
+        {
+          "t": 1764633600,
+          "residual": -0.0324
+        },
+        {
+          "t": 1764720000,
+          "residual": -0.2519
+        },
+        {
+          "t": 1764806400,
+          "residual": -0.1791
+        },
+        {
+          "t": 1764806400,
+          "residual": 0.0074
+        },
+        {
+          "t": 1764892800,
+          "residual": -0.1502
+        },
+        {
+          "t": 1764979200,
+          "residual": -0.0357
+        },
+        {
+          "t": 1765065600,
+          "residual": 0.021
+        },
+        {
+          "t": 1765152000,
+          "residual": 0.5062
+        },
+        {
+          "t": 1765238400,
+          "residual": -0.6632
+        },
+        {
+          "t": 1765324800,
+          "residual": 0.1337
+        },
+        {
+          "t": 1765411200,
+          "residual": -0.0966
+        },
+        {
+          "t": 1765497600,
+          "residual": 0.8743
+        },
+        {
+          "t": 1765584000,
+          "residual": 0.0525
+        },
+        {
+          "t": 1765670400,
+          "residual": 0.8359
+        },
+        {
+          "t": 1765756800,
+          "residual": 0.0733
+        },
+        {
+          "t": 1765756800,
+          "residual": 0.8409
+        },
+        {
+          "t": 1765843200,
+          "residual": 0.7538
+        },
+        {
+          "t": 1765929600,
+          "residual": 0.5114
+        },
+        {
+          "t": 1766016000,
+          "residual": 0.2186
+        },
+        {
+          "t": 1766102400,
+          "residual": 1.137
+        },
+        {
+          "t": 1766188800,
+          "residual": -0.5612
+        },
+        {
+          "t": 1766275200,
+          "residual": -0.2181
+        },
+        {
+          "t": 1766361600,
+          "residual": 0.0511
+        },
+        {
+          "t": 1766448000,
+          "residual": 0.0067
+        },
+        {
+          "t": 1766534400,
+          "residual": -0.0945
+        },
+        {
+          "t": 1766620800,
+          "residual": -0.4165
+        },
+        {
+          "t": 1766707200,
+          "residual": 0.0415
+        },
+        {
+          "t": 1766707200,
+          "residual": -0.0885
+        },
+        {
+          "t": 1766793600,
+          "residual": -0.0264
+        },
+        {
+          "t": 1766880000,
+          "residual": -0.1905
+        },
+        {
+          "t": 1766966400,
+          "residual": 0.2482
+        },
+        {
+          "t": 1767052800,
+          "residual": -0.0398
+        },
+        {
+          "t": 1767139200,
+          "residual": -0.0734
+        },
+        {
+          "t": 1767225600,
+          "residual": 0.1242
+        },
+        {
+          "t": 1767312000,
+          "residual": -0.1174
+        },
+        {
+          "t": 1767398400,
+          "residual": 0.098
+        },
+        {
+          "t": 1767484800,
+          "residual": 0.4636
+        },
+        {
+          "t": 1767571200,
+          "residual": -0.3132
+        },
+        {
+          "t": 1767657600,
+          "residual": -0.3538
+        },
+        {
+          "t": 1767657600,
+          "residual": 0.1228
+        },
+        {
+          "t": 1767744000,
+          "residual": 0.66
+        },
+        {
+          "t": 1767830400,
+          "residual": 0.2691
+        },
+        {
+          "t": 1767916800,
+          "residual": -0.2597
+        },
+        {
+          "t": 1768003200,
+          "residual": 0.1505
+        },
+        {
+          "t": 1768089600,
+          "residual": 0.2344
+        },
+        {
+          "t": 1768176000,
+          "residual": 0.3227
+        },
+        {
+          "t": 1768262400,
+          "residual": -0.4162
+        },
+        {
+          "t": 1768348800,
+          "residual": -0.0546
+        },
+        {
+          "t": 1768435200,
+          "residual": 0.1709
+        },
+        {
+          "t": 1768521600,
+          "residual": 0.3696
+        },
+        {
+          "t": 1768608000,
+          "residual": 0.0982
+        },
+        {
+          "t": 1768608000,
+          "residual": -0.2554
+        },
+        {
+          "t": 1768694400,
+          "residual": -0.0869
+        },
+        {
+          "t": 1768780800,
+          "residual": 0.0629
+        },
+        {
+          "t": 1768867200,
+          "residual": -0.3007
+        },
+        {
+          "t": 1768953600,
+          "residual": 2.106
+        },
+        {
+          "t": 1769040000,
+          "residual": 2.6338
+        },
+        {
+          "t": 1769126400,
+          "residual": 0.0494
+        },
+        {
+          "t": 1769212800,
+          "residual": -0.1114
+        },
+        {
+          "t": 1769299200,
+          "residual": 0.1357
+        },
+        {
+          "t": 1769385600,
+          "residual": 0.0362
+        },
+        {
+          "t": 1769472000,
+          "residual": -0.6548
+        },
+        {
+          "t": 1769558400,
+          "residual": -0.0203
+        },
+        {
+          "t": 1769558400,
+          "residual": -0.2384
+        },
+        {
+          "t": 1769644800,
+          "residual": -0.0724
+        },
+        {
+          "t": 1769731200,
+          "residual": -0.2654
+        },
+        {
+          "t": 1769817600,
+          "residual": -0.6194
+        },
+        {
+          "t": 1769904000,
+          "residual": 0.2416
+        },
+        {
+          "t": 1769990400,
+          "residual": 0.0453
+        },
+        {
+          "t": 1770076800,
+          "residual": 0.2852
+        },
+        {
+          "t": 1770163200,
+          "residual": -0.1502
+        },
+        {
+          "t": 1770249600,
+          "residual": 0.0202
+        },
+        {
+          "t": 1770336000,
+          "residual": -0.0584
+        },
+        {
+          "t": 1770422400,
+          "residual": 0.0401
+        },
+        {
+          "t": 1770508800,
+          "residual": -0.3233
+        },
+        {
+          "t": 1770508800,
+          "residual": -0.083
+        },
+        {
+          "t": 1770595200,
+          "residual": 0.1791
+        },
+        {
+          "t": 1770681600,
+          "residual": 0.0312
+        },
+        {
+          "t": 1770768000,
+          "residual": -0.0579
+        },
+        {
+          "t": 1770854400,
+          "residual": 0.0038
+        },
+        {
+          "t": 1770940800,
+          "residual": 0.1869
+        },
+        {
+          "t": 1771027200,
+          "residual": -0.0473
+        },
+        {
+          "t": 1771113600,
+          "residual": -0.0756
+        },
+        {
+          "t": 1771200000,
+          "residual": 0.2395
+        },
+        {
+          "t": 1771286400,
+          "residual": 0.2607
+        },
+        {
+          "t": 1771372800,
+          "residual": -0.3284
+        },
+        {
+          "t": 1771459200,
+          "residual": 0.0283
+        },
+        {
+          "t": 1771459200,
+          "residual": 0.0717
+        },
+        {
+          "t": 1771545600,
+          "residual": 0.1287
+        },
+        {
+          "t": 1771632000,
+          "residual": -0.2554
+        },
+        {
+          "t": 1771718400,
+          "residual": 0.1698
+        },
+        {
+          "t": 1771804800,
+          "residual": -0.4393
+        },
+        {
+          "t": 1771891200,
+          "residual": 1.3591
+        },
+        {
+          "t": 1771977600,
+          "residual": -0.0721
+        },
+        {
+          "t": 1772064000,
+          "residual": 0.0839
+        },
+        {
+          "t": 1772150400,
+          "residual": 1.3133
+        },
+        {
+          "t": 1772236800,
+          "residual": -0.3313
+        },
+        {
+          "t": 1772323200,
+          "residual": -0.8145
+        },
+        {
+          "t": 1772409600,
+          "residual": -0.1209
+        },
+        {
+          "t": 1772409600,
+          "residual": -0.0407
+        },
+        {
+          "t": 1772496000,
+          "residual": 1.0527
+        },
+        {
+          "t": 1772582400,
+          "residual": -0.0973
+        },
+        {
+          "t": 1772668800,
+          "residual": 0.0986
+        },
+        {
+          "t": 1772755200,
+          "residual": -0.1003
+        },
+        {
+          "t": 1772841600,
+          "residual": 0.501
+        },
+        {
+          "t": 1772928000,
+          "residual": -0.138
+        },
+        {
+          "t": 1773014400,
+          "residual": 0.3393
+        },
+        {
+          "t": 1773100800,
+          "residual": 0.6201
+        },
+        {
+          "t": 1773187200,
+          "residual": -0.1517
+        },
+        {
+          "t": 1773273600,
+          "residual": 0.8087
+        },
+        {
+          "t": 1773360000,
+          "residual": -0.2584
+        },
+        {
+          "t": 1773360000,
+          "residual": 0.1229
+        },
+        {
+          "t": 1773446400,
+          "residual": -0.0566
+        },
+        {
+          "t": 1773532800,
+          "residual": -0.2746
+        },
+        {
+          "t": 1773619200,
+          "residual": 0.0692
+        },
+        {
+          "t": 1773705600,
+          "residual": -0.2519
+        },
+        {
+          "t": 1773792000,
+          "residual": 0.3328
+        },
+        {
+          "t": 1773878400,
+          "residual": 0.4523
+        },
+        {
+          "t": 1773964800,
+          "residual": 0.183
+        },
+        {
+          "t": 1774051200,
+          "residual": 1.1459
+        },
+        {
+          "t": 1774137600,
+          "residual": -0.5344
+        },
+        {
+          "t": 1774224000,
+          "residual": -0.0533
+        },
+        {
+          "t": 1774310400,
+          "residual": 0.0501
+        },
+        {
+          "t": 1774310400,
+          "residual": -0.4991
+        },
+        {
+          "t": 1774396800,
+          "residual": 2.6918
+        },
+        {
+          "t": 1774483200,
+          "residual": 0.0396
+        },
+        {
+          "t": 1774569600,
+          "residual": -2.7686
+        },
+        {
+          "t": 1774656000,
+          "residual": -0.0449
+        },
+        {
+          "t": 1774742400,
+          "residual": -0.1939
+        },
+        {
+          "t": 1774828800,
+          "residual": 0.0077
+        },
+        {
+          "t": 1774915200,
+          "residual": -0.0636
+        },
+        {
+          "t": 1775001600,
+          "residual": -0.1912
+        },
+        {
+          "t": 1775088000,
+          "residual": -0.1787
+        },
+        {
+          "t": 1775174400,
+          "residual": -0.6239
+        },
+        {
+          "t": 1775260800,
+          "residual": 0.8399
+        },
+        {
+          "t": 1775260800,
+          "residual": -0.1079
+        },
+        {
+          "t": 1775347200,
+          "residual": -0.0066
+        },
+        {
+          "t": 1775433600,
+          "residual": -0.1764
+        },
+        {
+          "t": 1775520000,
+          "residual": 0.7783
+        },
+        {
+          "t": 1775606400,
+          "residual": -0.0184
+        },
+        {
+          "t": 1775692800,
+          "residual": 0.0973
+        },
+        {
+          "t": 1775779200,
+          "residual": 0.1884
+        },
+        {
+          "t": 1775865600,
+          "residual": -0.2767
+        },
+        {
+          "t": 1775952000,
+          "residual": -0.2166
+        },
+        {
+          "t": 1776038400,
+          "residual": 0.2326
+        },
+        {
+          "t": 1776124800,
+          "residual": -0.057
+        },
+        {
+          "t": 1776211200,
+          "residual": 0.8728
+        },
+        {
+          "t": 1776211200,
+          "residual": -0.1458
+        },
+        {
+          "t": 1776297600,
+          "residual": 0.0081
+        },
+        {
+          "t": 1776384000,
+          "residual": -0.025
+        },
+        {
+          "t": 1776470400,
+          "residual": 0.1139
+        },
+        {
+          "t": 1776556800,
+          "residual": -0.114
+        },
+        {
+          "t": 1776643200,
+          "residual": -0.1531
+        },
+        {
+          "t": 1776729600,
+          "residual": 0.1465
+        },
+        {
+          "t": 1776816000,
+          "residual": -0.0669
+        },
+        {
+          "t": 1776902400,
+          "residual": -0.1079
+        },
+        {
+          "t": 1776988800,
+          "residual": -0.1866
+        },
+        {
+          "t": 1777075200,
+          "residual": -0.4673
+        },
+        {
+          "t": 1777161600,
+          "residual": -0.4634
+        },
+        {
+          "t": 1777161600,
+          "residual": 0.3397
+        },
+        {
+          "t": 1777248000,
+          "residual": -0.0273
+        },
+        {
+          "t": 1777334400,
+          "residual": 0.0244
+        },
+        {
+          "t": 1777420800,
+          "residual": -0.0954
+        },
+        {
+          "t": 1777507200,
+          "residual": 0.1807
+        },
+        {
+          "t": 1777593600,
+          "residual": -0.5648
+        },
+        {
+          "t": 1777680000,
+          "residual": -0.0868
+        },
+        {
+          "t": 1777766400,
+          "residual": -0.1357
+        },
+        {
+          "t": 1777852800,
+          "residual": -1.5645
+        },
+        {
+          "t": 1777939200,
+          "residual": -1.2014
+        },
+        {
+          "t": 1778025600,
+          "residual": 0.0928
+        },
+        {
+          "t": 1778112000,
+          "residual": 0.056
+        },
+        {
+          "t": 1778112000,
+          "residual": -0.4985
+        },
+        {
+          "t": 1778198400,
+          "residual": 0.1321
+        },
+        {
+          "t": 1778284800,
+          "residual": -0.007
+        },
+        {
+          "t": 1778371200,
+          "residual": 3.0883
+        },
+        {
+          "t": 1778457600,
+          "residual": 0.0904
+        },
+        {
+          "t": 1778544000,
+          "residual": -1.0066
+        },
+        {
+          "t": 1778630400,
+          "residual": 0.1942
+        },
+        {
+          "t": 1778716800,
+          "residual": -0.2223
+        },
+        {
+          "t": 1778803200,
+          "residual": -2.9416
+        },
+        {
+          "t": 1778889600,
+          "residual": -0.0647
+        },
+        {
+          "t": 1778976000,
+          "residual": 0.1594
+        },
+        {
+          "t": 1779062400,
+          "residual": -0.3295
+        },
+        {
+          "t": 1779062400,
+          "residual": 0.2023
+        },
+        {
+          "t": 1779148800,
+          "residual": 0.0629
+        },
+        {
+          "t": 1779235200,
+          "residual": 0.2905
+        },
+        {
+          "t": 1779321600,
+          "residual": 0.6133
+        },
+        {
+          "t": 1779408000,
+          "residual": 0.1876
+        },
+        {
+          "t": 1779494400,
+          "residual": 0.0783
+        },
+        {
+          "t": 1779580800,
+          "residual": 0.1687
+        },
+        {
+          "t": 1779667200,
+          "residual": 0.0426
+        },
+        {
+          "t": 1779753600,
+          "residual": 0.1654
+        },
+        {
+          "t": 1779840000,
+          "residual": -0.1022
+        },
+        {
+          "t": 1779926400,
+          "residual": -0.1028
+        },
+        {
+          "t": 1780012800,
+          "residual": -1.7903
+        },
+        {
+          "t": 1780012800,
+          "residual": 0.054
+        },
+        {
+          "t": 1780099200,
+          "residual": -0.2356
+        },
+        {
+          "t": 1780185600,
+          "residual": -0.8051
+        },
+        {
+          "t": 1780272000,
+          "residual": -1.1244
+        },
+        {
+          "t": 1780358400,
+          "residual": -0.4047
+        },
+        {
+          "t": 1780444800,
+          "residual": -0.8009
+        },
+        {
+          "t": 1780531200,
+          "residual": 0.4745
+        },
+        {
+          "t": 1780617600,
+          "residual": 0.0923
+        },
+        {
+          "t": 1780704000,
+          "residual": 0.0164
+        },
+        {
+          "t": 1780790400,
+          "residual": 0.4536
+        },
+        {
+          "t": 1780876800,
+          "residual": -0.3346
+        },
+        {
+          "t": 1780963200,
+          "residual": -0.4732
+        },
+        {
+          "t": 1780963200,
+          "residual": -1.3047
+        },
+        {
+          "t": 1781049600,
+          "residual": 0.0259
+        },
+        {
+          "t": 1781136000,
+          "residual": 0.1562
+        },
+        {
+          "t": 1781222400,
+          "residual": -0.0017
+        },
+        {
+          "t": 1781308800,
+          "residual": 0.0607
+        },
+        {
+          "t": 1781395200,
+          "residual": -0.0298
+        },
+        {
+          "t": 1781481600,
+          "residual": -0.0665
+        },
+        {
+          "t": 1781568000,
+          "residual": 0.0276
+        },
+        {
+          "t": 1781654400,
+          "residual": 0.0548
+        },
+        {
+          "t": 1781740800,
+          "residual": 1.2104
+        },
+        {
+          "t": 1781827200,
+          "residual": 1.0368
+        },
+        {
+          "t": 1781913600,
+          "residual": 0.284
+        },
+        {
+          "t": 1781913600,
+          "residual": 0.0756
+        },
+        {
+          "t": 1782000000,
+          "residual": 0.113
+        },
+        {
+          "t": 1782086400,
+          "residual": 0.0086
+        },
+        {
+          "t": 1782172800,
+          "residual": -0.0421
+        },
+        {
+          "t": 1782259200,
+          "residual": -0.1126
+        },
+        {
+          "t": 1782345600,
+          "residual": -0.0046
+        },
+        {
+          "t": 1782432000,
+          "residual": 0.0098
+        },
+        {
+          "t": 1782518400,
+          "residual": 0.0037
+        },
+        {
+          "t": 1782604800,
+          "residual": -0.0465
+        },
+        {
+          "t": 1782691200,
+          "residual": 1.0513
+        },
+        {
+          "t": 1782777600,
+          "residual": -1.1799
+        },
+        {
+          "t": 1782864000,
+          "residual": -7.8844
+        },
+        {
+          "t": 1782864000,
+          "residual": 0.152
+        },
+        {
+          "t": 1782950400,
+          "residual": 0.2497
+        },
+        {
+          "t": 1783036800,
+          "residual": 0.7901
+        },
+        {
+          "t": 1783123200,
+          "residual": -0.0432
+        },
+        {
+          "t": 1783209600,
+          "residual": 0.0407
+        },
+        {
+          "t": 1783296000,
+          "residual": -0.0225
+        },
+        {
+          "t": 1783382400,
+          "residual": -0.1036
+        },
+        {
+          "t": 1783468800,
+          "residual": 1.0776
+        },
+        {
+          "t": 1783555200,
+          "residual": -1.712
+        },
+        {
+          "t": 1783641600,
+          "residual": -0.2936
+        },
+        {
+          "t": 1783728000,
+          "residual": -0.2651
+        },
+        {
+          "t": 1783814400,
+          "residual": -0.1382
+        },
+        {
+          "t": 1783814400,
+          "residual": -1.4579
+        },
+        {
+          "t": 1783900800,
+          "residual": -0.4637
+        },
+        {
+          "t": 1783987200,
+          "residual": -0.1527
+        },
+        {
+          "t": 1784073600,
+          "residual": 0.0225
+        },
+        {
+          "t": 1784160000,
+          "residual": -0.0215
+        },
+        {
+          "t": 1784246400,
+          "residual": 1.012
+        },
+        {
+          "t": 1784332800,
+          "residual": -0.0721
+        },
+        {
+          "t": 1784419200,
+          "residual": -0.0764
+        },
+        {
+          "t": 1784505600,
+          "residual": -0.2516
+        },
+        {
+          "t": 1784592000,
+          "residual": -0.1497
+        },
+        {
+          "t": 1784678400,
+          "residual": 0.8694
+        },
+        {
+          "t": 1784764800,
+          "residual": 0.0473
+        },
+        {
+          "t": 1784764800,
+          "residual": -0.0093
+        },
+        {
+          "t": 1784851200,
+          "residual": -0.2116
+        },
+        {
+          "t": 1784937600,
+          "residual": 0.7326
+        },
+        {
+          "t": 1785024000,
+          "residual": 0.0218
+        },
+        {
+          "t": 1785110400,
+          "residual": 0.2674
+        },
+        {
+          "t": 1785196800,
+          "residual": 0.7877
+        },
+        {
+          "t": 1785283200,
+          "residual": 0.4293
+        },
+        {
+          "t": 1785369600,
+          "residual": 1.4512
+        },
+        {
+          "t": 1785456000,
+          "residual": 0.0014
+        },
+        {
+          "t": 1785542400,
+          "residual": 0.1177
+        },
+        {
+          "t": 1785628800,
+          "residual": 0.0396
+        },
+        {
+          "t": 1785715200,
+          "residual": 0.0219
+        },
+        {
+          "t": 1785715200,
+          "residual": 0.6133
+        },
+        {
+          "t": 1785801600,
+          "residual": -1.1183
+        },
+        {
+          "t": 1785888000,
+          "residual": -0.0107
+        },
+        {
+          "t": 1785974400,
+          "residual": 0.3636
+        },
+        {
+          "t": 1786060800,
+          "residual": -0.0089
+        },
+        {
+          "t": 1786147200,
+          "residual": -0.4704
+        },
+        {
+          "t": 1786233600,
+          "residual": -0.2073
+        },
+        {
+          "t": 1786320000,
+          "residual": 0.279
+        },
+        {
+          "t": 1786406400,
+          "residual": 0.0835
+        },
+        {
+          "t": 1786492800,
+          "residual": 0.9216
+        },
+        {
+          "t": 1786579200,
+          "residual": -1.4153
+        },
+        {
+          "t": 1786665600,
+          "residual": -0.0347
+        },
+        {
+          "t": 1786665600,
+          "residual": -0.2043
+        }
+      ],
+      "error_distribution": [
+        {
+          "bin_start": -17.0133,
+          "bin_end": -15.7401,
+          "count": 2
+        },
+        {
+          "bin_start": -15.7401,
+          "bin_end": -14.467,
+          "count": 0
+        },
+        {
+          "bin_start": -14.467,
+          "bin_end": -13.1938,
+          "count": 1
+        },
+        {
+          "bin_start": -13.1938,
+          "bin_end": -11.9207,
+          "count": 0
+        },
+        {
+          "bin_start": -11.9207,
+          "bin_end": -10.6475,
+          "count": 0
+        },
+        {
+          "bin_start": -10.6475,
+          "bin_end": -9.3744,
+          "count": 1
+        },
+        {
+          "bin_start": -9.3744,
+          "bin_end": -8.1012,
+          "count": 2
+        },
+        {
+          "bin_start": -8.1012,
+          "bin_end": -6.8281,
+          "count": 4
+        },
+        {
+          "bin_start": -6.8281,
+          "bin_end": -5.555,
+          "count": 5
+        },
+        {
+          "bin_start": -5.555,
+          "bin_end": -4.2818,
+          "count": 31
+        },
+        {
+          "bin_start": -4.2818,
+          "bin_end": -3.0087,
+          "count": 53
+        },
+        {
+          "bin_start": -3.0087,
+          "bin_end": -1.7355,
+          "count": 192
+        },
+        {
+          "bin_start": -1.7355,
+          "bin_end": -0.4624,
+          "count": 1234
+        },
+        {
+          "bin_start": -0.4624,
+          "bin_end": 0.8108,
+          "count": 9138
+        },
+        {
+          "bin_start": 0.8108,
+          "bin_end": 2.0839,
+          "count": 520
+        },
+        {
+          "bin_start": 2.0839,
+          "bin_end": 3.3571,
+          "count": 105
+        },
+        {
+          "bin_start": 3.3571,
+          "bin_end": 4.6302,
+          "count": 43
+        },
+        {
+          "bin_start": 4.6302,
+          "bin_end": 5.9034,
+          "count": 17
+        },
+        {
+          "bin_start": 5.9034,
+          "bin_end": 7.1765,
+          "count": 8
+        },
+        {
+          "bin_start": 7.1765,
+          "bin_end": 8.4497,
+          "count": 7
+        },
+        {
+          "bin_start": 8.4497,
+          "bin_end": 9.7228,
+          "count": 2
+        },
+        {
+          "bin_start": 9.7228,
+          "bin_end": 10.996,
+          "count": 2
+        },
+        {
+          "bin_start": 10.996,
+          "bin_end": 12.2691,
+          "count": 0
+        },
+        {
+          "bin_start": 12.2691,
+          "bin_end": 13.5423,
+          "count": 7
+        },
+        {
+          "bin_start": 13.5423,
+          "bin_end": 14.8154,
+          "count": 1
+        },
+        {
+          "bin_start": 14.8154,
+          "bin_end": 16.0886,
+          "count": 0
+        },
+        {
+          "bin_start": 16.0886,
+          "bin_end": 17.3617,
+          "count": 0
+        },
+        {
+          "bin_start": 17.3617,
+          "bin_end": 18.6349,
+          "count": 0
+        },
+        {
+          "bin_start": 18.6349,
+          "bin_end": 19.908,
+          "count": 0
+        },
+        {
+          "bin_start": 19.908,
+          "bin_end": 21.1811,
+          "count": 1
+        }
+      ],
+      "residual_summary": {
+        "mean": -0.01513,
+        "std": 0.97982,
+        "p05": -1.08579,
+        "p95": 1.00259
+      }
+    }
+  },
+  "feature_importance": [
+    {
+      "feature": "dissolved_oxygen_diff1",
+      "label": "Dissolved Oxygen change since last step",
+      "importance": 0.248455
+    },
+    {
+      "feature": "dissolved_oxygen_pct_change",
+      "label": "Dissolved Oxygen percentage change",
+      "importance": 0.12042
+    },
+    {
+      "feature": "primary_productivity_diff1",
+      "label": "Primary Productivity change since last step",
+      "importance": 0.076542
+    },
+    {
+      "feature": "dissolved_oxygen_trend7",
+      "label": "Dissolved Oxygen 7-step trend",
+      "importance": 0.068627
+    },
+    {
+      "feature": "primary_productivity_lag3",
+      "label": "Primary Productivity 3 steps ago",
+      "importance": 0.046428
+    },
+    {
+      "feature": "dissolved_oxygen_lag1",
+      "label": "Dissolved Oxygen 1 steps ago",
+      "importance": 0.042638
+    },
+    {
+      "feature": "dissolved_oxygen",
+      "label": "Dissolved Oxygen",
+      "importance": 0.030607
+    },
+    {
+      "feature": "primary_productivity_lag1",
+      "label": "Primary Productivity 1 steps ago",
+      "importance": 0.024895
+    },
+    {
+      "feature": "sea_surface_temperature_trend30",
+      "label": "Sea Surface Temperature 30-step trend",
+      "importance": 0.024676
+    },
+    {
+      "feature": "dissolved_oxygen_roll30_std",
+      "label": "Dissolved Oxygen 30-step variability",
+      "importance": 0.02015
+    },
+    {
+      "feature": "primary_productivity_pct_change",
+      "label": "Primary Productivity percentage change",
+      "importance": 0.018681
+    },
+    {
+      "feature": "sea_surface_temperature_pct_change",
+      "label": "Sea Surface Temperature percentage change",
+      "importance": 0.018424
+    },
+    {
+      "feature": "primary_productivity",
+      "label": "Primary Productivity",
+      "importance": 0.014437
+    },
+    {
+      "feature": "dissolved_oxygen_roll30_min",
+      "label": "Dissolved Oxygen 30-step minimum",
+      "importance": 0.014121
+    },
+    {
+      "feature": "sea_surface_temperature_lag3",
+      "label": "Sea Surface Temperature 3 steps ago",
+      "importance": 0.013829
+    }
+  ],
+  "baseline": {
+    "available": false,
+    "reason": "baseline disabled in configuration"
+  }
+}

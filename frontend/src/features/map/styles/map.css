@@ -1,13 +1,72 @@
+/* Map chrome tokens.
+ *
+ * The map page used to be the only route that ignored the theme toggle: the
+ * navbar's sun/moon button rendered here and did nothing, because these were
+ * defined once, dark, with no light counterpart. They now invert from
+ * `data-theme` on <html> like everything else.
+ *
+ * What "light" means here is deliberately *chrome only*. The basemap stays
+ * whatever the user picked in the layer panel — Abyss and Bathymetry are dark
+ * by design and are a data surface, not page furniture, so swapping them from
+ * a UI preference would override an explicit choice. Light mode gives light
+ * panels, legends and tooltips floating over that map, the same way a light
+ * UI sits over satellite imagery elsewhere.
+ *
+ * `--ocean-panel-bg` is translucent in both themes because every panel here
+ * is a floating overlay with `backdrop-filter` behind it.
+ */
 :root {
-  --ocean-bg: #0a1420;
-  --ocean-panel: #101d2c;
-  --ocean-border: #1f3348;
-  --ocean-text: #d7e4ee;
-  --ocean-muted: #6f8ba3;
-  --ocean-accent: #22d3ee;
-  --ocean-font-ui: 'Space Grotesk', system-ui, -apple-system, 'Helvetica Neue', Helvetica, Arial,
-    sans-serif;
-  --ocean-font-mono: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
+  --ocean-bg: var(--ma-bg);
+  /* Near-black neutrals, retuned with the rest of the dark theme. Note what
+     did NOT change: the *basemap* is still `abyss.ts`'s #030f1e ocean. These
+     tokens are the floating UI chrome over it — panels, legends, tooltips —
+     and the comment above is the reason the distinction matters, since the
+     map itself is a data surface and its colours are an explicit choice. A
+     panel is page furniture and follows the theme. */
+  --ocean-panel: #101013;
+  --ocean-panel-bg: rgba(16, 16, 19, 0.92);
+  --ocean-panel-solid: rgba(16, 16, 19, 0.96);
+  --ocean-border: #2b2b33;
+  --ocean-text: #e4e4e6;
+  --ocean-muted: #9a9aa2;
+  /* Was #22d3ee — the one place in the app the accent disagreed with the
+     shared cyan, which showed on the legends the moment you compared the map
+     against the dashboard's charts of the same field. */
+  --ocean-accent: var(--ma-accent);
+  --ocean-accent-soft: rgba(79, 209, 255, 0.12);
+  --ocean-accent-strong: rgba(79, 209, 255, 0.2);
+  --ocean-accent-line: rgba(79, 209, 255, 0.55);
+  --ocean-error: #fca5a5;
+  --ocean-warn: #f59e0b;
+  --ocean-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  /* A heavier blur surface than --ocean-panel-bg, and more transparent: the
+     story overlay is meant to read as one scene with the map behind it, not
+     as a panel sitting on top of it (see story.css). */
+  --ocean-scrim: rgba(8, 8, 10, 0.82);
+  --ocean-scrim-strong: rgba(14, 14, 17, 0.9);
+  --ocean-scrim-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  --ocean-font-ui: var(--ma-font-ui);
+  --ocean-font-mono: var(--ma-font-mono);
+}
+
+:root[data-theme='light'] {
+  --ocean-panel: #ffffff;
+  --ocean-panel-bg: rgba(255, 255, 255, 0.94);
+  --ocean-panel-solid: rgba(255, 255, 255, 0.98);
+  --ocean-border: rgba(15, 30, 30, 0.16);
+  --ocean-text: #12201f;
+  --ocean-muted: #5c6b6c;
+  --ocean-accent-soft: rgba(15, 118, 110, 0.1);
+  --ocean-accent-strong: rgba(15, 118, 110, 0.18);
+  --ocean-accent-line: rgba(15, 118, 110, 0.5);
+  --ocean-error: #b91c1c;
+  --ocean-warn: #b45309;
+  /* A panel over a dark basemap needs a real shadow in light mode too, or it
+     reads as a hole punched in the map rather than as something floating. */
+  --ocean-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  --ocean-scrim: rgba(252, 253, 253, 0.88);
+  --ocean-scrim-strong: rgba(255, 255, 255, 0.94);
+  --ocean-scrim-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
 }
 
 html,
@@ -18,6 +77,17 @@ body,
 }
 
 .map-root {
+  /* Height of the bottom-left furniture the layer panel must stop above.
+     Three things stack in that corner, bottom-up: MapLibre's ScaleControl
+     (32px), the coordinate readout (31px, at `bottom: 52px`), and the story
+     launcher (37px, at `bottom: 96px` — set in story/story.css). Measured
+     total including gaps, plus a 16px breathing gap.
+
+     Declared once here because several rules depend on it and they were
+     previously each carrying their own hand-tuned offset, which is how the
+     launcher ended up 23px inside the panel it sits next to. */
+  --map-bottom-left-reserve: 149px;
+
   position: relative;
   width: 100%;
   height: 100vh;
@@ -30,6 +100,94 @@ body,
   position: absolute;
   inset: 0;
 }
+
+/* --------------------------------------------------------------------------
+   Dive reticle
+   --------------------------------------------------------------------------
+   The lock-on mark that contracts onto a clicked point while the camera
+   descends (see hooks/useClickDive.ts, which creates and reprojects it).
+
+   Three rings on one element, all drawn with `box-shadow` spread rather than
+   as separate nodes: the element itself is being transformed every frame to
+   track the geography, so anything nested inside it would inherit that
+   transform and need its own compensating one. One node, one transform, and
+   the rings come free.
+
+   The contraction is the point. It starts wide enough to read as "acquiring"
+   at the moment of the click and closes to the size of the pin that is
+   already there, so the flourish resolves into the persistent marker rather
+   than into nothing. */
+.map-dive-reticle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  width: 22px;
+  height: 22px;
+  /* The camera is mid-flight underneath and the pin will land here — the mark
+     must never eat the click that follows it. */
+  pointer-events: none;
+  border: 1px solid var(--ma-accent);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--ma-accent) 22%, transparent),
+    0 0 18px 2px color-mix(in srgb, var(--ma-accent) 26%, transparent);
+  animation: map-dive-lock 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+/* The crosshair arms. A ring alone reads as a pulse; the arms are what make it
+   read as a sight being laid on something. They are inset from the ring rather
+   than crossing it, so the mark stays legible over a bright SST raster. */
+.map-dive-reticle::before,
+.map-dive-reticle::after {
+  content: '';
+  position: absolute;
+  background: var(--ma-accent);
+}
+
+.map-dive-reticle::before {
+  top: 50%;
+  left: -14px;
+  right: -14px;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+.map-dive-reticle::after {
+  left: 50%;
+  top: -14px;
+  bottom: -14px;
+  width: 1px;
+  transform: translateX(-50%);
+}
+
+@keyframes map-dive-lock {
+  0% {
+    /* `scale` is composed *after* the JS-written translate on the same
+       property, so this keyframe cannot set `transform` itself — it would
+       overwrite the tracking. `scale` is a separate property in modern CSS
+       precisely for this case. */
+    scale: 4.2;
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.95;
+  }
+  /* Lands and holds for a beat before fading, so the eye has something to
+     arrive at rather than watching the mark evaporate mid-descent. */
+  70% {
+    scale: 1;
+    opacity: 0.85;
+  }
+  100% {
+    scale: 1;
+    opacity: 0;
+  }
+}
+
+/* Reduced motion never creates the element at all (the hook returns before
+   building it), so there is no resting state to define here. */
 
 /* The shared Navbar floats above the map as an overlay (map-root stays
    100vh, full-bleed underneath) — MapLibre's own built-in top-corner
@@ -56,7 +214,17 @@ body,
   top: calc(var(--navbar-h, 64px) + 16px);
   left: 16px;
   z-index: 5;
-  background: rgba(16, 29, 44, 0.92);
+  /* Bounded against `.map-root`, not against `100vh`. They are not the same
+     number: measured in this app the root box was 749px while `100vh`
+     resolved to 802px, so a vh-based budget overshot by 53px and put the
+     panel back on top of the furniture below it. The root is the box the
+     panel is actually positioned in, so a percentage of it cannot disagree. */
+  max-height: calc(
+    100% - var(--navbar-h, 64px) - 16px - var(--map-bottom-left-reserve)
+  );
+  display: flex;
+  flex-direction: column;
+  background: var(--ocean-panel-bg);
   border: 1px solid var(--ocean-border);
   border-radius: 10px;
   width: 248px;
@@ -83,7 +251,13 @@ body,
    fixed always, only the body's height animates away. */
 .map-controls__body {
   width: 220px;
-  max-height: calc(100vh - var(--navbar-h, 64px) - 32px);
+  /* The shell above owns the height budget; the body just takes what is left
+     of it and scrolls. Previously the body carried its own `100vh - navbar`
+     cap, which reserved nothing for the bottom-left furniture — with every
+     section expanded the panel ran to y=735 of a 749px viewport, under both
+     the coordinate readout and the tour launcher. */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 40px 14px 14px;
@@ -93,6 +267,9 @@ body,
 }
 
 .map-controls.collapsed .map-controls__body {
+  /* `flex: 0 0 0` alongside the max-height: a flex child would otherwise keep
+     its basis and refuse to animate away. */
+  flex: 0 0 0;
   max-height: 0;
   padding-top: 0;
   padding-bottom: 0;
@@ -102,13 +279,13 @@ body,
     padding 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Positioned by `.map-rail--right`, not by itself — see the rail's comment.
+   It keeps its own width and chrome; only the placement moved. */
 .selected-location-panel {
-  position: absolute;
-  bottom: 16px;
-  right: 16px;
-  z-index: 5;
+  display: flex;
+  flex-direction: column;
   width: min(320px, calc(100vw - 32px));
-  background: rgba(16, 29, 44, 0.94);
+  background: var(--ocean-panel-bg);
   border: 1px solid var(--ocean-border);
   border-radius: 10px;
   padding: 14px;
@@ -124,7 +301,10 @@ body,
 }
 
 .selected-location-panel__body {
-  max-height: calc(100vh - 140px);
+  /* Was `calc(100vh - 140px)`, i.e. almost the whole viewport — which is how
+     a populated panel grew up into the legends. The rail now owns the height
+     budget, so the body simply takes what the rail gives it and scrolls. */
+  max-height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
   opacity: 1;
@@ -157,7 +337,7 @@ body,
 }
 
 .selected-location-panel__state--error {
-  color: #fca5a5;
+  color: var(--ocean-error);
 }
 
 .selected-location-panel__meta {
@@ -178,7 +358,7 @@ body,
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  border-top: 1px solid rgba(31, 51, 72, 0.85);
+  border-top: 1px solid var(--ocean-border);
   padding-top: 8px;
 }
 
@@ -227,10 +407,10 @@ body,
   align-items: center;
   justify-content: space-between;
   margin-top: 14px;
-  border: 1px solid rgba(34, 211, 238, 0.55);
+  border: 1px solid var(--ocean-accent-line);
   border-radius: 8px;
   padding: 10px 12px;
-  background: rgba(34, 211, 238, 0.1);
+  background: var(--ocean-accent-soft);
   color: var(--ocean-accent);
   font-size: 12px;
   font-weight: 600;
@@ -241,7 +421,7 @@ body,
 }
 
 .selected-location-panel__more-link:hover {
-  background: rgba(34, 211, 238, 0.18);
+  background: var(--ocean-accent-strong);
   border-color: var(--ocean-accent);
 }
 
@@ -415,6 +595,122 @@ body,
   color: var(--ocean-muted);
 }
 
+.selected-location-panel__route {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--ocean-border);
+  font: 12px/1.4 var(--ocean-font-mono);
+}
+
+.selected-location-panel__route-points {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.selected-location-panel__route-point {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.selected-location-panel__route-point-label {
+  color: var(--ocean-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.selected-location-panel__route-point-value {
+  color: var(--ocean-accent);
+  font-weight: 600;
+}
+
+.selected-location-panel__route-set-button {
+  font: 11px/1 var(--ocean-font-mono);
+  color: var(--ocean-muted);
+  background: transparent;
+  border: 1px dashed var(--ocean-border);
+  border-radius: 6px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.selected-location-panel__route-set-button:hover {
+  border-color: var(--ocean-accent);
+  color: var(--ocean-accent);
+}
+
+.selected-location-panel__route-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.selected-location-panel__route-actions .selected-location-panel__brief-button {
+  flex: 1;
+}
+
+.selected-location-panel__route-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--ocean-text);
+}
+
+.selected-location-panel__route-hazard {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.selected-location-panel__route-hazard--calm { color: #5eead4; }
+.selected-location-panel__route-hazard--caution { color: #facc15; }
+.selected-location-panel__route-hazard--hazardous { color: #ef4444; }
+.selected-location-panel__route-hazard--unknown { color: var(--ocean-muted); }
+
+/* --- Watch this location (sihtodo.md item 8) ----------------------------
+   Same card shape as .selected-location-panel__route immediately above. */
+.selected-location-panel__watch {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--ocean-border);
+  font: 12px/1.4 var(--ocean-font-mono);
+}
+
+.selected-location-panel__watch-form {
+  display: flex;
+  gap: 8px;
+}
+
+.selected-location-panel__watch-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--ocean-panel-solid);
+  border: 1px solid var(--ocean-border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  color: var(--ocean-text);
+  font: 12px/1.4 var(--ocean-font-mono);
+}
+
+.selected-location-panel__watch-input:focus {
+  outline: none;
+  border-color: var(--ocean-accent);
+}
+
+.selected-location-panel__watch-input:disabled {
+  opacity: 0.6;
+}
+
 .map-controls h3 {
   font-size: 11px;
   text-transform: uppercase;
@@ -449,7 +745,7 @@ body,
 
 .panel-toggle:hover {
   color: var(--ocean-accent);
-  background: rgba(34, 211, 238, 0.12);
+  background: var(--ocean-accent-soft);
 }
 
 .basemap-grid {
@@ -489,6 +785,157 @@ body,
   border-color: var(--ocean-accent);
 }
 
+.map-export-button {
+  width: 100%;
+  background: var(--ocean-bg);
+  border: 1px solid var(--ocean-border);
+  color: var(--ocean-text);
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.map-export-button:hover:not(:disabled) {
+  border-color: var(--ocean-accent);
+  color: var(--ocean-accent);
+}
+
+.map-export-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+/* Stackable layer groups, collapsed behind a disclosure. The menu expands in
+   normal flow rather than overlaying: .map-controls__body is a fixed-width
+   scrolling box with overflow-x hidden, so an absolutely positioned popover
+   would be clipped by its own container. */
+.layer-dropdown {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.layer-dropdown__trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--ocean-bg);
+  border: 1px solid var(--ocean-border);
+  color: var(--ocean-text);
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.layer-dropdown__trigger:hover,
+.layer-dropdown__trigger:focus-visible,
+.layer-dropdown__trigger.open {
+  border-color: var(--ocean-accent);
+}
+
+.layer-dropdown__summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layer-dropdown__caret {
+  flex: none;
+  /* On the shared budget rather than its own 0.18s: this is a state flip the
+     user just caused and is already looking at. */
+  transition: transform var(--ma-duration-instant, 0.09s) var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.layer-dropdown__trigger.open .layer-dropdown__caret {
+  transform: rotate(180deg);
+}
+
+/* The disclosure's height animation.
+   `grid-template-rows: 0fr -> 1fr` on a wrapper whose only child clips its own
+   overflow is the one way to animate to *auto* height in CSS alone — the menu
+   is 8 to 14 rows depending on the group, so no fixed max-height would be
+   right for all of them, and animating `max-height` to a guess either clips the
+   long groups or coasts through empty space on the short ones. */
+.layer-dropdown__reveal {
+  display: grid;
+  animation: layer-dropdown-reveal var(--ma-duration, 0.2s)
+    var(--ma-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+
+.layer-dropdown__reveal > * {
+  /* Both are load-bearing: a grid item's default `min-height: auto` refuses to
+     shrink below its content, so without these the row collapses to 0fr and
+     the content simply overflows it, un-animated. */
+  overflow: hidden;
+  min-height: 0;
+}
+
+@keyframes layer-dropdown-reveal {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+  to {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+}
+
+/* Resolves to the finished state — open, full height — never to a faster
+   reveal. */
+@media (prefers-reduced-motion: reduce) {
+  .layer-dropdown__reveal {
+    animation: none;
+  }
+}
+
+.layer-dropdown__menu {
+  list-style: none;
+  margin: 0;
+  padding: 7px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  background: var(--ocean-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 6px;
+}
+
+.layer-dropdown__menu label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.layer-dropdown__menu li.disabled label {
+  color: var(--ocean-muted);
+  cursor: not-allowed;
+}
+
+.layer-dropdown__menu .badge {
+  font-size: 10px;
+  color: var(--ocean-muted);
+  border: 1px solid var(--ocean-border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* The active layers' own controls sit below the menu, so changing an opacity
+   does not mean reopening the dropdown to find the slider. */
+.layer-list__name {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
 .layer-list {
   list-style: none;
   margin: 0;
@@ -522,6 +969,57 @@ body,
   width: 100%;
   accent-color: var(--ocean-accent);
   margin-top: 4px;
+}
+
+/* Tile fetch status for an active layer. Sits between the layer's name and its
+   legend, because the legend is exactly what a user reads when the map looks
+   unchanged and they are trying to work out whether the colours are missing or
+   merely late. */
+.layer-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ocean-muted);
+}
+
+.layer-status--error {
+  color: #fca5a5;
+}
+
+.layer-status__spinner {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--ocean-border);
+  border-top-color: var(--ocean-accent);
+  animation: layer-status-spin 0.7s linear infinite;
+}
+
+.layer-status__dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ef4444;
+}
+
+@keyframes layer-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* A spinner that never stops is worse than no spinner for anyone who is
+   motion-sensitive, and tile loading can run for seconds. */
+@media (prefers-reduced-motion: reduce) {
+  .layer-status__spinner {
+    animation: none;
+    border-top-color: var(--ocean-border);
+  }
 }
 
 .vector-field-controls {
@@ -618,7 +1116,7 @@ body,
   z-index: 5;
   display: flex;
   gap: 12px;
-  background: rgba(16, 29, 44, 0.92);
+  background: var(--ocean-panel-bg);
   border: 1px solid var(--ocean-border);
   border-radius: 8px;
   padding: 6px 12px;
@@ -631,12 +1129,6 @@ body,
 .coordinate-display .depth {
   color: var(--ocean-muted);
   white-space: nowrap;
-}
-
-@media (max-width: 720px) {
-  .selected-location-panel {
-    bottom: 56px;
-  }
 }
 
 .gradient-bar {
@@ -670,21 +1162,90 @@ body,
  * than literally bottom-right (the spec's suggestion) because that corner
  * is already owned by .selected-location-panel, whose height varies with
  * its open/collapsed state and content. */
-.legend-stack {
+/* Inset by the control column rather than sitting at the edge: MapLibre's
+   NavigationControl / GeolocateControl / FullscreenControl stack is also
+   top-right (ControlManager.ts adds all three there), and at `right: 16px` the
+   legends were drawn straight over it — measured, the controls occupy 10-41px
+   from the right edge and the legends covered 16-236px. `--map-ctrl-gutter` is
+   that measured column plus a gap, named so the two stay in step if a control
+   is ever added or removed. */
+/* The right-hand rail: legends at the top, the selected-location panel at the
+   bottom, in one column that owns the vertical space between the navbar and
+   the viewport floor.
+ *
+ * Why a rail instead of positioning each panel: both size themselves from
+ * their content — the legend stack grows a whole legend when wind is enabled,
+ * and the location panel goes from three lines to a full readout once a point
+ * is clicked. As absolute siblings each was laid out in ignorance of the
+ * other, so they overlapped by 210px at 1440x749 with both populated. Flex
+ * makes that impossible rather than unlikely: `justify-content: space-between`
+ * pins one to each end, and `min-height: 0` plus `overflow-y: auto` on the
+ * children means the loser of a space fight scrolls instead of spilling.
+ *
+ * The rail itself is click-through (`pointer-events: none`) so the empty space
+ * between the two panels still pans the map; the panels re-enable it. */
+.map-rail {
+  --map-ctrl-gutter: 53px;
+
   position: absolute;
   top: calc(var(--navbar-h, 64px) + 16px);
-  right: 16px;
+  bottom: 16px;
   z-index: 5;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  pointer-events: none;
+}
+
+.map-rail--right {
+  /* Inset by the control column rather than sitting at the edge: MapLibre's
+     NavigationControl / GeolocateControl / FullscreenControl stack is also
+     top-right (ControlManager.ts adds all three there), and at `right: 16px`
+     the legends were drawn straight over it — measured, the controls occupy
+     10-41px from the right edge. `--map-ctrl-gutter` is that measured column
+     plus a gap, named so the two stay in step if a control is ever added or
+     removed. */
+  right: var(--map-ctrl-gutter);
   align-items: flex-end;
+  justify-content: space-between;
+}
+
+.map-rail > * {
+  pointer-events: auto;
+  /* Without this a flex child refuses to shrink below its content height,
+     which is exactly how an overflowing panel escapes its own container. */
+  min-height: 0;
+}
+
+/* Groups the severe-weather badge with the location panel as one rail
+   child — see MapView.tsx's comment on why they can't be two siblings. */
+.map-rail__bottom-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+  min-height: 0;
+}
+
+.legend-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-end;
+  /* Legends yield to the location panel: they are reference material, while
+     the panel holds the numbers the user just asked for by clicking. Capped
+     so that even three legends cannot claim the whole rail. */
+  flex: 0 1 auto;
+  max-height: 55%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
 }
 
 .sst-legend,
 .wind-legend {
   width: 220px;
-  background: rgba(16, 29, 44, 0.94);
+  background: var(--ocean-panel-bg);
   border: 1px solid var(--ocean-border);
   border-radius: 10px;
   padding: 12px 14px;
@@ -714,7 +1275,7 @@ body,
 
 .sst-legend__error,
 .wind-legend__error {
-  color: #f59e0b;
+  color: var(--ocean-warn);
 }
 
 .sst-legend__source,
@@ -733,38 +1294,28 @@ body,
   color: var(--ocean-muted);
 }
 
-@media (max-width: 720px) {
-  .legend-stack {
-    align-items: stretch;
-  }
+/* --- Map hover tooltips ------------------------------------------------ */
 
-  .sst-legend,
-  .wind-legend {
-    width: min(220px, calc(100vw - 32px));
-  }
-}
-
-/* --- Live AIS vessels -------------------------------------------------- */
-
-/* Hover tooltip. Positioned in JS from the pointer's screen coords (see
+/* Shared by the live-vessel and eddy layers: one appearance, defined once.
+   Hover tooltip. Positioned in JS from the pointer's screen coords (see
    VesselTooltip's edge-flip), so left/top are set inline and only the
    appearance lives here. pointer-events:none matters — the tooltip sits
    under the cursor, and without it the mouseleave fires the instant the
    tooltip appears, which flickers it on and off. */
-.vessel-tooltip {
+.map-tooltip {
   position: absolute;
   z-index: 7;
   pointer-events: none;
-  background: rgba(16, 29, 44, 0.96);
+  background: var(--ocean-panel-solid);
   border: 1px solid var(--ocean-border);
   border-radius: 8px;
   padding: 10px 12px;
   color: var(--ocean-text);
   font: 12px/1.45 var(--ocean-font-mono);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--ocean-shadow);
 }
 
-.vessel-tooltip__header {
+.map-tooltip__header {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -773,51 +1324,51 @@ body,
   border-bottom: 1px dashed var(--ocean-border);
 }
 
-.vessel-tooltip__name {
+.map-tooltip__name {
   color: var(--ocean-accent);
   font-weight: 600;
   font-size: 13px;
   word-break: break-word;
 }
 
-.vessel-tooltip__type {
+.map-tooltip__type {
   color: var(--ocean-muted);
   font-size: 11px;
 }
 
-.vessel-tooltip__rows {
+.map-tooltip__rows {
   display: flex;
   flex-direction: column;
   gap: 3px;
   margin: 0;
 }
 
-.vessel-tooltip__row {
+.map-tooltip__row {
   display: flex;
   align-items: baseline;
   gap: 10px;
 }
 
-.vessel-tooltip__row dt {
+.map-tooltip__row dt {
   color: var(--ocean-muted);
   flex-shrink: 0;
 }
 
-.vessel-tooltip__row dd {
+.map-tooltip__row dd {
   margin: 0 0 0 auto;
   text-align: right;
   word-break: break-word;
 }
 
-.vessel-tooltip__pending,
-.vessel-tooltip__footer {
+.map-tooltip__pending,
+.map-tooltip__footer {
   margin: 7px 0 0;
   color: var(--ocean-muted);
   font-size: 10px;
   line-height: 1.35;
 }
 
-.vessel-tooltip__pending {
+.map-tooltip__pending {
   padding-top: 6px;
   border-top: 1px dashed var(--ocean-border);
 }
@@ -835,7 +1386,7 @@ body,
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(16, 29, 44, 0.92);
+  background: var(--ocean-panel-bg);
   border: 1px solid var(--ocean-border);
   border-radius: 8px;
   padding: 6px 12px;
@@ -874,7 +1425,754 @@ body,
 /* A live feed's pulsing dot is decoration, not information — the text
    beside it already says the same thing. */
 @media (prefers-reduced-motion: reduce) {
-  .vessel-feed-status__dot--live {
+  .vessel-feed-status__dot--live,
+  .eddy-status__dot--live {
     animation: none;
   }
+}
+
+/* --- Eddy detection status --------------------------------------------- */
+
+/* Same chip as the vessel feed's, one row higher so both can be on at once
+   without either covering the other — the two layers are independent and a
+   reader may well want ships over eddies. */
+.eddy-status {
+  position: absolute;
+  bottom: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: var(--ocean-text);
+  font: 12px/1.4 var(--ocean-font-mono);
+}
+
+.eddy-status--unavailable {
+  color: var(--ocean-muted);
+}
+
+.eddy-status__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ocean-muted);
+  flex-shrink: 0;
+}
+
+.eddy-status__dot--live {
+  background: #5eead4;
+  box-shadow: 0 0 0 0 rgba(94, 234, 212, 0.6);
+  animation: eddy-status-pulse 2.4s ease-out infinite;
+}
+
+.eddy-status__note {
+  color: var(--ocean-muted);
+  font-size: 10px;
+}
+
+@keyframes eddy-status-pulse {
+  70% { box-shadow: 0 0 0 7px rgba(94, 234, 212, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(94, 234, 212, 0); }
+}
+
+/* --- eDNA sampling coverage status -------------------------------------- */
+
+/* The third chip in the same bottom-centre stack, one row above the eddy one,
+   so all three layers can be on at once without any of them covering another.
+   Its dot does not pulse: the other two chips report a live feed, and this one
+   reports OBIS holdings that change on a release cadence of weeks. A pulsing
+   dot would assert a liveness this layer does not have. */
+.edna-status {
+  position: absolute;
+  bottom: 88px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: var(--ocean-text);
+  font: 12px/1.4 var(--ocean-font-mono);
+}
+
+.edna-status--unavailable {
+  color: var(--ocean-muted);
+}
+
+.edna-status__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ocean-muted);
+  flex-shrink: 0;
+}
+
+/* Matches the layer's darkest ramp stop, so the chip is recognisably the same
+   layer as the violet cells on the map. */
+.edna-status__dot--live {
+  background: #a855f7;
+}
+
+.edna-status__note {
+  color: var(--ocean-muted);
+  font-size: 10px;
+}
+
+/* --------------------------------------------------------------------------
+   MapLibre's own controls
+   --------------------------------------------------------------------------
+   Zoom buttons, compass, scale and attribution ship with a white default that
+   was the one un-themed surface on this page — a stack of white boxes over a
+   dark bathymetric basemap. They follow the panel tokens now, so they invert
+   with everything else. */
+
+.maplibregl-ctrl-group {
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  box-shadow: none;
+}
+
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--ocean-border);
+}
+
+.maplibregl-ctrl-group button:hover {
+  background: var(--ocean-accent-soft);
+}
+
+/* The control icons are SVG data-URIs baked into MapLibre's stylesheet with a
+   hardcoded dark fill, so they cannot be recoloured — inverting the whole
+   button is the only lever, and it is only needed on dark. */
+:root:not([data-theme='light']) .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(1) brightness(1.4);
+}
+
+/* Two classes, matching MapLibre's own `.maplibregl-ctrl.maplibregl-ctrl-scale`
+   — a single-class selector loses to it and the bar stayed white on dark. */
+.maplibregl-ctrl.maplibregl-ctrl-scale {
+  background: var(--ocean-panel-bg);
+  border-color: var(--ocean-border);
+  border-top-color: transparent;
+  color: var(--ocean-text);
+  font-family: var(--ocean-font-mono);
+}
+
+.maplibregl-ctrl-attrib {
+  background: var(--ocean-panel-bg) !important;
+  color: var(--ocean-muted);
+}
+
+.maplibregl-ctrl-attrib a {
+  color: var(--ocean-muted);
+}
+
+/* --------------------------------------------------------------------------
+   Small screens
+   --------------------------------------------------------------------------
+   The desktop layout floats five independent overlays over a full-bleed map:
+   controls (top-left), legends (top-right), coordinate readout (bottom-left),
+   feed status (bottom-centre) and the selected-location panel (bottom-right).
+   Their widths are absolute, so below roughly 760px they start intersecting —
+   at 375px the controls (248px) and the legend stack (220px) alone want 468px
+   of a 375px screen, and the bottom three all want the same corner.
+
+   The fix is to stop treating the phone as a narrow desktop:
+
+   - The two top overlays split the width evenly (`50vw` minus the gutters)
+     instead of each claiming a fixed pixel width, so they cannot overlap at
+     any screen size — including 320px, where fixed widths still collided.
+   - Both panels' scrolling bodies are capped as a *fraction of the viewport*
+     rather than `100vh - navbar`, which on a phone meant "cover the map".
+     The map is the thing being annotated; the annotation may not eat it.
+   - The bottom edge becomes one row of two chips, and the selected-location
+     panel becomes a full-width sheet sitting above them rather than a
+     third box competing for the same corner. */
+
+@media (max-width: 720px) {
+  .map-controls {
+    width: calc(50vw - 20px);
+    max-width: 248px;
+  }
+
+  /* The body is normally a fixed 220px inside a 248px shell; on mobile the
+     shell is fluid, so the body has to follow it or it overflows. */
+  .map-controls__body {
+    width: 100%;
+    max-height: 34vh;
+    padding: 40px 12px 12px;
+  }
+
+  /* Collapsed stays a square button — the fluid width above must not apply,
+     or the collapsed panel becomes a wide empty bar. */
+  .map-controls.collapsed {
+    width: 40px;
+  }
+
+  /* The even 50/50 split has to account for the control gutter, or moving the
+     legends inboard pushes them into the layer panel instead of into the
+     controls. Subtracting the extra inset (gutter − the 16px the left panel
+     uses) keeps the two columns disjoint down to 320px: at 375px the panel
+     ends at 184 and the legends start at 192. */
+  .legend-stack {
+    align-items: stretch;
+    width: calc(50vw - 20px - (var(--map-ctrl-gutter) - 16px));
+    max-width: 220px;
+  }
+
+  .sst-legend,
+  .wind-legend {
+    width: 100%;
+  }
+
+  /* Bottom row: readout left, feed status right. The status normally centres
+     itself with a transform, which on a phone lands it on top of both. */
+  .coordinate-display {
+    bottom: 44px;
+    left: 8px;
+    gap: 8px;
+    padding: 5px 9px;
+    font-size: 11px;
+  }
+
+  .vessel-feed-status {
+    bottom: 44px;
+    left: auto;
+    right: 8px;
+    transform: none;
+    padding: 5px 9px;
+    font-size: 11px;
+  }
+
+  /* Hidden rather than shrunk: it repeats what the coordinate chip already
+     shows, and it is the only bottom-row item that cannot be made narrower. */
+  .vessel-feed-status__note {
+    display: none;
+  }
+
+  /* Follows the vessel chip to the right edge, still one row above it. */
+  .eddy-status {
+    bottom: 74px;
+    left: auto;
+    right: 8px;
+    transform: none;
+    padding: 5px 9px;
+    font-size: 11px;
+  }
+
+  /* Third row up, same right edge. */
+  .edna-status {
+    bottom: 104px;
+    left: auto;
+    right: 8px;
+    transform: none;
+    padding: 5px 9px;
+    font-size: 11px;
+  }
+
+  /* The chip's headline is the cell count; the coverage percentage and the
+     detection total are what a narrow screen has to give up. Unlike the vessel
+     note this is a real loss, so the percentage moves into the layer panel's
+     attribution rather than disappearing from the product. */
+  .edna-status__note {
+    display: none;
+  }
+
+  /* On a phone the rail carries the legends only — it stops where they stop,
+     so it cannot reserve a column of dead space down the right edge. */
+  .map-rail--right {
+    bottom: auto;
+  }
+
+  /* A sheet docked to the bottom edge, where a thumb reaches, spanning the
+     full width instead of a 320px card wedged into a corner.
+     `fixed`, not `absolute`: the panel is a child of the rail now, and an
+     absolute child would resolve these offsets against the rail's narrow
+     column rather than against the viewport. */
+  .selected-location-panel {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: 78px;
+    z-index: 5;
+    width: auto;
+    border-radius: 14px;
+  }
+
+  .selected-location-panel__body {
+    max-height: 40vh;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Panel interaction polish
+   --------------------------------------------------------------------------
+   Transitions on compositor-only properties (transform, opacity, colour) and
+   nothing else. These panels float over a live MapLibre canvas that is already
+   redrawing every frame — plus, on the wind layer, a GPU particle system — so
+   anything that forces layout or paint here competes directly with the map's
+   own frame budget. No JS animation for the same reason. */
+.map-controls,
+.map-controls__body section,
+.layer-dropdown__menu li,
+.map-exclusive-select,
+.layer-dropdown__trigger {
+  transition:
+    border-color 0.2s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    background-color 0.2s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    color 0.2s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    box-shadow 0.2s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.layer-dropdown__trigger:hover,
+.map-exclusive-select:hover {
+  border-color: var(--ocean-accent);
+}
+
+/* The disclosure caret turns rather than swapping glyph. */
+.layer-dropdown__caret {
+  display: inline-block;
+  transition: transform 0.22s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.layer-dropdown__trigger.open .layer-dropdown__caret {
+  transform: rotate(180deg);
+}
+
+/* The basemap grid's selection. `transform` only — a width/padding change here
+   would reflow the whole floating panel over a redrawing canvas. */
+.basemap-grid button {
+  transition:
+    transform 0.18s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    border-color 0.2s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    color 0.2s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.basemap-grid button:hover {
+  transform: translateY(-1px);
+}
+
+.basemap-grid button:active {
+  transform: translateY(0);
+}
+
+/* ---------------------------------------------------------------------------
+   Forecast horizon scrubber
+   --------------------------------------------------------------------------- */
+
+/* Sits in the legend stack rather than floating on its own, for the reason the
+   stack exists at all: it appears only alongside a forecast layer, which always
+   brings its own legend, so as an independent absolute overlay it would draw
+   over one. */
+.horizon-control {
+  width: 220px;
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: var(--ocean-text);
+  backdrop-filter: blur(6px);
+  box-sizing: border-box;
+}
+
+.horizon-control__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.horizon-control__title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ocean-muted);
+}
+
+.horizon-control__play {
+  font: 10px/1 var(--ocean-font-mono);
+  color: var(--ocean-text);
+  background: transparent;
+  border: 1px solid var(--ocean-border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.horizon-control__play:hover {
+  border-color: var(--ocean-accent);
+  color: var(--ocean-accent);
+}
+
+.horizon-control__scrubber {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--ocean-accent);
+  cursor: pointer;
+}
+
+.horizon-control__ticks {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.horizon-control__tick {
+  flex: 1 1 auto;
+  font: 10px/1 var(--ocean-font-mono);
+  color: var(--ocean-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+
+.horizon-control__tick:hover {
+  color: var(--ocean-text);
+}
+
+.horizon-control__tick--current {
+  color: var(--ocean-accent);
+  border-color: var(--ocean-border);
+}
+
+/* Point brief trigger, in the location panel's header area rather than its
+   scrolling body: it acts on the whole panel's subject, so it must not scroll
+   away from the coordinate it applies to. */
+.selected-location-panel__brief {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 14px 10px;
+}
+
+.selected-location-panel__brief-button {
+  font: 11px/1 var(--ocean-font-mono);
+  color: var(--ocean-text);
+  background: transparent;
+  border: 1px solid var(--ocean-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.selected-location-panel__brief-button:hover:not(:disabled) {
+  border-color: var(--ocean-accent);
+  color: var(--ocean-accent);
+}
+
+.selected-location-panel__brief-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* --- Severe-weather alerts panel/badge ---------------------------------
+   Positioned by `.map-rail--right` like `.selected-location-panel`, not by
+   itself — sits above it in the rail so a badge is visible even when the
+   location panel is collapsed. Starts collapsed to a one-line badge; most
+   visits have nothing to report (see useUiStore's hazardsPanelOpen default),
+   and the badge itself already carries the live count. */
+.severe-weather-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100vw - 32px));
+  box-sizing: border-box;
+}
+
+.severe-weather-panel__badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--ocean-text);
+  font: 12px/1.4 var(--ocean-font-mono);
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  text-align: left;
+}
+
+.severe-weather-panel__badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ocean-muted);
+  flex-shrink: 0;
+}
+
+.severe-weather-panel__badge--extreme .severe-weather-panel__badge-dot,
+.severe-weather-panel__alert--extreme {
+  background: #ef4444;
+}
+
+.severe-weather-panel__badge--severe .severe-weather-panel__badge-dot,
+.severe-weather-panel__alert--severe {
+  background: #f97316;
+}
+
+.severe-weather-panel__badge--moderate .severe-weather-panel__badge-dot,
+.severe-weather-panel__alert--moderate {
+  background: #eab308;
+}
+
+.severe-weather-panel__badge--minor .severe-weather-panel__badge-dot,
+.severe-weather-panel__alert--minor {
+  background: var(--ocean-accent);
+}
+
+/* The four selectors above set an alert row's own background (they are not
+   dot-only there); soften it to a tint since the row also carries text. */
+.severe-weather-panel__alert {
+  background: transparent;
+  border-left: 3px solid var(--ocean-muted);
+  border-radius: 4px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.severe-weather-panel__alert--extreme { border-left-color: #ef4444; }
+.severe-weather-panel__alert--severe { border-left-color: #f97316; }
+.severe-weather-panel__alert--moderate { border-left-color: #eab308; }
+.severe-weather-panel__alert--minor { border-left-color: var(--ocean-accent); }
+.severe-weather-panel__alert--quiet { border-left-color: var(--ocean-muted); }
+
+.severe-weather-panel__badge-loading {
+  color: var(--ocean-accent);
+  margin-left: auto;
+}
+
+.severe-weather-panel__body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 10px;
+  padding: 14px;
+  color: var(--ocean-text);
+  backdrop-filter: blur(6px);
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.severe-weather-panel__header h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.severe-weather-panel__subtitle {
+  color: var(--ocean-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.severe-weather-panel__state {
+  font-size: 12px;
+  color: var(--ocean-muted);
+  margin: 0;
+}
+
+.severe-weather-panel__state--error {
+  color: var(--ocean-error);
+}
+
+.severe-weather-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.severe-weather-panel__alert-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.severe-weather-panel__alert-severity {
+  color: var(--ocean-muted);
+  font-weight: 400;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.severe-weather-panel__alert-headline,
+.severe-weather-panel__alert-area {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ocean-muted);
+  line-height: 1.4;
+}
+
+.severe-weather-panel__alert-expires {
+  font-size: 10px;
+  color: var(--ocean-muted);
+}
+
+.severe-weather-panel__attribution {
+  font-size: 10px;
+  color: var(--ocean-muted);
+  border-top: 1px solid var(--ocean-border);
+  padding-top: 8px;
+}
+
+/* --- Boundary watch panel/badge -----------------------------------------
+   sihtodo.md item 9. Same shape and rail placement as the severe-weather
+   panel above — collapsed to a badge by default, most visits have nothing
+   to report. */
+.boundary-watch-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100vw - 32px));
+  box-sizing: border-box;
+}
+
+.boundary-watch-panel__badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--ocean-text);
+  font: 12px/1.4 var(--ocean-font-mono);
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  text-align: left;
+}
+
+.boundary-watch-panel__badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ocean-muted);
+  flex-shrink: 0;
+}
+
+.boundary-watch-panel__badge--alert .boundary-watch-panel__badge-dot {
+  background: var(--ocean-accent);
+}
+
+.boundary-watch-panel__badge--error .boundary-watch-panel__badge-dot {
+  background: var(--ocean-error);
+}
+
+.boundary-watch-panel__body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 10px;
+  padding: 14px;
+  color: var(--ocean-text);
+  backdrop-filter: blur(6px);
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.boundary-watch-panel__header h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.boundary-watch-panel__subtitle {
+  color: var(--ocean-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.boundary-watch-panel__toggle-button {
+  background: var(--ocean-accent);
+  color: var(--ocean-bg);
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font: 12px/1.4 var(--ocean-font-mono);
+  font-weight: 600;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.boundary-watch-panel__state {
+  font-size: 12px;
+  color: var(--ocean-muted);
+  margin: 0;
+}
+
+.boundary-watch-panel__state--error {
+  color: var(--ocean-error);
+}
+
+.boundary-watch-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.boundary-watch-panel__alert {
+  background: transparent;
+  border-left: 3px solid var(--ocean-accent);
+  border-radius: 4px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.boundary-watch-panel__alert--eez_crossing {
+  border-left-color: #ef4444;
+}
+
+.boundary-watch-panel__alert-message {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.boundary-watch-panel__alert-time {
+  font-size: 10px;
+  color: var(--ocean-muted);
+}
+
+.boundary-watch-panel__attribution {
+  font-size: 10px;
+  color: var(--ocean-muted);
+  border-top: 1px solid var(--ocean-border);
+  padding-top: 8px;
+}
+
+.selected-location-panel__brief-error {
+  font: 10px/1.4 var(--ocean-font-mono);
+  color: var(--ocean-warn);
 }

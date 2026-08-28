@@ -9,6 +9,11 @@
     "skipLibCheck": true,
 
     /* Bundler mode */
+    /* No baseUrl: it is deprecated in TypeScript 6, and `paths` resolves
+       relative to this file without it. Mirrors the alias in vite.config.ts. */
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
@@ -22,5 +27,10 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  /* Retired code kept for reference, not compiled. `src/pages/landing/_archive`
+     holds the previous "ocean dive" landing page; its relative imports no
+     longer resolve from a directory deeper, and rewriting them would imply it
+     is still live. See that folder's README.md to restore it. */
+  "exclude": ["src/**/_archive/**"]
 }

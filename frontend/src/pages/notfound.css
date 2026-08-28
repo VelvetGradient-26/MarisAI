@@ -1,0 +1,112 @@
+/* 404. Tokens alias the shared palette in styles/tokens.css; both themes come
+   from `data-theme` on <html>, so there is no per-theme block here. */
+
+.nf-page {
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--navbar-h, 64px) + 24px) 24px 24px;
+  background: var(--ma-bg);
+  color: var(--ma-text);
+  font-family: var(--ma-font-ui);
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+.nf-card {
+  width: 100%;
+  max-width: 520px;
+  border: 1px solid var(--ma-border);
+  border-radius: 16px;
+  padding: 40px;
+  background: var(--ma-surface);
+}
+
+.nf-eyebrow {
+  margin: 0 0 0.75rem;
+  color: var(--ma-accent);
+  font-family: var(--ma-font-mono);
+  font-size: var(--ma-text-2xs);
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.nf-title {
+  margin: 0 0 0.75rem;
+  color: var(--ma-heading);
+  font-size: var(--ma-text-2xl);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.nf-body {
+  margin: 0 0 1.75rem;
+  color: var(--ma-muted);
+  font-size: var(--ma-text-base);
+  line-height: 1.6;
+}
+
+/* The offending path can be arbitrarily long and arbitrarily unbreakable —
+   it came from a URL bar, not from prose. */
+.nf-path {
+  padding: 0.1rem 0.4rem;
+  border-radius: 5px;
+  background: var(--ma-input-bg);
+  color: var(--ma-text);
+  font-family: var(--ma-font-mono);
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+.nf-links {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 1.75rem;
+}
+
+.nf-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--ma-border-soft);
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: var(--ma-text);
+  text-decoration: none;
+  transition: background var(--ma-duration) var(--ma-ease),
+    border-color var(--ma-duration) var(--ma-ease);
+}
+
+.nf-link:hover {
+  background: var(--ma-hover-bg);
+  border-color: var(--ma-accent-line);
+}
+
+.nf-link__label {
+  font-size: var(--ma-text-base);
+  font-weight: 500;
+}
+
+.nf-link__hint {
+  color: var(--ma-faint);
+  font-family: var(--ma-font-mono);
+  font-size: var(--ma-text-2xs);
+}
+
+.nf-home {
+  display: inline-block;
+  color: var(--ma-accent);
+  font-size: var(--ma-text-sm);
+  text-decoration: none;
+}
+
+.nf-home:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 560px) {
+  .nf-card {
+    padding: 28px 20px;
+  }
+}

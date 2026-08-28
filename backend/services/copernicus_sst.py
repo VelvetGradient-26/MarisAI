@@ -29,6 +29,7 @@ from scipy.interpolate import RegularGridInterpolator
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.core.config import settings
+from services import sst_anomaly
 from services.colormaps import SST_COLORMAP
 
 DATASET_ID = "cmems_mod_glo_phy_anfc_0.083deg_PT1H-m"
@@ -51,7 +52,29 @@ class CopernicusSstError(RuntimeError):
 @dataclass
 class _SstCache:
     interpolator: RegularGridInterpolator
+    # The timestep the data describes, distinct from when it was fetched:
+    # this product publishes hours behind real time, so provider health has
+    # to be judged on `fetched_at` or a working feed reports as down.
     timestamp: datetime
+    fetched_at: datetime
+    latitudes: np.ndarray
+    longitudes: np.ndarray
+
+    @property
+    def grid(self) -> np.ndarray:
+        """The raw global field, read back out of the interpolator.
+
+        Deliberately *not* a second stored array. `_build_interpolator` already
+        holds a wrapped copy of this grid for the lifetime of the cache, and a
+        global 0.083deg field is ~35MB — keeping an own copy alongside it
+        doubled the resident cost of the cache to serve `global_stats`, which
+        needs the same numbers.
+
+        The trailing column is the antimeridian duplicate the wrap appends, so
+        slicing it off recovers the source grid exactly rather than
+        double-counting one column of the ocean in every statistic.
+        """
+        return self.interpolator.values[:, :-1]
 
 
 _cache: _SstCache | None = None
@@ -98,9 +121,14 @@ def _fetch_latest_grid() -> tuple[np.ndarray, np.ndarray, np.ndarray, datetime]:
     da = past.thetao.isel(time=-1, depth=0).load()
 
     timestamp = datetime.fromisoformat(str(da.time.values)[:19]).replace(tzinfo=timezone.utc)
+    # float32 for the field, float64 for the axes. The field is a temperature
+    # in degrees C carrying ~0.01 of real precision, so float64 stores nothing
+    # the product actually measured and doubles ~35MB of resident cache. The
+    # lat/lon axes stay float64: they are a few thousand values (tens of KB,
+    # not worth halving) and they set the interpolator's coordinate precision.
     lat = da.latitude.values.astype(np.float64)
     lon = da.longitude.values.astype(np.float64)
-    grid = da.values.astype(np.float64)
+    grid = da.values.astype(np.float32)
     return lat, lon, grid, timestamp
 
 
@@ -114,7 +142,13 @@ async def refresh_sst_cache() -> None:
             logger.opt(exception=True).warning("SST refresh failed, keeping previous cache if any")
             return
 
-        _cache = _SstCache(interpolator=interpolator, timestamp=timestamp)
+        _cache = _SstCache(
+            interpolator=interpolator,
+            timestamp=timestamp,
+            fetched_at=datetime.now(timezone.utc),
+            latitudes=lat,
+            longitudes=lon,
+        )
         render_tile.cache_clear()
         logger.info(f"SST cache refreshed: timestep {timestamp.isoformat()}")
 
@@ -125,15 +159,138 @@ def _require_cache() -> _SstCache:
     return _cache
 
 
+def is_refreshing() -> bool:
+    """Whether a refresh is in flight right now.
+
+    Reuses the existing refresh lock rather than tracking a second flag: the
+    lock is held for exactly the duration of a fetch, so it already is the
+    answer. Lets the dashboard tell "still warming up" apart from "failed",
+    which are very different things to show a user.
+    """
+    return _refresh_lock.locked()
+
+
 def get_meta() -> dict[str, Any]:
     cache = _require_cache()
     return {
         "timestamp": cache.timestamp.isoformat(),
+        "fetched_at": cache.fetched_at.isoformat(),
         "source": SOURCE_LABEL,
         "depth_m": DEPTH_M,
         "unit": "°C",
         "min": _MIN_C,
         "max": _MAX_C,
+    }
+
+
+def is_available() -> bool:
+    return _cache is not None
+
+
+# The climatology store's variable key for the Copernicus-reanalysis-fitted
+# baseline — distinct from `"sea_surface_temperature"`, which is
+# `services/heatwaves.py`'s OISST-fitted one. Two climatologies, two keys,
+# never the same file silently meaning two different things.
+REANALYSIS_CLIMATOLOGY_VARIABLE = "sea_surface_temperature_copernicus"
+
+
+def anomaly_field() -> sst_anomaly.SstAnomalyField | None:
+    """This cache's live field, scored against a climatology fitted on the
+    Copernicus GLORYS reanalysis — the same product family, not OISST.
+
+    See `services/sst_anomaly.py` for why that distinction is the whole
+    point: scoring this field against the OISST-fitted climatology was
+    measured and made `services/upwelling.py`'s corroboration worse.
+
+    `None` when either half is missing (no live cache yet, or the
+    reanalysis climatology has not been built) — the same "an absent
+    anomaly degrades the caller, it does not fail it" contract
+    `heatwaves.sst_anomaly_field()` already follows, so `upwelling.py` can
+    treat the two producers identically.
+    """
+    import xarray as xr
+
+    from services.climatology import build as climatology_build
+    from services.climatology import store as climatology_store
+    from services.vector_field import axis_after_block_mean, block_mean
+
+    cache = _cache
+    if cache is None:
+        return None
+
+    try:
+        climatology = climatology_store.load(REANALYSIS_CLIMATOLOGY_VARIABLE)
+    except climatology_store.ClimatologyNotBuilt:
+        return None
+
+    resolution_deg = float(climatology.attrs.get("resolution_deg", 1.0))
+    # This cache and the reanalysis both sit on the same GLO12 model grid
+    # (native 1/12 deg) — see `copernicus_reanalysis.py`'s docstring — so the
+    # same block-average factor that built the climatology also downsamples
+    # this live grid onto a matching resolution.
+    factor = max(1, round(resolution_deg * 12.0))
+    grid = block_mean(cache.grid, factor)
+    lat = axis_after_block_mean(cache.latitudes, factor)
+    lon = axis_after_block_mean(cache.longitudes, factor)
+
+    # Aligned by value (nearest cell), not by position: the climatology's own
+    # coarsening (`xarray.Dataset.coarsen`, offline) and this cache's
+    # (`block_mean`, live) are two different implementations of the same
+    # idea, and trusting them to land on bit-identical cell centres would be
+    # exactly the silent-misalignment risk this module elsewhere writes
+    # tests against. `.sel(..., method="nearest")` makes correctness not
+    # depend on that coincidence.
+    aligned = climatology.sel(latitude=lat, longitude=lon, method="nearest")
+
+    observation = xr.DataArray(
+        grid[np.newaxis, :, :],
+        dims=("time", "latitude", "longitude"),
+        coords={"time": [cache.timestamp], "latitude": lat, "longitude": lon},
+    )
+    scored = climatology_build.apply_percentiles(observation, aligned, when=cache.timestamp)
+
+    baseline = (
+        int(climatology.attrs.get("baseline_start", 0)),
+        int(climatology.attrs.get("baseline_end", 0)),
+    )
+    return sst_anomaly.SstAnomalyField(
+        anomaly=scored["anomaly"].values[0],
+        cold_exceedance=scored["exceedance"].values[0],
+        latitude=lat,
+        longitude=lon,
+        timestamp=cache.timestamp,
+        baseline=baseline,
+        source=sst_anomaly.COPERNICUS_REANALYSIS,
+    )
+
+
+def global_stats() -> dict[str, Any]:
+    """Area-weighted global mean SST over the cached timestep.
+
+    cos(latitude) weighting is not optional here: this is an equal-*angle*
+    grid, so a naive mean counts a 0.083deg cell near the pole as heavily as
+    one at the equator, which is roughly eleven times its true area, and
+    biases the global mean cold by more than a degree.
+    """
+    cache = _require_cache()
+    valid = np.isfinite(cache.grid)
+    if not valid.any():
+        raise CopernicusSstError("Cached SST grid holds no valid cells")
+
+    weights = np.broadcast_to(
+        np.cos(np.radians(cache.latitudes))[:, None], cache.grid.shape
+    )
+    values = cache.grid[valid]
+    mean = float(np.average(values, weights=weights[valid]))
+
+    return {
+        "mean_c": round(mean, 3),
+        "min_c": round(float(values.min()), 2),
+        "max_c": round(float(values.max()), 2),
+        "valid_cells": int(valid.sum()),
+        "timestamp": cache.timestamp.isoformat(),
+        "source": SOURCE_LABEL,
+        "depth_m": DEPTH_M,
     }
 
 

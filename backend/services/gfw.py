@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 GFW_TILE_URL = "https://gateway.api.globalfishingwatch.org/v3/4wings/tile/heatmap/{z}/{x}/{y}"
 
@@ -107,7 +110,11 @@ async def fetch_tile(dataset_key: str, z: int, x: int, y: int) -> bytes:
                 url, params=params, headers={"Authorization": f"Bearer {settings.GFW_TOKEN}"}
             )
         except httpx.HTTPError as exc:
-            raise GfwError(f"GFW tile request failed: {exc}") from exc
+            # Logged rather than returned — httpx errors embed the full
+            # upstream URL, which carries our query construction and, on some
+            # failure modes, request headers.
+            logger.warning(f"GFW tile request failed ({z}/{x}/{y}): {exc}")
+            raise GfwError("Vessel-density tiles are unavailable right now.") from exc
 
     if response.status_code == 404:
         # GFW returns 404 "Tile empty" for genuinely no-data tiles/dates, not

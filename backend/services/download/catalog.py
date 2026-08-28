@@ -106,7 +106,7 @@ _OPENMETEO_LICENCE = (
     "reanalysis and forecast data."
 )
 _GEBCO_LICENCE = (
-    "GEBCO Compilation Group, GEBCO_2020 Grid, served via NOAA CoastWatch ERDDAP. "
+    "GEBCO Compilation Group, GEBCO_2021 Grid, served via Ifremer ERDDAP. "
     "GEBCO data are placed in the public domain (https://www.gebco.net/data-products/)."
 )
 
@@ -247,7 +247,7 @@ PROVIDERS: dict[str, ProviderSpec] = {
         ),
         ProviderSpec(
             key=PROVIDER_GEBCO,
-            source_label="GEBCO_2020 Grid via NOAA CoastWatch ERDDAP",
+            source_label="GEBCO_2021 Grid via Ifremer ERDDAP",
             licence=_GEBCO_LICENCE,
             grid_spacing_deg=gebco.GRID_SPACING_DEG,
             # Time-invariant: one value per cell for any date range.
@@ -270,3 +270,25 @@ def source_labels(provider_keys: set[str]) -> list[str]:
 
 def licences(provider_keys: set[str]) -> list[str]:
     return sorted({PROVIDERS[key].licence for key in provider_keys})
+
+
+def copernicus_dataset(provider_key: str) -> tuple[str, str] | None:
+    """The `(dataset_id, depth_mode)` behind a Copernicus provider.
+
+    Returns None for the two providers that are not Copernicus (Open-Meteo's
+    point API, GEBCO's ERDDAP), so a caller can branch on "can I fetch this
+    globally" without a hardcoded provider-name list.
+
+    Reads the ids back off the `partial` that `_copernicus_fetch` built rather
+    than adding them as `ProviderSpec` fields. That keeps this table the one
+    place a dataset id is written down — a second copy on the spec would be
+    free to drift from the one the fetch actually uses, which is the failure
+    this module's whole shape exists to prevent.
+    """
+    keywords = getattr(PROVIDERS[provider_key].fetch, "keywords", None)
+    if not keywords or "dataset_id" not in keywords:
+        return None
+    return (
+        str(keywords["dataset_id"]),
+        str(keywords.get("depth_mode", copernicus.DEPTH_NONE)),
+    )

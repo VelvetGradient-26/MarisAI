@@ -53,6 +53,13 @@ class VariableInfo:
     # True when the value depends on the request's `depth_m`. The frontend
     # shows its depth control only while one of these is selected.
     depth_resolved: bool = False
+    # True for a compass bearing on 0-360, where 359 and 1 are neighbours.
+    # Every downstream stage — interpolation, subtraction, colour ramp, legend
+    # bounds — is linear by default and gets these wrong in a way that looks
+    # entirely plausible: the mean of 359 and 1 is 180, the exact opposite
+    # heading. Consumers that treat a value as a number rather than as an angle
+    # must check this. See `services/field_sampling.py`.
+    circular: bool = False
 
 
 # Ordered to match the spec's own category grouping, so the frontend can
@@ -149,6 +156,7 @@ VARIABLE_REGISTRY: dict[str, VariableInfo] = {
         # Different from wind_direction below (meteorological "from"
         # convention) — see cleaning.py's derive_direction for the formulas.
         derivation="direction_to",
+        circular=True,
     ),
     # --- Waves ---
     "significant_wave_height": VariableInfo(
@@ -196,6 +204,7 @@ VARIABLE_REGISTRY: dict[str, VariableInfo] = {
         # directly rather than derived — same convention as wind_direction,
         # opposite to the currents' "toward".
         source_field="VMDR",
+        circular=True,
     ),
     # --- Sea Level ---
     "sea_surface_height": VariableInfo(
@@ -229,6 +238,30 @@ VARIABLE_REGISTRY: dict[str, VariableInfo] = {
         derived_from=("eastward_wind", "northward_wind"),
         derivation="speed",
     ),
+    # The components exist as variables of their own, not only as the fields
+    # `wind_speed`/`wind_direction` are derived from, for one reason: a vector
+    # field has to be forecast as components. Direction is circular and every
+    # step to the screen is linear, so a particle layer composed from a forecast
+    # speed and a forecast bearing would flow backwards along every wrap — the
+    # mean of 359 and 1 degrees is 180. Currents already work this way; this is
+    # the same move for wind. It also makes `wind_direction` derivable rather
+    # than trained, which is the better answer for it anyway.
+    "wind_u": VariableInfo(
+        label="Wind U Component",
+        category="Wind",
+        unit="m/s",
+        available=True,
+        provider=PROVIDER_COPERNICUS_WIND,
+        source_field="eastward_wind",
+    ),
+    "wind_v": VariableInfo(
+        label="Wind V Component",
+        category="Wind",
+        unit="m/s",
+        available=True,
+        provider=PROVIDER_COPERNICUS_WIND,
+        source_field="northward_wind",
+    ),
     "wind_direction": VariableInfo(
         label="Wind Direction",
         category="Wind",
@@ -239,6 +272,7 @@ VARIABLE_REGISTRY: dict[str, VariableInfo] = {
         # Meteorological convention: direction the wind blows FROM (matches
         # copernicus_wind.get_point's existing formula for the live map).
         derivation="direction_from",
+        circular=True,
     ),
     "wind_gust": VariableInfo(
         label="Wind Gust",

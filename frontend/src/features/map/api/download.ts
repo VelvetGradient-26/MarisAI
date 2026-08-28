@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+import { API_BASE_URL } from '../../../utils/apiBase';
 
 export type Resolution = 'hourly' | 'daily' | 'weekly' | 'monthly';
 export type OutputFormat = 'csv' | 'json' | 'pdf';
@@ -28,6 +28,26 @@ export interface DownloadRequest {
   format: OutputFormat;
   /** Target depth in metres for depth-resolved variables; ignored by all others. */
   depth_m?: number;
+  /**
+   * Correlates this request with `fetchDownloadProgress` polls while it runs.
+   * The client generates it because the POST does not return until the whole
+   * download is finished — there is no response to learn an id from in time.
+   */
+  request_id?: string;
+}
+
+/** Where a running download has got to. Mirrors the backend's stages. */
+export interface DownloadProgress {
+  /** False before the server registers the request, and after it completes. */
+  tracked: boolean;
+  stage?: 'preparing' | 'fetching' | 'merging' | 'formatting' | 'done';
+  /** 0..1 across the whole pipeline, weighted by stage. */
+  fraction?: number;
+  providersTotal?: number;
+  providersDone?: number;
+  /** Upstream sources finished so far, in completion order. */
+  completedSources?: string[];
+  failed?: boolean;
 }
 
 export interface VariableOption {
@@ -124,6 +144,46 @@ export async function downloadOceanData(
   const blob = await response.blob();
   const filename = filenameFromContentDisposition(response.headers.get('Content-Disposition'));
   return { blob, filename };
+}
+
+/**
+ * Polls one download's progress.
+ *
+ * Never throws: this runs on a timer *beside* the download that matters, and a
+ * blip in a progress read must not surface as an error next to a request that
+ * is still perfectly healthy. A failed read is reported as untracked, which the
+ * caller already renders as an indeterminate bar.
+ */
+export async function fetchDownloadProgress(
+  requestId: string,
+  signal?: AbortSignal
+): Promise<DownloadProgress> {
+  try {
+    const response = await fetch(url(`/api/v1/download/progress/${encodeURIComponent(requestId)}`), {
+      signal,
+    });
+    if (!response.ok) return { tracked: false };
+    const payload = (await response.json()) as {
+      tracked: boolean;
+      stage?: DownloadProgress['stage'];
+      fraction?: number;
+      providers_total?: number;
+      providers_done?: number;
+      completed_sources?: string[];
+      failed?: boolean;
+    };
+    return {
+      tracked: payload.tracked,
+      stage: payload.stage,
+      fraction: payload.fraction,
+      providersTotal: payload.providers_total,
+      providersDone: payload.providers_done,
+      completedSources: payload.completed_sources,
+      failed: payload.failed,
+    };
+  } catch {
+    return { tracked: false };
+  }
 }
 
 export async function fetchDownloadHistory(

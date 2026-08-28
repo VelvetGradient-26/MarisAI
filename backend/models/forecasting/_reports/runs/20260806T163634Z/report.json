@@ -1,0 +1,56 @@
+[
+  {
+    "variable": "rainfall",
+    "horizon": 1,
+    "rows": 16590,
+    "points_used": [
+      "arabian_sea_central",
+      "arabian_sea_north",
+      "kerala_upwelling",
+      "bay_of_bengal_central",
+      "bay_of_bengal_north",
+      "andaman_sea",
+      "lakshadweep",
+      "gulf_of_mannar",
+      "equatorial_indian",
+      "somali_current",
+      "kuroshio",
+      "north_pacific_gyre",
+      "equatorial_pacific",
+      "south_pacific_gyre",
+      "coral_sea",
+      "gulf_stream",
+      "sargasso_sea",
+      "canary_upwelling",
+      "benguela_upwelling",
+      "north_sea",
+      "southern_ocean_indian"
+    ],
+    "points_skipped": [
+      {
+        "point": "peru_upwelling",
+        "reason": "Historical data provider openmeteo failed after 3 attempts: Open-Meteo returned status 429: {\"reason\":\"Hourly API request limit exceeded. Please try again in the next hour.\",\"error\":true}"
+      },
+      {
+        "point": "equatorial_atlantic",
+        "reason": "Historical data provider openmeteo failed after 3 attempts: Open-Meteo returned status 429: {\"reason\":\"Hourly API request limit exceeded. Please try again in the next hour.\",\"error\":true}"
+      },
+      {
+        "point": "agulhas",
+        "reason": "Historical data provider openmeteo failed after 3 attempts: Open-Meteo returned status 429: {\"error\":true,\"reason\":\"Hourly API request limit exceeded. Please try again in the next hour.\"}"
+      }
+    ],
+    "metrics": {
+      "mae": 0.13269,
+      "rmse": 0.31989,
+      "mape": 381.554,
+      "r2": 0.22354,
+      "n": 9954,
+      "directional_accuracy": 0.64393,
+      "persistence_rmse": 0.39206,
+      "skill_score": 0.33425
+    },
+    "duration_seconds": 49.27,
+    "artifact_path": "/Users/deepak/Desktop/MarisAI/backend/models/forecasting/rainfall/h1"
+  }
+]

@@ -1,0 +1,156 @@
+/* MapDescent — the signature move.
+ *
+ * A tall wrapper (`.lp-descent`) with a `position: sticky` stage inside it:
+ * scrolling through the wrapper's extra height is what `usePinnedProgress`
+ * turns into 0-1 progress, while the stage itself holds still on screen the
+ * whole time, exactly the way a pinned act should read. Reads the shared
+ * `--lp-*` tokens from `landing.css` — this file only adds the shapes unique
+ * to a full-bleed map section, the same split `embedded-map.css` uses for the
+ * dashboard's map panel.
+ */
+
+.lp-descent {
+  position: relative;
+  height: 340vh;
+}
+
+.lp-descent__stage {
+  position: sticky;
+  top: var(--navbar-h, 64px);
+  height: calc(100vh - var(--navbar-h, 64px));
+  overflow: clip;
+  background: var(--lp-bg);
+}
+
+.lp-descent--reduced .lp-descent__stage {
+  position: relative;
+  top: 0;
+}
+
+.lp-descent__map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* This instance takes no input, so its interactive chrome is hidden.
+   Attribution stays — it is what the tile providers require. */
+.lp-descent__map .maplibregl-ctrl-top-right,
+.lp-descent__map .maplibregl-ctrl-bottom-left {
+  display: none;
+}
+
+.lp-descent__map .maplibregl-ctrl-bottom-right {
+  opacity: 0.55;
+  transform: scale(0.82);
+  transform-origin: bottom right;
+}
+
+.lp-descent__veil {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      to bottom,
+      var(--lp-bg) 0%,
+      color-mix(in srgb, var(--lp-bg) 55%, transparent) 26%,
+      transparent 42%
+    ),
+    linear-gradient(to top, color-mix(in srgb, var(--lp-bg) 70%, transparent) 0%, transparent 42%);
+  pointer-events: none;
+}
+
+.lp-descent__frame {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.lp-descent__head {
+  max-width: var(--lp-measure);
+  margin: 0 auto;
+  width: 100%;
+  padding: clamp(2rem, 6vh, 4rem) var(--lp-gutter) 0;
+  transition: opacity 0.4s ease;
+}
+
+.lp-descent--reduced .lp-descent__head {
+  transition: none;
+}
+
+.lp-descent__head .lp-h2 {
+  margin: 0;
+  max-width: 20ch;
+  font-size: clamp(2rem, 4.6vw, 3.25rem);
+}
+
+.lp-descent__foot {
+  max-width: var(--lp-measure);
+  margin: 0 auto;
+  width: 100%;
+  padding: 0 var(--lp-gutter) clamp(1.75rem, 4vh, 2.75rem);
+}
+
+.lp-descent__caption {
+  position: relative;
+  display: grid;
+  margin-bottom: 0.6rem;
+}
+
+.lp-descent__caption-line {
+  grid-area: 1 / 1;
+  font-family: var(--lp-font-mono);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lp-text);
+  transition: opacity 0.5s ease;
+}
+
+.lp-descent--reduced .lp-descent__caption-line {
+  transition: none;
+}
+
+.lp-descent__note {
+  margin: 0;
+  font-family: var(--lp-font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.03em;
+  color: var(--lp-faint);
+}
+
+.lp-descent__note code {
+  font-family: inherit;
+  color: var(--lp-muted);
+}
+
+/* Reduced motion: the wrapper collapses to one still viewport-height of the
+   held final frame rather than 340vh of scroll with nothing left to scrub —
+   `usePinnedProgress` already resolves the map/caption state to progress 1
+   for this case; this only removes the now-pointless extra scroll length. */
+@media (prefers-reduced-motion: reduce) {
+  .lp-descent {
+    height: 100vh;
+  }
+}
+
+@media (max-width: 640px) {
+  .lp-descent {
+    height: 260vh;
+  }
+
+  .lp-descent__head .lp-h2 {
+    font-size: clamp(1.75rem, 8vw, 2.25rem);
+  }
+
+  .lp-descent__caption-line {
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+  }
+}

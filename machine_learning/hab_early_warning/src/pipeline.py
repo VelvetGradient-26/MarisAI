@@ -33,22 +33,44 @@ END = config.HAB_END
 FEATURE_STORE_NAME = "hab_gridded"
 
 
-def build(refresh_features: bool = False) -> pd.DataFrame:
+def _store_name(region: config.Region) -> str:
+    """Feature store for ``region``.
+
+    The Arabian Sea keeps the historic bare name so the existing 1.59 GB store
+    is found unchanged and stays the control other regions are checked
+    against; every other box is suffixed.
+    """
+    if region.name == config.ARABIAN_SEA.name:
+        return FEATURE_STORE_NAME
+    return f"{FEATURE_STORE_NAME}_{region.name}"
+
+
+def _artifact_name(region: config.Region) -> str:
+    if region.name == config.ARABIAN_SEA.name:
+        return "hab_early_warning"
+    return f"hab_early_warning_{region.name}"
+
+
+def build(
+    refresh_features: bool = False,
+    region: config.Region = REGION,
+) -> pd.DataFrame:
     """Build the labelled, feature-built gridded frame (cached)."""
-    if fusion.feature_store_exists(FEATURE_STORE_NAME) and not refresh_features:
-        print(f"reading cached feature store {FEATURE_STORE_NAME!r}", flush=True)
-        return fusion.read_feature_store(FEATURE_STORE_NAME)
+    store = _store_name(region)
+    if fusion.feature_store_exists(store) and not refresh_features:
+        print(f"reading cached feature store {store!r}", flush=True)
+        return fusion.read_feature_store(store)
 
     print("loading raw zone ...", flush=True)
-    physics = copernicus.fetch_physics(REGION, START, END, "daily")
-    bgc = copernicus.fetch_bgc(REGION, START, END, "daily")
-    wind = copernicus.fetch_wind(REGION, START, END)
-    bathymetry = gebco.fetch_bathymetry(REGION)
+    physics = copernicus.fetch_physics(region, START, END, "daily")
+    bgc = copernicus.fetch_bgc(region, START, END, "daily")
+    wind = copernicus.fetch_wind(region, START, END)
+    bathymetry = gebco.fetch_bathymetry(region)
 
     print("fusing onto the common grid ...", flush=True)
     started = time.time()
     frame = fusion.build_gridded_frame(
-        physics, bgc, bathymetry, region=REGION, wind=wind
+        physics, bgc, bathymetry, region=region, wind=wind
     )
     print(f"  {frame.shape} in {time.time()-started:.1f}s", flush=True)
 
@@ -78,7 +100,7 @@ def build(refresh_features: bool = False) -> pd.DataFrame:
     print("\n=== bloom label rates ===", flush=True)
     print(label_lib.summarise(frame).to_string(index=False), flush=True)
 
-    fusion.write_feature_store(frame, FEATURE_STORE_NAME)
+    fusion.write_feature_store(frame, store)
     return frame
 
 
@@ -86,7 +108,18 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     refresh = "--refresh-features" in argv
 
-    frame = build(refresh_features=refresh)
+    region = REGION
+    if "--region" in argv:
+        name = argv[argv.index("--region") + 1]
+        if name not in config.HAB_REGIONS:
+            print(f"unknown region {name!r}; "
+                  f"choose from {', '.join(config.HAB_REGIONS)}")
+            return 2
+        region = config.HAB_REGIONS[name]
+    print(f"region: {region.name} "
+          f"({region.west}..{region.east}E, {region.south}..{region.north}N)", flush=True)
+
+    frame = build(refresh_features=refresh, region=region)
     print("\ntraining (rolling-origin CV) ...", flush=True)
     results = train_lib.run(frame)
 
@@ -138,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
     if 7 in results:
         print(results[7].importances.head(15).round(4).to_string(index=False), flush=True)
 
-    train_lib.save(results)
+    train_lib.save(results, _artifact_name(region), region=region)
     print(f"\nsaved models to {config.MODELS_DIR} and reports to {config.REPORTS_DIR}",
           flush=True)
     return 0

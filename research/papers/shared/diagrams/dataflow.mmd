@@ -1,0 +1,49 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Helvetica, Arial, sans-serif','fontSize':'14px','primaryColor':'#e8eef5','primaryTextColor':'#1a1a1a','primaryBorderColor':'#1f6fb2','lineColor':'#4a4a4a'}}}%%
+flowchart LR
+    START(["as_of = 2026-08-10<br/>pinned snapshot"]) --> ASM
+
+    subgraph ASM["Per variable × horizon"]
+        direction TB
+        A1["Assemble 24 sites<br/>from frozen cache"]
+        A2["Pooled frame,<br/>sorted by date"]
+        A1 --> A2
+    end
+
+    ASM --> E1
+    ASM --> E2
+
+    subgraph E1["Experiment 1 — three-way baselines"]
+        direction TB
+        R1["Rolling-origin CV<br/>5 expanding folds"]
+        R2["Embargo gap = h<br/>between train and test"]
+        R3{"For each fold"}
+        R4["Fit LightGBM<br/>on train rows"]
+        R5["Fit climatology<br/>on train rows ONLY"]
+        R6["Persistence<br/>needs no fit"]
+        R7["Score all three<br/>on the test rows"]
+        R1 --> R2 --> R3
+        R3 --> R4 --> R7
+        R3 --> R5 --> R7
+        R3 --> R6 --> R7
+    end
+
+    subgraph E2["Experiment 2 — leave-one-site-out"]
+        direction TB
+        L1{"For each of 24 sites"}
+        L2["Train: other 23 sites,<br/>earlier 80% of record"]
+        L3["Test: held-out site,<br/>later 20% of record"]
+        L4["Climatology fitted on<br/>the same 23 sites;<br/>nearest-site fallback"]
+        L5["Score held-out site"]
+        L1 --> L2 --> L5
+        L1 --> L3 --> L5
+        L1 --> L4 --> L5
+    end
+
+    E1 --> OUT1[("baselines.json")]
+    E2 --> OUT2[("loso.json")]
+    OUT1 --> ASSET
+    OUT2 --> ASSET
+    ASSET["build_paper_assets.py<br/>figures · LaTeX tables · macros.tex"] --> PAPER["Manuscript<br/>every quoted number is a macro,<br/>so the prose cannot drift"]
+
+    classDef leak fill:#fdf0e6,stroke:#d1611f,stroke-width:2px,color:#1a1a1a
+    class R5,L4 leak

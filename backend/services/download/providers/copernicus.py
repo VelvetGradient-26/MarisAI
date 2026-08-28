@@ -220,3 +220,131 @@ async def fetch(
         depth_mode,
         depth_m,
     )
+
+
+# --- Whole-globe, many-timesteps ------------------------------------------
+#
+# The third access pattern, and the one the module docstring above did not
+# anticipate. `fetch` serves "bounded area, many timesteps" through
+# arco-time-series; `services/copernicus_sst.py` serves "whole globe, one
+# timestep" through arco-geo-series. The forecast grid needs "whole globe,
+# ~45 timesteps", and arco-geo-series is the right service for it: one chunk
+# read per timestep, versus arco-time-series' fine spatial chunks which would
+# mean touching every spatial chunk on the planet.
+
+
+def _coarsen(dataset: xr.Dataset, stride: int) -> xr.Dataset:
+    """Thin the lat/lon axes *before* the data is materialised.
+
+    This is a memory bound, not a speed one. arco-geo-series chunks are one
+    whole-globe timestep each, so the bytes come off the wire either way — but
+    a global 0.083deg float64 field is ~70MB per timestep per variable, and 45
+    timesteps of two variables held at full resolution is over 6GB. Striding
+    while the array is still lazy keeps the peak at roughly one chunk *per
+    concurrent task* — see `_bounded_load` for why that qualifier matters.
+    """
+    if stride <= 1:
+        return dataset
+    return dataset.isel(
+        latitude=slice(None, None, stride), longitude=slice(None, None, stride)
+    )
+
+
+# How many chunks may be in flight inside one `.load()`. Dask's threaded
+# scheduler defaults to one worker per core, which on an 8-core machine means
+# eight whole-globe timesteps decompressing at once — and `_fetch_global` is
+# itself called concurrently for every provider a variable needs, so the true
+# peak was 8 x chunk x providers, not the "roughly one chunk" `_coarsen`
+# promises. Measured on an 8 GB machine: a single-variable grid build peaked at
+# ~3.0 GB.
+#
+# Four is not a compromise between memory and speed, because this fetch is not
+# CPU-bound: it is one HTTPS stream per chunk out of S3. The same build logged
+# 18 "Connection pool is full, discarding connection" warnings against a pool of
+# 10 — the extra threads were re-handshaking TLS on connections they had just
+# discarded, so the parallelism past the pool size was costing time as well as
+# memory.
+#
+# That pool size is botocore's default, and `copernicusmarine` builds its
+# `botocore.config.Config` without `max_pool_connections`, so there is no
+# env var or setting that raises it — only monkeypatching a vendored client
+# would. Bounding the demand instead reaches the same place: four threads per
+# provider stays under ten even with two providers in flight.
+_GLOBAL_LOAD_THREADS = 4
+
+
+def _bounded_load(dataset: xr.Dataset) -> xr.Dataset:
+    """`.load()` with a bounded number of chunks in flight.
+
+    Scoped with a context manager rather than set globally: dask's thread pool
+    is process-wide, and the downloader's bbox fetches are small enough that
+    throttling them too would be a pointless slowdown. Only whole-globe reads
+    need the bound.
+    """
+    import dask
+
+    with dask.config.set(
+        scheduler="threads", num_workers=_GLOBAL_LOAD_THREADS, pool=None
+    ):
+        return dataset.load()
+
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=2, max=20))
+def _fetch_global_sync(
+    dataset_id: str,
+    fields: list[str],
+    start_date: date,
+    end_date: date,
+    depth_mode: str,
+    stride: int,
+) -> xr.Dataset:
+    import copernicusmarine
+
+    kwargs: dict[str, object] = {}
+    if depth_mode in (DEPTH_SURFACE, DEPTH_SELECT):
+        # Always the surface here. A depth-resolved forecast grid would be a
+        # different product with a depth axis; nothing asks for one yet, and
+        # bounding server-side is what keeps the 50-level datasets from
+        # pulling every level (see the docstring on DEPTH_SURFACE).
+        kwargs["minimum_depth"] = 0.0
+        kwargs["maximum_depth"] = _SURFACE_MAX_DEPTH
+
+    dataset = copernicusmarine.open_dataset(
+        dataset_id=dataset_id,
+        variables=fields,
+        username=settings.COPERNICUS_USERNAME,
+        password=settings.COPERNICUS_PASSWORD,
+        service="arco-geo-series",
+        start_datetime=f"{start_date.isoformat()}T00:00:00",
+        end_datetime=f"{end_date.isoformat()}T23:59:59",
+        **kwargs,
+    )
+    subset = _resolve_depth(dataset[fields], DEPTH_SURFACE, None)
+    return _bounded_load(_coarsen(subset, stride))
+
+
+async def fetch_global(
+    *,
+    dataset_id: str,
+    fields: list[str],
+    start_date: date,
+    end_date: date,
+    depth_mode: str = DEPTH_NONE,
+    stride: int = 1,
+) -> xr.Dataset:
+    """One Copernicus dataset over the whole globe for a date range.
+
+    Deliberately not part of the `FetchFn` protocol: it takes no bbox, and
+    `catalog.py`'s providers are all bbox-shaped because that is what the
+    downloader needs. This is the forecast grid's entry point, reached through
+    `catalog.copernicus_dataset()` so the dataset id still has one home.
+    """
+    return await asyncio.to_thread(
+        _fetch_global_sync,
+        dataset_id,
+        fields,
+        start_date,
+        end_date,
+        depth_mode,
+        stride,
+    )

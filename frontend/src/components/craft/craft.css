@@ -1,0 +1,436 @@
+/* --------------------------------------------------------------------------
+   The craft layer
+   --------------------------------------------------------------------------
+   Five app-wide surfaces that sit *above* every page and belong to none of
+   them: the grain, the cursor, the scroll rail, the preloader and the reveal
+   mask used by KineticText.
+
+   They are grouped in one file, and one directory, on purpose. Each is a few
+   dozen lines and none of them is a page concern — scattering them into the
+   page stylesheets is how the app ended up with seven private palettes the
+   first time. Everything here reads `--ma-*` from styles/tokens.css; nothing
+   here chooses a colour.
+
+   **The z-index ladder is the only shared state between them**, so it is
+   declared once rather than five times:
+
+      900  grain             — over every page, under the navbar
+     1000  navbar            (navbar.css, unchanged)
+     1100  scroll rail       — a hairline that must sit on the navbar's border
+     9000  cursor            — over everything the pointer can reach
+     9500  preloader         — over the cursor, because it precedes it
+
+   The grain is deliberately *below* the navbar rather than over it: the navbar
+   is already a blurred translucent surface, and texturing a blur reads as a
+   rendering artefact rather than as a material.
+   -------------------------------------------------------------------------- */
+
+/* --------------------------------------------------------------------------
+   Grain
+   --------------------------------------------------------------------------
+   A fixed film grain over the whole viewport.
+
+   Why it exists: the ground is a flat #060607 across four viewport-heights of
+   landing page, and a large area of flat near-black is the one thing a screen
+   renders *worse* than paper — it bands on 8-bit panels and smears on OLED
+   during scroll. A little noise dithers the gradients that sit on it (the
+   hero veil, the closing aurora, every card's shadow) and gives the surface a
+   material quality that no amount of colour choice does.
+
+   It is an inline `feTurbulence` data URI rather than a PNG: ~400 bytes, no
+   extra request, and it scales to any DPR without a second asset. The tile is
+   256px and repeats, which at this opacity is invisible as a repeat.
+
+   Opacity is per-theme and both values are low enough to survive a screenshot
+   without reading as compression noise. `mix-blend-mode` differs by theme
+   because the same grey noise must *lighten* a near-black ground and *darken*
+   a near-white one — `overlay` does both, but only if the layer's own
+   midpoint sits where the ground does, which it does not on light. */
+.craft-grain {
+  position: fixed;
+  inset: -50%;
+  z-index: 900;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* The drift is what separates grain from dirt on the lens: a static texture
+     over a scrolling page reads as a smudge on the screen. Three pixels of
+     travel over eight seconds is below the threshold of noticing and above the
+     threshold of "this is alive". The oversized `inset` above is what gives it
+     room to move without exposing an edge. */
+  animation: craft-grain-drift 8s steps(6) infinite;
+  will-change: transform;
+}
+
+:root[data-theme='light'] .craft-grain {
+  opacity: 0.035;
+  mix-blend-mode: multiply;
+}
+
+@keyframes craft-grain-drift {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  20% {
+    transform: translate3d(-3px, 2px, 0);
+  }
+  40% {
+    transform: translate3d(2px, -3px, 0);
+  }
+  60% {
+    transform: translate3d(-2px, -2px, 0);
+  }
+  80% {
+    transform: translate3d(3px, 1px, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* Reduced motion keeps the texture and stops the drift. The grain is a
+   material property of the surface, not an animation — removing it entirely
+   would change how the page *looks*, which is not what the setting asks for. */
+@media (prefers-reduced-motion: reduce) {
+  .craft-grain {
+    animation: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Cursor
+   --------------------------------------------------------------------------
+   Two elements, and the split is the whole idea: a dot that tracks the pointer
+   with **zero** lag, and a ring that trails it on a spring. Lagging both is
+   the common mistake — it makes the interface feel like it is running behind,
+   because the thing you aim with no longer lands where you point. Lagging
+   only the ring reads as weight and inertia while the aiming stays exact.
+
+   It is enabled only when all three hold (see Cursor.tsx): a fine pointer, a
+   device that can hover, and no reduced-motion preference. On anything else
+   the native cursor is untouched and neither element is rendered at all —
+   which is why `cursor: none` below is scoped to a body class the component
+   sets rather than being written on `html`. A stylesheet that hides the native
+   cursor before the script decides is how a touch user ends up with no
+   pointer at all on a hybrid laptop.
+
+   Everything is driven from JS through custom properties rather than by
+   writing `transform` directly, so the CSS below stays the single description
+   of what each state looks like. */
+body.craft-cursor-on,
+body.craft-cursor-on * {
+  cursor: none !important;
+}
+
+/* One exception, and it is an accessibility one rather than a taste one: a
+   text caret communicates *where the character will go*, which no decorative
+   ring reproduces. Anything the user types into keeps the real I-beam. */
+body.craft-cursor-on input,
+body.craft-cursor-on textarea,
+body.craft-cursor-on select,
+body.craft-cursor-on [contenteditable='true'] {
+  cursor: auto !important;
+}
+
+.craft-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9000;
+  pointer-events: none;
+  /* The element is positioned by its centre. Doing the -50% here rather than
+     in the JS keeps the script writing pure pointer coordinates. */
+  transform: translate3d(var(--cx, -100px), var(--cy, -100px), 0) translate(-50%, -50%);
+  will-change: transform;
+}
+
+.craft-cursor__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ma-accent);
+  transition: opacity var(--ma-duration-fast) var(--ma-ease);
+}
+
+.craft-cursor__ring {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--ma-accent-line);
+  border-radius: 50%;
+  transition:
+    width var(--ma-duration) var(--ma-ease-out),
+    height var(--ma-duration) var(--ma-ease-out),
+    border-color var(--ma-duration) var(--ma-ease),
+    background-color var(--ma-duration) var(--ma-ease),
+    opacity var(--ma-duration-fast) var(--ma-ease);
+}
+
+/* Over anything clickable the ring swells and fills faintly, and the dot
+   disappears into it. The dot going away matters: at this ring size the two
+   read as a target reticle rather than as one cursor, and a reticle over a
+   button implies precision the click does not require. */
+body.craft-cursor-on[data-cursor='link'] .craft-cursor__ring {
+  width: 52px;
+  height: 52px;
+  border-color: var(--ma-accent);
+  background: var(--ma-accent-soft);
+}
+
+body.craft-cursor-on[data-cursor='link'] .craft-cursor__dot {
+  opacity: 0;
+}
+
+/* Over a text field the ring collapses out of the way entirely — the native
+   I-beam restored above is doing the work, and a ring around a caret is
+   noise. */
+body.craft-cursor-on[data-cursor='text'] .craft-cursor {
+  opacity: 0;
+}
+
+/* While the button is held. A pointer that visibly compresses on press is the
+   cheapest possible confirmation that the click registered, and it lands
+   before any state change the click causes. */
+body.craft-cursor-on[data-cursor-down='true'] .craft-cursor__ring {
+  width: 26px;
+  height: 26px;
+}
+
+/* Left the window. Fading rather than hiding, so returning does not snap the
+   ring across the screen from wherever it was abandoned. */
+body.craft-cursor-on[data-cursor-out='true'] .craft-cursor {
+  opacity: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Scroll rail
+   --------------------------------------------------------------------------
+   A hairline at the very top of the viewport showing progress through the
+   document. It sits *above* the navbar's z-index so it draws on the navbar's
+   own bottom border rather than under it — one line doing two jobs, instead of
+   two parallel lines a pixel apart.
+
+   Deliberately not shown on the map route: the map is a single viewport with
+   no document scroll, so the rail would be permanently at 0% and would be
+   reporting something untrue about a page that has nothing to report. */
+.craft-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1100;
+  height: 2px;
+  width: 100%;
+  pointer-events: none;
+  transform-origin: 0 50%;
+  background: linear-gradient(90deg, transparent, var(--ma-accent));
+}
+
+/* --------------------------------------------------------------------------
+   Preloader
+   --------------------------------------------------------------------------
+   Shown once per browser session, not once per load.
+
+   The distinction is the point. A preloader on every navigation is a tax; a
+   preloader on the *first* arrival is a curtain, and it is the only moment on
+   a site where holding the viewer for a beat is a gift rather than a delay.
+   `sessionStorage` is what makes it the former, and it also means a developer
+   reloading a page fifty times sees it once.
+
+   **It reports a real signal, not a fake percentage.** The counter tracks
+   `document.fonts.ready` and the window load event, which is genuinely what
+   the first paint is waiting on here (three Google font families). This
+   project's dashboard rule — never substitute a number for missing data —
+   applies with more force on the front door, not less, so there is no
+   synthetic ramp behind it. See Preloader.tsx. */
+.craft-preloader {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  display: grid;
+  place-items: center;
+  background: var(--ma-bg-deep);
+}
+
+.craft-preloader__mark {
+  display: flex;
+  /* `flex-end`, not `baseline`. The letters are overflow-hidden inline-blocks,
+     whose baseline is their bottom margin edge rather than the text baseline
+     inside them — so baseline alignment put the counter on the mask's floor
+     instead of on the wordmark's. */
+  align-items: flex-end;
+  font-family: var(--ma-font-display);
+  font-size: clamp(2rem, 7vw, 4.5rem);
+  font-weight: 600;
+  letter-spacing: -0.045em;
+  color: var(--ma-heading);
+}
+
+/* The letters get their own row **with no gap**. This is not a detail: the
+   gap belongs between the wordmark and the counter, and putting it on the
+   shared flex parent applied it between every letter as well — which set
+   "MARIS" at roughly half an em of extra tracking on a wordmark whose whole
+   character comes from being set tight. */
+.craft-preloader__word {
+  display: flex;
+  align-items: flex-end;
+}
+
+/* Each letter rises out of a clipping mask: `overflow: hidden` on an
+   inline-block wrapper with the letter translated inside it — the same
+   mechanic as KineticText below, and the reason both live in this file. */
+.craft-preloader__letter {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+  /* Room for descenders and the tracking's negative side bearing, pulled back
+     out so the mask does not add width between letters. */
+  padding: 0 0.02em 0.14em;
+  margin: 0 -0.02em -0.14em;
+}
+
+.craft-preloader__letter > span {
+  display: inline-block;
+}
+
+.craft-preloader__count {
+  /* Measured in the *counter's* em, not the wordmark's — the two differ by
+     about 4x here, so a gap that reads as generous next to 13px mono is a
+     gutter next to 72px display type. */
+  margin: 0 0 0.5em 1.6em;
+  font-family: var(--ma-font-mono);
+  font-size: var(--ma-text-sm);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: var(--ma-faint);
+  /* Tabular figures, because a proportional 1 is narrower than a 0 and the
+     counter would otherwise jitter horizontally as it climbs. */
+  font-variant-numeric: tabular-nums;
+}
+
+.craft-preloader__rule {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--ma-accent);
+  transform-origin: 0 50%;
+}
+
+/* --------------------------------------------------------------------------
+   Kinetic text
+   --------------------------------------------------------------------------
+   Word-level mask reveal for headings. See KineticText.tsx for why this is a
+   separate thing from the vendored SplitText (which splits to *characters*,
+   animates opacity, and is right for the hero and wrong for a paragraph-width
+   heading).
+
+   The masking is pure CSS and the timing is framer-motion's, so reduced motion
+   is handled by the component returning plain text and never rendering these
+   classes at all. */
+.craft-kinetic {
+  display: inline;
+}
+
+.craft-kinetic__word {
+  display: inline-flex;
+  overflow: hidden;
+  /* The mask must not clip descenders and diacritics. A word box is exactly
+     the line box, so a `g` or an `Å` sits outside it and gets sliced. Padding
+     the box and pulling the margin back gives the mask room without moving
+     the text. */
+  padding: 0.12em 0.02em 0.18em;
+  margin: -0.12em -0.02em -0.18em;
+  vertical-align: bottom;
+}
+
+.craft-kinetic__inner {
+  display: inline-block;
+  white-space: pre;
+}
+
+/* The unsplit copy KineticText keeps for assistive technology. Not
+   `display: none` and not `visibility: hidden` — both remove it from the
+   accessibility tree, which is the one thing it exists to be in. This is the
+   standard clip-rect pattern: laid out, measured at a pixel, unreadable. */
+.craft-kinetic__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Magnetic
+   --------------------------------------------------------------------------
+   `useMagnetic` writes the offset into these two properties rather than onto
+   `transform` directly, so an element can keep whatever transform its own
+   stylesheet gives it (a hover lift, say) and compose with the magnet instead
+   of being overwritten by it. Any element using the hook must include
+   `var(--mag-x)`/`var(--mag-y)` in its own transform — the class below is the
+   default for elements that have no transform of their own. */
+.craft-magnetic {
+  transform: translate3d(var(--mag-x, 0px), var(--mag-y, 0px), 0);
+  /* No transition on the pull itself: the pointer is already a continuous
+     input, so easing it adds lag with nothing to smooth. The *release* needs
+     one, and the hook adds it for the duration of the return. */
+}
+
+.craft-magnetic--releasing {
+  transition: transform var(--ma-duration-slow) var(--ma-ease-out);
+}
+
+/* --------------------------------------------------------------------------
+   Marquee
+   --------------------------------------------------------------------------
+   An infinite horizontal ticker. The track holds the content twice and
+   translates by exactly -50%, which is what makes the loop seamless — an
+   animation to -100% of a single copy leaves a gap the width of the viewport
+   before it wraps.
+
+   The duplicate is `aria-hidden`, so a screen reader hears the list once. */
+.craft-marquee {
+  position: relative;
+  overflow: hidden;
+  /* Fades at both ends instead of a hard edge, so the ticker reads as passing
+     through a window rather than as a strip that has been cut off. */
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+.craft-marquee__track {
+  display: flex;
+  width: max-content;
+  animation: craft-marquee-scroll var(--marquee-duration, 40s) linear infinite;
+}
+
+.craft-marquee:hover .craft-marquee__track {
+  animation-play-state: paused;
+}
+
+.craft-marquee__group {
+  display: flex;
+  flex-shrink: 0;
+}
+
+@keyframes craft-marquee-scroll {
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+/* A ticker whose whole content is motion cannot be usefully slowed, so under
+   reduced motion it stops and becomes a plain overflow-scrollable row the user
+   drives themselves. */
+@media (prefers-reduced-motion: reduce) {
+  .craft-marquee {
+    overflow-x: auto;
+  }
+  .craft-marquee__track {
+    animation: none;
+  }
+}

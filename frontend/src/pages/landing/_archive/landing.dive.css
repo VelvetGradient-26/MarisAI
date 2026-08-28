@@ -1,0 +1,776 @@
+.landing-page {
+  --landing-bg: #02060c;
+  --landing-text: #f2f6f8;
+  --landing-muted: rgba(220, 232, 238, 0.72);
+  --landing-primary: oklch(0.78 0.14 195);
+  --landing-accent-2: oklch(0.78 0.14 165);
+  --landing-border: rgba(255, 255, 255, 0.1);
+  --landing-outline: rgba(255, 255, 255, 0.08);
+  --landing-card-bg: oklch(0.19 0.032 240 / 0.72);
+  --landing-panel-bg: oklch(0.13 0.028 240 / 0.88);
+  --landing-panel-grid: oklch(1 0 0 / 0.035);
+  position: relative;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background: var(--landing-bg);
+  color: var(--landing-text);
+  font-family: 'IBM Plex Sans', sans-serif;
+  scroll-snap-type: y proximity;
+}
+
+/* The dive backdrop (OceanDiveScene) still darkens toward the abyss in
+   light mode — just to a teal-charcoal floor instead of near-black (see
+   DEPTH_STOPS_LIGHT) — because every section past the hero sits on top of
+   that same animated backdrop, not a flat page background. So only the
+   accent hue shifts to teal here; --landing-text/--landing-muted/card
+   surfaces stay the light-on-dark values from the base class, or the CTA
+   and footer would render dark text on a dark backdrop. */
+.landing-page--light {
+  --landing-primary: #2dd4bf;
+  --landing-accent-2: #5eead4;
+}
+
+/* ── shared fixed dive layers (OceanDiveScene) ───────────────────────── */
+
+.dive-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.dive-sky-gradient {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 82%;
+  background: linear-gradient(to bottom, #2a7cc2 0%, #4a9fdb 30%, #86caee 60%, #c9e7fa 85%, #e9f7fe 100%);
+}
+
+.dive-sky-horizon {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 74%;
+  height: 12%;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(232, 247, 254, 0.75) 55%, rgba(232, 247, 254, 0));
+  filter: blur(6px);
+}
+
+.dive-sun {
+  position: absolute;
+  top: 4%;
+  left: 66%;
+  width: 300px;
+  height: 300px;
+}
+
+.dive-sun__rays {
+  position: absolute;
+  inset: -120px;
+  animation: raySpin 90s linear infinite;
+}
+
+.dive-sun__rays-svg {
+  width: 100%;
+  height: 100%;
+  animation: rayPulse 5.5s ease-in-out infinite;
+}
+
+.dive-sun__glow {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 250, 1) 0%,
+    rgba(255, 251, 225, 0.95) 26%,
+    rgba(255, 243, 196, 0.5) 46%,
+    rgba(255, 238, 180, 0.14) 68%,
+    transparent 80%
+  );
+  filter: blur(3px);
+  animation: sunFlash 4.5s ease-in-out infinite;
+}
+
+.dive-cloud {
+  position: absolute;
+  left: 0;
+  animation-name: cloudFloat;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.dive-bird {
+  position: absolute;
+  left: 0;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.dive-shaft {
+  position: absolute;
+  top: -60px;
+  height: 120vh;
+  transform-origin: top center;
+  background: linear-gradient(to bottom, rgba(255, 248, 222, 0.28), rgba(255, 248, 222, 0.06) 55%, transparent 85%);
+  filter: blur(10px);
+  animation-name: shaftShimmer;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+.dive-bubble {
+  position: absolute;
+  bottom: -6vh;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle at 34% 30%,
+    rgba(255, 255, 255, 0.9),
+    rgba(190, 230, 245, 0.28) 55%,
+    rgba(140, 200, 225, 0.08) 78%,
+    transparent
+  );
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  animation-name: bubbleRise;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.dive-fish-lane {
+  position: absolute;
+  left: 0;
+}
+
+.dive-angler {
+  position: absolute;
+  top: 58%;
+  left: 0;
+  animation-name: driftLeft;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.dive-plankton {
+  position: absolute;
+  border-radius: 999px;
+  animation-name: particleGlow;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+.dive-gauge {
+  position: fixed;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.dive-gauge__readout {
+  text-align: right;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.dive-gauge__meters {
+  font-size: 15px;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+.dive-gauge__zone {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(226, 244, 252, 0.9);
+  margin-top: 3px;
+}
+
+.dive-gauge--light .dive-gauge__meters {
+  color: #06212f;
+}
+
+.dive-gauge--light .dive-gauge__zone {
+  color: rgba(10, 40, 50, 0.85);
+}
+
+.dive-gauge__track {
+  position: relative;
+  width: 3px;
+  height: 180px;
+  border-radius: 999px;
+  background: rgba(6, 32, 46, 0.28);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.dive-gauge__fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  min-height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffe9a3, oklch(0.85 0.19 165));
+  transition: height 0.15s linear;
+}
+
+/* ── hero ─────────────────────────────────────────────────────────────── */
+
+.dive-hero {
+  position: relative;
+  z-index: 2;
+  height: 100vh;
+  min-height: 560px;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: calc(var(--navbar-h, 64px) + 4vh);
+  box-sizing: border-box;
+}
+
+.dive-buoy {
+  position: absolute;
+  top: 80%;
+  left: 88%;
+  animation: floatY 5s ease-in-out infinite;
+}
+
+.dive-buoy__dot {
+  position: relative;
+  width: 10px;
+  height: 10px;
+}
+
+.dive-buoy__ring,
+.dive-buoy__core {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+}
+
+.dive-buoy__ring {
+  border: 1.5px solid oklch(0.85 0.16 165);
+  animation: buoyPulse 2.6s ease-out infinite;
+}
+
+.dive-buoy__core {
+  background: oklch(0.85 0.16 165);
+  box-shadow: 0 0 10px oklch(0.85 0.16 165 / 0.9);
+}
+
+.dive-buoy__label {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  white-space: nowrap;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: rgba(240, 250, 255, 0.9);
+  background: rgba(8, 32, 46, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 4px 8px;
+  animation: shimmer 4s ease-in-out infinite;
+}
+
+.dive-pier {
+  position: absolute;
+  left: 0;
+  bottom: 12vh;
+  height: min(19vh, 190px);
+  width: min(34%, 470px);
+  z-index: 1;
+}
+
+.dive-pier-light {
+  animation: shimmer 5s ease-in-out infinite;
+}
+
+.dive-waves {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 40%;
+}
+
+.dive-wave {
+  position: absolute;
+  bottom: 0;
+  width: 200%;
+  height: 100%;
+}
+
+.dive-wave--one {
+  animation: waveDrift1 28s linear infinite;
+}
+
+.dive-wave--two {
+  animation: waveDrift2 20s linear infinite;
+}
+
+.dive-wave--three {
+  animation: waveDrift3 13s linear infinite;
+}
+
+.dive-hero__content {
+  position: relative;
+  z-index: 3;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 24px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  text-align: center;
+}
+
+.dive-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #0a4257;
+  border: 1px solid rgba(10, 66, 87, 0.28);
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 999px;
+  padding: 8px 18px;
+}
+
+.dive-badge span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #0d7c9e;
+  box-shadow: 0 0 8px rgba(13, 124, 158, 0.8);
+}
+
+.dive-hero__content h1 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600;
+  font-size: clamp(34px, 5vw, 52px);
+  line-height: 1.1;
+  margin: 0;
+  letter-spacing: -0.01em;
+  color: #06212f;
+  text-shadow: 0 2px 18px rgba(255, 255, 255, 0.45);
+  text-wrap: balance;
+}
+
+.dive-hero__content p {
+  font-size: 18px;
+  line-height: 1.6;
+  max-width: 560px;
+  color: #10405a;
+  margin: 0;
+  text-shadow: 0 1px 10px rgba(255, 255, 255, 0.4);
+}
+
+.dive-cta-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #04121a;
+  background: linear-gradient(120deg, oklch(0.78 0.14 195), oklch(0.7 0.13 210));
+  border: none;
+  border-radius: 999px;
+  padding: 15px 30px;
+  cursor: pointer;
+  margin-top: 6px;
+  box-shadow: 0 10px 30px rgba(6, 33, 47, 0.22);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dive-cta-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 34px rgba(6, 33, 47, 0.3);
+  color: #04121a;
+}
+
+.dive-cta-button--abyss {
+  background: linear-gradient(120deg, oklch(0.85 0.19 165), oklch(0.78 0.14 195));
+}
+
+.dive-scroll-hint {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(6, 33, 47, 0.6);
+  margin-top: 18px;
+  animation: floatY 3.2s ease-in-out infinite;
+}
+
+/* ── content sections ────────────────────────────────────────────────── */
+
+.dive-section {
+  position: relative;
+  z-index: 2;
+  min-height: 100vh;
+  scroll-snap-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 60px 24px;
+  overflow: hidden;
+}
+
+.dive-stats,
+.dive-features,
+.dive-platform {
+  width: 100%;
+  max-width: 1240px;
+  transition: transform 0.2s ease-out;
+}
+
+.dive-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+}
+
+.dive-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-left: 1px solid var(--landing-border);
+  padding-left: 24px;
+}
+
+.dive-stat__value {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 34px;
+  font-weight: 600;
+  color: var(--landing-text);
+}
+
+.dive-stat__label {
+  font-size: 14px;
+  color: var(--landing-muted);
+}
+
+.dive-eyebrow {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--landing-accent-2);
+  margin-bottom: 14px;
+}
+
+.dive-features__head {
+  max-width: 620px;
+  margin-bottom: 56px;
+}
+
+.dive-features__head h2 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600;
+  font-size: 36px;
+  line-height: 1.2;
+  margin: 0;
+  color: var(--landing-text);
+  text-wrap: balance;
+}
+
+.dive-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.dive-feature-card {
+  background: var(--landing-card-bg);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--landing-border);
+  border-radius: 10px;
+  padding: 28px;
+}
+
+.dive-feature-card__icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.dive-feature-card__icon--cyan {
+  background: color-mix(in oklch, var(--landing-primary) 15%, transparent);
+  border: 1px solid color-mix(in oklch, var(--landing-primary) 30%, transparent);
+}
+
+.dive-feature-card__icon--teal {
+  background: color-mix(in oklch, var(--landing-accent-2) 15%, transparent);
+  border: 1px solid color-mix(in oklch, var(--landing-accent-2) 30%, transparent);
+}
+
+.dive-feature-card h3 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 19px;
+  font-weight: 600;
+  margin: 0 0 10px;
+  color: var(--landing-text);
+}
+
+.dive-feature-card p {
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--landing-muted);
+  margin: 0;
+}
+
+.dive-platform {
+  display: grid;
+  grid-template-columns: 0.85fr 1.15fr;
+  gap: 64px;
+  align-items: center;
+}
+
+.dive-platform h2 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600;
+  font-size: 32px;
+  line-height: 1.25;
+  margin: 0 0 18px;
+  color: var(--landing-text);
+  text-wrap: balance;
+}
+
+.dive-platform p {
+  font-size: 15.5px;
+  line-height: 1.7;
+  color: var(--landing-muted);
+  margin: 0 0 24px;
+}
+
+.dive-doc-link {
+  font-size: 14.5px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--landing-primary);
+  text-decoration: none;
+}
+
+.dive-doc-link:hover {
+  color: var(--landing-accent-2);
+}
+
+.dive-platform__panel {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  border-radius: 12px;
+  border: 1px solid var(--landing-border);
+  background:
+    repeating-linear-gradient(0deg, var(--landing-panel-grid) 0px, var(--landing-panel-grid) 1px, transparent 1px, transparent 32px),
+    repeating-linear-gradient(90deg, var(--landing-panel-grid) 0px, var(--landing-panel-grid) 1px, transparent 1px, transparent 32px),
+    var(--landing-panel-bg);
+  overflow: hidden;
+  backdrop-filter: blur(6px);
+}
+
+.dive-platform__chart {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.dive-platform__caption {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--landing-muted);
+  letter-spacing: 0.04em;
+}
+
+.dive-platform__tags {
+  position: absolute;
+  bottom: 18px;
+  left: 18px;
+  display: flex;
+  gap: 10px;
+}
+
+.dive-tag {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  padding: 4px 9px;
+  border-radius: 4px;
+}
+
+.dive-tag--cyan {
+  background: color-mix(in oklch, var(--landing-primary) 15%, transparent);
+  border: 1px solid color-mix(in oklch, var(--landing-primary) 30%, transparent);
+  color: var(--landing-primary);
+}
+
+.dive-tag--teal {
+  background: color-mix(in oklch, var(--landing-accent-2) 15%, transparent);
+  border: 1px solid color-mix(in oklch, var(--landing-accent-2) 30%, transparent);
+  color: var(--landing-accent-2);
+}
+
+.dive-cta {
+  max-width: 640px;
+  transition: transform 0.2s ease-out;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+}
+
+.dive-cta h2 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600;
+  font-size: 34px;
+  margin: 0;
+  color: var(--landing-text);
+  text-wrap: balance;
+}
+
+/* ── footer ───────────────────────────────────────────────────────────── */
+
+.dive-footer {
+  position: relative;
+  z-index: 2;
+  border-top: 1px solid var(--landing-outline);
+}
+
+.dive-footer > div:first-child {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+}
+
+.dive-footer__brand {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--landing-primary);
+  margin-bottom: 6px;
+}
+
+.dive-footer__copy {
+  font-size: 13.5px;
+  color: var(--landing-muted);
+}
+
+.dive-footer__links {
+  display: flex;
+  gap: 24px;
+  font-size: 13.5px;
+}
+
+.dive-footer__links a {
+  color: var(--landing-muted);
+  text-decoration: none;
+}
+
+.dive-footer__links a:hover {
+  color: var(--landing-primary);
+}
+
+/* ── keyframes (ported from the prototype) ───────────────────────────── */
+
+@keyframes waveDrift1 { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes waveDrift2 { from { transform: translateX(-50%); } to { transform: translateX(0); } }
+@keyframes waveDrift3 { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes buoyPulse { 0% { transform: scale(0.6); opacity: .8; } 100% { transform: scale(2.4); opacity: 0; } }
+@keyframes floatY { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+@keyframes shimmer { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+@keyframes shaftShimmer {
+  0%, 100% { opacity: .28; transform: scaleY(1) skewX(var(--sk, 0deg)); }
+  50% { opacity: .62; transform: scaleY(1.06) skewX(var(--sk, 0deg)); }
+}
+@keyframes driftLeft { from { transform: translate3d(125vw, 0, 0); } to { transform: translate3d(-30vw, 4vh, 0); } }
+@keyframes tailWag { 0%, 100% { transform: rotate(-3.5deg); } 50% { transform: rotate(3.5deg); } }
+@keyframes flukeWag { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
+@keyframes hover3 { 0%, 100% { transform: translateY(-14px); } 50% { transform: translateY(14px); } }
+@keyframes tentacleSway { 0%, 100% { transform: translateY(0) rotate(-2.5deg); } 50% { transform: translateY(7px) rotate(2.5deg); } }
+@keyframes lureGlow { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+@keyframes bubbleRise {
+  0% { transform: translate3d(0, 18vh, 0) scale(.7); opacity: 0; }
+  12% { opacity: .75; }
+  88% { opacity: .55; }
+  100% { transform: translate3d(4vw, -112vh, 0) scale(1.15); opacity: 0; }
+}
+@keyframes particleGlow { 0%, 100% { opacity: .2; transform: scale(0.7); } 50% { opacity: 1; transform: scale(1.35); } }
+@keyframes swimR { from { transform: translate3d(-32vw, 0, 0) scaleX(1); } to { transform: translate3d(128vw, -6vh, 0) scaleX(1); } }
+@keyframes swimL { from { transform: translate3d(128vw, 0, 0) scaleX(-1); } to { transform: translate3d(-32vw, 5vh, 0) scaleX(-1); } }
+@keyframes cloudFloat { from { transform: translate3d(-45vw, 0, 0); } to { transform: translate3d(135vw, 0, 0); } }
+@keyframes sunFlash { 0%, 100% { transform: scale(1); opacity: .9; } 50% { transform: scale(1.07); opacity: 1; } }
+@keyframes raySpin { to { transform: rotate(360deg); } }
+@keyframes rayPulse { 0%, 100% { opacity: .22; } 50% { opacity: .55; } }
+@keyframes wingFlap { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(-0.55); } }
+
+@media (max-width: 900px) {
+  .dive-stats,
+  .dive-feature-grid {
+    grid-template-columns: 1fr;
+  }
+  .dive-platform {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .dive-hero__content h1 {
+    font-size: clamp(30px, 9vw, 40px);
+  }
+  .dive-gauge {
+    display: none;
+  }
+  .dive-footer > div:first-child {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dive-sun__rays,
+  .dive-sun__rays-svg,
+  .dive-sun__glow,
+  .dive-cloud,
+  .dive-bird svg g,
+  .dive-shaft,
+  .dive-bubble,
+  .dive-fish-lane svg,
+  .dive-fish-lane > div,
+  .dive-angler,
+  .dive-plankton,
+  .dive-buoy,
+  .dive-buoy__ring,
+  .dive-buoy__label,
+  .dive-pier-light,
+  .dive-scroll-hint {
+    animation: none !important;
+  }
+}

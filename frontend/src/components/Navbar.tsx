@@ -1,22 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import { Menu, Moon, Sun, X } from 'lucide-react';
 import { Link } from '../app/router';
 import { useAppRouter } from '../app/routerContext';
+import { rafThrottle } from '../utils/rafThrottle';
 import { useTimezoneStore } from '../store/timezoneStore';
 import { useThemeStore } from '../store/themeStore';
-import { useAuthStore } from '../store/authStore';
-import { loginUrl } from '../features/map/api/auth';
 import './navbar.css';
 
 const NAV_LINKS = [
   { label: 'Home', to: '/' },
   { label: 'Map', to: '/map' },
-  { label: 'Analytics', to: '/dashboard' },
-  { label: 'Model Insights', to: '/predictions' },
+  { label: 'Dashboard', to: '/dashboard' },
+  { label: 'Assistant', to: '/assistant' },
+  { label: 'Analytics', to: '/analytics' },
+  { label: 'Compare', to: '/compare' },
   { label: 'Download', to: '/download' },
+  { label: 'Docs', to: '/docs' },
 ];
-
-const GITHUB_URL = 'https://github.com/VelvetGradient-26/MarisAI';
 
 export interface NavbarProps {
   /** Map page only: floats over the fullscreen map instead of pushing
@@ -34,52 +35,66 @@ export interface NavbarProps {
  * Deliberately does not carry per-page widgets (a live clock, say) — those are
  * page-local concerns rendered by the pages themselves. What does live here is
  * anything that is a single shared, app-wide concern: the dark/light theme
- * toggle (store/themeStore.ts), the timezone picker (store/timezoneStore.ts),
- * and the account control (store/authStore.ts). Sign-in state qualifies on the
- * same grounds as the theme — it's one piece of state every page reads, so one
- * control in the shared nav is correct, and it replaces the fake hardcoded
- * avatar the dashboard used to render on its own.
+ * toggle (store/themeStore.ts) and the timezone picker (store/timezoneStore.ts).
+ *
+ * The account control and the "view source" link were both removed — see
+ * docs/AUTH_REMOVAL.md for the former.
  */
 export function Navbar({ overlay = false }: NavbarProps) {
   const { pathname } = useAppRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const dark = useThemeStore((s) => s.dark);
+  const scrolled = useScrolledPastTop();
 
   return (
     <header
-      className={`navbar ${overlay ? 'navbar--overlay' : ''} ${dark ? '' : 'navbar--light'}`}
+      className={`navbar ${overlay ? 'navbar--overlay' : ''} ${dark ? '' : 'navbar--light'} ${
+        scrolled ? 'is-scrolled' : ''
+      }`}
     >
       <div className="navbar__inner">
         <Link className="navbar__logo" to="/" aria-label="Maris AI home">
-          Maris AI
+          <WaveMark />
+          <span className="navbar__logo-text">Maris AI</span>
         </Link>
 
         <nav className="navbar__links navbar__links--desktop" aria-label="Primary navigation">
-          {NAV_LINKS.map((link) => (
-            <Link
-              key={link.to}
-              className={pathname === link.to ? 'is-active' : ''}
-              to={link.to}
-            >
-              {link.label}
-            </Link>
-          ))}
+          {NAV_LINKS.map((link) => {
+            const active = pathname === link.to;
+            return (
+              <span key={link.to} className="navbar__link-slot">
+                {/* The label is rendered twice and the pair slides on hover
+                    (see navbar.css). The duplicate is `aria-hidden`, so the
+                    accessible name is still the single label. */}
+                <Link className={active ? 'is-active' : ''} to={link.to}>
+                  <span className="navbar__label">
+                    <span className="navbar__label-face">{link.label}</span>
+                    <span className="navbar__label-face" aria-hidden="true">
+                      {link.label}
+                    </span>
+                  </span>
+                </Link>
+                {/* One indicator for the whole bar, not one per link: a shared
+                    `layoutId` makes framer-motion animate the *same* element
+                    between slots, so it slides from the old link to the new
+                    one instead of blinking off and on. The underline is no
+                    longer drawn by `border-color` for the same reason — a
+                    border cannot travel between elements. */}
+                {active ? (
+                  <motion.span
+                    className="navbar__indicator"
+                    layoutId="navbar-indicator"
+                    transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                  />
+                ) : null}
+              </span>
+            );
+          })}
         </nav>
 
         <div className="navbar__actions">
           <TimezonePicker />
           <ThemeButton />
-          <AccountControl />
-          <a
-            className="navbar__icon-button"
-            href={GITHUB_URL}
-            target="_blank"
-            rel="noreferrer"
-            aria-label="View source on GitHub"
-            title="View source on GitHub"
-          >
-            <GithubIcon size={18} />
-          </a>
           <button
             className="navbar__menu-button"
             type="button"
@@ -107,121 +122,83 @@ export function Navbar({ overlay = false }: NavbarProps) {
           <div className="navbar__timezone-mobile">
             <TimezonePicker />
           </div>
-          <div className="navbar__account-mobile">
-            <AccountControl onNavigate={() => setMenuOpen(false)} />
-          </div>
         </nav>
       )}
     </header>
   );
 }
 
-const ACCOUNT_LINKS = [
-  { label: 'Saved locations', to: '/account' },
-  { label: 'Download history', to: '/account?tab=history' },
-];
-
 /**
- * Sign-in entry point and account menu. Renders nothing while the boot-time
- * /auth/me call is still in flight, so the bar doesn't flash "Sign in" at
- * someone who is in fact already signed in.
+ * True once the document has scrolled off the very top.
+ *
+ * Drives the bar's condensed state: a translucent navbar over a page's own
+ * hero has nothing behind it to separate from, and the border and heavier
+ * background it needs *once content is passing under it* are exactly what make
+ * it look heavy sitting over a hero. So the bar starts nearly weightless and
+ * gains its edge on the first scroll.
+ *
+ * The threshold is 8px rather than 0 so a trackpad's rubber-band overscroll
+ * does not flicker the state at rest, and the setter is guarded on the value
+ * so the throttled listener re-renders the navbar exactly twice per page
+ * rather than on every frame of a scroll.
+ *
+ * Always false on `/map`, without a special case: that route has no document
+ * scroll, so `scrollY` never leaves 0.
  */
-function AccountControl({ onNavigate }: { onNavigate?: () => void }) {
-  const status = useAuthStore((s) => s.status);
-  const user = useAuthStore((s) => s.user);
-  const logout = useAuthStore((s) => s.logout);
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement | null>(null);
+function useScrolledPastTop() {
+  const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
-    function onPointerDown(event: MouseEvent) {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') setOpen(false);
-    }
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open]);
+    const check = rafThrottle(() => {
+      setScrolled((was) => {
+        const now = window.scrollY > 8;
+        return now === was ? was : now;
+      });
+    });
+    window.addEventListener('scroll', check, { passive: true });
+    // Measure once on mount: a route change can land on a page already
+    // scrolled, and a browser restoring a scroll position fires no event.
+    check();
+    return () => window.removeEventListener('scroll', check);
+  }, []);
 
-  if (status === 'loading') return null;
-
-  if (status === 'anonymous' || !user) {
-    // A real navigation, not a Link: the OAuth flow is a redirect chain
-    // through Google that the hand-rolled router can't take part in.
-    return (
-      <a className="navbar__signin" href={loginUrl()}>
-        Sign in
-      </a>
-    );
-  }
-
-  return (
-    <div className="navbar__account" ref={containerRef}>
-      <button
-        className="navbar__avatar"
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-label={`Account menu for ${user.name}`}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        title={user.email}
-      >
-        {user.picture ? (
-          <img src={user.picture} alt="" referrerPolicy="no-referrer" />
-        ) : (
-          <span>{initialsOf(user.name || user.email)}</span>
-        )}
-      </button>
-
-      {open && (
-        <div className="navbar__account-menu" role="menu">
-          <div className="navbar__account-identity">
-            <strong>{user.name}</strong>
-            <span>{user.email}</span>
-          </div>
-          {ACCOUNT_LINKS.map((link) => (
-            <Link
-              key={link.to}
-              to={link.to}
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                onNavigate?.();
-              }}
-            >
-              {link.label}
-            </Link>
-          ))}
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              onNavigate?.();
-              void logout();
-            }}
-          >
-            Sign out
-          </button>
-        </div>
-      )}
-    </div>
-  );
+  return scrolled;
 }
 
-/** "Deepak Krishna" -> "DK"; falls back to the first character for one-word
- * names and email addresses. */
-function initialsOf(value: string): string {
-  const parts = value.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+/**
+ * The brand mark: three stacked contour lines, which is what a bathymetric
+ * chart and a wave trace have in common and is the one glyph that reads as
+ * *this* product rather than as a generic globe or droplet.
+ *
+ * Drawn as strokes with `pathLength` normalised to 1, so the draw-on animation
+ * in navbar.css is a `stroke-dashoffset` from 1 to 0 regardless of each path's
+ * real length — otherwise the three lines, which are different lengths, would
+ * draw at three different speeds.
+ */
+function WaveMark() {
+  return (
+    <svg
+      className="navbar__mark"
+      width="26"
+      height="26"
+      viewBox="0 0 26 26"
+      fill="none"
+      aria-hidden="true"
+    >
+      {[7, 13, 19].map((y, index) => (
+        <path
+          key={y}
+          className="navbar__mark-line"
+          style={{ animationDelay: `${index * 0.09}s` }}
+          d={`M2 ${y}c3.2 0 3.2-3.4 6.4-3.4S11.6 ${y} 14.8 ${y}s3.2-3.4 6.4-3.4`}
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          pathLength={1}
+        />
+      ))}
+    </svg>
+  );
 }
 
 function ThemeButton() {
@@ -269,13 +246,3 @@ function TimezonePicker() {
     </select>
   );
 }
-
-function GithubIcon({ size = 20 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M12 0C5.37 0 0 5.5 0 12.3c0 5.44 3.44 10.05 8.21 11.68.6.11.82-.27.82-.6 0-.29-.01-1.06-.02-2.08-3.34.75-4.04-1.66-4.04-1.66-.55-1.44-1.34-1.82-1.34-1.82-1.09-.77.08-.75.08-.75 1.21.09 1.84 1.28 1.84 1.28 1.07 1.87 2.8 1.33 3.49 1.02.11-.79.42-1.33.76-1.64-2.67-.31-5.47-1.38-5.47-6.15 0-1.36.47-2.47 1.24-3.34-.12-.31-.54-1.57.12-3.28 0 0 1.01-.33 3.3 1.28a11.2 11.2 0 0 1 6 0c2.29-1.61 3.3-1.28 3.3-1.28.66 1.71.24 2.97.12 3.28.77.87 1.24 1.98 1.24 3.34 0 4.79-2.81 5.83-5.49 6.14.43.38.81 1.13.81 2.28 0 1.65-.01 2.98-.01 3.38 0 .33.21.72.83.6C20.57 22.34 24 17.74 24 12.3 24 5.5 18.63 0 12 0Z" />
-    </svg>
-  );
-}
-
-export { GithubIcon };

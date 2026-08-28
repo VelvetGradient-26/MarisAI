@@ -24,7 +24,10 @@ FEEDBACK_RECIPIENT = "nycteakryfos@gmail.com"
 # One JSON object per line — a durable local record of every submission,
 # independent of whether the email send below succeeds. Gitignored (real
 # user emails/messages, not something to commit).
-FEEDBACK_LOG_PATH = Path(__file__).resolve().parent.parent / "feedback_log.jsonl"
+# Under `data/`, not in the source root. Runtime state and source are different
+# kinds of thing, and this is the only file the backend *writes* to its own
+# tree — it sat beside main.py looking like part of the application.
+FEEDBACK_LOG_PATH = Path(__file__).resolve().parent.parent / "data" / "feedback_log.jsonl"
 
 
 class FeedbackError(RuntimeError):
@@ -39,6 +42,9 @@ def _log_submission(name: str, email: str, message: str) -> None:
         "message": message,
     }
     try:
+        # The directory is not in git (it holds only runtime state), so a fresh
+        # clone has no `data/` until something writes to it.
+        FEEDBACK_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
         with FEEDBACK_LOG_PATH.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
     except OSError as exc:  # noqa: BLE001 - logging failure shouldn't block the email
@@ -71,4 +77,10 @@ async def send_feedback_email(name: str, email: str, message: str) -> None:
     except FeedbackError:
         raise
     except Exception as exc:  # noqa: BLE001 - never leak raw SMTP exceptions
-        raise FeedbackError(f"Failed to send feedback email: {exc}") from exc
+        # The upstream text is logged, not returned: SMTP failures name the
+        # mail host and port and can quote parts of the authentication
+        # exchange, none of which a browser needs to see.
+        logger.error(f"Feedback email send failed: {exc}")
+        raise FeedbackError(
+            "Could not send your feedback right now. It has been recorded — please try again later."
+        ) from exc

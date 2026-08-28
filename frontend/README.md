@@ -1,108 +1,212 @@
-# OceanMind Frontend
+# MarisAI Frontend
 
-Phase 1–3 implementation of the architecture in `OceanMind_Frontend_Architecture_Proposal.docx`
-and `OceanMind_ADR_Frontend_Architecture.docx`: mission-control map engine, basemap switching,
-and a config-driven layer framework. React + TypeScript + Vite + MapLibre GL JS + Zustand.
-
-## Run it
+React 19 + TypeScript + Vite + MapLibre GL JS 6 + Zustand. Eight surfaces — a
+map, a global dashboard, a page per metric, point analytics, a comparison, an
+assistant, a bulk downloader and long-form docs — over one hand-rolled router
+and one token file.
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173
-npm run build    # type-checks (tsc -b) then produces dist/
-npm run lint      # oxlint
+npm run dev        # http://localhost:5173, proxies /api to the backend
+npm run build      # tsc -b, then the production build
+npm run lint       # oxlint
 ```
 
-Verified in this environment: `tsc -b` (zero errors), `npm run build` (succeeds), `npm run lint`
-(zero warnings), and `vite preview` serves the built bundle correctly. What I could **not** verify
-here: the sandbox's network egress doesn't reach the tile servers (Esri, NASA GIBS, CARTO, OSM), so
-I haven't visually confirmed tiles render — that needs a run with real internet access on your end.
-If a basemap or layer comes back blank, check the browser console first; the most likely culprits
-are called out below.
+## Layout
 
-## What's real vs. stubbed
+```
+src/
+  app/            Hand-rolled router, providers, App shell
+  components/     Navbar, toaster, error boundary, Markdown, reactbits/ (vendored)
+  features/
+    map/          The map engine: managers, layer registry, GPU vector fields
+    dashboard/    Ocean Intelligence Dashboard + the per-metric pages
+    assistant/    The chat thread
+    insights/     LLM commentary panels
+  pages/          Hand-rolled pages: landing, download, compare, feedback, docs/
+  store/          Zustand: theme, timezone, map, map preferences, ui, toasts
+  styles/         tokens.css — the one place a colour or type step is chosen
+```
 
-| Item | Status |
-|---|---|
-| Satellite (Esri), Dark (CARTO), Streets (OSM) basemaps | Real, verified endpoints |
-| Blue Marble (NASA GIBS) basemap | Real endpoint; static layer, date segment intentionally omitted — see comment in `basemaps/blueMarble.ts` |
-| Sea Surface Temperature layer | Real GIBS layer id (`GHRSST_L4_MUR_Sea_Surface_Temperature`), defaults to yesterday's date (UTC) since near-real-time products usually aren't available same-day |
-| Chlorophyll-a layer | Real GIBS layer id (`MODIS_Aqua_L2_Chlorophyll_A` — NASA renamed this from `MODIS_Aqua_Chlorophyll_A` in 2022; the old id is dead) |
-| Ocean Currents layer | **Placeholder** (`implemented: false`) — shows disabled in the layer panel. Currents are vector fields (OSCAR/HYCOM), which need particle or arrow rendering, not a raster tile. Not a Phase 1–3 task. |
-| AI Hazard Prediction layer | **Placeholder** — wire to your model's tile output whenever that exists (Phase 6) |
-| NOAA / Copernicus datasets | Not started — Phase 4–5 per the roadmap |
+## The conventions that are load-bearing
 
-I didn't fabricate tile URLs for currents or AI predictions — a `LayerDescriptor` with
-`implemented: false` registers in the framework (shows in the panel, greyed out) without ever
-calling `map.addLayer()`, so the framework's shape is honest about what's real.
+**The router is hand-rolled**, not react-router: `app/router.tsx` (`AppRouter`
+context, `Link`, `navigate`) plus `app/routerContext.ts`. `App.tsx` renders one
+`<Navbar />` above a plain if/else on `pathname`.
 
-## Architecture decisions worth knowing about
+**Route transitions exclude `/map`, deliberately.** `RouteTransition` cross-fades
+pages with framer-motion but returns the map route unwrapped: a keyed animated
+wrapper makes React remount `MapView` on every navigation, which destroys and
+rebuilds the MapLibre WebGL context and discards the layer state
+`mapPreferencesStore` exists to preserve. Everything else uses `mode="wait"`,
+because overlapping two full-height pages makes the scrollbar jump.
 
-**Basemap switching never touches overlays.** `BasemapManager.switchTo()` swaps a single raster
-source+layer, not `map.setStyle()`. A full style swap would silently wipe every layer
-`LayerManager` had added — this is the direct fix for "state duplication between React and
-MapLibre," which the ADR itself flagged as a risk.
+**One shared `Navbar`, `position: fixed`.** Every page needs top padding
+≥ `var(--navbar-h, 64px)` on its outermost content. On the map it is a floating
+overlay — the map stays full-bleed `100vh` and only the overlaid panels get the
+offset. Don't let a page grow its own header again.
 
-**LayerManager is config-driven.** Every scientific/reference layer is a `LayerDescriptor` object
-in `features/map/layers/layerRegistry.ts` — id, category, source, opacity, visibility. Adding a
-NOAA or Copernicus dataset later means adding an entry to that file, not writing a new component
-or manager method.
+**Per-page theming over one token file.** Each themed page defines its own
+`--xx-*` custom properties plus a `.page--light` block and reads
+`useThemeStore`. Those blocks now *alias* `styles/tokens.css` (`--ma-*`) rather
+than restating literals: seven private palettes had drifted into four dark
+canvases, four body greys and two accents, all visible while navigating under
+one translucent navbar. A page can still deviate deliberately; it can no longer
+deviate by accident. Theme is stamped as `data-theme` on `<html>` by `App.tsx`
+**and** pre-stamped by an inline script in `index.html` reading the same
+localStorage key, so the first paint is correct — change the key in one place
+and you must change it in the other.
 
-**Managers don't import Zustand.** `MapManager`, `BasemapManager`, `LayerManager`, and
-`ControlManager` are plain classes that only touch MapLibre — they emit changes through a small
-pub-sub (`lib/createEmitter.ts`), and only `useMapManager` (the React-facing hook) bridges those
-events into the Zustand store. This keeps the managers usable and testable outside React, and
-keeps state flow one-directional: MapLibre → managers → Zustand → components. Nothing writes back
-into MapLibre except through a manager method call.
+**No UI kit, no CSS framework, no form or date-picker library** — outside two
+deliberate exceptions. `features/dashboard/` uses Tailwind v4 (imported without
+preflight, with its own resets scoped to `.oid-root` and placed in `@layer base`
+so a Tailwind utility can still win), React Query and Recharts.
+`features/assistant/` uses `@assistant-ui/react`'s **headless primitives** only,
+styled with the existing `pages/chat.css`. `components/reactbits/` is vendored
+source, not a dependency — read its README before adding another; every one
+needs its literal colours repointed at tokens and an explicit reduced-motion
+path.
 
-**Layer z-order is a documented assumption, not a settled decision.** The ADR's own "Layer
-Hierarchy" list is ambiguous about whether it's ordered top-of-stack-to-bottom or the reverse
-(`Selection/Interaction` listed last is hard to reconcile with either reading). I picked a
-category-based stacking order — `ocean < ai < reference`, basemap always beneath all three — that
-seemed the most defensible for a data-visualization tool, but this is a real open question worth
-resolving with whoever wrote the original hierarchy diagram before Phase 4 adds more categories.
+**Import `framer-motion`, never `motion`.** They are the same library under two
+package names and installing both ships it twice.
 
-**Typography follows Groq's actual stack.** Space Grotesk for UI/panel text (`--ocean-font-ui`),
-IBM Plex Mono for the coordinate readout and loading state (`--ocean-font-mono`) — both loaded via
-Google Fonts in `index.html`. Groq's own hero-heading treatment (very light weights, tight
-`-0.02em` to `-0.03em` letter-spacing, 64–96px sizes) is a landing-page pattern that doesn't map
-onto a functional control panel with no hero text, so it wasn't carried over — only the typeface
-choice itself was.
+**API clients live under `features/map/api/*.ts`** — yes, even the non-map ones
+like `download.ts` and `feedback.ts`. That is established precedent; don't start
+a second `api/` location.
 
-**Map mutations wait for `load`.** MapLibre throws "Style is not done loading" if
-`addSource`/`addLayer` is called before the style has finished loading — true even for the empty
-placeholder style `MapManager` starts with. `register()` on `BasemapManager`/`LayerManager` only
-writes in-memory metadata (safe anytime), but `basemapManager.init()` and
-`layerManager.applyDefaults()` — which actually touch the map — are deferred to a `map.once('load', ...)`
-handler in `MapManager.init()`.
+## The map engine
 
-**MapLibre's worker is wired explicitly.** v6 of `maplibre-gl` is ESM-only and loads its render
-worker as a separate file; Vite's dev-mode dependency optimizer doesn't resolve that automatically
-and fails with `The file does not exist at ".../maplibre-gl-worker.mjs"...`. `src/app/main.tsx`
-calls `setWorkerUrl()` with an explicit `?worker&url` import before any `Map` is constructed, per
-MapLibre's own Vite guidance — this must stay at the entry point, not inside `MapManager`, since it
-has to run before the first `new maplibregl.Map()` call anywhere in the app.
+`MapManager` owns the MapLibre instance; `LayerManager`, `BasemapManager` and
+`ControlManager` are child managers. Managers never import Zustand — they emit
+through a small pub-sub, and only `useMapManager` bridges those events into the
+store. State flows one way: MapLibre → managers → store → components, and
+nothing writes back into MapLibre except through a manager method.
 
-**Cursor/camera sync is rAF-throttled**, not raw MapLibre event → Zustand on every fire — addresses
-the "state duplication" and re-render-storm risk directly (see `utils/rafThrottle.ts`).
+**`layers/layerRegistry.ts` is the single source of truth for overlays.** Adding
+a layer is an entry there, not a new component. Layers come in three kinds:
+raster tiles, GeoJSON (vessels, eddies), and `CustomLayerInterface` GPU particle
+layers for the vector fields. Forecast layers are the exception that proves the
+rule — they exist only where a model is trained *and* its grid built, so
+`hooks/useForecastGridLayers.ts` fetches the backend catalog and calls
+`LayerManager.register()` at runtime. A newly built grid becomes a map layer
+with no edit here.
 
-## Extending this
+### Layer z-order
 
-- **New basemap:** add a file to `features/map/basemaps/`, export a `BasemapDefinition`, add it to
-  the array in `basemaps/index.ts`.
-- **New overlay layer:** add a `LayerDescriptor` to `features/map/layers/layerRegistry.ts`. If it's
-  a raster tile source, it works immediately. Vector/GeoJSON sources will need `LayerManager`'s
-  `type` union extended (currently `'raster'` only, by design — Phase 1–3 didn't need more).
-- **New control (non-built-in):** the `features/map/controls/` folder is reserved for this;
-  `ControlManager` currently only wraps MapLibre's built-ins (nav, geolocate, fullscreen, scale).
+`LayerCategory` is `'ocean' | 'flow' | 'ai' | 'reference'`, **bottom to top**,
+with the basemap always beneath all four. Particle layers render above scalar
+colour fields like SST; labels and boundaries stay legible above particles. The
+original architecture document's own hierarchy diagram was ambiguous about
+stacking direction, so this is a documented assumption rather than a settled
+decision — `types/index.ts` points here for that reason.
 
-## Known gaps / not done
+The layer panel groups the same four categories, and one of them behaves
+differently: **Ocean & Atmosphere is exclusive** (a dropdown — these are
+full-coverage colour fields that would simply hide each other), while Wind &
+Currents, Boundaries & Reference and AI (Experimental) stack freely.
 
-- No test suite yet (no testing library installed) — the manager classes are written to be
-  unit-testable in isolation (no React/Zustand imports) but nothing exercises that yet.
-- No error boundary or tile-load-failure UI — if a tile server is unreachable, MapLibre just logs
-  to console; there's no user-facing indicator.
-- Bundle size warning on build (~1.2 MB JS, largely MapLibre GL itself) — normal for a WebGL
-  mapping library, but worth revisiting with code-splitting if initial load time becomes a concern.
-- `react-hooks/exhaustive-deps` is intentionally suppressed once in `useMapManager.ts` — the effect
-  is meant to run exactly once per mount; see the comment there for why.
+### Vector fields
+
+One GPU particle engine (`features/map/vectorField/`, WebGL2 transform feedback)
+over an RGBA U/V texture encoded server-side. It draws live wind, surface
+currents, Stokes drift, currents at six depths, a combined drift field per
+drifting object, and the forecast pairs. Four things about it are not
+negotiable:
+
+- **The texture's geographic frame is data, not a constant.** Each texture
+  reports its own outer cell edges and the shader takes them as a uniform.
+  Hardcoding the wind product's frame stretched the currents grid's sampling
+  latitude by 5.6% — while still covering the screen and still animating.
+- **`VISUAL_SPEED_SCALE` belongs to the field.** Wind's 1800 makes 8 m/s read as
+  ~40 px/s; currents run an order of magnitude slower, so at 1800 a 0.3 m/s
+  current is a still image. Currents use 12000.
+- **A forecast field is drawn exactly like its live counterpart.** Comparison is
+  the only thing anyone wants from it, so `PAIR_VISUALS` in
+  `layers/forecastVectorLayers.ts` carries the ramp and speed scale per pair, and
+  the legend reads the same stops the particles are coloured by. Before that,
+  forecast wind was drawn as currents: one flat top colour, advecting ~265 px/s.
+  Both failures animate convincingly.
+- **Currents are named for where the water goes; wind for where it comes from.**
+  180° apart, and reusing wind's formula makes every arrow backwards and
+  entirely plausible.
+
+### MapLibre gotchas already paid for
+
+- `new maplibregl.LngLatBounds(a, b)` treats its args literally as `(sw, ne)` —
+  it does **not** sort them. Normalise min/max yourself.
+- **Never call `map.setGlyphs()` mid-session.** It triggers an async style
+  reload and sources added in the same tick are intermittently lost; the symptom
+  is an empty disc with no coastlines.
+- **Source specs are `structuredClone`d before `addSource`.** They are
+  module-level singletons shared by both vector basemaps *and* by concurrent map
+  instances (the `/map` view and the dashboard panel can be alive at once), and
+  MapLibre annotates a spec it is handed.
+- **`MapManager` observes its container's size.** MapLibre's `trackResize` only
+  listens to *window* resize, so the dashboard's embedded panel — which settles
+  its height after the map is constructed — kept a stale canvas and rendered
+  blank. Don't remove the `ResizeObserver`.
+- **There is deliberately no 3D terrain.** It was built and removed: MapLibre
+  drapes raster overlays onto the terrain mesh, and on a bathymetric DEM that
+  mesh is the *seafloor*, so SST ended up ~16 km below the camera. Sea-surface
+  data and raised seafloor geometry are mutually exclusive by construction.
+
+## Charts
+
+Recharts on the small dashboard summaries; **uPlot (canvas) on the metric pages**,
+because Recharts mounts a DOM node per point and degrades past ~5k while those
+charts routinely carry thousands and must stay interactive while zooming. Three
+traps this feature already fell into:
+
+- **Never key a Recharts axis on a formatted label.** "4 Aug" repeats yearly, so
+  hover resolved to the first matching category and the crosshair cycled through
+  year one forever. Key on the raw timestamp, format via `tickFormatter`.
+- **Recharts' entry animation is off here, deliberately.** It began before
+  `ResponsiveContainer` settled its width, advanced its clip rect to ~12px of
+  646 and stalled — correct paths, clipped to invisible.
+- **Do not rely on `IntersectionObserver` alone for lazy mounting.** In this app
+  it was constructed and observing but never fired, leaving every chart
+  unmounted. `LazyMount` measures geometry directly on mount and on scroll.
+
+## Docs (`pages/docs/`)
+
+Long-form reference, one file per chapter under `chapters/`, listed in reading
+order in `chapters/index.ts` — that list drives the sidebar, the pager and the
+mobile picker, and there is no second place to update. Chapter selection lives
+in the query string (`/docs?c=<id>`) so every chapter is bookmarkable and the
+back button walks the reading order. The "on this page" rail is derived from the
+rendered DOM rather than a declared heading list, which would be a second source
+of truth that goes stale the first time someone edits a heading.
+
+Chapters are written against the tiny presentational primitives in
+`primitives.tsx` (`Callout`, `Term`, `Table`, `Formula`, `VariableGrid`) so a
+chapter file reads as content rather than as a wall of divs.
+
+## Adding things
+
+- **A basemap** — a file in `features/map/basemaps/` exporting a
+  `BasemapDefinition`, added to `basemaps/index.ts`. The type is a discriminated
+  union on `kind`: `raster` (one source, one layer, inherently blurry between
+  zoom levels) or `vector` (many sources, GPU geometry redrawn at the exact
+  fractional zoom — this is what makes zoom continuous).
+- **An overlay layer** — an entry in `layers/layerRegistry.ts`. Pick the
+  category carefully: `flow` is for observed and diagnostic fields, `ai` for
+  model output. Eddies are `flow`, not `ai`, because filing a diagnostic
+  computed from an observed field under "AI (Experimental)" would label an
+  observation as an inference.
+- **A cross-page preference** — a Zustand store with the `persist` middleware,
+  like `themeStore` and `timezoneStore`. Timestamps display through
+  `utils/formatTime.ts`, never a bare `toLocaleString()`.
+- **A docs chapter** — a component in `pages/docs/chapters/` plus an entry in
+  `chapters/index.ts`.
+
+## Known gaps
+
+- No test suite. The manager classes are written to be unit-testable in
+  isolation (no React or Zustand imports) but nothing exercises that.
+- Bundle size warning on build, largely MapLibre itself — normal for a WebGL
+  mapping library, worth revisiting with code-splitting if initial load matters.
+- `react-hooks/exhaustive-deps` is intentionally suppressed once in
+  `useMapManager.ts`; see the comment there.
+
+`../CLAUDE.md` (local, untracked) carries these conventions at greater length,
+and `../TODO.md` carries the open work.

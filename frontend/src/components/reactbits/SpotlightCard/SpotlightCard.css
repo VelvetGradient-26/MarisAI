@@ -1,0 +1,56 @@
+/* Vendored from React Bits (SpotlightCard, TS-CSS). Retheme only — see
+   ../README.md for what is allowed to change and why.
+
+   Upstream hardcodes `border: 1px solid #222` and `background-color: #111`,
+   which is a dark card and *only* a dark card: it would have sat unchanged and
+   near-invisible on this app's light theme. Every colour below is now a shared
+   token, so the component follows the theme toggle like everything else.
+
+   Geometry is tokenised rather than fixed for the same reason: upstream's
+   2rem padding / 1.5rem radius are its own look, and the landing page's cards
+   already have theirs. Callers override via the two custom properties; the
+   defaults just keep the component usable standalone. */
+.card-spotlight {
+  position: relative;
+  border-radius: var(--rb-spotlight-radius, 1.25rem);
+  border: 1px solid var(--ma-border);
+  background-color: var(--ma-surface);
+  padding: var(--rb-spotlight-padding, 2rem);
+  overflow: hidden;
+  --mouse-x: 50%;
+  --mouse-y: 50%;
+  --spotlight-color: var(--ma-accent-soft);
+}
+
+.card-spotlight::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(
+    circle at var(--mouse-x) var(--mouse-y),
+    var(--spotlight-color),
+    transparent 80%
+  );
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+}
+
+.card-spotlight:hover::before,
+.card-spotlight:focus-within::before {
+  opacity: 0.6;
+}
+
+/* The spotlight tracks the pointer, so there is nothing to show a keyboard or
+   touch user and nothing to animate for someone who asked for less motion.
+   tokens.css's global rule collapses the *duration*, which would leave the
+   glow snapping on instead of fading — suppressing it entirely is the honest
+   reading of the preference. */
+@media (prefers-reduced-motion: reduce) {
+  .card-spotlight::before {
+    display: none;
+  }
+}

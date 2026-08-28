@@ -82,6 +82,56 @@ rebuild.
 
 ---
 
+## Experiment tracking
+
+Every report in this repo is written to a **fixed filename** —
+`reports/fish_habitat_shap.csv`, `reports/hab_early_warning_summary.json`, the
+backend's `_reports/training_report.json` — so each rerun destroys the one
+before it. That made "did that change help?" unanswerable, which made every
+modelling improvement unmeasurable. `marine_ml/tracking.py` is the fix: runs
+are appended and never overwritten.
+
+Nothing extra to do for the two pipelines — they log automatically when they
+save. To browse:
+
+```bash
+cd machine_learning
+uvx --from mlflow mlflow ui --backend-store-uri sqlite:///mlruns.db
+```
+
+The **backend forecasting engine** is tracked too, but indirectly. `backend/`
+must not gain an MLflow dependency (keeping the modelling stack out of the
+API's import graph is deliberate), so it writes plain JSON and this side reads
+it:
+
+```bash
+.venv/bin/python -m marine_ml.ingest_forecasting     # after any training batch
+.venv/bin/python -m marine_ml.ingest_forecasting --dry-run
+```
+
+Ingestion is idempotent — a run is keyed by `(variable, horizon, trained_at)`,
+so re-running after every batch is safe, and a *retrain* correctly appears as a
+new run rather than replacing the old one.
+
+Three things worth knowing:
+
+- **`mlflow-skinny`, not `mlflow`.** The full package pins `pandas<3` and
+  `pyarrow<23`; installing it downgrades this environment from pandas 3.0.5 /
+  pyarrow 25, a major-version pandas downgrade underneath a 3.9M-row parquet
+  feature store. Skinny plus SQLAlchemy is the whole tracking client with none
+  of that. The UI runs via `uvx` above, so it never enters this venv.
+- **Tracking never fails a training run.** A HAB run is ~40 minutes; losing it
+  to a locked store would be worse than not tracking. Every entry point
+  degrades to a warning. Set `MARINE_ML_TRACKING=0` to opt out entirely.
+- **Fold *spread* is logged, not just the mean.** `cv_<metric>_min`/`_max`/
+  `_std` sit beside `_mean`, because a healthy average over folds that include
+  negatives is the specific failure this project keeps hitting — four
+  forecasting horizons printed `beats persistence` on their aggregate while
+  failing on folds. `passes_bar` encodes the shipping rule directly: overall
+  skill > 0 **and** at most one of five folds negative.
+
+---
+
 ## The two fetch profiles, and why they differ
 
 The doc asks for one feature store. It also asks for resolution-aware

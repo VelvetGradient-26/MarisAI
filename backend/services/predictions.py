@@ -40,6 +40,7 @@ from PIL import Image
 
 from app.core.config import settings
 from services.colormaps import ColorStop, build_colormap
+from services.field_sampling import Sampler, build_sampler
 
 logger = logging.getLogger(__name__)
 
@@ -246,19 +247,34 @@ def _tile_lonlat(z: int, x: int, y: int) -> tuple[np.ndarray, np.ndarray]:
     return lon, lat
 
 
-def _render(field: xr.DataArray, colormap, z: int, x: int, y: int) -> bytes:
+# Samplers are cached per *slice*, not per tile: building one costs a
+# nearest-fill over the whole grid, which is trivial once and wasteful 4,096
+# times. Keyed on the slice's own arguments because a DataArray is unhashable.
+# Both go through the slice functions above, so an unknown species or horizon
+# still raises `PredictionError` rather than being cached as a failure.
+@lru_cache(maxsize=64)
+def _habitat_sampler(species: str, month: int) -> Sampler:
+    return build_sampler(habitat_slice(species, month))
+
+
+@lru_cache(maxsize=64)
+def _hab_sampler(horizon: int, day: str) -> Sampler:
+    return build_sampler(hab_slice(horizon, day))
+
+
+def _render(sampler: Sampler, colormap, z: int, x: int, y: int) -> bytes:
     lon, lat = _tile_lonlat(z, x, y)
 
-    # Bilinear rather than nearest-neighbour, matching copernicus_sst's
-    # RegularGridInterpolator approach: smooths across the 0.25° grid so the
-    # overlay reads the same way the SST layer does, at the cost of implying
-    # slightly more spatial precision than the model actually carries.
-    values = field.interp(
-        latitude=xr.DataArray(lat, dims="y"),
-        longitude=xr.DataArray(lon, dims="x"),
-        method="linear",
-        kwargs={"bounds_error": False, "fill_value": np.nan},
-    ).values
+    # Values and coverage resampled separately — see `services/field_sampling`.
+    # A plain bilinear read of this grid is poisoned by its land NaNs, so the
+    # painted area used to retreat a full cell from every coast and its edge
+    # fell on the grid's own axis-aligned steps. At 0.25° that staircase is
+    # three times the size of the one already fixed on the forecast grids.
+    #
+    # These grids are *regional* (habitat spans 55–95°E, bloom risk 68–78°E),
+    # so `build_sampler` correctly declines to wrap their longitude: a wrap
+    # column here would splice the Bay of Bengal onto the Arabian Sea.
+    values = sampler(lon, lat)
 
     rgb = np.nan_to_num(colormap(values), nan=0.0).astype(np.uint8)
     alpha = np.where(np.isnan(values), 0, 220).astype(np.uint8)
@@ -276,12 +292,12 @@ _EMPTY_TILE_BYTES = _EMPTY_TILE.getvalue()
 
 @lru_cache(maxsize=4096)
 def render_habitat_tile(species: str, month: int, z: int, x: int, y: int) -> bytes:
-    return _render(habitat_slice(species, month), SUITABILITY_COLORMAP, z, x, y)
+    return _render(_habitat_sampler(species, month), SUITABILITY_COLORMAP, z, x, y)
 
 
 @lru_cache(maxsize=4096)
 def render_hab_tile(horizon: int, day: str, z: int, x: int, y: int) -> bytes:
-    return _render(hab_slice(horizon, day), BLOOM_RISK_COLORMAP, z, x, y)
+    return _render(_hab_sampler(horizon, day), BLOOM_RISK_COLORMAP, z, x, y)
 
 
 def habitat_tile_or_placeholder(species: str, month: int, z: int, x: int, y: int) -> bytes:

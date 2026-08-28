@@ -1,0 +1,634 @@
+/* Tailwind for the ocean intelligence dashboard.
+ *
+ * Deliberately imported WITHOUT preflight. Tailwind's base reset is global
+ * and would restyle every element on the six hand-CSS pages that predate it
+ * (download.css, contact.css, feedback.css, dashboard.css, landing.css,
+ * account.css) — headings would lose their sizes and buttons their borders.
+ * Pulling in only `theme` and `utilities` gives the dashboard the full
+ * utility set while leaving the rest of the app exactly as it was.
+ *
+ * Consequence to remember: element defaults are NOT normalised here, so this
+ * feature sets its own resets explicitly on the dashboard root below rather
+ * than assuming a reset has run.
+ */
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/* Scan only this feature — the utility classes exist nowhere else. */
+@source '../../../features/dashboard';
+
+@theme {
+  /* --- Ocean palette -----------------------------------------------------
+   * Deep navy through aqua, with warm hues reserved exclusively for alert
+   * states. Nothing outside the alert ramp is allowed to be bright: the
+   * point is that an orange pixel on this page always means something.
+   */
+  /* Retuned to the near-black neutrals alongside the --oid-* set below.
+     No component currently uses these utilities (checked), which is exactly
+     why they were worth changing: left navy, the first person to reach for
+     `bg-abyss-900` on this page would get a blue panel on a black page and
+     have no idea where it came from. */
+  --color-abyss-950: #050506;
+  --color-abyss-900: #08080a;
+  --color-abyss-850: #0e0e11;
+  --color-abyss-800: #131316;
+  --color-abyss-700: #1a1a1f;
+  --color-abyss-600: #26262d;
+  --color-abyss-500: #34343d;
+
+  --color-cyan-glow: #4fd1ff;
+  --color-aqua-400: #38e0d0;
+  --color-teal-500: #14b8a6;
+  --color-teal-600: #0f766e;
+  --color-emerald-400: #34d399;
+
+  /* Alert ramp — the only warm colours in the design. */
+  --color-alert-advisory: #38bdf8;
+  --color-alert-warning: #f59e0b;
+  --color-alert-critical: #ef4444;
+
+  /* Surfaces. Glass panels are a translucent navy over the page gradient
+   * rather than a flat fill, so the map and gradients read through them. */
+  --color-glass: color-mix(in oklab, #131316 78%, transparent);
+  --color-glass-strong: color-mix(in oklab, #0e0e11 88%, transparent);
+  --color-hairline: color-mix(in oklab, #4fd1ff 14%, transparent);
+
+  --font-display: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+
+  /* Numerals in KPI cards and tables must not jitter as values tick. */
+  --default-font-feature-settings: 'tnum' 1;
+
+  --radius-panel: 16px;
+
+  --shadow-panel: 0 1px 0 0 color-mix(in oklab, #4fd1ff 8%, transparent) inset,
+    0 18px 48px -24px rgb(0 0 0 / 0.85);
+  --shadow-raised: 0 1px 0 0 color-mix(in oklab, #4fd1ff 12%, transparent) inset,
+    0 28px 64px -28px rgb(0 0 0 / 0.9);
+
+  --animate-shimmer: shimmer 1.8s ease-in-out infinite;
+  --animate-pulse-ring: pulse-ring 2.4s ease-out infinite;
+}
+
+@keyframes shimmer {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 45%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 10px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* --- Feature-scoped resets ------------------------------------------------
+ * Standing in for the preflight this file deliberately omits. Scoped to the
+ * dashboard root so nothing here can leak into the other pages.
+ *
+ * These MUST live in the `base` layer. Every rule here is class+element
+ * (`.oid-root button`), which outranks a Tailwind utility's single class —
+ * unlayered, `.oid-root button { font: inherit }` silently beat every
+ * `text-[11px]` on a button and rendered them all at the browser default.
+ * Inside `base`, layer order decides instead of specificity, and `utilities`
+ * always wins.
+ */
+/* --- Semantic theme tokens -------------------------------------------------
+ * Every component reads these rather than a literal colour, which is what
+ * makes light mode a stylesheet change instead of a rewrite. The dark values
+ * are the defaults; `.oid-root--light` overrides them.
+ *
+ * Follows the per-page theming convention the other pages use (see
+ * download.css, dashboard.css): a `--xx-*` block on the root class plus a
+ * light override, driven by `useThemeStore`.
+ *
+ * The accent aliases the shared palette in src/styles/tokens.css. It was the
+ * same cyan/teal written out a second time, and a duplicated identity colour
+ * is the one that eventually drifts — the map's `#22d3ee` was exactly that.
+ *
+ * Everything else here stays local *on purpose*, and this is the deliberate
+ * exception to the app-wide palette rather than an oversight. The dashboard is
+ * the one Tailwind surface: translucent glass panels floating on a radial
+ * gradient wash. (The ink used to be a cooler blue-white too; it is now the
+ * shared neutral, since that was hue drift rather than material.) `--ma-surface`
+ * is a flat card colour and `--ma-bg` a flat canvas — aliasing to them would
+ * not unify this page, it would delete its treatment. The rule of thumb: a
+ * token that means "which product is this" is shared; a token that means "what
+ * does this page's material look like" is not.
+ *
+ * The alert ramp deliberately does NOT invert — orange still means warning
+ * and red still means critical in both themes. Only their tints are darkened
+ * for light mode so they stay legible on white.
+ */
+@layer base {
+  .oid-root {
+    --oid-accent: var(--ma-accent);
+    --oid-accent-contrast: var(--ma-accent-on);
+    /* A second hue, for gradients that need to travel somewhere — genuinely
+       this page's own, not a shared accent. */
+    --oid-accent-soft: #38e0d0;
+    /* Mix percentages differ per theme (a wash reads heavier on white), so
+       these stay in both blocks — but the colour being mixed is the shared
+       accent, so they cannot drift from it. */
+    --oid-accent-wash: color-mix(in oklab, var(--ma-accent) 16%, transparent);
+    --oid-accent-wash-strong: color-mix(in oklab, var(--ma-accent) 26%, transparent);
+
+    /* Neutral near-black, retuned with the rest of the app's dark theme. The
+       *material* this block describes is unchanged — translucent glass on a
+       gradient wash — but its hue is not: this page was the single most
+       saturated navy surface in the product (#0d1c30 panels, #1a3552 grid
+       lines, #e2f1ff ink), so leaving it while every other page went
+       near-black would have made /dashboard look like a different
+       application. The greys below are the shared --ma-* ink values, so the
+       two palettes now agree on what "muted" means. */
+    --oid-panel: color-mix(in oklab, #131316 78%, transparent);
+    --oid-panel-strong: color-mix(in oklab, #0e0e11 88%, transparent);
+    --oid-elevated: #0e0e11;
+    --oid-hover: #1a1a1f;
+    /* Still mixed from the accent, not from a blue-grey — these are the one
+       place the page's chrome is allowed to carry the brand hue. */
+    --oid-border: color-mix(in oklab, #4fd1ff 14%, transparent);
+    --oid-border-hover: color-mix(in oklab, #4fd1ff 28%, transparent);
+    --oid-track: #1a1a1f;
+    --oid-grid: #26262d;
+
+    --oid-text: #e4e4e6;
+    --oid-text-strong: #f6f6f8;
+    --oid-text-muted: #9a9aa2;
+    --oid-text-faint: #75757d;
+    --oid-text-ghost: #56565e;
+
+    --oid-shadow: 0 1px 0 0 color-mix(in oklab, #4fd1ff 8%, transparent) inset,
+      0 18px 48px -24px rgb(0 0 0 / 0.85);
+    --oid-shadow-raised: 0 1px 0 0 color-mix(in oklab, #4fd1ff 12%, transparent) inset,
+      0 28px 64px -28px rgb(0 0 0 / 0.9);
+
+    /* The page wash behind the glass panels. Kept as a wash rather than
+       flattened to one colour — the glass treatment needs something to be
+       glass *over* — but pulled down to a near-black neutral with only a
+       trace of the accent hue left in the two radials, which is what stops a
+       full-viewport black page reading as dead rather than deep. */
+    --oid-page: radial-gradient(1200px 600px at 15% -10%, #0f1416 0%, transparent 60%),
+      radial-gradient(900px 500px at 85% 0%, #0c1215 0%, transparent 55%),
+      linear-gradient(180deg, #08080a 0%, #050506 100%);
+    --oid-canvas: #050506;
+  }
+
+  .oid-root--light {
+    /* --oid-accent and --oid-accent-contrast are absent here on purpose: they
+       alias shared tokens, which invert themselves from `data-theme`. */
+    --oid-accent-soft: #14b8a6;
+    --oid-accent-wash: color-mix(in oklab, var(--ma-accent) 12%, transparent);
+    --oid-accent-wash-strong: color-mix(in oklab, var(--ma-accent) 20%, transparent);
+
+    --oid-panel: color-mix(in oklab, #ffffff 86%, transparent);
+    --oid-panel-strong: color-mix(in oklab, #ffffff 94%, transparent);
+    --oid-elevated: #f6fafc;
+    --oid-hover: #eef4f8;
+    --oid-border: color-mix(in oklab, #0f766e 18%, transparent);
+    --oid-border-hover: color-mix(in oklab, #0f766e 34%, transparent);
+    --oid-track: #dce7ee;
+    --oid-grid: #cfdde6;
+
+    --oid-text: #0f2231;
+    --oid-text-strong: #061420;
+    --oid-text-muted: #47616f;
+    --oid-text-faint: #64798a;
+    --oid-text-ghost: #90a2ae;
+
+    --oid-shadow: 0 1px 0 0 rgb(255 255 255 / 0.9) inset,
+      0 14px 36px -26px rgb(15 34 49 / 0.35);
+    --oid-shadow-raised: 0 1px 0 0 rgb(255 255 255 / 0.95) inset,
+      0 22px 48px -28px rgb(15 34 49 / 0.42);
+
+    --oid-page: radial-gradient(1100px 560px at 12% -12%, #dbeef5 0%, transparent 62%),
+      radial-gradient(900px 480px at 88% -4%, #d7f0ea 0%, transparent 58%),
+      linear-gradient(180deg, #f2f7fa 0%, #e8eff4 100%);
+    --oid-canvas: #eef4f8;
+
+    /* Alert hues darkened so they keep contrast against white panels. */
+    --color-alert-warning: #b45309;
+    --color-alert-critical: #b91c1c;
+    --color-alert-advisory: #0369a1;
+    --color-emerald-400: #047857;
+  }
+}
+
+@layer base {
+  /* The app's global reset sets `html, body, #root { height: 100% }`, which
+   * suits the full-bleed map page but leaves the document canvas exactly one
+   * viewport tall. This page is several viewports tall, so everything the
+   * canvas paints rather than `.oid-root` — the scrollbar gutter, and the
+   * overscroll area — came out white behind a dark dashboard.
+   *
+   * `:has()` scopes the fix to the dashboard being mounted, because this
+   * page's canvas is several shades darker than `--ma-bg` — the gradient wash
+   * above is built against it.
+   *
+   * `color-scheme` used to be set here too, and no longer is: tokens.css now
+   * sets it globally from `data-theme`, which is the same signal this class
+   * comes from. Two rules asserting the same thing is one of them waiting to
+   * be forgotten. Only the background remains, and only because this page
+   * genuinely differs.
+   */
+  :root:has(.oid-root) {
+    background-color: #04080f;
+  }
+
+  /* Light mode has to flip the canvas too, or the overscroll area stays dark
+     against a light page. */
+  :root:has(.oid-root--light) {
+    background-color: #eef4f8;
+  }
+
+  .oid-root {
+    color: var(--oid-text);
+    font-family: var(--font-display);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .oid-root *,
+  .oid-root *::before,
+  .oid-root *::after {
+    box-sizing: border-box;
+  }
+
+  .oid-root h1,
+  .oid-root h2,
+  .oid-root h3,
+  .oid-root h4,
+  .oid-root p,
+  .oid-root figure {
+    margin: 0;
+  }
+
+  .oid-root ul,
+  .oid-root ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .oid-root button {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  .oid-root input {
+    font: inherit;
+    color: inherit;
+  }
+
+  .oid-root table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  /* Visually hidden but available to screen readers — used for the
+     coordinate inputs' labels. */
+  .oid-root .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+}
+
+/* Respect the OS setting rather than animating regardless — the dashboard
+ * animates a lot and this page is meant to be readable, not a demo. */
+@media (prefers-reduced-motion: reduce) {
+  .oid-root *,
+  .oid-root *::before,
+  .oid-root *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Keyboard focus must stay visible everywhere on this page. */
+.oid-root :focus-visible {
+  outline: 2px solid var(--oid-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Scrollbars inside glass panels. */
+.oid-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--oid-border-hover) transparent;
+}
+
+.oid-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.oid-scroll::-webkit-scrollbar-thumb {
+  background: var(--oid-border-hover);
+  border-radius: 999px;
+}
+
+.oid-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* --------------------------------------------------------------------------
+   Panel interaction polish
+   --------------------------------------------------------------------------
+   CSS, not framer-motion, and deliberately hover-only.
+
+   These panels host Recharts. Its entry animation is already switched off in
+   this feature because it began before `ResponsiveContainer` had settled its
+   width and left correct paths clipped to ~12px (see CLAUDE.md), and
+   `AnalyticsGrid`'s LazyMount decides what to render by measuring geometry.
+   A JS mount animation on the container is the same class of hazard: it moves
+   and rescales the thing being measured at exactly the moment it is measured.
+   Hover carries no such risk — nothing measures while a pointer is resting.
+
+   `translateZ(0)` is not a hack for its own sake: these panels use
+   `backdrop-blur-xl`, and promoting them to their own layer stops the blur
+   being recomposited against the page wash on every hover frame. */
+.oid-panel {
+  transition:
+    border-color 0.25s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    box-shadow 0.25s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    transform 0.25s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.oid-panel:hover {
+  border-color: var(--oid-border-hover);
+  box-shadow: var(--oid-shadow-raised);
+  transform: translateY(-2px) translateZ(0);
+}
+
+/* A panel the user is dragging/scrolling inside should not float away under
+   the pointer, and a KPI card that is also a link keeps its own affordance. */
+.oid-panel:active {
+  transform: translateY(0) translateZ(0);
+}
+
+/* --------------------------------------------------------------------------
+   Scan channel
+   --------------------------------------------------------------------------
+   The dashboard's half of the loading treatment described in `index.css`:
+   same `--ma-sub-mask` submarine, `--oid-*` tokens. A dark track with an
+   accent floor, and a submarine patrolling it — used for every `PanelSkeleton`
+   row across the dashboard and for `AiInsights`' text-shaped prose rows, both
+   of which pass their own `.oid-scanline__pass` child with a per-row
+   `animationDelay`, so rows already stagger without any change here.
+
+   Kept in step with `.ma-skeleton--sub` by hand, as the two live in different
+   theming worlds and a shared class would have to reach across the Tailwind
+   boundary this feature exists to keep clean. If the timing changes in one,
+   change it in the other — a dashboard panel and the analytics page below it
+   are on screen together.
+
+   The row is `overflow: hidden` so the submarine is clipped to the rounded
+   track rather than poking out past its rounded corners mid-turn. */
+.oid-scanline {
+  position: relative;
+  overflow: hidden;
+  background: var(--oid-track);
+  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--oid-accent) 55%, transparent);
+}
+
+.oid-scanline__pass {
+  position: absolute;
+  top: 50%;
+  left: 4%;
+  width: 22%;
+  height: 62%;
+  transform: translateY(-50%);
+  background-color: var(--oid-accent);
+  -webkit-mask-image: var(--ma-sub-mask);
+  mask-image: var(--ma-sub-mask);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  filter: drop-shadow(0 0 3px color-mix(in oklab, var(--oid-accent) 55%, transparent));
+  animation: oid-sub-cruise 4.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes oid-sub-cruise {
+  /* A patrol, not a one-way pass — matches `ma-sub-cruise` in index.css. The
+     flip at each end (`scaleX(-1)`) is the tell that it turned rather than
+     teleported back to the start. */
+  0% {
+    left: 4%;
+    transform: translateY(-50%) scaleX(1);
+  }
+  46% {
+    left: 70%;
+    transform: translateY(-50%) scaleX(1);
+  }
+  50% {
+    left: 70%;
+    transform: translateY(-50%) scaleX(-1);
+  }
+  96% {
+    left: 4%;
+    transform: translateY(-50%) scaleX(-1);
+  }
+  100% {
+    left: 4%;
+    transform: translateY(-50%) scaleX(1);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Swapping one panel state for another
+   --------------------------------------------------------------------------
+   Every chart panel here renders exactly one of four things — a loading
+   placeholder, an error, an empty state, or the chart — and switching between
+   them used to be an instant cut. `.oid-swap-in` fades the arriving state up.
+
+   **Opacity only, and that is a hard constraint rather than a taste.** These
+   panels are what `AnalyticsGrid`'s `LazyMount` measures to decide what to
+   render, and they host Recharts, whose own entry animation is already
+   disabled here for starting before `ResponsiveContainer` had settled its
+   width (CLAUDE.md carries both). A transform or a height animation moves and
+   rescales the thing being measured *as it is measured* — the same hazard the
+   no-JS-mount-animation rule exists for. Opacity changes no geometry, so it is
+   safe where those are not.
+
+   It is also why this is one class rather than a wrapper component: the chart
+   region is a `flex-1` child whose height feeds `ResponsiveContainer`, and an
+   extra div between them collapses the chart to its minimum. The class goes on
+   the element that was already there.
+
+   No exit animation, deliberately. The states are mutually exclusive, so
+   cross-fading them means overlapping two boxes of different heights — the
+   layout jump the reserved height below exists to prevent, reintroduced by the
+   animation meant to smooth it. */
+.oid-swap-in {
+  animation: oid-swap-in var(--ma-duration, 0.2s) var(--ma-ease-out, cubic-bezier(0.16, 1, 0.3, 1))
+    both;
+}
+
+@keyframes oid-swap-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* The blanket reduced-motion rule above already collapses this to 0.001ms,
+   which lands on the `to` frame — i.e. on the finished state, revealed, never
+   on a faster fade. Stated explicitly because the blanket rule is easy to
+   remove and this is the property that must survive it. */
+@media (prefers-reduced-motion: reduce) {
+  .oid-swap-in {
+    animation: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Markdown inside a panel
+   --------------------------------------------------------------------------
+   `components/Markdown` emits `.md-*` classes, and the only stylesheet that
+   dressed them was `pages/chat.css` — which is loaded on the chat route and
+   nowhere else. So the AI-insights panel rendered structurally correct
+   markup with no margins, no list indent and no code background.
+
+   These are scoped under `.oid-md` rather than added to the shared `.md-*`
+   rules for two reasons. The chat rules are written against `--chat-*`
+   tokens and this panel is themed with `--oid-*`, so they are not the same
+   declarations; and equal-specificity duplicates of `.md-p` in two
+   stylesheets would be resolved by import order, which is exactly the kind of
+   coupling the per-feature convention exists to avoid.
+
+   Sized down from the chat's settings throughout: this is a 12.5px panel in a
+   dashboard grid, not a reading column. */
+.oid-md > :first-child {
+  margin-top: 0;
+}
+
+.oid-md > :last-child {
+  margin-bottom: 0;
+}
+
+.oid-md .md-p {
+  margin: 0 0 0.7em;
+}
+
+.oid-md .md-h {
+  margin: 1em 0 0.4em;
+  font-size: 1em;
+  font-weight: 600;
+  color: var(--oid-text-strong);
+}
+
+/* `list-style` is restored explicitly, because `.oid-root ul { list-style: none }`
+   in this file's `@layer base` block strips it — correct for the dashboard's
+   own lists, which are all layout, and wrong for prose. Without this the
+   model's bullet list rendered as indented paragraphs, which is a different
+   claim about the content than the model made. */
+.oid-md .md-list {
+  margin: 0 0 0.7em;
+  padding-left: 1.15em;
+  list-style: disc outside;
+}
+
+.oid-md ol.md-list {
+  list-style: decimal outside;
+}
+
+.oid-md .md-list li {
+  margin: 0.25em 0;
+}
+
+.oid-md .md-list li::marker {
+  color: var(--oid-accent);
+}
+
+.oid-md strong {
+  font-weight: 600;
+  color: var(--oid-text-strong);
+}
+
+.oid-md a {
+  color: var(--oid-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.oid-md .md-code {
+  padding: 0.1em 0.36em;
+  border-radius: 5px;
+  background: var(--oid-track);
+  font-size: 0.9em;
+  /* Break long identifiers rather than widening the panel past its grid
+     column — a dashboard cell has no room to negotiate. */
+  overflow-wrap: anywhere;
+}
+
+.oid-md .md-pre {
+  margin: 0 0 0.7em;
+  padding: 8px 10px;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: var(--oid-track);
+  font-size: 0.85em;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.oid-md .md-pre code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+}
+
+.oid-md .md-quote {
+  margin: 0 0 0.7em;
+  padding-left: 0.75em;
+  border-left: 2px solid var(--oid-border);
+  color: var(--oid-text-muted);
+}
+
+.oid-md .md-table-wrap {
+  margin: 0 0 0.7em;
+  overflow-x: auto;
+}
+
+.oid-md .md-table {
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+.oid-md .md-table th,
+.oid-md .md-table td {
+  padding: 5px 9px;
+  border: 1px solid var(--oid-border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.oid-md .md-table th {
+  background: var(--oid-track);
+  font-weight: 600;
+}

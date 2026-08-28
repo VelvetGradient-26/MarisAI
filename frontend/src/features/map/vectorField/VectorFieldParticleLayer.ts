@@ -31,19 +31,37 @@ export interface VectorFieldMeta {
   v_min: number;
   v_max: number;
   speed_max_legend: number;
+  // The texture's outer cell edges in degrees, from the backend's
+  // `services/vector_field`. Not optional and not defaulted: the shader used
+  // to assume the whole globe, which is true of the wind product and false of
+  // the currents one (latitude -80 to 90). A field that guessed here would
+  // animate confidently on the wrong water.
+  lon_west: number;
+  lon_east: number;
+  lat_south: number;
+  lat_north: number;
 }
 
 /**
- * Everything a concrete field (wind today; currents/waves later) needs to
- * supply — the particle engine itself (advection, bilinear sampling,
+ * Everything a concrete field (wind, currents, a forecast vector grid) needs
+ * to supply — the particle engine itself (advection, bilinear sampling,
  * density, coloring, trails, blending) is entirely generic. See
- * vectorField/windLayer.ts for the wind-specific instantiation.
+ * vectorField/windLayer.ts and currentsLayer.ts for the instantiations.
  */
 export interface VectorFieldConfig {
   fieldTextureUrl: string;
   fetchMeta: (signal?: AbortSignal) => Promise<VectorFieldMeta>;
   colorStops: ColorStop[];
+  /**
+   * On-screen pixels/second per 1 m/s, times 360, independent of zoom. Wind's
+   * 1800 is the reference: a typical 8 m/s wind reads as a lively ~40px/s.
+   * A field an order of magnitude slower (currents) needs its own value or it
+   * renders as a still image — see currentsLayer.ts.
+   */
+  visualSpeedScale?: number;
 }
+
+const DEFAULT_VISUAL_SPEED_SCALE = 1800;
 
 const DENSITY_COUNTS = { world: 8000, regional: 20000, local: 50000 } as const;
 type DensityTier = keyof typeof DENSITY_COUNTS;
@@ -353,7 +371,18 @@ export class VectorFieldParticleLayer implements CustomVectorFieldLayer {
       this.meta.v_min,
       this.meta.v_max
     );
+    gl.uniform4f(
+      gl.getUniformLocation(program, 'u_field_bounds'),
+      this.meta.lon_west,
+      this.meta.lat_south,
+      this.meta.lon_east,
+      this.meta.lat_north
+    );
     gl.uniform1f(gl.getUniformLocation(program, 'u_dt'), dt);
+    gl.uniform1f(
+      gl.getUniformLocation(program, 'u_visualSpeedScale'),
+      this.config.visualSpeedScale ?? DEFAULT_VISUAL_SPEED_SCALE
+    );
     gl.uniform1f(gl.getUniformLocation(program, 'u_speedMultiplier'), this.speedMultiplier);
     gl.uniform1f(gl.getUniformLocation(program, 'u_maxAge'), MAX_AGE_SECONDS);
     gl.uniform1f(gl.getUniformLocation(program, 'u_time'), this.elapsedSeconds);
@@ -470,6 +499,15 @@ export class VectorFieldParticleLayer implements CustomVectorFieldLayer {
       this.meta.u_max,
       this.meta.v_min,
       this.meta.v_max
+    );
+    // Must match the update pass's, or the two disagree about which texel a
+    // particle is standing on.
+    gl.uniform4f(
+      gl.getUniformLocation(program, 'u_field_bounds'),
+      this.meta.lon_west,
+      this.meta.lat_south,
+      this.meta.lon_east,
+      this.meta.lat_north
     );
     gl.uniform1f(gl.getUniformLocation(program, 'u_maxAge'), MAX_AGE_SECONDS);
     gl.uniform1f(gl.getUniformLocation(program, 'u_pointSize'), POINT_SIZE_PX);

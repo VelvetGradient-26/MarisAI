@@ -1,0 +1,21 @@
+/* Vendored from React Bits (ShinyText, TS-CSS). See ../README.md.
+
+   Two things were removed from upstream, both dead-or-harmful rather than
+   stylistic:
+
+   `color: #b5b5b5a4` — the component sets `WebkitTextFillColor: transparent`
+   inline and paints the text with a clipped gradient, so this never rendered.
+   It also hardcoded a mid-grey that ignored the theme.
+
+   `animation: shine 5s linear infinite` — a leftover from the pre-motion
+   version. The component now drives `background-position` from a
+   `useAnimationFrame` loop as an inline style, and a CSS animation *overrides*
+   inline styles for the properties it animates, so the keyframes silently won
+   and the speed/direction/yoyo/pauseOnHover props did nothing. Removing it is
+   what makes those props work at all. */
+.shiny-text {
+  display: inline-block;
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+}

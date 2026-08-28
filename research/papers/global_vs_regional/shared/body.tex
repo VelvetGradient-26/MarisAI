@@ -1,0 +1,375 @@
+% ---------------------------------------------------------------------------
+% The manuscript body, shared verbatim by the Springer (LNCS) and IEEE
+% (IEEEtran) builds. Nothing class-specific may appear in this file.
+%
+% Each wrapper defines, before \input-ing this:
+%   \wfigure / \endwfigure   a figure spanning the full text width
+%   \wtable  / \endwtable    the same for tables
+%   \tabscale                the font size command tables are set at
+%   \para{...}               a run-in bold paragraph heading
+%   \citep{...}               mapped to \cite for the LNCS/IEEEtran builds
+% ---------------------------------------------------------------------------
+
+\section{Introduction}
+
+A species distribution model (SDM) is conventionally improved by adding data.
+More occurrence records, more environmental coverage, a wider geographic
+extent --- all read, by default, as strictly more evidence for the model to
+learn from. This paper reports a case where that default is wrong in a
+controlled, quantified way: a fish-habitat model trained on \DataMultiple{}
+times more data, drawn from the whole global ocean rather than one regional
+sea, scores substantially \emph{worse} on the water the regional model was
+built for, and the mechanism is not what the obvious explanation would guess.
+
+The obvious explanation for a broad-extent model underperforming on a specific
+region is extrapolation: the global model has learned an average relationship
+that does not hold locally, or its predictions fall outside the range of
+conditions it was actually trained on. We rule this out directly. A
+Multivariate Environmental Similarity Surface (MESS) analysis
+\citep{elith2010} shows the global model extrapolates \emph{less} on the
+regional holdout than the regional model itself does on its own holdout
+(\MESSFracGlobal{}\% of rows outside the training envelope, against
+\MESSFracRegion{}\% --- see \S\ref{sec:results}). The global model has simply
+seen more of the world's climate space. It still predicts worse.
+
+The mechanism, diagnosed with SHAP feature attribution, is a shift in which
+variables the model actually uses. The regional model's two leading features
+are coastal geometry --- depth and distance to coast. The global model's two
+leading features are water-mass chemistry --- dissolved oxygen and a 60-day
+lagged temperature. Both are defensible predictors of fish presence in
+principle. In practice, the local, high-resolution signal that coastal
+geometry carries for this species group in this sea is displaced by
+coarser-grained chemistry that generalises across oceans but says less about
+any one of them. This is closer to a known machine-learning failure mode ---
+\emph{negative transfer}, in which target-irrelevant source data measurably
+degrades performance on the target \citep{zhang2021survey} --- appearing
+inside a domain, species distribution modelling, that has largely discussed
+the global-versus-regional extent question in terms of extrapolation and
+sample size rather than feature-level displacement.
+
+\subsection{Contributions}
+
+\begin{enumerate}\itemsep2pt
+\item A \textbf{matched-holdout controlled comparison}: a global and a
+regional ensemble SDM for the same species group, evaluated on the
+\emph{identical} \NHoldout{} held-out regional rows, with the regional
+holdout's spatial blocks removed from the global model's training set to
+prevent the global model from having already seen the water it is tested on.
+\item \textbf{Comparative use of MESS} to eliminate the standard
+counter-explanation --- that the broader-extent model must simply be
+extrapolating more --- rather than using MESS only within a single model, as
+is conventional.
+\item A \textbf{SHAP-based mechanism diagnosis} showing \emph{which} features
+are displaced when extent grows, connecting the result to feature-level
+evidence rather than resting on the aggregate skill gap alone.
+\item An explicit reconciliation with the two most directly relevant prior
+findings --- that regional data resists improvement from range-wide data under
+biased sampling \citep{elgabbas2018}, and that truncating background-sampling
+extent produces unrepresentative predictions \citep{hanberry2026} --- showing
+why this result does not contradict the second despite an apparently opposite
+headline recommendation (\S\ref{sec:related}).
+\end{enumerate}
+
+\section{Related Work}
+\label{sec:related}
+
+\para{Global versus regional extent in SDM practice} The closest prior result
+is El-Gabbas and Dormann's comparison of regional (Egypt-only) against
+range-wide-extent Maxent models for 17 bat species and find that range-wide
+data does not improve the regional, sampling-biased models, attributing the
+low geographic congruence to sampling-effort bias rather than to ecological
+signal. Their diagnosis uses Maxent permutation importance and finds
+accessibility-bias predictors (distance to roads and cities) dominating ---
+a different mechanism from the water-chemistry-versus-coastal-geometry shift
+reported here, and they do not use MESS to test whether the two models
+extrapolate differently. Their own discussion recommends building
+\emph{larger}, multi-country models rather than smaller ones, a tension this
+paper addresses directly.
+
+Hanberry's 2026 study \citep{hanberry2026} is the paper most likely to be read as contradicting this
+result, and needs its distinction stated explicitly rather than left implicit.
+Hanberry manipulates the sampling extent of \emph{both} presence and
+background/absence samples --- truncated to small ecological units versus the
+full North American continent --- for 14 wide-ranging tree species, and finds
+that truncating both classes to a small extent removes the climate contrast a
+classifier needs to separate them, producing unconstrained, unrepresentative
+predictions. The recommendation to ``model bigger'' is about not truncating
+background-sampling extent when the goal is to represent a species' full
+range. That is a different question from the one asked here on three
+structural points: Hanberry's untruncated model is evaluated against the full
+continental range, not against an identical holdout shared with the truncated
+models; his absences are plain random background points, which is exactly the
+sampling design his own climate-contrast failure depends on, where this
+work's models (both regional and global) use target-group background,
+designed to avoid that specific artefact; and his mechanism is climate-contrast
+collapse from an \emph{under-sampled} extent, which a comparative MESS
+analysis rules out here --- the global model in this study extrapolates
+\emph{less}, not more, than the regional one. This paper expands the training
+extent and holds the evaluation region fixed; Hanberry truncates the training
+extent and lets the evaluation region grow with it. Growing one does not
+predict what happens under the other.
+
+\para{Transferability and niche truncation} A broader literature establishes
+that SDM transferability depends more on environmental distance than
+geographic distance, and that the relationship between extent and performance
+is not monotonic \citep{seuren2025,gantchoff2022}. Guisan et al.\ \citep{guisan2025} frame
+the general tension --- a whole-range model risks niche truncation, a
+subrange model risks losing generality --- and propose spatially nested SDMs
+(N-SDM) as the field's compromise: a coarse whole-range model combined with a
+fine subrange model. This result is complementary to, not contradicted by,
+that proposal: it is evidence for why the subrange half of an N-SDM is worth
+keeping, since the coarse half measurably loses local skill on exactly the
+water this platform serves.
+
+\para{The same model class, without an extent comparison} Yang et al.\ \citep{yang2025}
+apply LightGBM with SHAP to yellowfin tuna distribution in the western and
+central Pacific --- the same species family, the same model class, and the
+same interpretability tool used here --- but at a single spatial extent, with
+no global-versus-regional comparison. Their own stated future work calls
+explicitly for ``comparative analysis across diverse fleets and fishing
+regions,'' which this paper's design directly answers, with a species group
+that includes yellowfin tuna in a different ocean basin.
+
+\para{Negative transfer} The general machine-learning phenomenon of additional
+source data degrading target-domain performance is established outside
+ecology \citep{zhang2021survey}, including the specific observation that an
+overabundance of target-irrelevant data exacerbates source/target divergence
+--- closely matching the mechanism reported here, where \NGlobalTrain{}
+weakly-relevant global rows dilute the locally relevant coastal-geometry
+signal that \NRegionalTrain{} regional rows preserve. No prior source connects
+this literature to an ecological SDM extent-choice debate through a
+comparative MESS-plus-SHAP diagnosis.
+
+\section{Methods}
+
+\para{Study system} The species group is five species relevant to Indian
+Ocean fisheries, modelled as habitat suitability (presence/background) with a
+three-member ensemble --- Maxent, random forest, and LightGBM, combined by a
+softmax-weighted vote over cross-validated true skill statistic (TSS). The
+regional extent is the North Indian Ocean box this platform serves; the
+global extent is the worldwide ocean, coarsened and cached under the same
+feature-store pipeline (\S\S ``Machine learning conventions'' and ``Going
+global,'' internal documentation).
+
+\para{Matched-holdout construction} Comparing each model's own reported
+cross-validated skill is not a valid comparison, because the two models are
+scored on different water by construction: the global model's own holdout is
+overwhelmingly non-regional. A naive comparison of that kind favours the
+global model on this dataset (LightGBM CV TSS \CVTSSGlobalLGBM{} global versus
+\CVTSSRegionLGBM{} regional), the opposite of what a matched comparison finds.
+Two further hazards would each independently invalidate an unmatched
+comparison. First, the regional and global models' own shipped holdouts are
+different spatial blocks of different feature stores, so two numbers from two
+different bodies of water are not comparable. Second, the shipped global
+model was trained on every ocean, including the region under test, so scoring
+it on the regional holdout as-is would score it on water it has already seen
+--- an upper bound with the answer written into the training set, not a
+generalisation test.
+
+The comparison is therefore built as follows. The regional model's own final
+holdout block is reproduced exactly (spatial block cross-validation, blocks
+of \(3\deg\), five splits, the first split at the model's original seed). The
+\emph{spatial blocks} containing any holdout row --- not merely the matching
+rows --- are then removed from the global feature store, because a global
+point 50 km from a held-out regional point is the same water under a
+different label; block removal, not row removal, is why spatial-block
+cross-validation exists in the first place. A fresh global ensemble is then
+fit on the reduced global store, using the same feature columns, the same
+ensemble-fitting routine, and the same softmax-over-CV-TSS weighting rule as
+the shipped model, so the weighting itself is not a second, uncontrolled
+variable. Both the reproduced regional model and the freshly fit global model
+are then scored on the identical \NHoldout{} regional holdout rows
+(\NHoldoutPos{} presences).
+
+\para{Extrapolation diagnosis} A MESS score \citep{elith2010} is computed for
+every holdout row against each model's own training envelope, giving both a
+per-row similarity value and the fraction of rows falling outside that
+envelope (negative MESS). This is the same tool used conventionally within a
+single model to flag novel conditions; here it is used comparatively, between
+two models of differing training extent, specifically to test whether a
+skill gap can be explained by one model seeing less-similar conditions than
+the other.
+
+\para{Mechanism diagnosis} SHAP (SHapley Additive exPlanations) values are
+computed for the LightGBM tier of each ensemble over its own training data,
+and mean absolute SHAP is ranked per feature, giving a feature-importance
+ordering for the regional and global models independently.
+
+\section{Results}
+\label{sec:results}
+
+\begin{wtable}
+\centering
+\tabscale
+\caption{Matched-holdout comparison: \NHoldout{} identical regional rows,
+scored by both ensembles. Higher is better for every column.}
+\label{tab:holdout}
+\begin{tabular}{lrrrr}
+\toprule
+Trained on & Train rows & TSS & Boyce & ROC-AUC \\
+\midrule
+Regional & \NRegionalTrain{} & \TSSRegion{} & \BoyceRegion{} & \ROCRegion{} \\
+Global   & \NGlobalTrain{}   & \TSSGlobal{} & \BoyceGlobal{} & \ROCGlobal{} \\
+\bottomrule
+\end{tabular}
+\end{wtable}
+
+\begin{wfigure}
+\centering
+\includegraphics[width=0.85\linewidth]{matched_holdout_bars}
+\caption{The same four metrics as Table~\ref{tab:holdout}, plotted. The
+regional ensemble leads on every metric, on the same rows.}
+\label{fig:holdout}
+\end{wfigure}
+
+The regional ensemble outperforms the global ensemble on every accuracy
+metric evaluated, on the same rows: TSS \TSSRegion{} against \TSSGlobal{},
+Boyce index \BoyceRegion{} against \BoyceGlobal{}, ROC-AUC \ROCRegion{}
+against \ROCGlobal{}, PR-AUC \PRRegion{} against \PRGlobal{}. The gap holds
+for every individual tier of the ensemble, not only the combined vote:
+LightGBM alone scores TSS \TSSRegionLGBM{} regional against \TSSGlobalLGBM{}
+global; random forest \TSSRegionRF{} against \TSSGlobalRF{}; Maxent
+\TSSRegionMaxent{} against \TSSGlobalMaxent{}. This is the opposite ranking
+from each model's own within-store cross-validated TSS
+(\CVTSSRegionLGBM{}--\CVTSSGlobalLGBM{} for LightGBM,
+\CVTSSRegionRF{}--\CVTSSGlobalRF{} for random forest), which is exactly the
+comparison a reader would reach for absent a matched holdout, and which
+reports the opposite conclusion.
+
+\para{Extrapolation is not the explanation} The global model's holdout rows
+have a lower fraction outside its training envelope than the regional model's
+holdout rows have outside its own (\MESSFracGlobal{}\% against
+\MESSFracRegion{}\%), even though the global model scores worse. Median
+per-row similarity is lower for the global model (\MESSMedGlobal{} against
+\MESSMedRegion{}), consistent with a much larger and more heterogeneous
+training envelope in which any single region sits less centrally --- but
+``sits less centrally in a much larger, well-covered space'' is not the same
+claim as ``is extrapolating,'' and the extrapolation fraction is the metric
+that speaks to the latter. The skill gap cannot be attributed to the global
+model encountering unfamiliar conditions.
+
+\para{The mechanism is feature displacement} The regional ensemble's two
+leading SHAP features are \texttt{depth} (mean $|\mathrm{SHAP}|$
+\SHAPRegionDepth{}) and \texttt{distance\_to\_coast} (\SHAPRegionCoast{}) ---
+coastal geometry, at high resolution, specific to the shelf and coastline
+this species group actually occupies. The global ensemble's two leading
+features are \texttt{o2}, dissolved oxygen (\SHAPGlobalOTwo{}), and a 60-day
+lagged temperature, \texttt{thetao\_lag60} (\SHAPGlobalLagSixty{}); depth and
+distance to coast fall to fourth and ninth by importance
+(\SHAPGlobalDepth{}, \SHAPGlobalCoast{}). The global model has not failed to
+learn a relationship; it has learned a different, coarser one, driven by
+variables that vary meaningfully across the whole training population but
+carry comparatively little of the locally decisive signal for this specific
+water.
+
+\begin{wfigure}
+\centering
+\includegraphics[width=0.85\linewidth]{shap_displacement}
+\caption{Mean $|\mathrm{SHAP}|$ for the LightGBM tier, regional versus
+global, for the six features appearing in either model's own top six.
+\texttt{o2} and \texttt{thetao\_lag60} enter at the top of the global
+ranking and do not appear in the regional model's top twelve at all;
+\texttt{depth} and \texttt{distance\_to\_coast} fall from first and second
+(regional) to fourth and ninth (global).}
+\label{fig:shap}
+\end{wfigure}
+
+\para{Ablation: the displaced features are causally implicated, not merely
+associated} SHAP importance shows what the global model relies on; it does
+not by itself show that relying on \texttt{o2} and \texttt{thetao\_lag60}
+\emph{costs} regional skill, as opposed to those features simply being
+correlated with whatever does. We test this directly by refitting the
+global model's LightGBM tier with both features removed and rescoring it on
+the identical regional holdout. Removing them improves every metric: TSS
+\AblFullTSS{} \(\rightarrow\) \AblAblatedTSS{}, Boyce
+\AblFullBoyce{} \(\rightarrow\) \AblAblatedBoyce{}, ROC-AUC
+\AblFullROC{} \(\rightarrow\) \AblAblatedROC{}, PR-AUC
+\AblFullPR{} \(\rightarrow\) \AblAblatedPR{}. The direction confirms the
+mechanism: these two features are not innocent bystanders of a larger
+population, they measurably cost regional skill when present.
+
+The improvement is real but partial. Against the regional LightGBM tier's
+own TSS on this holdout (\TSSRegionLGBM{}), removing \texttt{o2} and
+\texttt{thetao\_lag60} closes only \AblGapClosedPct{}\% of the gap. Two of
+forty features being causally implicated but not sufficient is consistent
+with the dilution account in \S\ref{sec:results}: \texttt{thermal\_position}
+also ranks far higher for the global model than the regional one
+(Fig.~\ref{fig:shap}) and was left untouched by this ablation, and a
+model relying on \emph{any} subset of coarse, globally-common variables in
+place of the fine, locally-decisive ones would show the same qualitative
+signature without the specific two features named here being the whole
+story. The claim this paper makes is therefore precise: feature
+displacement is a demonstrated, causally confirmed contributor to the
+regional-holdout gap, not a fully sufficient explanation of its magnitude.
+
+\section{Discussion}
+
+Three findings, taken together, rule out the two most obvious explanations
+for the skill gap and leave a third. It is not that the global model has too
+little data (it has \DataMultiple{}$\times$ more). It is not that the global
+model is extrapolating outside familiar conditions (comparative MESS shows
+the opposite). What is left is that the composition of the added data
+changes which features the model relies on, and the features favoured by a
+much larger, more heterogeneous population are not the features that carry
+the most decisive local signal. This is a dilution effect on feature
+relevance, not a coverage effect on the input space, and the two are
+distinguishable exactly because MESS and SHAP answer different questions ---
+one about where a point falls in the training distribution, the other about
+what the model does with the features it is given.
+
+\para{Reconciling with the literature that recommends going bigger} Both
+El-Gabbas and Dormann's finding \citep{elgabbas2018} and Hanberry's \citep{hanberry2026} are compatible with this
+result once the specific claim each makes is kept separate from the
+headline. El-Gabbas and Dormann's regional models do not improve under
+range-wide data because of \emph{sampling bias}, and their own recommendation
+to go bigger is offered as future work, not demonstrated in their study.
+Hanberry's recommendation to model bigger addresses \emph{background-sampling
+extent}, a variable this paper does not touch --- both the regional and
+global ensembles here draw target-group background at their respective
+extents, not truncated random background, which is the specific setting his
+climate-contrast failure requires. Read together, the emerging picture is not
+``bigger is always better'' or ``smaller is always better,'' but that the
+\emph{axis being varied} matters: truncating background-sampling extent
+degrades representativeness (Hanberry); adding weakly-relevant occurrence
+volume from outside the region of interest degrades skill on that region
+(this paper); and whether range-wide occurrence data helps a regional model
+at all depends on whether that data corrects or worsens the regional model's
+own sampling bias (El-Gabbas and Dormann). These are three different
+variables, not three attempts to answer the same question with different
+answers.
+
+\section{Limitations and Future Work}
+
+The result is demonstrated for one species group, one ocean, and one model
+architecture (a three-member ensemble headed by LightGBM); Yang et al.'s
+\citep{yang2025} own call for cross-regional comparison of the same architecture on the same
+species family is a natural second instance, and a second region entirely
+would turn this from one controlled instance into a claim about scale. The
+mechanism diagnosis uses SHAP on the LightGBM tier only, not the ensemble as
+a whole or the other two tiers individually; a per-tier SHAP comparison is a
+bounded follow-on, and the ablation in \S\ref{sec:results} is itself
+LightGBM-only for the same reason. That ablation confirms the displacement
+mechanism causally rather than leaving it as a plausible SHAP-only reading,
+but it also shows the mechanism is not complete: removing the two named
+features closes only \AblGapClosedPct{}\% of the LightGBM-tier gap. The
+natural next experiment is therefore not whether feature displacement
+matters --- that is now shown directly --- but how much of the remaining gap
+a broader ablation closes: repeating it over every feature that ranks
+higher for the global model than the regional one (starting with
+\texttt{thermal\_position}, the next-largest single displacement in
+Fig.~\ref{fig:shap}), and over the random-forest and Maxent tiers, which
+this ablation does not touch.
+
+\section{Conclusion}
+
+Expanding a regional fish-habitat model's training extent to the whole global
+ocean multiplies its training data \DataMultiple{}$\times$ without extending
+the usable time window, and on the region the model was built to serve,
+degrades every accuracy metric measured despite extrapolating less, not more,
+than the regional model does on its own water. The mechanism is a shift in
+which features the model relies on: coastal geometry, displaced by water-mass
+chemistry. The result does not contradict prior findings that recommend
+larger training extents; it identifies the specific axis --- added
+weakly-relevant occurrence volume, holding evaluation region fixed --- along
+which more data measurably hurts, distinct from the axes those findings
+address.

@@ -15,7 +15,10 @@ annotated-types==0.7.0
     # via pydantic
 anyio==4.14.2
     # via
+    #   google-genai
     #   httpx
+    #   langsmith
+    #   openai
     #   starlette
     #   watchfiles
 apscheduler==3.11.3
@@ -26,8 +29,6 @@ asyncpg==0.31.0
     # via marisai-backend
 attrs==26.1.0
     # via aiohttp
-authlib==1.7.2
-    # via marisai-backend
 boto3==1.43.54
     # via copernicusmarine
 botocore==1.43.54
@@ -38,10 +39,11 @@ certifi==2026.7.22
     # via
     #   httpcore
     #   httpx
+    #   marisai-backend
     #   netcdf4
     #   pyproj
     #   requests
-cffi==2.1.0 ; platform_python_implementation != 'PyPy'
+cffi==2.1.1 ; platform_python_implementation != 'PyPy'
     # via cryptography
 cftime==1.6.5
     # via netcdf4
@@ -55,7 +57,9 @@ click==8.4.2
     #   dask
     #   uvicorn
 cloudpickle==3.1.2
-    # via dask
+    # via
+    #   dask
+    #   shap
 colorama==0.4.6 ; sys_platform == 'win32'
     # via
     #   click
@@ -69,23 +73,26 @@ copernicusmarine==2.4.1
 coverage==7.15.2
     # via pytest-cov
 cryptography==50.0.0
-    # via
-    #   authlib
-    #   joserfc
+    # via google-auth
 cycler==0.12.1
     # via matplotlib
 dask==2026.7.1
     # via copernicusmarine
-dnspython==2.8.0
+distro==1.9.0
     # via
-    #   email-validator
-    #   pymongo
+    #   google-genai
+    #   langsmith
+    #   openai
+dnspython==2.8.0
+    # via email-validator
 donfig==0.8.1.post1
     # via zarr
 email-validator==2.3.0
     # via marisai-backend
 fastapi==0.139.2
     # via marisai-backend
+filetype==1.2.0
+    # via langchain-google-genai
 fonttools==4.63.0
     # via matplotlib
 frozenlist==1.8.0
@@ -96,8 +103,12 @@ fsspec==2026.6.0
     # via dask
 geoalchemy2==0.20.0
     # via marisai-backend
+google-auth==2.56.2
+    # via google-genai
 google-crc32c==1.8.0
     # via zarr
+google-genai==2.16.0
+    # via langchain-google-genai
 greenlet==3.5.4
     # via
     #   marisai-backend
@@ -117,7 +128,11 @@ httpcore==1.0.9
 httptools==0.8.0
     # via uvicorn
 httpx==0.28.1
-    # via marisai-backend
+    # via
+    #   google-genai
+    #   langsmith
+    #   marisai-backend
+    #   openai
 idna==3.18
     # via
     #   anyio
@@ -129,14 +144,39 @@ importlib-metadata==9.0.0 ; python_full_version < '3.12'
     # via dask
 iniconfig==2.3.0
     # via pytest
+jiter==0.16.0
+    # via openai
 jmespath==1.1.0
     # via
     #   boto3
     #   botocore
-joserfc==1.7.4
-    # via authlib
+joblib==1.5.3
+    # via scikit-learn
+jsonpatch==1.33
+    # via langchain-core
+jsonpointer==3.1.1
+    # via jsonpatch
 kiwisolver==1.5.0
     # via matplotlib
+langchain-core==1.5.3
+    # via
+    #   langchain-google-genai
+    #   langchain-openai
+    #   marisai-backend
+langchain-google-genai==4.3.2
+    # via marisai-backend
+langchain-openai==1.4.1
+    # via marisai-backend
+langchain-protocol==0.0.18
+    # via langchain-core
+langsmith==0.10.15
+    # via langchain-core
+lightgbm==4.7.0
+    # via marisai-backend
+llvmlite==0.48.0
+    # via
+    #   numba
+    #   shap
 locket==1.0.0
     # via partd
 loguru==0.7.3
@@ -151,55 +191,59 @@ multidict==6.7.1
     # via
     #   aiohttp
     #   yarl
+narwhals==2.24.0
+    # via
+    #   lightgbm
+    #   scikit-learn
 netcdf4==1.7.4
     # via marisai-backend
+numba==0.66.0
+    # via
+    #   marisai-backend
+    #   shap
 numcodecs==0.16.5
     # via zarr
-numpy==2.4.6 ; python_full_version < '3.12'
+numpy==2.4.6
     # via
     #   cftime
     #   contourpy
     #   copernicusmarine
     #   h5netcdf
     #   h5py
+    #   lightgbm
     #   marisai-backend
     #   matplotlib
     #   netcdf4
+    #   numba
     #   numcodecs
     #   pandas
+    #   scikit-learn
     #   scipy
+    #   shap
     #   shapely
     #   xarray
     #   zarr
-numpy==2.5.1 ; python_full_version >= '3.12'
-    # via
-    #   cftime
-    #   contourpy
-    #   copernicusmarine
-    #   h5netcdf
-    #   h5py
-    #   marisai-backend
-    #   matplotlib
-    #   netcdf4
-    #   numcodecs
-    #   pandas
-    #   scipy
-    #   shapely
-    #   xarray
-    #   zarr
+openai==2.53.0
+    # via langchain-openai
+orjson==3.11.9 ; platform_python_implementation != 'PyPy'
+    # via langsmith
 packaging==26.2
     # via
     #   dask
     #   geoalchemy2
     #   h5netcdf
+    #   langchain-core
+    #   langsmith
     #   matplotlib
     #   pytest
+    #   shap
     #   xarray
     #   zarr
 pandas==3.0.5
     # via
     #   arcosparse
     #   marisai-backend
+    #   shap
     #   xarray
 partd==1.4.2
     # via dask
@@ -219,14 +263,25 @@ propcache==0.5.2
 psycopg2-binary==2.9.12
     # via marisai-backend
 pyarrow==25.0.0
-    # via arcosparse
+    # via
+    #   arcosparse
+    #   marisai-backend
+pyasn1==0.6.4
+    # via pyasn1-modules
+pyasn1-modules==0.4.2
+    # via google-auth
 pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
     # via cffi
 pydantic==2.13.4
     # via
     #   copernicusmarine
     #   fastapi
+    #   google-genai
+    #   langchain-core
+    #   langchain-google-genai
+    #   langsmith
     #   marisai-backend
+    #   openai
     #   pydantic-settings
 pydantic-core==2.46.4
     # via pydantic
@@ -234,8 +289,6 @@ pydantic-settings==2.14.2
     # via marisai-backend
 pygments==2.20.0
     # via pytest
-pymongo==4.17.0
-    # via marisai-backend
 pyparsing==3.3.2
     # via matplotlib
 pyproj==3.7.2
@@ -338,25 +391,61 @@ pyyaml==6.0.3
     # via
     #   dask
     #   donfig
+    #   langchain-core
+    #   marisai-backend
     #   uvicorn
+regex==2026.7.19
+    # via tiktoken
 reportlab==5.0.0
     # via marisai-backend
 requests==2.34.2
     # via
     #   arcosparse
     #   copernicusmarine
+    #   google-auth
+    #   google-genai
+    #   langsmith
+    #   requests-toolbelt
+    #   tiktoken
+requests-toolbelt==1.0.0
+    # via langsmith
 s3transfer==0.19.2
     # via boto3
+scikit-learn==1.9.0
+    # via
+    #   marisai-backend
+    #   shap
 scipy==1.17.1 ; python_full_version < '3.12'
-    # via marisai-backend
+    # via
+    #   lightgbm
+    #   marisai-backend
+    #   scikit-learn
+    #   shap
 scipy==1.18.0 ; python_full_version >= '3.12'
-    # via marisai-backend
+    # via
+    #   lightgbm
+    #   marisai-backend
+    #   scikit-learn
+    #   shap
 semver==3.0.4
     # via copernicusmarine
+shap==0.49.1 ; platform_machine == 'x86_64' and sys_platform == 'darwin'
+    # via marisai-backend
+shap==0.51.0 ; (python_full_version < '3.12' and platform_machine != 'x86_64') or (python_full_version < '3.12' and sys_platform != 'darwin')
+    # via marisai-backend
+shap==0.52.0 ; (python_full_version >= '3.12' and platform_machine != 'x86_64') or (python_full_version >= '3.12' and sys_platform != 'darwin')
+    # via marisai-backend
 shapely==2.1.2
     # via marisai-backend
 six==1.17.0
     # via python-dateutil
+slicer==0.0.8
+    # via shap
+sniffio==1.3.1
+    # via
+    #   google-genai
+    #   langsmith
+    #   openai
 sqlalchemy==2.0.51
     # via
     #   alembic
@@ -365,7 +454,14 @@ sqlalchemy==2.0.51
 starlette==1.3.1
     # via fastapi
 tenacity==9.1.4
-    # via marisai-backend
+    # via
+    #   google-genai
+    #   langchain-core
+    #   marisai-backend
+threadpoolctl==3.6.0
+    # via scikit-learn
+tiktoken==0.13.0
+    # via langchain-openai
 tomli==2.4.1 ; python_full_version <= '3.11'
     # via coverage
 toolz==1.1.0
@@ -376,6 +472,8 @@ tqdm==4.69.0
     # via
     #   arcosparse
     #   copernicusmarine
+    #   openai
+    #   shap
 typing-extensions==4.16.0
     # via
     #   aiohttp
@@ -383,10 +481,16 @@ typing-extensions==4.16.0
     #   alembic
     #   anyio
     #   fastapi
+    #   google-genai
+    #   langchain-core
+    #   langchain-protocol
+    #   langsmith
     #   numcodecs
+    #   openai
     #   pydantic
     #   pydantic-core
     #   pytest-asyncio
+    #   shap
     #   sqlalchemy
     #   starlette
     #   typing-inspection
@@ -406,6 +510,10 @@ urllib3==2.7.0
     # via
     #   botocore
     #   requests
+uuid-utils==0.17.0
+    # via
+    #   langchain-core
+    #   langsmith
 uvicorn==0.51.0
     # via marisai-backend
 uvloop==0.22.1 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'
@@ -414,6 +522,8 @@ watchfiles==1.2.0
     # via uvicorn
 websockets==16.1.1
     # via
+    #   google-genai
+    #   langsmith
     #   marisai-backend
     #   uvicorn
 win32-setctime==1.2.0 ; sys_platform == 'win32'
@@ -422,6 +532,8 @@ xarray==2026.7.0
     # via
     #   copernicusmarine
     #   marisai-backend
+xxhash==3.8.1
+    # via langsmith
 yarl==1.24.5
     # via aiohttp
 zarr==3.1.6 ; python_full_version < '3.12'
@@ -430,3 +542,5 @@ zarr==3.2.1 ; python_full_version >= '3.12'
     # via copernicusmarine
 zipp==4.1.0 ; python_full_version < '3.12'
     # via importlib-metadata
+zstandard==0.25.0
+    # via langsmith

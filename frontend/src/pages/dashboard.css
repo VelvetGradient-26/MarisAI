@@ -1,38 +1,35 @@
+/* Page tokens alias the shared palette in styles/tokens.css. The four that
+   stay local are genuinely this page's own: a translucent sticky header, a
+   raised-but-see-through card, the "selected control" border, and the accent
+   glow behind an active KPI. Those still need a per-theme block. */
 .dashboard-shell {
-  --dash-bg: #121414;
+  --dash-bg: var(--ma-bg);
+  --dash-card-solid: var(--ma-surface-solid);
+  --dash-input: var(--ma-input-bg);
+  --dash-border: var(--ma-border-soft);
+  --dash-text: var(--ma-text);
+  --dash-muted: var(--ma-muted);
+  --dash-faint: var(--ma-faint);
+  --dash-primary: var(--ma-accent);
+  --dash-on-primary: var(--ma-accent-on);
+
   --dash-header: rgba(13, 14, 15, 0.88);
   --dash-card: rgba(30, 32, 32, 0.7);
-  --dash-card-solid: #1d2020;
-  --dash-input: rgba(255, 255, 255, 0.04);
-  --dash-border: rgba(255, 255, 255, 0.08);
   --dash-border-active: rgba(79, 209, 255, 0.46);
-  --dash-text: #e3e2e2;
-  --dash-muted: #9ba0af;
-  --dash-faint: #6f7480;
-  --dash-primary: #4fd1ff;
-  --dash-on-primary: #00181e;
   --dash-primary-container: #0b4a5e;
   --dash-glow: 0 0 22px rgba(79, 209, 255, 0.14);
+
   min-height: 100vh;
   background: var(--dash-bg);
   color: var(--dash-text);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--ma-font-ui);
   transition: background 0.3s ease, color 0.3s ease;
 }
 
 .dashboard-shell--light {
-  --dash-bg: #f4f7f8;
   --dash-header: rgba(255, 255, 255, 0.9);
   --dash-card: #fff;
-  --dash-card-solid: #fff;
-  --dash-input: #f4f7f8;
-  --dash-border: rgba(15, 30, 30, 0.09);
   --dash-border-active: rgba(15, 118, 110, 0.42);
-  --dash-text: #12201f;
-  --dash-muted: #5c6b6c;
-  --dash-faint: #8a9798;
-  --dash-primary: #0f766e;
-  --dash-on-primary: #fff;
   --dash-primary-container: #ccfbf1;
   --dash-glow: 0 8px 30px rgba(15, 30, 30, 0.07);
 }
@@ -71,7 +68,7 @@
 
 .dashboard-title-row h1 {
   margin: 8px 0 4px;
-  font-size: clamp(28px, 4vw, 42px);
+  font-size: var(--ma-text-3xl);
   letter-spacing: -0.04em;
 }
 

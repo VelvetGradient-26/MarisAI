@@ -1,13 +1,15 @@
+/* Page tokens alias the shared palette in styles/tokens.css; both themes come
+   from `data-theme` on <html>. */
 .feedback-page {
-  --fb-bg: #0e1116;
-  --fb-card-bg: rgba(255, 255, 255, 0.03);
-  --fb-border: rgba(255, 255, 255, 0.1);
-  --fb-text: #e3e2e2;
-  --fb-muted: #9ba0af;
-  --fb-primary: #4fd1ff;
-  --fb-primary-on: #001b22;
-  --fb-error: #ff8a8a;
-  --fb-input-bg: rgba(255, 255, 255, 0.04);
+  --fb-bg: var(--ma-bg);
+  --fb-card-bg: var(--ma-surface);
+  --fb-border: var(--ma-border);
+  --fb-text: var(--ma-text);
+  --fb-muted: var(--ma-muted);
+  --fb-primary: var(--ma-accent);
+  --fb-primary-on: var(--ma-accent-on);
+  --fb-error: var(--ma-error);
+  --fb-input-bg: var(--ma-input-bg);
 
   display: flex;
   min-height: 100vh;
@@ -15,20 +17,8 @@
   justify-content: center;
   padding: calc(var(--navbar-h, 64px) + 24px) 24px 24px;
   background: var(--fb-bg);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--ma-font-ui);
   transition: background 0.3s ease, color 0.3s ease;
-}
-
-.feedback-page--light {
-  --fb-bg: #f4f7f8;
-  --fb-card-bg: #fff;
-  --fb-border: rgba(15, 30, 30, 0.09);
-  --fb-text: #12201f;
-  --fb-muted: #5c6b6c;
-  --fb-primary: #0f766e;
-  --fb-primary-on: #fff;
-  --fb-error: #dc2626;
-  --fb-input-bg: rgba(15, 30, 30, 0.04);
 }
 
 .feedback-card {
@@ -46,7 +36,7 @@
 
 .feedback-card h1 {
   margin: 0;
-  font-size: 1.7rem;
+  font-size: var(--ma-text-2xl);
 }
 
 .feedback-card > p {
@@ -102,4 +92,21 @@
 .feedback-submit:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+@media (max-width: 560px) {
+  .feedback-page {
+    padding: calc(var(--navbar-h, 64px) + 16px) 16px 24px;
+  }
+
+  .feedback-card {
+    padding: 28px 20px;
+  }
+
+  /* Same iOS focus-zoom trap as the download form: anything under 16px makes
+     Safari zoom in on focus and stay there. */
+  .feedback-card input,
+  .feedback-card textarea {
+    font-size: 16px;
+  }
 }

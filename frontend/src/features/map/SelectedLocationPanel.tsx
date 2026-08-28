@@ -1,24 +1,22 @@
 import { useEffect, useState } from 'react';
-import { Bookmark, Check } from 'lucide-react';
 import { Link } from '../../app/router';
 import { useMapStore } from '../../store/mapStore';
 import { useUiStore } from '../../store/uiStore';
-import { useAuthStore } from '../../store/authStore';
 import { useTimezoneStore } from '../../store/timezoneStore';
-import { createSavedLocation } from './api/savedLocations';
 import { formatFullDateTime } from '../../utils/formatTime';
 import { fetchSstPoint } from './api/sst';
 import type { SstPointResponse } from './api/sst';
 import { fetchWindPoint } from './api/wind';
 import type { WindPointResponse } from './api/wind';
+import { fetchCurrentsPoint } from './api/currents';
+import { downloadBriefPdf } from './api/brief';
+import type { CurrentsPointResponse } from './api/currents';
 import { useSelectedLocationPredictions } from './hooks/useSelectedLocationPredictions';
 import type { PredictionPointResult } from './hooks/useSelectedLocationPredictions';
-import type {
-  CursorCoordinates,
-  NearestPort,
-  RealtimeOceanConditions,
-  RealtimeOceanUnits,
-} from './types';
+import { useToolsStore } from '../../store/toolsStore';
+import { useRoutePlanner } from './hooks/useRoutePlanner';
+import { subscribeWatch } from './api/watch';
+import type { NearestPort, RealtimeOceanConditions, RealtimeOceanUnits } from './types';
 
 const METRICS: Array<{
   key: keyof RealtimeOceanConditions & keyof RealtimeOceanUnits;
@@ -94,7 +92,59 @@ export function SelectedLocationPanel() {
     return () => controller.abort();
   }, [windLayerActive, selectedLocation]);
 
+  const currentsLayerActive = useMapStore((s) => s.layers.get('currents')?.active ?? false);
+  const [currentsPoint, setCurrentsPoint] = useState<CurrentsPointResponse | null>(null);
+  const [currentsStatus, setCurrentsStatus] = useState<'idle' | 'loading' | 'error' | 'success'>(
+    'idle'
+  );
+
+  useEffect(() => {
+    if (!currentsLayerActive || !selectedLocation) {
+      setCurrentsPoint(null);
+      setCurrentsStatus('idle');
+      return;
+    }
+
+    const controller = new AbortController();
+    setCurrentsStatus('loading');
+    fetchCurrentsPoint(selectedLocation, controller.signal)
+      .then((response) => {
+        setCurrentsPoint(response);
+        setCurrentsStatus('success');
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setCurrentsStatus('error');
+      });
+
+    return () => controller.abort();
+  }, [currentsLayerActive, selectedLocation]);
+
   const predictions = useSelectedLocationPredictions(selectedLocation);
+  const pfz = useToolsStore((s) => s.pfz);
+  const geofence = useToolsStore((s) => s.geofence);
+  const {
+    start: routeStart,
+    end: routeEnd,
+    status: routeStatus,
+    result: routeResult,
+    error: routeError,
+    setStart: setRouteStart,
+    setEnd: setRouteEnd,
+    planRoute,
+    clear: clearRoute,
+  } = useRoutePlanner();
+  // Three-way rather than a boolean: 'building' and 'failed' are different
+  // answers, and a brief takes long enough (bathymetry plus a point API) that
+  // a button with no feedback reads as broken.
+  const [briefStatus, setBriefStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+
+  // sihtodo.md item 8 — proactive alert watches. Local state, not a store:
+  // this is a one-shot form submission, the same shape `briefStatus` above
+  // already uses, not something another component needs to read.
+  const [watchEmail, setWatchEmail] = useState('');
+  const [watchStatus, setWatchStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [watchError, setWatchError] = useState<string | null>(null);
 
   return (
     <aside className={`selected-location-panel ${panelOpen ? 'open' : 'collapsed'}`}>
@@ -121,6 +171,40 @@ export function SelectedLocationPanel() {
           </span>
         )}
       </div>
+
+      {selectedLocation && (
+        <div className="selected-location-panel__brief">
+          <button
+            type="button"
+            className="selected-location-panel__brief-button"
+            disabled={briefStatus === 'loading'}
+            onClick={() => {
+              if (!selectedLocation) return;
+              setBriefStatus('loading');
+              downloadBriefPdf(selectedLocation)
+                .then(({ blob, filename }) => {
+                  // Same hand-rolled anchor click the download page uses. No
+                  // library, and no navigation: the map keeps its WebGL context.
+                  const href = URL.createObjectURL(blob);
+                  const anchor = document.createElement('a');
+                  anchor.href = href;
+                  anchor.download = filename;
+                  anchor.click();
+                  URL.revokeObjectURL(href);
+                  setBriefStatus('idle');
+                })
+                .catch(() => setBriefStatus('error'));
+            }}
+          >
+            {briefStatus === 'loading' ? 'Building brief…' : '↓ Point brief (PDF)'}
+          </button>
+          {briefStatus === 'error' && (
+            <span className="selected-location-panel__brief-error">
+              Could not build the brief. Try again in a moment.
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="selected-location-panel__body" aria-hidden={!panelOpen}>
         {sstLayerActive && selectedLocation && (
@@ -169,6 +253,42 @@ export function SelectedLocationPanel() {
           </div>
         )}
 
+        {currentsLayerActive && selectedLocation && (
+          <div className="selected-location-panel__wind-point">
+            <span className="selected-location-panel__wind-point-label">
+              Copernicus Currents (cursor)
+            </span>
+            {currentsStatus === 'loading' && <span>Loading…</span>}
+            {currentsStatus === 'error' && (
+              <span className="selected-location-panel__state--error">
+                Currents data unavailable
+              </span>
+            )}
+            {currentsStatus === 'success' && currentsPoint && (
+              <>
+                {currentsPoint.is_land_or_no_data || currentsPoint.speed_ms === null ? (
+                  <span className="selected-location-panel__wind-point-value">No data</span>
+                ) : (
+                  <>
+                    <span className="selected-location-panel__wind-point-value">
+                      {currentsPoint.speed_ms.toFixed(2)} m/s
+                    </span>
+                    {/* "towards", not "from" — a current is named for where the
+                        water goes, the opposite of the wind row above. The two
+                        rows sit next to each other, so the mode label is what
+                        stops one being read as the other. */}
+                    <DirectionValue
+                      degrees={currentsPoint.direction_toward_deg}
+                      unit="°"
+                      mode="towards"
+                    />
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
         {predictions.length > 0 && selectedLocation && (
           <div className="selected-location-panel__predictions">
             <span className="selected-location-panel__predictions-label">
@@ -181,6 +301,191 @@ export function SelectedLocationPanel() {
               Model estimates, not observations. See each layer's attribution for how it was
               trained and where it applies.
             </span>
+          </div>
+        )}
+
+        {pfz.active && selectedLocation && (
+          <div className="selected-location-panel__predictions">
+            <span className="selected-location-panel__predictions-label">
+              Potential Fishing Zones (screening)
+            </span>
+            {pfz.loading && <span className="selected-location-panel__state">Scanning…</span>}
+            {!pfz.loading && pfz.unavailableReason && (
+              <span className="selected-location-panel__state--error">{pfz.unavailableReason}</span>
+            )}
+            {!pfz.loading && pfz.response?.available && (pfz.response.zones?.length ?? 0) === 0 && (
+              <span className="selected-location-panel__state">
+                No open-ocean cells with data in this radius.
+              </span>
+            )}
+            {!pfz.loading &&
+              pfz.response?.available &&
+              (pfz.response.zones ?? []).map((zone) => (
+                <div key={`${zone.latitude}-${zone.longitude}`} className="selected-location-panel__prediction">
+                  <span className="selected-location-panel__prediction-name">
+                    {zone.latitude.toFixed(2)}°, {zone.longitude.toFixed(2)}°
+                  </span>
+                  <span className="selected-location-panel__prediction-value">
+                    {zone.chlorophyll_mg_m3.toFixed(3)} mg/m³
+                    <span className="selected-location-panel__prediction-unit">chl · {zone.sst_c.toFixed(1)}°C</span>
+                  </span>
+                </div>
+              ))}
+            <span className="selected-location-panel__predictions-note">
+              Heuristic screening, not a validated PFZ advisory or an official INCOIS product.
+            </span>
+          </div>
+        )}
+
+        {geofence.active && selectedLocation && (
+          <div className="selected-location-panel__predictions">
+            <span className="selected-location-panel__predictions-label">Geofence Check</span>
+            {geofence.loading && <span className="selected-location-panel__state">Checking…</span>}
+            {!geofence.loading && geofence.unavailableReason && (
+              <span className="selected-location-panel__state--error">{geofence.unavailableReason}</span>
+            )}
+            {!geofence.loading && geofence.response && (
+              <>
+                <div className="selected-location-panel__prediction">
+                  <span className="selected-location-panel__prediction-name">India EEZ</span>
+                  <span className="selected-location-panel__prediction-value">
+                    {geofence.response.india_eez.inside
+                      ? geofence.response.india_eez.zone === 'andaman_and_nicobar'
+                        ? 'Inside — Andaman & Nicobar'
+                        : 'Inside — mainland'
+                      : 'Outside'}
+                  </span>
+                </div>
+                <div className="selected-location-panel__prediction">
+                  <span className="selected-location-panel__prediction-name">India-Sri Lanka IMBL</span>
+                  <span className="selected-location-panel__prediction-value">
+                    {geofence.response.india_sri_lanka_imbl.distance_km.toFixed(1)} km
+                    {geofence.response.india_sri_lanka_imbl.near && (
+                      <span className="selected-location-panel__prediction-unit">near</span>
+                    )}
+                  </span>
+                </div>
+                {geofence.response.nearby_protected_areas.map((area) => (
+                  <div key={area.name} className="selected-location-panel__prediction">
+                    <span className="selected-location-panel__prediction-name">{area.name}</span>
+                    <span className="selected-location-panel__prediction-value">
+                      {area.inside ? 'Inside' : `${area.distance_km.toFixed(1)} km away`}
+                    </span>
+                  </div>
+                ))}
+              </>
+            )}
+            <span className="selected-location-panel__predictions-note">
+              {geofence.response?.note ??
+                'EEZ boundary is shown by the "Exclusive Economic Zones" reference layer; MPAs are a hand-curated list, not a surveyed footprint.'}
+            </span>
+          </div>
+        )}
+
+        {selectedLocation && (
+          <div className="selected-location-panel__route">
+            <span className="selected-location-panel__predictions-label">Plan a Route</span>
+            <div className="selected-location-panel__route-points">
+              <RoutePointRow
+                label="Start"
+                point={routeStart}
+                onSet={() => setRouteStart(selectedLocation)}
+              />
+              <RoutePointRow
+                label="Destination"
+                point={routeEnd}
+                onSet={() => setRouteEnd(selectedLocation)}
+              />
+            </div>
+            <div className="selected-location-panel__route-actions">
+              <button
+                type="button"
+                className="selected-location-panel__brief-button"
+                disabled={!routeStart || !routeEnd || routeStatus === 'loading'}
+                onClick={() => void planRoute()}
+              >
+                {routeStatus === 'loading' ? 'Planning…' : 'Plan route'}
+              </button>
+              {(routeStart || routeEnd) && (
+                <button type="button" className="selected-location-panel__brief-button" onClick={clearRoute}>
+                  Clear
+                </button>
+              )}
+            </div>
+            {routeStatus === 'error' && (
+              <span className="selected-location-panel__state--error">
+                {routeError ?? 'Route planning failed.'}
+              </span>
+            )}
+            {routeStatus === 'success' && routeResult && (
+              <div className="selected-location-panel__route-result">
+                <span>{routeResult.distance_km.toFixed(1)} km (direct: {routeResult.great_circle_km.toFixed(1)} km)</span>
+                <span className={`selected-location-panel__route-hazard selected-location-panel__route-hazard--${routeResult.hazard_level}`}>
+                  {routeResult.hazard_level}
+                  {routeResult.max_wave_height_m != null &&
+                    ` · max wave ${routeResult.max_wave_height_m.toFixed(1)} m`}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {selectedLocation && (
+          <div className="selected-location-panel__watch">
+            <span className="selected-location-panel__predictions-label">Watch This Location</span>
+            <span className="selected-location-panel__predictions-note">
+              Get an email when severe weather, a cyclone, or harmful algal bloom risk appears
+              here — a threshold rule, not an issued marine warning.
+            </span>
+            {watchStatus === 'success' ? (
+              <span className="selected-location-panel__state">
+                Check your email to confirm this watch.
+              </span>
+            ) : (
+              <>
+                <div className="selected-location-panel__watch-form">
+                  <input
+                    type="email"
+                    className="selected-location-panel__watch-input"
+                    placeholder="you@example.com"
+                    value={watchEmail}
+                    disabled={watchStatus === 'loading'}
+                    onChange={(e) => setWatchEmail(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="selected-location-panel__brief-button"
+                    disabled={!watchEmail || watchStatus === 'loading'}
+                    onClick={() => {
+                      if (!selectedLocation) return;
+                      setWatchStatus('loading');
+                      setWatchError(null);
+                      const label = data?.location_context.nearest_port
+                        ? `Near ${data.location_context.nearest_port.name}`
+                        : formatCoordinates(selectedLocation.lat, selectedLocation.lng);
+                      subscribeWatch({
+                        email: watchEmail,
+                        label,
+                        latitude: selectedLocation.lat,
+                        longitude: selectedLocation.lng,
+                      })
+                        .then(() => setWatchStatus('success'))
+                        .catch((err) => {
+                          setWatchStatus('error');
+                          setWatchError(err instanceof Error ? err.message : 'Could not create the watch.');
+                        });
+                    }}
+                  >
+                    {watchStatus === 'loading' ? 'Sending…' : 'Watch this location'}
+                  </button>
+                </div>
+                {watchStatus === 'error' && (
+                  <span className="selected-location-panel__state--error">
+                    {watchError ?? 'Could not create the watch.'}
+                  </span>
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -235,7 +540,6 @@ export function SelectedLocationPanel() {
                 More info
                 <span aria-hidden="true">→</span>
               </Link>
-              <SaveLocationButton location={selectedLocation} />
             </div>
 
             <div className="selected-location-panel__attribution">
@@ -255,59 +559,28 @@ export function SelectedLocationPanel() {
   );
 }
 
-/**
- * Saves the current point to the signed-in user's account. Hidden entirely
- * when signed out rather than shown-then-erroring: an anonymous visitor can
- * still read every number in this panel, so a dead control would be noise.
- */
-function SaveLocationButton({ location }: { location: CursorCoordinates }) {
-  const authStatus = useAuthStore((s) => s.status);
-  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [error, setError] = useState<string | null>(null);
-
-  // A new point is a new save — reset so the button doesn't keep reading
-  // "Saved" after the user clicks elsewhere on the map.
-  useEffect(() => {
-    setState('idle');
-    setError(null);
-  }, [location.lat, location.lng]);
-
-  if (authStatus !== 'authenticated') return null;
-
-  const save = async () => {
-    setState('saving');
-    setError(null);
-    try {
-      await createSavedLocation({
-        label: `${location.lat.toFixed(3)}, ${location.lng.toFixed(3)}`,
-        lat: location.lat,
-        lon: location.lng,
-      });
-      setState('saved');
-    } catch (cause: unknown) {
-      setError(cause instanceof Error ? cause.message : 'Could not save this location');
-      setState('error');
-    }
-  };
-
+function RoutePointRow({
+  label,
+  point,
+  onSet,
+}: {
+  label: string;
+  point: { lat: number; lng: number } | null;
+  onSet: () => void;
+}) {
   return (
-    <button
-      className="selected-location-panel__save"
-      type="button"
-      onClick={() => void save()}
-      disabled={state === 'saving' || state === 'saved'}
-      title={error ?? 'Save this point to your account'}
-    >
-      {state === 'saved' ? (
-        <>
-          <Check size={14} /> Saved
-        </>
+    <div className="selected-location-panel__route-point">
+      <span className="selected-location-panel__route-point-label">{label}</span>
+      {point ? (
+        <span className="selected-location-panel__route-point-value">
+          {formatCoordinates(point.lat, point.lng)}
+        </span>
       ) : (
-        <>
-          <Bookmark size={14} /> {state === 'saving' ? 'Saving…' : 'Save'}
-        </>
+        <button type="button" className="selected-location-panel__route-set-button" onClick={onSet}>
+          Set as {label.toLowerCase()}
+        </button>
       )}
-    </button>
+    </div>
   );
 }
 

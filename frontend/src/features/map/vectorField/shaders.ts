@@ -12,18 +12,43 @@
  *   result onto the map's real framebuffer.
  *
  * Shared math (kept identical between update/draw, pasted rather than
- * `#include`d — GLSL has no includes) — windUV() must match exactly how
- * backend/services/copernicus_wind.py encodes the field texture:
- * col = (lon+180)/360, row = (90-lat)/180, row 0 = north (image was
- * flipped vertically before encoding specifically so this matches the
- * conventional top-left-origin texture layout).
+ * `#include`d — GLSL has no includes) — fieldUV() must match exactly how
+ * backend/services/vector_field.py encodes the field texture: row 0 = north
+ * (the array is flipped vertically before encoding, specifically so this
+ * matches the conventional top-left-origin texture layout).
+ *
+ * **The frame comes from the field, not from the globe.** This used to read
+ * `u = (lon+180)/360, v = (90-lat)/180` — correct for the wind product, which
+ * spans the whole planet, and wrong for every other field. Copernicus's global
+ * physics grid (the currents source) runs latitude **-80 to 90**, so the
+ * hardcoded version stretched sampling latitude by 5.6% and advected the ocean
+ * with the wrong water — while still covering the screen and still animating,
+ * which is precisely why it needed to be data rather than a constant. The
+ * backend reports each texture's outer cell edges in its meta and they arrive
+ * here as `u_field_bounds`.
+ *
+ * `fieldUV` can return a v outside [0,1], and callers must treat that as
+ * off-field. It is not clamped here on purpose: the textures use
+ * CLAMP_TO_EDGE, so a clamped read south of 80degS would return the -80 row's
+ * velocity and advect the Southern Ocean with Antarctic coastal water instead
+ * of leaving it empty.
  */
 
-const WIND_UV_GLSL = `
-vec2 windUV(vec2 lonlat) {
-  float u = mod(lonlat.x + 180.0, 360.0) / 360.0;
-  float v = (90.0 - lonlat.y) / 180.0;
+const FIELD_UV_GLSL = `
+uniform vec4 u_field_bounds;  // lonWest, latSouth, lonEast, latNorth (cell edges)
+
+vec2 fieldUV(vec2 lonlat) {
+  float lonSpan = u_field_bounds.z - u_field_bounds.x;
+  float latSpan = u_field_bounds.w - u_field_bounds.y;
+  // mod() folds the particle's longitude into the field's own 360-degree
+  // window, so a field whose axis does not begin at -180 still wraps.
+  float u = mod(lonlat.x - u_field_bounds.x, 360.0) / lonSpan;
+  float v = (u_field_bounds.w - lonlat.y) / latSpan;
   return vec2(u, v);
+}
+
+bool onField(vec2 uv) {
+  return uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0;
 }
 `;
 
@@ -62,20 +87,30 @@ uniform vec4 u_bounds;     // minLon, minLat, maxLon, maxLat (current viewport)
 uniform float u_worldSize;
 
 const float DEG2RAD = 3.14159265358979 / 180.0;
-// Tuned, not physically derived: gives roughly VISUAL_SPEED_SCALE/360
-// on-screen pixels/second per 1 m/s of wind, independent of zoom (see
-// u_worldSize comment above) — chosen so a typical ~8 m/s wind reads as a
-// lively ~40px/s, matching Windy's pace rather than real-world crawl.
-const float VISUAL_SPEED_SCALE = 1800.0;
+// Tuned, not physically derived: gives roughly u_visualSpeedScale/360
+// on-screen pixels/second per 1 m/s, independent of zoom (see the
+// u_worldSize comment above). Wind uses 1800, so a typical ~8 m/s wind
+// reads as a lively ~40px/s — Windy's pace rather than a real-world crawl.
+//
+// A uniform rather than the constant it used to be, because the right value
+// is a property of the *field*, not of the engine. Ocean currents run an
+// order of magnitude slower than wind: at 1800 a typical 0.3 m/s current
+// would move ~1.5px/s and the layer would read as a still image. See
+// vectorField/currentsLayer.ts for the value used there.
+uniform float u_visualSpeedScale;
 
-${WIND_UV_GLSL}
+${FIELD_UV_GLSL}
 ${HASH_GLSL}
 
 void main() {
-  vec2 uv = windUV(a_lonlat);
+  vec2 uv = fieldUV(a_lonlat);
   vec4 windSample = texture(u_wind, uv);
 
-  bool valid = windSample.a > 0.5;
+  // Off-field counts as invalid, so the particle respawns instead of drifting.
+  // Without onField(), a particle south of a field's coverage samples the
+  // CLAMP_TO_EDGE row and is advected by velocities from a latitude it is
+  // nowhere near — the failure the currents grid's -80degS floor would cause.
+  bool valid = windSample.a > 0.5 && onField(uv);
   bool inBounds = a_lonlat.x >= u_bounds.x && a_lonlat.x <= u_bounds.z &&
                   a_lonlat.y >= u_bounds.y && a_lonlat.y <= u_bounds.w;
   bool tooOld = a_age >= u_maxAge;
@@ -98,7 +133,7 @@ void main() {
   // lon-vs-lat ratio matters here, not absolute physical units, since the
   // whole quantity is re-scaled for visibility below.
   float lonScale = 1.0 / max(cos(a_lonlat.y * DEG2RAD), 0.05);
-  float speedScale = u_speedMultiplier * VISUAL_SPEED_SCALE / u_worldSize;
+  float speedScale = u_speedMultiplier * u_visualSpeedScale / u_worldSize;
   float dLon = uComp * lonScale * u_dt * speedScale;
   float dLat = vComp * u_dt * speedScale;
 
@@ -147,7 +182,7 @@ uniform float u_pointSize;
 out float v_speed;
 out float v_alpha;
 
-${WIND_UV_GLSL}
+${FIELD_UV_GLSL}
 
 // Plain [0,1] normalized web mercator (0,0 = top-left of the mercator
 // world), which is exactly what MapLibre's projectTile() expects when it's
@@ -162,7 +197,7 @@ vec2 lonLatToMercator(vec2 lonlat) {
 }
 
 void main() {
-  vec2 uv = windUV(a_lonlat);
+  vec2 uv = fieldUV(a_lonlat);
   vec4 windSample = texture(u_wind, uv);
   float uComp = mix(u_uv_range.x, u_uv_range.y, windSample.r);
   float vComp = mix(u_uv_range.z, u_uv_range.w, windSample.g);
@@ -172,7 +207,10 @@ void main() {
   // age — avoids sudden pop-in/pop-out at (re)spawn. a_age is real seconds.
   float fadeIn = smoothstep(0.0, 0.15, a_age);
   float fadeOut = 1.0 - smoothstep(u_maxAge * 0.75, u_maxAge, a_age);
-  v_alpha = fadeIn * fadeOut * step(0.5, windSample.a);
+  // The onField() factor must match the update pass's validity test, or a
+  // particle the update pass has already given up on still gets drawn for a
+  // frame at whatever the clamped edge texel said.
+  v_alpha = fadeIn * fadeOut * step(0.5, windSample.a) * (onField(uv) ? 1.0 : 0.0);
 
   gl_Position = projectTile(lonLatToMercator(a_lonlat));
   gl_PointSize = u_pointSize;

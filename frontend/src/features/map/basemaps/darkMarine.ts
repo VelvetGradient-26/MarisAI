@@ -1,4 +1,4 @@
-import type { BasemapDefinition } from '../types';
+import type { RasterBasemapDefinition } from '../types';
 
 /**
  * Carto Dark Matter, no-labels variant — free, no API key, same "legacy
@@ -15,19 +15,30 @@ import type { BasemapDefinition } from '../types';
  * to the existing `reference-labels` Esri overlay (layerRegistry.ts),
  * already registered and on by default.
  */
-export const darkMarine: BasemapDefinition = {
+export const darkMarine: RasterBasemapDefinition = {
+  kind: 'raster',
   id: 'darkMarine',
   name: 'Dark Marine',
   attribution: '© OpenStreetMap contributors, © CARTO',
+  // Carto Dark Matter's canvas. Required for globe rendering; see
+  // BasemapManager.addRaster.
+  backgroundColor: '#111618',
+  // @2x retina tiles (verified live: 200, ~2.4x the bytes of the 1x tile at
+  // the same z/x/y). tileSize must match — 512, not 256 — since these are
+  // real higher-density images for the same geographic tile, not the 256px
+  // tile stretched. Esri Satellite and Blue Marble have no such variant
+  // (checked): Esri's World_Imagery REST tile endpoint has no @2x
+  // convention, and Blue Marble comes from NASA GIBS capped at maxzoom 8
+  // regardless of pixel density.
   source: {
     type: 'raster',
     tiles: [
-      'https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
-      'https://b.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
-      'https://c.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
-      'https://d.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png',
+      'https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}@2x.png',
+      'https://b.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}@2x.png',
+      'https://c.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}@2x.png',
+      'https://d.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}@2x.png',
     ],
-    tileSize: 256,
+    tileSize: 512,
     maxzoom: 19,
   },
 };
