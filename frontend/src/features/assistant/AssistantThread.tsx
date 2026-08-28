@@ -1,13 +1,27 @@
 import { createContext, useContext, useState } from 'react';
 import {
+  ActionBarPrimitive,
   AuiIf,
+  BranchPickerPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
   useAuiState,
 } from '@assistant-ui/react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { ChevronDown, CornerDownLeft, ShieldCheck, TriangleAlert } from 'lucide-react';
+import {
+  ArrowUp,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Pencil,
+  RefreshCw,
+  ShieldCheck,
+  Square,
+  TriangleAlert,
+} from 'lucide-react';
 import { Markdown } from '../../components/Markdown';
 import ShinyText from '../../components/reactbits/ShinyText/ShinyText';
 import type { ChatObservation } from '../map/api/chat';
@@ -36,59 +50,136 @@ const SUGGESTIONS = [
    that neither moves nor fades just appears. */
 const EASE = [0.22, 0.61, 0.36, 1] as const;
 
+/**
+ * The assistant's mark — two wave lines, drawn rather than an avatar image.
+ * `currentColor` throughout, matching the app's "hand-roll a small inline SVG
+ * over a new dependency" convention (Navbar's GithubIcon, ContactPage's
+ * LinkedInIcon). It is the one deliberately branded shape on this page; every
+ * other surface stays quiet around it.
+ */
+function AssistantMark() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
+      <path
+        d="M2 9.5c1.5 0 1.5 2 3 2s1.5-2 3-2 1.5 2 3 2 1.5-2 3-2 1.5 2 3 2 1.5-2 3-2 1.5 2 3 2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2 14.5c1.5 0 1.5 2 3 2s1.5-2 3-2 1.5 2 3 2 1.5-2 3-2 1.5 2 3 2 1.5-2 3-2 1.5 2 3 2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity="0.45"
+      />
+    </svg>
+  );
+}
+
+/**
+ * The Ocean Assistant, on assistant-ui.
+ *
+ * **What assistant-ui owns:** the thread — message list and ordering, run
+ * status, cancellation, the composer state machine, viewport auto-scroll,
+ * *and now the message-level affordances its default template ships*: copy,
+ * regenerate and edit-and-resubmit, with a branch picker to move between the
+ * versions each produces. Those are wired to real behaviour, not decoration —
+ * `Reload`/`Edit`/`Copy` are `ActionBarPrimitive` actions against the live
+ * runtime, and switching branches replays `useMarisChatRuntime`'s adapter
+ * exactly as a fresh turn would.
+ *
+ * **What stays hand-rolled, deliberately:** everything below the answer text.
+ * The grounding verdict, the data calls, the sources and the sidebar are
+ * MarisAI concepts with no assistant-ui equivalent, and they are the reason
+ * the page exists — an ocean answer you cannot trace is the failure mode the
+ * whole backend is built to avoid. They are ported, not reimplemented.
+ *
+ * Styling is hand-rolled CSS (`pages/chat.css` + `assistant.css`) using the
+ * app-wide `--ma-*` tokens, never assistant-ui's own `@assistant-ui/styles`
+ * package — that package is deprecated, and its Tailwind-based components
+ * would have pulled Tailwind into a second feature area outside
+ * `features/dashboard/`. The primitives are headless; every visual choice
+ * here, including the ones that now mirror assistant-ui's own default Thread
+ * template (bubble-less assistant turns, an avatar mark, a hover action bar,
+ * a circular composer send button), is this page's own CSS reading the
+ * shared theme tokens, so it inverts for dark/light exactly like every other
+ * page rather than carrying a second theming system.
+ */
 export function AssistantThread({ error }: { error: string | null }) {
   return (
     <ThreadPrimitive.Root className="chat-main">
       <header className="chat-header">
-        <h1>Ocean Assistant</h1>
+        <h1>
+          <span className="chat-header__mark" aria-hidden="true">
+            <AssistantMark />
+          </span>
+          Ocean Assistant
+        </h1>
         <p>
           Answers come from live MarisAI data — forecasts, observations, bathymetry and model
           output. Every figure is traced back to the call that produced it.
         </p>
       </header>
 
-      <ThreadPrimitive.Viewport className="chat-log" autoScroll>
-        <ThreadPrimitive.Empty>
-          <motion.div
-            className="chat-empty"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: EASE }}
-          >
-            <p className="chat-empty__lead">Ask about conditions anywhere in the ocean.</p>
-            <div className="chat-suggestions">
-              {SUGGESTIONS.map((suggestion, index) => (
-                <motion.div
-                  key={suggestion}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.45, delay: 0.06 * index, ease: EASE }}
-                >
-                  <ThreadPrimitive.Suggestion
-                    className="chat-suggestion"
-                    prompt={suggestion}
-                    method="replace"
-                    autoSend
+      <div className="chat-log-wrap">
+        <ThreadPrimitive.Viewport className="chat-log" autoScroll>
+          <ThreadPrimitive.Empty>
+            <motion.div
+              className="chat-empty"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, ease: EASE }}
+            >
+              <div className="chat-empty__mark" aria-hidden="true">
+                <AssistantMark />
+              </div>
+              <p className="chat-empty__lead">Ask about conditions anywhere in the ocean.</p>
+              <div className="chat-suggestions">
+                {SUGGESTIONS.map((suggestion, index) => (
+                  <motion.div
+                    key={suggestion}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.45, delay: 0.06 * index, ease: EASE }}
                   >
-                    {suggestion}
-                  </ThreadPrimitive.Suggestion>
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
-        </ThreadPrimitive.Empty>
+                    <ThreadPrimitive.Suggestion
+                      className="chat-suggestion"
+                      prompt={suggestion}
+                      method="replace"
+                      autoSend
+                    >
+                      {suggestion}
+                    </ThreadPrimitive.Suggestion>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+          </ThreadPrimitive.Empty>
 
-        <ThreadPrimitive.Messages
-          components={{ UserMessage, AssistantMessage }}
-        />
+          <ThreadPrimitive.Messages
+            components={{ UserMessage, AssistantMessage }}
+          />
 
-        {/* Only while a run is in flight *and* nothing has streamed yet — once
-            tokens arrive the answer itself is the progress indicator, and
-            leaving this below it would claim the turn had not started. */}
-        <ThreadPrimitive.If running>
-          <RunIndicator />
-        </ThreadPrimitive.If>
-      </ThreadPrimitive.Viewport>
+          {/* Only while a run is in flight *and* nothing has streamed yet — once
+              tokens arrive the answer itself is the progress indicator, and
+              leaving this below it would claim the turn had not started. */}
+          <ThreadPrimitive.If running>
+            <RunIndicator />
+          </ThreadPrimitive.If>
+        </ThreadPrimitive.Viewport>
+
+        {/* Floats above the log, only when the reader has scrolled away from
+            the latest message — assistant-ui's own visibility logic decides
+            that, this just supplies the button. */}
+        <ThreadPrimitive.ScrollToBottom className="chat-scroll-btn" aria-label="Scroll to latest message">
+          <ChevronDown size={16} aria-hidden />
+        </ThreadPrimitive.ScrollToBottom>
+      </div>
 
       <AnimatePresence>
         {error ? (
@@ -127,25 +218,43 @@ function Composer() {
           submitOnEnter
           placeholder="Ask about ocean conditions, forecasts or alerts…"
         />
+
+        {/* Send and Stop occupy the same slot — a run can take tens of
+            seconds and the composer is where a user looks to stop it.
+            `AuiIf` rather than `ComposerPrimitive.If`: the latter only
+            filters on `editing`/`dictation` and is deprecated in this
+            version, so "is a run in flight" has to come off the thread
+            state. */}
+        <AuiIf condition={(s) => !s.thread.isRunning}>
+          <ComposerPrimitive.Send className="chat-send-btn" aria-label="Send message">
+            <ArrowUp size={17} aria-hidden />
+          </ComposerPrimitive.Send>
+        </AuiIf>
+        <AuiIf condition={(s) => s.thread.isRunning}>
+          <ComposerPrimitive.Cancel className="chat-send-btn chat-send-btn--stop" aria-label="Stop generating">
+            <Square size={12} aria-hidden fill="currentColor" />
+          </ComposerPrimitive.Cancel>
+        </AuiIf>
       </div>
+    </ComposerPrimitive.Root>
+  );
+}
 
-      {/* Send and Cancel occupy the same slot — a run can take tens of seconds
-          and the composer is where a user looks to stop it.
-
-          `AuiIf` rather than `ComposerPrimitive.If`: the latter only filters on
-          `editing`/`dictation` and is deprecated in this version, so "is a run
-          in flight" has to come off the thread state. */}
-      <AuiIf condition={(s) => !s.thread.isRunning}>
-        <ComposerPrimitive.Send className="chat-send">
-          <CornerDownLeft size={16} aria-hidden />
-          <span>Send</span>
-        </ComposerPrimitive.Send>
-      </AuiIf>
-      <AuiIf condition={(s) => s.thread.isRunning}>
-        <ComposerPrimitive.Cancel className="chat-send chat-send--cancel">
-          <span>Stop</span>
+/** The composer swapped in for a user turn mid-edit — same shape as the
+ * thread composer below it, scaled down, so editing reads as "the same
+ * control, temporarily relocated" rather than a second UI. */
+function EditComposer() {
+  return (
+    <ComposerPrimitive.Root className="chat-edit-composer">
+      <ComposerPrimitive.Input className="chat-edit-input" autoFocus rows={1} submitOnEnter />
+      <div className="chat-edit-actions">
+        <ComposerPrimitive.Cancel className="chat-edit-btn chat-edit-btn--cancel">
+          Cancel
         </ComposerPrimitive.Cancel>
-      </AuiIf>
+        <ComposerPrimitive.Send className="chat-edit-btn chat-edit-btn--send">
+          Save &amp; submit
+        </ComposerPrimitive.Send>
+      </div>
     </ComposerPrimitive.Root>
   );
 }
@@ -172,60 +281,93 @@ function RunIndicator() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: EASE }}
     >
-      <div className="chat-bubble chat-bubble--assistant chat-thinking">
-        <span className="chat-dot" />
-        <span className="chat-dot" />
-        <span className="chat-dot" />
-        <span className="chat-thinking__label">
-          <ShinyText
-            text={calls.length > 0 ? 'Reading ocean data…' : 'Querying ocean data…'}
-            speed={2.4}
-            color="var(--chat-muted, #9a9aa2)"
-            shineColor="var(--chat-accent, #4fd1ff)"
-          />
-        </span>
+      <div className="chat-avatar chat-avatar--pulse" aria-hidden="true">
+        <AssistantMark />
       </div>
+      <div className="chat-col">
+        <div className="chat-thinking">
+          <span className="chat-dot" />
+          <span className="chat-dot" />
+          <span className="chat-dot" />
+          <span className="chat-thinking__label">
+            <ShinyText
+              text={calls.length > 0 ? 'Reading ocean data…' : 'Querying ocean data…'}
+              speed={2.4}
+              color="var(--chat-muted, #9a9aa2)"
+              shineColor="var(--chat-accent, #4fd1ff)"
+            />
+          </span>
+        </div>
 
-      {/* Why each specialist was asked, in the order the orchestrator decided
-          it — arrives before that specialist's own tool calls, since it is
-          the reasoning step rather than a result. */}
-      <AnimatePresence initial={false}>
-        {delegations.map((delegation, index) => (
-          <motion.div
-            key={`${delegation.agent}-${index}`}
-            className="chat-delegation"
-            initial={{ opacity: 0, x: -8 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3, ease: EASE }}
-          >
-            <span className="chat-delegation__agent">{agentLabel(delegation.agent)}</span>
-            <span className="chat-delegation__question">{delegation.question}</span>
-          </motion.div>
-        ))}
-      </AnimatePresence>
+        {/* Why each specialist was asked, in the order the orchestrator decided
+            it — arrives before that specialist's own tool calls, since it is
+            the reasoning step rather than a result. */}
+        <AnimatePresence initial={false}>
+          {delegations.map((delegation, index) => (
+            <motion.div
+              key={`${delegation.agent}-${index}`}
+              className="chat-delegation"
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3, ease: EASE }}
+            >
+              <span className="chat-delegation__agent">{agentLabel(delegation.agent)}</span>
+              <span className="chat-delegation__question">{delegation.question}</span>
+            </motion.div>
+          ))}
+        </AnimatePresence>
 
-      {/* The tool calls as they land. This is the substance of the wait: a
-          named data call is more reassuring than a spinner, and it is true. */}
-      <AnimatePresence initial={false}>
-        {calls.map((call, index) => (
-          <motion.div
-            key={`${call.tool}-${index}`}
-            className="chat-livecall"
-            initial={{ opacity: 0, x: -8 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3, ease: EASE }}
-          >
-            <span className="chat-livecall__tick" aria-hidden />
-            {agentLabel(call.agent) ? (
-              <span className="chat-livecall__agent">{agentLabel(call.agent)}</span>
-            ) : null}
-            <code>{call.tool}</code>
-          </motion.div>
-        ))}
-      </AnimatePresence>
+        {/* The tool calls as they land. This is the substance of the wait: a
+            named data call is more reassuring than a spinner, and it is true. */}
+        <AnimatePresence initial={false}>
+          {calls.map((call, index) => (
+            <motion.div
+              key={`${call.tool}-${index}`}
+              className="chat-livecall"
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3, ease: EASE }}
+            >
+              <span className="chat-livecall__tick" aria-hidden />
+              {agentLabel(call.agent) ? (
+                <span className="chat-livecall__agent">{agentLabel(call.agent)}</span>
+              ) : null}
+              <code>{call.tool}</code>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
     </motion.div>
+  );
+}
+
+/** Copy (and Edit, for a user turn) both flip an icon on completion via the
+ * `data-copied`/`data-*` attributes the primitives already set — see the
+ * `.chat-action-icon` rule pair in assistant.css — rather than local state. */
+function CopyIcon() {
+  return (
+    <>
+      <Copy size={13} className="chat-action-icon chat-action-icon--idle" aria-hidden />
+      <Check size={13} className="chat-action-icon chat-action-icon--done" aria-hidden />
+    </>
+  );
+}
+
+function BranchPicker({ label }: { label: string }) {
+  return (
+    <BranchPickerPrimitive.Root hideWhenSingleBranch className="chat-branch-picker">
+      <BranchPickerPrimitive.Previous className="chat-branch-btn" aria-label={`Previous ${label}`}>
+        <ChevronLeft size={13} aria-hidden />
+      </BranchPickerPrimitive.Previous>
+      <span className="chat-branch-count">
+        <BranchPickerPrimitive.Number /> / <BranchPickerPrimitive.Count />
+      </span>
+      <BranchPickerPrimitive.Next className="chat-branch-btn" aria-label={`Next ${label}`}>
+        <ChevronRight size={13} aria-hidden />
+      </BranchPickerPrimitive.Next>
+    </BranchPickerPrimitive.Root>
   );
 }
 
@@ -239,8 +381,30 @@ function UserMessage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, ease: EASE }}
       >
-        <div className="chat-bubble chat-bubble--user">
-          <MessagePrimitive.Parts components={{ Text: PlainText }} />
+        <div className="chat-col chat-col--user">
+          <AuiIf condition={(s) => !s.message.composer.isEditing}>
+            <div className="chat-bubble chat-bubble--user">
+              <MessagePrimitive.Parts components={{ Text: PlainText }} />
+            </div>
+            <div className="chat-msg-controls chat-msg-controls--user">
+              <BranchPicker label="version" />
+              <ActionBarPrimitive.Root hideWhenRunning autohide="not-last" className="chat-action-bar">
+                <ActionBarPrimitive.Copy className="chat-action-btn" aria-label="Copy message">
+                  <CopyIcon />
+                </ActionBarPrimitive.Copy>
+                <ActionBarPrimitive.Edit className="chat-action-btn" aria-label="Edit message">
+                  <Pencil size={13} aria-hidden />
+                </ActionBarPrimitive.Edit>
+              </ActionBarPrimitive.Root>
+            </div>
+          </AuiIf>
+          {/* Swaps the bubble out for the composer while this turn is being
+              edited, rather than editing it in place — the composer already
+              knows how to grow, focus and submit-on-enter, and a second copy
+              of that behaviour here would drift from it. */}
+          <AuiIf condition={(s) => s.message.composer.isEditing}>
+            <EditComposer />
+          </AuiIf>
         </div>
       </motion.div>
     </MessagePrimitive.Root>
@@ -259,13 +423,34 @@ function AssistantMessage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, ease: EASE }}
       >
-        {/* `layout` lets the bubble grow smoothly as tokens arrive instead of
+        <div className="chat-avatar" aria-hidden="true">
+          <AssistantMark />
+        </div>
+        {/* `layout` lets the column grow smoothly as tokens arrive instead of
             snapping taller line by line. */}
-        <motion.div layout={!reduce} className="chat-bubble chat-bubble--assistant">
+        <motion.div layout={!reduce} className="chat-col">
           <div className="chat-answer">
             <MessagePrimitive.Parts components={{ Text: MarkdownText }} />
           </div>
           <Provenance provenance={provenance} />
+          {/* Gated on `pending` for the same reason Provenance is: while this
+              branch is still streaming, `BranchPickerPrimitive` (unlike
+              `ActionBarPrimitive.Root`'s own `hideWhenRunning`) has no
+              running-state gate of its own, so a regenerate would otherwise
+              show "2 / 2" beside an answer that has not arrived yet. */}
+          {!provenance?.pending ? (
+            <div className="chat-msg-controls">
+              <ActionBarPrimitive.Root hideWhenRunning autohide="not-last" className="chat-action-bar">
+                <ActionBarPrimitive.Copy className="chat-action-btn" aria-label="Copy answer">
+                  <CopyIcon />
+                </ActionBarPrimitive.Copy>
+                <ActionBarPrimitive.Reload className="chat-action-btn" aria-label="Regenerate answer">
+                  <RefreshCw size={13} aria-hidden />
+                </ActionBarPrimitive.Reload>
+              </ActionBarPrimitive.Root>
+              <BranchPicker label="answer" />
+            </div>
+          ) : null}
         </motion.div>
       </motion.div>
     </MessagePrimitive.Root>

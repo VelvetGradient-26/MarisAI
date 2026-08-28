@@ -1,16 +1,326 @@
-/* Additions on top of `pages/chat.css`, which this page reuses wholesale.
-   Only what is genuinely new lives here: the live tool-call feed, the
-   "traced" confirmation, and the cancel state — none of which the previous
-   non-streaming page could have had. */
+/* Additions on top of `pages/chat.css`, which this page reuses and extends.
+   Only what is genuinely new lives here: the avatar mark, the message action
+   bar (copy/reload/edit), the branch picker, the edit composer, the
+   scroll-to-bottom button, the embedded composer send button, the live
+   tool-call feed and the "traced" confirmation — the pieces that make this
+   page read as assistant-ui's own default Thread template, restyled onto
+   MarisAI's `--ma-*` tokens rather than its Tailwind CSS package (see
+   AssistantThread.tsx's file header for why). */
 
-/* A data call, announced as it lands during the wait. Indented under the
-   thinking bubble so it reads as detail *of* that bubble rather than as a
-   separate turn. */
+/* --- Avatar mark ---------------------------------------------------------
+   The one deliberately branded shape on this page — two wave lines in a
+   ringed circle, drawn rather than an avatar image (AssistantMark in
+   AssistantThread.tsx). Everything else stays quiet around it. */
+
+.chat-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 1px solid var(--chat-user-border);
+  background: var(--chat-user-bg);
+  color: var(--chat-primary);
+}
+
+.chat-avatar--pulse {
+  animation: chat-avatar-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes chat-avatar-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.chat-header__mark,
+.chat-empty__mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--chat-user-border);
+  background: var(--chat-user-bg);
+  color: var(--chat-primary);
+}
+
+.chat-header__mark {
+  width: 34px;
+  height: 34px;
+}
+
+.chat-empty__mark {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 14px;
+}
+
+/* --- Message controls: action bar + branch picker ------------------------
+   One row, quietly sitting under a finished turn. `ActionBarPrimitive.Root`
+   and `BranchPickerPrimitive.Root` each unmount themselves entirely when
+   there is nothing to show (autohide, hideWhenSingleBranch) rather than
+   fading — see useActionBarFloatStatus — so the row reserves its own height
+   instead of relying on either primitive's exit animation, which keeps a
+   finished answer from visibly resizing the moment it becomes the last
+   message. */
+
+.chat-msg-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 26px;
+  margin-top: 8px;
+}
+
+.chat-msg-controls--user {
+  justify-content: flex-end;
+}
+
+.chat-action-bar,
+.chat-branch-picker {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.chat-action-btn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--chat-faint);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chat-action-btn:hover {
+  background: var(--chat-hover-bg);
+  color: var(--chat-text);
+}
+
+.chat-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Copy flips from the outline icon to a check via the primitive's own
+ * `data-copied` attribute — no local state needed (see CopyIcon in
+ * AssistantThread.tsx). */
+.chat-action-icon--done {
+  display: none;
+}
+
+[data-copied='true'] .chat-action-icon--idle {
+  display: none;
+}
+
+[data-copied='true'] .chat-action-icon--done {
+  display: inline;
+  color: var(--ma-good);
+}
+
+.chat-branch-count {
+  min-width: 2.6em;
+  color: var(--chat-faint);
+  font-size: var(--ma-text-2xs);
+  font-family: var(--ma-font-mono);
+  text-align: center;
+}
+
+.chat-branch-btn {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--chat-faint);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chat-branch-btn:hover {
+  background: var(--chat-hover-bg);
+  color: var(--chat-text);
+}
+
+.chat-branch-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* A visual divider between the two clusters, only when both are present. */
+.chat-msg-controls .chat-branch-picker + .chat-action-bar,
+.chat-msg-controls .chat-action-bar + .chat-branch-picker {
+  padding-left: 8px;
+  border-left: 1px solid var(--chat-border-soft);
+}
+
+/* --- Edit composer ---------------------------------------------------------
+   Swapped in for a user bubble mid-edit. Same card language as the thread
+   composer below it (border, radius, focus ring) so editing reads as "the
+   same control, relocated" rather than a second design. */
+
+.chat-edit-composer {
+  width: 100%;
+  max-width: 34rem;
+  padding: 10px;
+  border: 1px solid var(--chat-primary);
+  border-radius: 16px;
+  background: var(--chat-input-bg);
+  box-shadow: 0 0 0 4px var(--chat-focus-ring);
+}
+
+.chat-edit-input {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  max-height: 220px;
+  padding: 4px 6px;
+  border: none;
+  background: none;
+  color: var(--chat-text);
+  font: inherit;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  resize: none;
+}
+
+.chat-edit-input:focus {
+  outline: none;
+}
+
+.chat-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.chat-edit-btn {
+  padding: 7px 14px;
+  border: none;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease, background 0.15s ease;
+}
+
+.chat-edit-btn--cancel {
+  background: none;
+  color: var(--chat-muted);
+}
+
+.chat-edit-btn--cancel:hover {
+  background: var(--chat-hover-bg);
+  color: var(--chat-text);
+}
+
+.chat-edit-btn--send {
+  background: var(--chat-primary);
+  color: var(--chat-primary-on);
+}
+
+.chat-edit-btn--send:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.chat-edit-btn--send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* --- Composer send button --------------------------------------------------
+   Embedded in the bottom-right corner of `.chat-input-wrap` (chat.css) —
+   the single-card-with-a-circular-button shape, rather than a separate
+   pill beside the field. */
+
+.chat-send-btn {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--chat-primary);
+  color: var(--chat-primary-on);
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.1s ease;
+}
+
+.chat-send-btn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.chat-send-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.chat-send-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.chat-send-btn--stop {
+  background: var(--chat-text);
+  color: var(--chat-panel);
+}
+
+/* --- Scroll to bottom ------------------------------------------------------
+   Unlike `ActionBarPrimitive.Root`, `ThreadPrimitive.ScrollToBottom` never
+   unmounts — it stays in the DOM and only toggles `disabled` once the
+   viewport reaches the bottom (`createActionButton`'s shared behaviour), so
+   visibility has to be handled here rather than assumed. */
+
+.chat-scroll-btn:disabled {
+  display: none;
+}
+
+.chat-scroll-btn {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--chat-border-strong);
+  border-radius: 50%;
+  background: var(--chat-assistant-bg);
+  color: var(--chat-text);
+  box-shadow: var(--chat-shadow);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.chat-scroll-btn:hover {
+  background: var(--chat-hover-bg);
+  transform: translateX(-50%) translateY(-2px);
+}
+
+/* --- Live tool trace -------------------------------------------------------
+   A data call, announced as it lands during the wait. Indented to sit under
+   the thinking line as detail *of* that turn rather than as a separate one. */
 .chat-livecall {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin: 0.3rem 0 0 1.15rem;
+  margin: 0.3rem 0 0 0.15rem;
   font: var(--ma-text-2xs) / 1.4 var(--ma-font-mono);
   color: var(--chat-muted, var(--ma-muted));
 }
@@ -30,14 +340,12 @@
 
 /* The orchestrator's own reasoning: which specialist it decided to ask, and
    the sub-task it wrote for them, shown before that specialist's tool calls
-   land. Same indent as `.chat-livecall` while live, since it precedes that
-   specialist's calls in the same bubble; unindented inside `.chat-delegations`
-   (the finished-message list), which sits in the answer's own column. */
+   land. */
 .chat-delegation {
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
-  margin: 0.3rem 0 0 1.15rem;
+  margin: 0.3rem 0 0 0.15rem;
   font: var(--ma-text-2xs) / 1.4 var(--ma-font-sans, inherit);
   color: var(--chat-muted, var(--ma-muted));
 }
@@ -98,21 +406,15 @@
   flex: none;
 }
 
-/* Cancel occupies the send button's slot while a run is in flight. */
-.chat-send--cancel {
-  background: transparent;
-  color: var(--chat-muted, var(--ma-muted));
-  border: 1px solid var(--ma-border-strong);
-}
-
-.chat-send--cancel:hover {
-  color: var(--chat-text, var(--ma-text));
-  border-color: var(--ma-accent);
-}
-
 /* assistant-ui's viewport manages its own scrolling; smooth it so streamed
    tokens do not jerk the log. Suppressed under reduced motion by the app-wide
    rule in tokens.css, which sets `scroll-behavior: auto`. */
 .chat-log {
   scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-avatar--pulse {
+    animation: none;
+  }
 }

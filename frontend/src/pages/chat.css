@@ -80,6 +80,11 @@
 }
 
 .chat-main {
+  /* Both the message column and the composer read this, so a turn's bubble
+   * and the box you type into line up under one shared width — the
+   * assistant-ui-template convention of a centered reading column inside a
+   * wider panel, rather than a bubble stretched to the panel's own edge. */
+  --chat-col-max: 46rem;
   display: flex;
   flex-direction: column;
   min-height: 0; /* same reason: let the log scroll rather than the page */
@@ -247,6 +252,9 @@
 }
 
 .chat-header h1 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin: 0 0 6px;
   font-size: var(--ma-text-2xl);
   letter-spacing: -0.01em;
@@ -262,13 +270,24 @@
 
 /* --- Log ---------------------------------------------------------------- */
 
+/* Positions the floating scroll-to-bottom button against the log without it
+ * participating in the log's own scroll — see `.chat-scroll-btn` in
+ * assistant.css. */
+.chat-log-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
 .chat-log {
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 20px;
+  gap: 22px;
+  padding: 24px clamp(16px, 4vw, 40px);
   border: 1px solid var(--chat-border);
   border-radius: 16px;
   background: var(--chat-panel);
@@ -314,14 +333,33 @@
 
 .chat-turn {
   display: flex;
+  width: 100%;
+  max-width: var(--chat-col-max, 46rem);
+  margin-inline: auto;
 }
 
 .chat-turn--user {
   justify-content: flex-end;
 }
 
+/* The avatar mark sits beside the content column rather than above it, so
+ * `align-items: flex-start` pins it to the first line of the answer instead
+ * of centering against the whole (possibly multi-paragraph) turn. */
 .chat-turn--assistant {
   justify-content: flex-start;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.chat-col {
+  min-width: 0;
+  flex: 1;
+}
+
+.chat-col--user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
 .chat-bubble {
@@ -596,26 +634,29 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  margin: 12px 0 0;
+  width: 100%;
+  max-width: var(--chat-col-max, 46rem);
+  margin: 12px auto 0;
   color: var(--chat-error);
   font-size: 0.84rem;
 }
 
 .chat-composer {
-  display: flex;
-  gap: 10px;
-  align-items: flex-end;
-  margin-top: 14px;
+  width: 100%;
+  max-width: var(--chat-col-max, 46rem);
+  margin: 14px auto 0;
 }
 
 /* The wrapper carries the border and focus ring so the textarea itself can be
  * borderless — a border on an auto-growing textarea visibly jumps by a pixel
- * each time the height is recomputed. */
+ * each time the height is recomputed. `position: relative` is what lets the
+ * circular send button (`.chat-send-btn`, assistant.css) sit *inside* this
+ * card rather than beside it — the single-card-with-an-embedded-button shape
+ * assistant-ui's own composer uses, instead of two boxes side by side. */
 .chat-input-wrap {
-  flex: 1;
-  min-width: 0;
+  position: relative;
   border: 1px solid var(--chat-border);
-  border-radius: 14px;
+  border-radius: 20px;
   background: var(--chat-input-bg);
   transition: border-color 0.25s ease, box-shadow 0.25s ease;
 }
@@ -628,12 +669,12 @@
 .chat-input {
   display: block;
   width: 100%;
-  /* Roughly three lines before it needs to grow, rather than one. */
-  min-height: 76px;
+  min-height: 52px;
   max-height: 260px;
-  padding: 15px 17px;
+  /* Right padding reserves the embedded send button's corner. */
+  padding: 15px 54px 15px 20px;
   border: none;
-  border-radius: 14px;
+  border-radius: 20px;
   background: none;
   color: var(--chat-text);
   font: inherit;
@@ -716,7 +757,9 @@
 }
 
 .chat-disclaimer {
-  margin: 10px 0 0;
+  width: 100%;
+  max-width: var(--chat-col-max, 46rem);
+  margin: 10px auto 0;
   color: var(--chat-faint);
   font-size: 0.72rem;
   text-align: center;

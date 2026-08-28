@@ -28,10 +28,17 @@ const EASE = [0.22, 0.61, 0.36, 1] as const;
  * the page exists — an ocean answer you cannot trace is the failure mode the
  * whole backend is built to avoid. They are ported, not reimplemented.
  *
- * Styling is likewise ported: `pages/chat.css` is reused as-is, so this is
- * recognisably the same page. That is also what keeps Tailwind confined to
- * `features/dashboard/` — assistant-ui's primitives are headless, so they take
- * the existing class names without bringing a styling system with them.
+ * **Styling now mirrors assistant-ui's own default Thread template** —
+ * bubble-less assistant turns with an avatar mark, a hover action bar
+ * (copy/reload/edit) wired to real branch-switching behaviour, a
+ * scroll-to-bottom button — while staying `pages/chat.css` +
+ * `assistant.css`, on the app's `--ma-*` tokens, rather than adopting
+ * `@assistant-ui/styles`. That package is deprecated and Tailwind-based;
+ * pulling it in would confine Tailwind to `features/dashboard/` no longer.
+ * The primitives are headless, so every visual choice — including the ones
+ * that now match the template's own look — is this page's own CSS, which is
+ * what makes it invert for dark/light like every other page instead of
+ * carrying a second theming system. See AssistantThread.tsx for the detail.
  */
 export function AssistantPage() {
   const isDark = useThemeStore((s) => s.dark);
