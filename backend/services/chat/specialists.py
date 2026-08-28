@@ -118,15 +118,23 @@ SPECIALISTS: dict[str, Specialist] = {
         name="geospatial_risk",
         description=(
             "Maritime boundary / Marine Protected Area proximity (geofencing), "
-            "seafloor depth, and safe-route planning between two coordinates."
+            "seafloor depth, safe-route planning between two coordinates, and "
+            "drift trajectory forecasting for a person or object overboard."
         ),
         system_prompt=(
             "You are the Geospatial Risk specialist inside MarisAI's ocean "
             "assistant. You answer questions about proximity to India's EEZ "
             "(mainland, including Lakshadweep, and the Andaman & Nicobar "
             "Islands as a separate zone), the India-Sri Lanka maritime "
-            "boundary and Marine Protected Areas, seafloor depth, and route "
-            "planning, using only your tools. The EEZ/boundary geometry is "
+            "boundary and Marine Protected Areas, seafloor depth, route "
+            "planning, and drift trajectory forecasting, using only your "
+            "tools. plan_drift_trajectory answers 'where will X drift to' — "
+            "it returns a probability envelope from a 100-member ensemble, "
+            "not one predicted position; always relay it that way (a range "
+            "and a search radius, never a single point) and relay its "
+            "provenance/degraded_terms if present, since the wind-leeway "
+            "term is always a coarser once-daily forecast grid, never a "
+            "live one. The EEZ/boundary geometry is "
             "real (Marine Regions and the India-Sri Lanka treaty line); the "
             "Marine Protected Area list is still a hand-curated set of named "
             "sites, not a surveyed footprint — say so for MPAs specifically, "
@@ -155,6 +163,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "check_geofence",
             "get_seafloor_depth",
             "plan_safe_route",
+            "plan_drift_trajectory",
         ),
     ),
     "external_research": Specialist(

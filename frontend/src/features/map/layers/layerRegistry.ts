@@ -832,6 +832,69 @@ function geofenceStatusLayer(): GeoJsonLayerDescriptor {
 }
 
 /**
+ * A drift trajectory forecast ensemble (`services/drift_trajectory.py`), fed
+ * by `useDriftTrajectoryPlanner`. Not the single-snapshot `drift-*` particle
+ * fields above — this draws an actual 6-96h forecast as a bundle of member
+ * tracks at low opacity (overdraw reads as a density corridor with no extra
+ * geometry math) plus one highlighted median line, because TODO.md is
+ * explicit that a lone deterministic line here "is the most dangerous thing
+ * in this file" — the spread *is* the answer, not a decoration on it.
+ */
+const DRIFT_TRAJECTORY_MEMBER_COLOR = '#fbbf24';
+const DRIFT_TRAJECTORY_MEDIAN_COLOR = '#f97316';
+
+function driftTrajectoryLayer(): GeoJsonLayerDescriptor {
+  return {
+    id: 'drift-trajectory',
+    name: 'Drift Trajectory Forecast',
+    category: 'reference',
+    type: 'geojson',
+    attribution:
+      'services/drift_trajectory.py: a 100-member ensemble over perturbed start position, ' +
+      'leeway and field error, RK4-integrated against the live current/Stokes forecast where ' +
+      'available and the coarser once-daily forecast grid otherwise (wind leeway is always the ' +
+      'latter — no live wind forecast source exists). Every faint line is one plausible track, ' +
+      'not a prediction of where the object is; the bright line is their median.',
+    defaultOpacity: 0.9,
+    defaultVisible: false,
+    paintLayers: (opacity: number) => [
+      {
+        type: 'line',
+        filter: ['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'kind'], 'member']],
+        paint: {
+          'line-color': DRIFT_TRAJECTORY_MEMBER_COLOR,
+          'line-width': 1,
+          // At ~100 overlapping members this overdraws into a visible density
+          // corridor without any percentile-contour geometry to compute.
+          'line-opacity': 0.06 * opacity,
+        },
+      },
+      {
+        type: 'line',
+        filter: ['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'kind'], 'median']],
+        paint: { 'line-color': DRIFT_TRAJECTORY_MEDIAN_COLOR, 'line-width': 3, 'line-opacity': opacity },
+      },
+      {
+        type: 'circle',
+        filter: ['==', ['geometry-type'], 'Point'],
+        paint: {
+          'circle-color': DRIFT_TRAJECTORY_MEDIAN_COLOR,
+          'circle-radius': 6,
+          'circle-opacity': opacity,
+          'circle-stroke-width': 1.2,
+          'circle-stroke-color': 'rgba(2,12,27,0.85)',
+          'circle-stroke-opacity': opacity,
+        },
+      },
+    ],
+    legend: {
+      type: 'note',
+      text: 'Faint lines: 100-member ensemble. Bright line: median track. A probability envelope, not a predicted path.',
+    },
+  };
+}
+
+/**
  * The planned A* route between two user-picked points (`services/routing.py`),
  * fed by `useRoutePlanner`. Distinct from the old three-candidate comparison
  * it replaced — see that module's docstring — this draws the single found
@@ -1531,4 +1594,5 @@ export const layerRegistry: LayerDescriptor[] = [
   ednaCoverageLayer(),
   geofenceStatusLayer(),
   plannedRouteLayer(),
+  driftTrajectoryLayer(),
 ];

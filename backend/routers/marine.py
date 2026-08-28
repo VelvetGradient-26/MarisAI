@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, HTTPException, Query
 
 from services import (
@@ -7,6 +9,7 @@ from services import (
     copernicus_wind,
     currents_depth,
     drift,
+    drift_trajectory,
     eddies,
     eddy_tracking,
     edna,
@@ -19,6 +22,7 @@ from services.bathymetry import BathymetryError, get_elevation
 from services.copernicus_currents import CopernicusCurrentsError
 from services.currents_depth import CurrentsDepthError
 from services.drift import DriftError
+from services.drift_trajectory import DriftTrajectoryError
 from services.stokes_drift import StokesDriftError
 from services.copernicus_sst import CopernicusSstError
 from services.copernicus_wind import CopernicusWindError
@@ -478,6 +482,64 @@ async def get_drift_meta(
         return drift.get_meta(resolved)
     except DriftError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/drift/trajectory")
+async def get_drift_trajectory(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    alpha: float | None = Query(
+        None, description="Leeway coefficient, 0-0.15. Ignored when `preset` is given."
+    ),
+    preset: str | None = Query(None, description="Leeway preset key from /drift/presets"),
+    start_time: datetime | None = Query(
+        None, description="ISO8601, defaults to now. Must be within the last 12 hours."
+    ),
+    horizon_hours: float = Query(drift_trajectory.DEFAULT_HORIZON_HOURS, ge=6, le=96),
+    members: int = Query(drift_trajectory.DEFAULT_N_MEMBERS, ge=20, le=200),
+    start_position_uncertainty_km: float = Query(
+        drift_trajectory.DEFAULT_START_POSITION_UNCERTAINTY_KM, ge=0, le=50
+    ),
+):
+    """An ensemble drift forecast — a probability corridor, not one line.
+
+    502 rather than 503: like `/route`, this is a live upstream fetch on
+    every call, not a read of a cache this server warms (the current/wind ML
+    grids it falls back to *are* such a cache, but the request always
+    attempts the live path first).
+    """
+    try:
+        resolved_alpha = drift.resolve_alpha(alpha, preset)
+    except DriftError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    resolved_start = start_time or datetime.now(UTC)
+    if resolved_start.tzinfo is None:
+        resolved_start = resolved_start.replace(tzinfo=UTC)
+    now = datetime.now(UTC)
+    earliest = now - timedelta(hours=drift_trajectory.MAX_START_LOOKBACK_HOURS)
+    if not earliest <= resolved_start <= now:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"start_time must be between {earliest.isoformat()} and {now.isoformat()} "
+                "(now, or up to 12 hours in the past — a last-known position)"
+            ),
+        )
+
+    try:
+        return await drift_trajectory.plan_trajectory(
+            lat,
+            lon,
+            resolved_alpha,
+            preset is not None,
+            start_time=resolved_start,
+            horizon_hours=horizon_hours,
+            n_members=members,
+            start_position_uncertainty_km=start_position_uncertainty_km,
+        )
+    except DriftTrajectoryError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.get("/currents/depth/point")

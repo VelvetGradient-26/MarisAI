@@ -92,7 +92,9 @@ ocean state" means a single worldwide summary number with no coordinate \
 (get_global_ocean_summary), not a point reading. Sending a current-conditions \
 question to ocean_analytics gets you a specialist with no tool for it.
 - delegate_to_geospatial_risk — maritime boundary / Marine Protected Area \
-proximity (geofencing), seafloor depth, safe-route planning between two points.
+proximity (geofencing), seafloor depth, safe-route planning between two points, \
+and drift trajectory forecasting for a person or object overboard ("where will \
+X drift to" — a probability envelope, not one predicted position).
 - delegate_to_external_research — web search, fetching a specific webpage, \
 and scientific-literature search, for anything MarisAI's own data cannot \
 answer: recent news, an explanation of a current event, or published \

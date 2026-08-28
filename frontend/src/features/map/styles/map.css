@@ -674,6 +674,22 @@ body,
 .selected-location-panel__route-hazard--hazardous { color: #ef4444; }
 .selected-location-panel__route-hazard--unknown { color: var(--ocean-muted); }
 
+.selected-location-panel__drift-select {
+  font: 11px/1 var(--ocean-font-mono);
+  color: var(--ocean-accent);
+  background: transparent;
+  border: 1px dashed var(--ocean-border);
+  border-radius: 6px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.selected-location-panel__drift-note {
+  color: var(--ocean-muted);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
 /* --- Watch this location (sihtodo.md item 8) ----------------------------
    Same card shape as .selected-location-panel__route immediately above. */
 .selected-location-panel__watch {

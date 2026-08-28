@@ -260,6 +260,20 @@ class ArgoArgs(PointArgs):
     )
 
 
+class DriftTrajectoryArgs(PointArgs):
+    preset: str = Field(
+        "life_raft",
+        description=(
+            "What is drifting, which sets how much of the wind it picks up "
+            "directly (leeway) on top of the current and waves. One of: "
+            "water_only (no leeway — a slick or larva), swamped_hull, "
+            "oil_slick, person_in_water, life_raft (default — the common "
+            "person-overboard/SAR case)."
+        ),
+    )
+    horizon_hours: float = Field(48.0, ge=6, le=96, description="How far ahead to forecast, in hours.")
+
+
 # --------------------------------------------------------------------------
 # Tool implementations
 # --------------------------------------------------------------------------
@@ -479,6 +493,48 @@ async def _argo_profile(latitude: float, longitude: float, radius_km: float, loo
     return await nearest_profile(latitude, longitude, radius_km, lookback_days)
 
 
+async def _drift_trajectory(
+    latitude: float, longitude: float, preset: str, horizon_hours: float
+) -> dict[str, Any]:
+    """A trimmed view of `drift_trajectory.plan_trajectory`'s ensemble: the
+    100 raw member tracks would swamp the model's context for no benefit, so
+    this reports the median path at a 12-hourly cadence plus one spread
+    number — how far the 90th-percentile member sits from the median at the
+    end of the horizon, which is the "how big is the search area" question a
+    SAR-style answer actually needs."""
+    import math
+
+    from services.drift import resolve_alpha
+    from services.drift_trajectory import plan_trajectory
+
+    alpha = resolve_alpha(None, preset)
+    result = await plan_trajectory(latitude, longitude, alpha, True, horizon_hours=horizon_hours)
+
+    median = result["median_track"]
+    final_hour = median[-1]["hour"]
+    final_median = median[-1]
+
+    distances_km = []
+    for member in result["members"]:
+        point = member["track"][-1]
+        dlat_km = (point["lat"] - final_median["lat"]) * 111.32
+        dlon_km = (point["lon"] - final_median["lon"]) * 111.32 * math.cos(math.radians(final_median["lat"]))
+        distances_km.append(math.hypot(dlat_km, dlon_km))
+    distances_km.sort()
+    p90_index = min(len(distances_km) - 1, round(0.9 * (len(distances_km) - 1)))
+
+    return {
+        "start": result["start"],
+        "object": preset,
+        "leeway_alpha": result["leeway_alpha"],
+        "median_track": [p for p in median if p["hour"] % 12 == 0 or p["hour"] == final_hour],
+        "search_radius_90th_percentile_km_at_horizon": round(distances_km[p90_index], 1),
+        "provenance": result["provenance"],
+        "degraded_terms": result["degraded_terms"],
+        "note": result["note"],
+    }
+
+
 # --------------------------------------------------------------------------
 # Wiring
 # --------------------------------------------------------------------------
@@ -683,6 +739,17 @@ _SPECS: list[tuple[str, str, type[BaseModel], Any]] = [
         "days old, and its own timestamp says how old.",
         ArgoArgs,
         _argo_profile,
+    ),
+    (
+        "plan_drift_trajectory",
+        "Forecast where a drifting object (a person overboard, a life raft, "
+        "an oil slick) will be over the next 6-96 hours, starting from a "
+        "coordinate — a probability envelope from a 100-member ensemble, "
+        "not one predicted position. Use for 'where will X end up' or "
+        "search-and-rescue-shaped questions; get_current_conditions and "
+        "get_active_alerts answer 'what is happening now', not this.",
+        DriftTrajectoryArgs,
+        _drift_trajectory,
     ),
 ]
 
