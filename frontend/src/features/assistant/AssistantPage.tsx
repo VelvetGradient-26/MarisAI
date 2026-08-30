@@ -198,18 +198,18 @@ export function AssistantPage() {
                     <PanelLeftClose size={18} aria-hidden />
                   )}
                 </button>
-              </div>
 
-              <button
-                type="button"
-                className="chat-new"
-                onClick={startNew}
-                aria-label="New chat"
-                title="New chat"
-              >
-                <MessageSquarePlus size={16} aria-hidden />
-                {sidebarCollapsed ? null : <span>New chat</span>}
-              </button>
+                <button
+                  type="button"
+                  className="chat-new"
+                  onClick={startNew}
+                  aria-label="New chat"
+                  title="New chat"
+                >
+                  <MessageSquarePlus size={16} aria-hidden />
+                  {sidebarCollapsed ? null : <span>New chat</span>}
+                </button>
+              </div>
 
               <AnimatePresence initial={false}>
                 {sidebarCollapsed ? null : (
