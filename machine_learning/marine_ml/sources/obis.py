@@ -41,6 +41,9 @@ _MAX_PAGES = 200  # hard stop; 1M records at this page size
 # Columns kept from the (very wide) OBIS record. `dataset_id` and
 # `institutionCode` are retained deliberately: they identify *who sampled*,
 # which is what makes a sampling-bias diagnostic possible later.
+# `occurrenceID`/`catalogNumber` are the dedup keys
+# `fish_habitat_prediction.src.labels.union_presences` needs to combine this
+# frame with `marine_ml.sources.gbif`'s — see that module's docstring.
 _COLUMNS = {
     "decimalLatitude": "latitude",
     "decimalLongitude": "longitude",
@@ -51,6 +54,8 @@ _COLUMNS = {
     "dataset_id": "dataset_id",
     "institutionCode": "institution_code",
     "individualCount": "individual_count",
+    "occurrenceID": "occurrence_id",
+    "catalogNumber": "catalog_number",
 }
 
 

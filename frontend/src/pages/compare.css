@@ -157,6 +157,47 @@
   background: var(--cmp-card-bg);
 }
 
+/* Overrides the plain `.ma-reveal` utility (index.css) with a scroll-driven
+   entrance instead of `useReveal`'s JS/IntersectionObserver toggle — scoped to
+   `.compare-section.ma-reveal` rather than changing the shared utility rule
+   itself, since other current and future consumers of `.ma-reveal` may still
+   want the JS-driven version. This page no longer ever adds `.is-revealed`, so
+   the base rule below has to win over `.ma-reveal`'s own `opacity: 0` default
+   (it does, on specificity: two classes beats one) — otherwise a browser
+   without view-timeline support would render every section permanently blank.
+   Only inside `@supports` does the section start hidden and get revealed —
+   see landing.css's hero block for the fuller version of this reasoning. */
+.compare-section.ma-reveal {
+  opacity: 1;
+  transform: none;
+}
+
+@supports (animation-timeline: view()) {
+  .compare-section.ma-reveal {
+    transition: none;
+    animation: compare-reveal linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 60%;
+  }
+
+  @keyframes compare-reveal {
+    from {
+      opacity: 0;
+      transform: translateY(var(--ma-reveal-shift));
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .compare-section.ma-reveal {
+      animation: none;
+    }
+  }
+}
+
 .compare-section h2 {
   margin: 0 0 12px;
   font-size: var(--ma-text-lg);

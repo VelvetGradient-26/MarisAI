@@ -29,12 +29,14 @@ resolution is. `GATE_CELLS * grid_spacing_deg` sizes the gate off the
 detector's actual resolution instead of a propagation speed that would be
 smaller than the noise floor it needs to survive.
 
-**State does not survive a restart** — an in-process dict, the same
-limitation `services/dashboard/history.py`'s KPI ring buffer already carries
-and for the same reason: there is no upstream that can answer "what did this
-eddy look like six hours ago" for this to fall back to, and a database record
-implies a durability guarantee this does not need to make for a computed,
-re-derivable-from-history-if-ever-needed series.
+**State does not survive a restart** — an in-process dict, for the same
+reason `services/wind_history.py` accepts it: there is no upstream that can
+answer "what did this eddy look like six hours ago" for this to fall back to,
+and a database record implies a durability guarantee this does not need to
+make for a computed, re-derivable-from-history-if-ever-needed series.
+(`services/dashboard/history.py`'s KPI buffer used to be cited here as the
+same shape; it now persists to Postgres, since a dashboard card's sparkline —
+unlike this tracker's own working state — is worth surviving a restart.)
 
 **What is validated, and what is still open.** The matcher's own correctness
 (a track never breaks continuity when it shouldn't; two crossing eddies never

@@ -126,3 +126,72 @@ def test_a_timestep_valid_in_either_box_survives(opened):
     candidates = wind._candidate_times(datetime(2026, 8, 5, tzinfo=timezone.utc))
     assert len(candidates) == 1
     assert str(candidates[0])[:19] == "2026-08-04T01:00:00"
+
+
+class TestRefreshRecordsWindHistory:
+    """`refresh_wind_cache` folds each successful refresh into
+    `services/wind_history.py` too — this is the actual production wiring
+    `scripts/measure_wind_history_corroboration.py` depends on, so it is
+    checked against the real `refresh_wind_cache`, not just against
+    `wind_history.record` in isolation."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_history(self):
+        from services import wind_history
+
+        wind_history.reset()
+        yield
+        wind_history.reset()
+
+    @pytest.mark.asyncio
+    async def test_a_successful_refresh_records_history(self, monkeypatch):
+        from services import wind_history
+
+        lat = np.array([-1.0, 0.0, 1.0])
+        lon = np.array([-1.0, 0.0, 1.0])
+        u = np.full((3, 3), 5.0)
+        v = np.full((3, 3), 0.0)
+        stamp = datetime(2026, 8, 20, tzinfo=timezone.utc)
+
+        async def fake_fetch_latest_grid():
+            return lat, lon, u, v, stamp
+
+        monkeypatch.setattr(wind, "_fetch_latest_grid", lambda: (lat, lon, u, v, stamp))
+
+        async def fake_to_thread(fn, *args, **kwargs):
+            return fn(*args, **kwargs)
+
+        monkeypatch.setattr(wind.asyncio, "to_thread", fake_to_thread)
+
+        await wind.refresh_wind_cache()
+
+        assert wind_history.is_available()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_history_record_does_not_break_the_wind_cache(self, monkeypatch):
+        """The wind cache is the thing every map layer and drift field
+        depends on; a bug in the newer, less-exercised history path must
+        never take it down too."""
+        from services import wind_history
+
+        lat = np.array([-1.0, 0.0, 1.0])
+        lon = np.array([-1.0, 0.0, 1.0])
+        u = np.full((3, 3), 5.0)
+        v = np.full((3, 3), 0.0)
+        stamp = datetime(2026, 8, 20, tzinfo=timezone.utc)
+
+        monkeypatch.setattr(wind, "_fetch_latest_grid", lambda: (lat, lon, u, v, stamp))
+
+        async def fake_to_thread(fn, *args, **kwargs):
+            return fn(*args, **kwargs)
+
+        monkeypatch.setattr(wind.asyncio, "to_thread", fake_to_thread)
+
+        def broken_record(snapshot):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(wind_history, "record", broken_record)
+
+        await wind.refresh_wind_cache()
+
+        assert wind.is_available()

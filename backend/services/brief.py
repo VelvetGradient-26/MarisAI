@@ -370,17 +370,38 @@ def _events_section(latitude: float, longitude: float) -> Section:
         )
 
     if state["in_heatwave"]:
-        run = f"{state['run_days']} consecutive day{'s' if state['run_days'] != 1 else ''}"
-        if state["run_days_censored"]:
-            # The window bounds what can be claimed. Saying "12 days" when the
-            # record only reaches back 12 days states a duration the data cannot
-            # support — and a marine heatwave's duration is one of its defining
-            # properties, so the overstatement would matter.
-            run += " or more (the record examined does not reach further back)"
-        value = (
-            f"{state['category']} marine heatwave — {run} above the seasonal "
-            f"90th percentile, currently {state['exceedance_c']:g} °C above it"
-        )
+        # `services/heatwave_tracking.py` holds the true onset/duration across
+        # refreshes; the window-censored `run_days` above is the fallback for
+        # the rare case tracking itself is not (yet) available for this cell.
+        tracked = state.get("tracked") or {"available": False}
+        use_tracked = bool(tracked.get("available")) and tracked.get("run_days", 0) > 0
+
+        if use_tracked:
+            run = f"{tracked['run_days']} day{'s' if tracked['run_days'] != 1 else ''}"
+            if tracked["possibly_started_earlier"]:
+                # Already active the first time this server ever looked — the
+                # true start could be earlier still, so a date would overstate
+                # what tracking can support, the same reason `run_days_censored`
+                # existed for the old window-only field.
+                run += " or more (already active when this server started tracking)"
+                onset_clause = ""
+            else:
+                onset_clause = f", since {tracked['onset_date']}"
+            value = (
+                f"{state['category']} marine heatwave — {run} above the seasonal "
+                f"90th percentile{onset_clause}, currently {state['exceedance_c']:g} °C above it"
+            )
+        else:
+            run = f"{state['run_days']} consecutive day{'s' if state['run_days'] != 1 else ''}"
+            if state["run_days_censored"]:
+                # The window bounds what can be claimed. Saying "12 days" when
+                # the record only reaches back 12 days states a duration the
+                # data cannot support.
+                run += " or more (the record examined does not reach further back)"
+            value = (
+                f"{state['category']} marine heatwave — {run} above the seasonal "
+                f"90th percentile, currently {state['exceedance_c']:g} °C above it"
+            )
     else:
         value = (
             "no marine heatwave — sea-surface temperature is not above its "
@@ -397,8 +418,10 @@ def _events_section(latitude: float, longitude: float) -> Section:
             f"Hobday definition: sea-surface temperature above the "
             f"seasonally-varying 90th percentile of the {baseline['start']}-"
             f"{baseline['end']} baseline for at least five consecutive days. "
-            "Events are not tracked between refreshes, so this carries no onset "
-            "date or total duration."
+            "Onset date and true duration are held across refreshes by this "
+            "server's own tracker and are only as old as it is — a run already "
+            "active the first time the tracker looked is stated as 'or more' "
+            "rather than given a start date it cannot support."
         ),
     )
 

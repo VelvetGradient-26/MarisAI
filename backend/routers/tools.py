@@ -31,6 +31,13 @@ maps to 422 as well as 502 — see its own docstring.
 over `services/tides.py` — see that module's docstring for the live-browser
 investigation that found INCOIS's tide-gauge feed, the timestamp-decoding
 quirk in its response, and the TLS workaround needed to reach it from Python.
+
+`/argo` is the same shape again, over `services/argo.py` — live ARGO float
+profiles, found the same way (probe first, verify the real response shape,
+then build against it). Never raises for "no float nearby": that is real
+ARGO coverage, not a failure, the same `available`/`unavailable_reason`
+split `/pfz` and `/tide` already draw. A genuine Argovis fetch failure maps
+to 502, the same class as `/tide`/`/route`/`/cyclones`.
 """
 
 from __future__ import annotations
@@ -38,6 +45,8 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 from services import geofencing, pfz
+from services.argo import ArgoError
+from services.argo import nearest_profile as get_nearest_argo_profile
 from services.cyclones import CycloneError, get_active_cyclones
 from services.cyclones import check_point as cyclone_check_point
 from services.literature import LiteratureError
@@ -92,6 +101,15 @@ async def get_route(
     start_lon: float = Query(..., ge=-180, le=180),
     end_lat: float = Query(..., ge=-90, le=90),
     end_lon: float = Query(..., ge=-180, le=180),
+    vessel_draft_m: float | None = Query(
+        None, gt=0, description="Excludes water GEBCO reports as too shallow to clear this draft."
+    ),
+    vessel_speed_kmh: float | None = Query(
+        None, gt=0, description="Only used to compute estimated_duration_hours; never changes the route chosen."
+    ),
+    vessel_fuel_range_km: float | None = Query(
+        None, gt=0, description="Checked against the found route's own distance; never changes the route chosen."
+    ),
 ):
     """Hazard-aware A* route between two points, over a live grid.
 
@@ -102,7 +120,15 @@ async def get_route(
     `routers/marine.py`.
     """
     try:
-        return await plan_route(start_lat, start_lon, end_lat, end_lon)
+        return await plan_route(
+            start_lat,
+            start_lon,
+            end_lat,
+            end_lon,
+            vessel_draft_m=vessel_draft_m,
+            vessel_speed_kmh=vessel_speed_kmh,
+            vessel_fuel_range_km=vessel_fuel_range_km,
+        )
     except RoutingError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -219,6 +245,26 @@ async def get_tide(
     try:
         return await get_nearest_tide_station(lat, lon, radius_km)
     except TideError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/argo")
+async def get_argo_profile(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    radius_km: float = Query(300.0, ge=10, le=1000),
+    lookback_days: int = Query(30, ge=1, le=120),
+):
+    """The nearest ARGO float profile (temperature/salinity by depth) to a
+    point, within `radius_km` and `lookback_days`.
+
+    A 200 with `available: false` for "no float nearby" — real, coarse ARGO
+    coverage, not a fetch failure, the same split `/pfz` and `/tide` draw.
+    502 for a genuine Argovis fetch failure.
+    """
+    try:
+        return await get_nearest_argo_profile(lat, lon, radius_km, lookback_days)
+    except ArgoError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 

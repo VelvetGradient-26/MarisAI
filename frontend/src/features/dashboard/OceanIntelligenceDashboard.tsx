@@ -74,7 +74,7 @@ function LiveClock({ timezone }: { timezone: string }) {
       <div className="font-mono text-[15px] leading-none text-[color:var(--oid-text)]">
         {formatClockTime(now, timezone)}
       </div>
-      <div className="mt-1 text-[10px] text-[color:var(--oid-text-faint)]">
+      <div className="mt-1 text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-faint)]">
         {formatClockDate(now, timezone)} · {timezone}
       </div>
     </div>
@@ -127,7 +127,7 @@ function LocationBar({
           value={latitudeText}
           onChange={(event) => setLatitudeText(event.target.value)}
           inputMode="decimal"
-          className="w-16 bg-transparent text-[12px] text-[color:var(--oid-text)] outline-none"
+          className="w-16 bg-transparent text-[length:var(--oid-text-base)] text-[color:var(--oid-text)] outline-none"
           aria-label="Latitude"
         />
         <span className="text-[color:var(--oid-text-ghost)]">,</span>
@@ -139,7 +139,7 @@ function LocationBar({
           value={longitudeText}
           onChange={(event) => setLongitudeText(event.target.value)}
           inputMode="decimal"
-          className="w-16 bg-transparent text-[12px] text-[color:var(--oid-text)] outline-none"
+          className="w-16 bg-transparent text-[length:var(--oid-text-base)] text-[color:var(--oid-text)] outline-none"
           aria-label="Longitude"
         />
       </div>
@@ -147,7 +147,7 @@ function LocationBar({
       <button
         type="submit"
         className={cn(
-          'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-medium',
+          'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[length:var(--oid-text-sm)] font-medium',
           'bg-[color:var(--oid-accent-wash)]',
           'text-[color:var(--oid-accent)] transition-colors',
           'hover:bg-[color:var(--oid-accent-wash-strong)]'
@@ -158,7 +158,7 @@ function LocationBar({
       </button>
 
       {error && (
-        <span role="alert" className="text-[11px] text-[color:var(--color-alert-critical)]">
+        <span role="alert" className="text-[length:var(--oid-text-xs)] text-[color:var(--color-alert-critical)]">
           {error}
         </span>
       )}
@@ -247,7 +247,7 @@ export function OceanIntelligenceDashboard() {
                 Ocean Intelligence
               </h1>
             </div>
-            <p className="mt-1.5 text-[11.5px] text-[color:var(--oid-text-faint)]">
+            <p className="mt-1.5 text-[length:var(--oid-text-sm)] text-[color:var(--oid-text-faint)]">
               What the world’s oceans are doing right now, what changed, and what needs
               attention.{' '}
               <Link
@@ -297,7 +297,7 @@ export function OceanIntelligenceDashboard() {
                 ))}
               </KpiGrid>
               {summary.available_count < summary.cards.length && (
-                <p className="mt-2 text-[10.5px] text-[color:var(--oid-text-ghost)]">
+                <p className="mt-2 text-[length:var(--oid-text-2xs)] text-[color:var(--oid-text-ghost)]">
                   {summary.cards.length - summary.available_count} of {summary.cards.length}{' '}
                   indicators are waiting on a data source. Each card explains what it needs.
                 </p>
@@ -369,7 +369,7 @@ export function OceanIntelligenceDashboard() {
           </div>
         </section>
 
-        <footer className="mt-6 text-[10px] leading-relaxed text-[color:var(--oid-text-ghost)]">
+        <footer className="mt-6 text-[length:var(--oid-text-3xs)] leading-relaxed text-[color:var(--oid-text-ghost)]">
           Data from Copernicus Marine Service, NOAA Coral Reef Watch, NOAA NDBC, NASA GIBS and
           Open-Meteo, plus MarisAI’s own model exports. Derived alerts are threshold rules over
           model and satellite fields, not official marine warnings, and nothing here is suitable

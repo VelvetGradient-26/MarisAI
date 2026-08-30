@@ -18,6 +18,12 @@ Outputs land in ``machine_learning/exports/``:
     dims (species, month, latitude, longitude) — one seasonal cycle.
 ``hab_risk.nc``
     dims (horizon, date, latitude, longitude) — recent daily bloom risk.
+``hab_risk_shap.nc``
+    Companion to ``hab_risk.nc``: per-cell top-k SHAP driver indices and
+    contributions, dims (horizon, date, latitude, longitude, top_k). Indices
+    resolve against ``manifest.json``'s ``products.hab.shap.feature_names``.
+    Optional from the backend's point of view — ``services/predictions.py``
+    degrades to ``drivers: None`` if this file is absent.
 ``manifest.json``
     What exists, what its measured skill is, what drives it, and — as
     prominently — where it should not be trusted.
@@ -38,7 +44,7 @@ import pandas as pd
 import xarray as xr
 from tqdm.auto import tqdm
 
-from marine_ml import config, fusion
+from marine_ml import config, fusion, shap_utils
 from marine_ml.features import temporal
 from marine_ml.sources import copernicus, gebco
 
@@ -54,6 +60,13 @@ HABITAT_RUNUP_MONTHS = 4
 # HAB is daily; the most recent stretch of the held-out period is what a
 # dashboard would show.
 HAB_OUTPUT_DAYS = 30
+
+# Matches ShapExplainer.explain_row's own default (backend/forecasting/
+# shap_explainer.py) so a HAB cell and a live per-variable forecast show the
+# same shape of attribution. Independent of _top_drivers' limit=8 (that is
+# the *global* mean-|SHAP| ranking over the training sample; this is a
+# *local*, per-cell ranking, and the two numbers do not need to match).
+HAB_SHAP_TOP_K = 5
 
 
 # --------------------------------------------------------------------------
@@ -196,19 +209,56 @@ def export_hab() -> dict:
     latitudes, longitudes = fusion.common_grid(region, config.GRID_RESOLUTION)
     grid = np.full((len(horizons), len(recent_dates), len(latitudes), len(longitudes)),
                    np.nan, dtype="float32")
+    driver_index_grid = np.full(
+        (len(horizons), len(recent_dates), len(latitudes), len(longitudes), HAB_SHAP_TOP_K),
+        -1, dtype="int16",
+    )
+    driver_contribution_grid = np.full(
+        (len(horizons), len(recent_dates), len(latitudes), len(longitudes), HAB_SHAP_TOP_K),
+        np.nan, dtype="float32",
+    )
+    shap_feature_names: list[str] | None = None
 
     for hi, horizon in enumerate(tqdm(horizons, desc="hab horizons")):
+        pipeline = shap_utils.unwrap_calibrated_pipeline(models[horizon])
+        prep = pipeline.named_steps["prep"]
+        booster = pipeline.named_steps["model"]
+
         # These are the calibrated models, so the numbers are usable as
         # probabilities rather than as bare ranking scores.
         risk = models[horizon].predict_proba(recent[columns])[:, 1]
+
+        # SHAP explains the pre-calibration tree model, not the isotonic
+        # wrapper around it -- see marine_ml.shap_utils.unwrap_calibrated_pipeline.
+        transformed = prep.transform(recent[columns])
+        feature_names = [shap_utils.strip_transform_prefix(n) for n in prep.get_feature_names_out()]
+        if shap_feature_names is None:
+            shap_feature_names = feature_names
+        elif feature_names != shap_feature_names:
+            raise RuntimeError(
+                f"t+{horizon}'s fitted preprocessor produced different feature "
+                f"names than t+{horizons[0]}'s; hab_risk_shap.nc's shared "
+                "feature vocabulary (see manifest.json's products.hab.shap."
+                "feature_names) assumes every horizon shares one feature "
+                "space. Re-check hab_early_warning/src/train.py::build_model, "
+                "or give hab_risk_shap.nc a per-horizon feature axis instead."
+            )
+        contributions = shap_utils.tree_shap_matrix(booster, transformed)
+        driver_index, driver_contribution = shap_utils.top_k_indices_and_values(
+            contributions, HAB_SHAP_TOP_K
+        )
+
         scored = recent[["latitude", "longitude", "date"]].copy()
         scored["risk"] = risk
 
         for di, day in enumerate(recent_dates):
-            rows = scored[pd.to_datetime(scored["date"]) == day]
+            day_mask = (pd.to_datetime(scored["date"]) == day).to_numpy()
+            rows = scored[day_mask]
             lat_index = np.searchsorted(latitudes, rows["latitude"].to_numpy())
             lon_index = np.searchsorted(longitudes, rows["longitude"].to_numpy())
             grid[hi, di, lat_index, lon_index] = rows["risk"].to_numpy()
+            driver_index_grid[hi, di, lat_index, lon_index, :] = driver_index[day_mask]
+            driver_contribution_grid[hi, di, lat_index, lon_index, :] = driver_contribution[day_mask]
 
     dataset = xr.Dataset(
         {"risk": (("horizon", "date", "latitude", "longitude"), grid)},
@@ -228,8 +278,41 @@ def export_hab() -> dict:
     dataset.to_netcdf(path)
     print(f"  wrote {path} ({path.stat().st_size / 1e6:.1f} MB)", flush=True)
 
+    shap_dataset = xr.Dataset(
+        {
+            "driver_index": (("horizon", "date", "latitude", "longitude", "top_k"), driver_index_grid),
+            "driver_contribution": (
+                ("horizon", "date", "latitude", "longitude", "top_k"), driver_contribution_grid
+            ),
+        },
+        coords={"horizon": horizons,
+                "date": [pd.Timestamp(d).strftime("%Y-%m-%d") for d in recent_dates],
+                "latitude": latitudes, "longitude": longitudes,
+                "top_k": np.arange(HAB_SHAP_TOP_K)},
+        attrs={
+            "title": "Harmful algal bloom risk — per-cell SHAP attribution",
+            "model": "LightGBM (pre-calibration) TreeSHAP",
+            "region": region.name,
+            "note": ("driver_index[..., k] indexes into manifest.json's "
+                     "products.hab.shap.feature_names for the k-th ranked "
+                     "driver at that cell (k=0 strongest |contribution|); -1 "
+                     "means no value, same convention as hab_risk.nc's risk "
+                     "NaNs. driver_contribution is the signed TreeSHAP value "
+                     "in the underlying LightGBM model's margin (log-odds) "
+                     "space, on the pre-calibration model -- calibration is "
+                     "a monotonic transform of the score, not of which "
+                     "feature moved it, so these are not directly additive "
+                     "with the calibrated `risk` value in hab_risk.nc."),
+        },
+    )
+    shap_path = EXPORT_DIR / "hab_risk_shap.nc"
+    shap_dataset.to_netcdf(shap_path)
+    print(f"  wrote {shap_path} ({shap_path.stat().st_size / 1e6:.1f} MB)", flush=True)
+
     return {
         "horizons": [int(h) for h in horizons],
+        "shap_top_k": HAB_SHAP_TOP_K,
+        "shap_feature_names": shap_feature_names,
         "dates": [pd.Timestamp(d).strftime("%Y-%m-%d") for d in recent_dates],
     }
 
@@ -361,6 +444,12 @@ def build_manifest(habitat_meta: dict, hab_meta: dict) -> dict:
                 "training_window": [config.HAB_START.isoformat(), config.HAB_END.isoformat()],
                 "validation": "rolling-origin cross-validation with an embargo gap",
                 "value_label": "probability of bloom",
+                "shap": {
+                    "available": True,
+                    "grid": "hab_risk_shap.nc",
+                    "top_k": hab_meta["shap_top_k"],
+                    "feature_names": hab_meta["shap_feature_names"],
+                },
                 "caveats": [
                     "Weak labels: a 'bloom' here is model chlorophyll above a local "
                     "seasonal 90th percentile — a proxy, not a verified bloom, and it "
@@ -372,6 +461,11 @@ def build_manifest(habitat_meta: dict, hab_meta: dict) -> dict:
                     "alerts would be false.",
                     "Probabilities are isotonic-calibrated on a held-out period, so they "
                     "can be read as probabilities rather than bare scores.",
+                    "Per-cell driver attribution (hab_risk_shap.nc) explains the "
+                    "pre-calibration LightGBM model in its own margin (log-odds) space, "
+                    "not the calibrated probability shown as risk — read it as which "
+                    "features moved the model's score, not as a probability-space "
+                    "decomposition of that number.",
                 ],
             },
         },

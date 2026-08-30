@@ -257,6 +257,11 @@ class UpwellingField:
     # measured 2026-08-01), so "which source" changes which cells are outlined.
     sst_source: str | None
     sst_unavailable_reason: str | None
+    # Set only by `detect_from_history`: the trailing window this field's
+    # transport was averaged over (`wind_history.MeanTransport.describe()`).
+    # `None` means `index` came from one instantaneous wind snapshot, via
+    # plain `detect` — the two must never look like the same claim.
+    wind_window: dict[str, Any] | None = None
 
     def coverage(self) -> dict[str, Any]:
         scored = np.isfinite(self.index)
@@ -395,6 +400,7 @@ class UpwellingField:
             ),
             "coverage": self.coverage(),
             "corroboration": self.corroboration(),
+            "wind_window": self.wind_window,
             "limits": list(LIMITS),
         }
 
@@ -491,17 +497,75 @@ def detect(
     """
     lat = np.asarray(currents.lat, dtype="float64")
     lon = np.asarray(currents.lon, dtype="float64")
+    wind_u, wind_v = _resample(wind, lat, lon)
+    tau_east, tau_north = wind_stress(wind_u, wind_v)
+    f = coriolis(lat)
+    m_east, m_north = ekman_transport(tau_east, tau_north, f)
+
+    # The stalest of the two live inputs, for the same reason `services/drift.py`
+    # reports the stalest term: a composite is only as current as its oldest
+    # component, and the wind blend routinely lags the hourly currents. The SST
+    # field is deliberately *not* folded in — it is a separate observation of a
+    # separate quantity, and averaging it into one stamp would hide the very lag
+    # the corroboration has to disclose.
+    stamp = min(wind.timestamp, currents.timestamp)
+    return _assemble_field(m_east, m_north, currents, sst, stamp)
+
+
+def detect_from_history(
+    mean_transport: Any,
+    currents: VectorSnapshot,
+    sst: sst_anomaly.SstAnomalyField | None = None,
+) -> UpwellingField:
+    """The same detection, against a trailing multi-day mean transport
+    (`services/wind_history.py::MeanTransport`) instead of one instantaneous
+    wind snapshot — the untried lever TODO.md and this file's own docstring
+    point at: upwelling responds to wind integrated over days, and every
+    control run so far has scored an instantaneous snapshot on both sides.
+
+    `mean_transport` is resampled from its own (coarser, fixed) grid onto
+    `currents`'s grid exactly the way `sst.anomaly` already is — the same
+    `_resample_scalar` helper, since a mean transport component is just
+    another holed scalar field at this point, not a vector needing a
+    direction-aware resample (its two components are averaged and resampled
+    independently, which is valid because averaging is linear and resampling
+    each Cartesian component separately is the same operation
+    `services/drift.py` already relies on elsewhere in this codebase).
+    """
+    lat = np.asarray(currents.lat, dtype="float64")
+    lon = np.asarray(currents.lon, dtype="float64")
+    m_east = _resample_scalar(mean_transport.m_east, mean_transport.latitude, mean_transport.longitude, lat, lon)
+    m_north = _resample_scalar(mean_transport.m_north, mean_transport.latitude, mean_transport.longitude, lat, lon)
+
+    return _assemble_field(
+        m_east, m_north, currents, sst, currents.timestamp, wind_window=mean_transport.describe()
+    )
+
+
+def _assemble_field(
+    m_east: np.ndarray,
+    m_north: np.ndarray,
+    currents: VectorSnapshot,
+    sst: sst_anomaly.SstAnomalyField | None,
+    timestamp: datetime,
+    *,
+    wind_window: dict[str, Any] | None = None,
+) -> UpwellingField:
+    """Coastal normal, band/equator exclusion and SST corroboration — the
+    half of detection that does not care whether `m_east`/`m_north` came from
+    one instantaneous snapshot (`detect`) or a trailing mean
+    (`detect_from_history`). Kept as one function so the two paths cannot
+    silently diverge in how "upwelling-favourable" is decided, which would
+    make any comparison between them meaningless.
+    """
+    lat = np.asarray(currents.lat, dtype="float64")
+    lon = np.asarray(currents.lon, dtype="float64")
     ocean = np.isfinite(currents.u) & np.isfinite(currents.v)
     if not ocean.any():
         raise UpwellingError("the surface currents field has no ocean cells")
 
     periodic = field_sampling.is_globally_periodic(lon)
     dx, dy = field_sampling.cell_spacing_m(lat, lon)
-
-    wind_u, wind_v = _resample(wind, lat, lon)
-    tau_east, tau_north = wind_stress(wind_u, wind_v)
-    f = coriolis(lat)
-    m_east, m_north = ekman_transport(tau_east, tau_north, f)
 
     unit_east, unit_north, confidence = offshore_normal(ocean, dx, dy, periodic)
 
@@ -515,14 +579,7 @@ def detect(
     )
     index = np.where(usable, index, np.nan).astype("float32")
 
-    # The stalest of the two live inputs, for the same reason `services/drift.py`
-    # reports the stalest term: a composite is only as current as its oldest
-    # component, and the wind blend routinely lags the hourly currents. The SST
-    # field is deliberately *not* folded in — it is a separate observation of a
-    # separate quantity, and averaging it into one stamp would hide the very lag
-    # the corroboration has to disclose.
-    stamp = min(wind.timestamp, currents.timestamp)
-    anomaly, cold, sst_reason = _corroborating_sst(sst, lat, lon, stamp)
+    anomaly, cold, sst_reason = _corroborating_sst(sst, lat, lon, timestamp)
 
     return UpwellingField(
         index=index,
@@ -531,7 +588,7 @@ def detect(
         normal_north=unit_north.astype("float32"),
         latitude=lat,
         longitude=lon,
-        timestamp=stamp,
+        timestamp=timestamp,
         computed_at=datetime.now(UTC),
         sst_anomaly=anomaly,
         sst_cold_exceedance=cold,
@@ -539,6 +596,7 @@ def detect(
         sst_baseline=sst.baseline if sst_reason is None and sst else None,
         sst_source=sst.source if sst_reason is None and sst else None,
         sst_unavailable_reason=sst_reason,
+        wind_window=wind_window,
     )
 
 

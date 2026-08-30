@@ -15,6 +15,9 @@ import { useSelectedLocationPredictions } from './hooks/useSelectedLocationPredi
 import type { PredictionPointResult } from './hooks/useSelectedLocationPredictions';
 import { useToolsStore } from '../../store/toolsStore';
 import { useRoutePlanner } from './hooks/useRoutePlanner';
+import { useDriftTrajectoryPlanner } from './hooks/useDriftTrajectoryPlanner';
+import { fetchLeewayPresets } from './api/drift';
+import type { LeewayPreset } from './api/drift';
 import { subscribeWatch } from './api/watch';
 import type { NearestPort, RealtimeOceanConditions, RealtimeOceanUnits } from './types';
 
@@ -134,6 +137,31 @@ export function SelectedLocationPanel() {
     planRoute,
     clear: clearRoute,
   } = useRoutePlanner();
+  const {
+    preset: driftPreset,
+    horizonHours: driftHorizonHours,
+    status: driftStatus,
+    result: driftResult,
+    error: driftError,
+    setPreset: setDriftPreset,
+    setHorizonHours: setDriftHorizonHours,
+    planTrajectory,
+    clear: clearDriftTrajectory,
+  } = useDriftTrajectoryPlanner();
+  const [leewayPresets, setLeewayPresets] = useState<LeewayPreset[]>([]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchLeewayPresets(controller.signal)
+      .then(setLeewayPresets)
+      .catch(() => {
+        // The dropdown just falls back to the one preset already selected by
+        // default — not worth a visible error state for a list that rarely
+        // changes and degrades harmlessly.
+      });
+    return () => controller.abort();
+  }, []);
+
   // Three-way rather than a boolean: 'building' and 'failed' are different
   // answers, and a brief takes long enough (bathymetry plus a point API) that
   // a button with no feedback reads as broken.
@@ -431,6 +459,79 @@ export function SelectedLocationPanel() {
         )}
 
         {selectedLocation && (
+          <div className="selected-location-panel__route">
+            <span className="selected-location-panel__predictions-label">Plan a Drift Forecast</span>
+            <div className="selected-location-panel__route-points">
+              <div className="selected-location-panel__route-point">
+                <span className="selected-location-panel__route-point-label">Object</span>
+                <select
+                  className="selected-location-panel__drift-select"
+                  value={driftPreset}
+                  onChange={(event) => setDriftPreset(event.target.value)}
+                >
+                  {(leewayPresets.length > 0
+                    ? leewayPresets
+                    : [{ key: driftPreset, label: driftPreset, alpha: 0, note: '' }]
+                  ).map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="selected-location-panel__route-point">
+                <span className="selected-location-panel__route-point-label">Horizon</span>
+                <select
+                  className="selected-location-panel__drift-select"
+                  value={driftHorizonHours}
+                  onChange={(event) => setDriftHorizonHours(Number(event.target.value))}
+                >
+                  {[6, 12, 24, 48, 72, 96].map((hours) => (
+                    <option key={hours} value={hours}>
+                      {hours}h
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="selected-location-panel__route-actions">
+              <button
+                type="button"
+                className="selected-location-panel__brief-button"
+                disabled={driftStatus === 'loading'}
+                onClick={() => void planTrajectory()}
+              >
+                {driftStatus === 'loading' ? 'Planning…' : 'Plan drift forecast'}
+              </button>
+              {driftStatus !== 'idle' && (
+                <button type="button" className="selected-location-panel__brief-button" onClick={clearDriftTrajectory}>
+                  Clear
+                </button>
+              )}
+            </div>
+            {driftStatus === 'error' && (
+              <span className="selected-location-panel__state--error">
+                {driftError ?? 'Drift trajectory planning failed.'}
+              </span>
+            )}
+            {driftStatus === 'success' && driftResult && (
+              <div className="selected-location-panel__route-result">
+                <span>
+                  {driftResult.n_members}-member ensemble, {driftResult.horizon_hours}h horizon, leeway{' '}
+                  {driftResult.leeway_alpha.toFixed(3)}
+                </span>
+                {driftResult.degraded_terms.length > 0 && (
+                  <span className="selected-location-panel__state--error">
+                    {driftResult.degraded_terms.join('; ')}
+                  </span>
+                )}
+                <span className="selected-location-panel__drift-note">{driftResult.note}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {selectedLocation && (
           <div className="selected-location-panel__watch">
             <span className="selected-location-panel__predictions-label">Watch This Location</span>
             <span className="selected-location-panel__predictions-note">
@@ -621,6 +722,23 @@ function PredictionRow({ prediction }: { prediction: PredictionPointResult }) {
             </span>
           )}
         </span>
+      )}
+      {prediction.status === 'success' && prediction.drivers && prediction.drivers.length > 0 && (
+        <div className="selected-location-panel__prediction-drivers">
+          {/* Top 3 of the up to 5 the API carries — a presentation choice to
+              keep this already-terse panel from growing tall, not a backend
+              limit. Don't "fix" this into showing all 5. */}
+          {prediction.drivers.slice(0, 3).map((driver) => (
+            <span key={driver.feature} className="selected-location-panel__prediction-driver">
+              <span>{driver.label}</span>
+              <span
+                className={`selected-location-panel__prediction-driver-direction selected-location-panel__prediction-driver-direction--${driver.direction}`}
+              >
+                {driver.direction === 'increases' ? '↑ raises risk' : '↓ lowers risk'}
+              </span>
+            </span>
+          ))}
+        </div>
       )}
     </div>
   );

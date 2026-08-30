@@ -335,7 +335,7 @@ export function SeriesChart({
         type="button"
         onClick={resetZoom}
         className={cn(
-          'absolute top-1 right-1 rounded-md px-2 py-1 text-[10px]',
+          'absolute top-1 right-1 rounded-md px-2 py-1 text-[length:var(--oid-text-3xs)]',
           'border border-[color:var(--oid-border)] bg-[color:var(--oid-elevated)]',
           'text-[color:var(--oid-text-faint)] transition-colors',
           'hover:text-[color:var(--oid-accent)]'

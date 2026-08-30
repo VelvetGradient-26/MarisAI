@@ -39,9 +39,9 @@ const HEALTH_COLOR: Record<ProviderHealth, string> = {
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div>
-      <dt className="text-[9.5px] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">{label}</dt>
-      <dd className="text-[13px] font-medium text-[color:var(--oid-text-strong)]">{value}</dd>
-      {hint && <p className="mt-0.5 text-[10px] leading-tight text-[color:var(--oid-text-faint)]">{hint}</p>}
+      <dt className="text-[length:var(--oid-text-4xs)] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">{label}</dt>
+      <dd className="text-[length:var(--oid-text-lg)] font-medium text-[color:var(--oid-text-strong)]">{value}</dd>
+      {hint && <p className="mt-0.5 text-[length:var(--oid-text-3xs)] leading-tight text-[color:var(--oid-text-faint)]">{hint}</p>}
     </div>
   );
 }
@@ -55,7 +55,7 @@ function scoreColor(value: number): string {
 function RecentHealth({ points }: { points: { t: string; v: number }[] }) {
   if (points.length === 0) {
     return (
-      <p className="text-[11px] text-[color:var(--oid-text-faint)]">
+      <p className="text-[length:var(--oid-text-xs)] text-[color:var(--oid-text-faint)]">
         Not enough history yet — this server has not been running long enough to plot a trend.
         Recorded roughly every 15 minutes while the dashboard is in use.
       </p>
@@ -73,7 +73,7 @@ function RecentHealth({ points }: { points: { t: string; v: number }[] }) {
           />
         ))}
       </div>
-      <div className="mt-1.5 flex justify-between text-[9.5px] text-[color:var(--oid-text-ghost)]">
+      <div className="mt-1.5 flex justify-between text-[length:var(--oid-text-4xs)] text-[color:var(--oid-text-ghost)]">
         <span>{new Date(points[0].t).toLocaleString()}</span>
         <span>{new Date(points[points.length - 1].t).toLocaleString()}</span>
       </div>
@@ -117,13 +117,13 @@ export function SourceDossierPage() {
                 <h1 className="text-[22px] leading-none font-semibold tracking-tight text-[color:var(--oid-text-strong)]">
                   {data?.name ?? key}
                 </h1>
-                <p className="mt-1.5 text-[11.5px] text-[color:var(--oid-text-faint)]">
+                <p className="mt-1.5 text-[length:var(--oid-text-sm)] text-[color:var(--oid-text-faint)]">
                   {data?.category ?? 'Loading…'}
                 </p>
               </div>
               {data && (
                 <span
-                  className="rounded-full border px-2 py-0.5 text-[10.5px] font-medium"
+                  className="rounded-full border px-2 py-0.5 text-[length:var(--oid-text-2xs)] font-medium"
                   style={{ color: HEALTH_COLOR[data.health], borderColor: HEALTH_COLOR[data.health] }}
                 >
                   {HEALTH_LABEL[data.health]}
@@ -171,16 +171,16 @@ export function SourceDossierPage() {
                     />
                   </div>
                   <div className="border-t border-[color:var(--oid-border)] p-4">
-                    <p className="text-[11.5px] leading-relaxed text-[color:var(--oid-text)]">
+                    <p className="text-[length:var(--oid-text-sm)] leading-relaxed text-[color:var(--oid-text)]">
                       {data.explanation}
                     </p>
                     {data.notes && (
-                      <p className="mt-2 text-[11px] leading-relaxed text-[color:var(--oid-text-faint)]">
+                      <p className="mt-2 text-[length:var(--oid-text-xs)] leading-relaxed text-[color:var(--oid-text-faint)]">
                         {data.notes}
                       </p>
                     )}
                     {data.error && (
-                      <p className="mt-2 text-[11px] leading-relaxed text-[color:var(--color-alert-critical)]">
+                      <p className="mt-2 text-[length:var(--oid-text-xs)] leading-relaxed text-[color:var(--color-alert-critical)]">
                         {data.error}
                       </p>
                     )}

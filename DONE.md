@@ -73,9 +73,398 @@ would likely surface whatever endpoint the map itself calls to plot station
 data. Worth a second pass with actual dev-tools traffic capture before
 concluding this is a dead end.
 
-## Forecasting engine
+## TODO.md's "Easy" section, checked against `main` before implementing — 2026-08-28
 
-### `wind_u` / `wind_v` — trained 2026-08-15
+Asked to "implement all the easy tasks in TODO.md." Three of the six turned
+out to already be shipped or already true, found by checking `main` and a
+live model rather than trusting the TODO text — the same trap the "two
+finished branches" entry above already named once for this exact pair of
+items, re-triggered because `sihtodo.md` was merged into `TODO.md` on
+2026-08-28 without first striking its already-closed items.
+
+- **PFZ/geofencing/routing/cyclones/severe-weather REST + map surfacing —
+  already shipped 2026-08-26.** `routers/tools.py` (`/api/ocean/pfz`,
+  `/geofence`, `/route`, `/cyclones(+/point)`, `/severe-weather(+/point)`) is
+  registered in `main.py` and on `main` (`git merge-base --is-ancestor` against
+  commit `dc25013` confirmed). The frontend half is done too, and answers the
+  TODO's own open question ("does the map need chat to carry structured
+  geometry, or can REST drive it directly") in favour of the second option:
+  `features/map/hooks/{usePfzZones,useGeofenceStatus,useCyclones,
+  useSevereWeatherAlerts}.ts` each fetch their endpoint directly from the
+  selected point/viewport, independent of the chat turn, and render via
+  `PfzTooltip.tsx`, `CycloneTooltip.tsx`/`CycloneStatus.tsx`,
+  `SevereWeatherPanel.tsx`, `BoundaryWatchPanel.tsx`. The chat response schema
+  still carries no `map_layers` field, and does not need one for this.
+- **Multi-agent orchestration framing — already closed 2026-08-26.**
+  `docs/features/ocean-assistant.md` already documents this exact analysis
+  (four specialists — `ocean_analytics`, `weather_safety`, `geospatial_risk`,
+  `external_research` — checked against the SIH guide's planning/risk-
+  assessment/visualization/reporting framing, kept as domain-split rather than
+  renamed, with the reasoning for each of the four functional labels written
+  out). Nothing left to do; TODO.md's copy was stale sihtodo.md text.
+- **General questions answered without forcing a tool call — verified live,
+  no code change needed.** `orchestrator.run_specialist` and `agent.answer`
+  both call `model.bind_tools(tools)` with LangChain's default `tool_choice`
+  ("auto"), so the model was never forced to delegate/call a tool every turn.
+  Confirmed against the real configured model (`gpt-oss:20b-cloud` via
+  Ollama's cloud endpoint, not a `ScriptedModel`) by calling
+  `agent.answer(question, client_id=None)` directly (skips the DB path
+  entirely) for two general marine-science questions: "What causes
+  upwelling?" and "What is chlorophyll and why does it matter for fishing?"
+  Both returned `delegations: []` — a direct, undelegated answer — on the
+  first try. No prompting or architecture change made.
+- **Routing: true geodesic waypoints — implemented.** `services/routing.py`'s
+  `_interpolate` (used only inside `segment_is_water`'s edge-midpoint land
+  check) was a lat/lon lerp; replaced with a proper great-circle slerp
+  (haversine central angle, standard spherical interpolation formula),
+  handling the identical-point and antipodal degenerate cases directly rather
+  than dividing by a near-zero sine. **Measured, not assumed, that this
+  changes nothing observable at this router's scale**: max slerp-vs-lerp
+  deviation was 0.13 m on a real short coastal edge (Kerala coast, ~6 km
+  span), 18.8 m on a high-latitude 0.05°/0.4° edge, and only reached 1.5 km
+  on a synthetic 500+ km bbox diagonal far longer than any edge this router
+  actually samples (`GRID_DIVISIONS = 22` over a bbox a few degrees across).
+  Correctness fix, not a behavior change; full `test_routing.py` suite (9/9)
+  still green.
+- **Landing page's remaining reveals converted to scroll-driven CSS — 2026-08-28,
+  by explicit product call.** Asked directly (the tradeoff below is real, not
+  a default to implement silently) and told to convert anyway, for consistency,
+  accepting that a scroll-linked timeline's progress is a pure function of
+  current scroll position and so can replay if a visitor scrolls back above a
+  section and down again — the one property a pure CSS timeline cannot
+  reproduce from `useReveal`'s one-shot "never flips back" guarantee.
+  - **Not a uniform conversion.** Three of the eight call sites
+    (`Metrics`/`.lp-metrics`, `Forecasting`/`.lp-feature`, `Research`/
+    `.lp-research`) keep `useReveal` — not for their own wrapper fade, which is
+    now CSS like the rest, but because each drives a JS-only sub-behaviour with
+    no CSS equivalent: `Metrics`' `useCountUp` number ramp, `Forecasting`'s
+    skill-bar width (`(row.skill / 0.6) * 100%`), and `Research`'s
+    `.lp-diagram__fold`/`.lp-diagram__block` stagger (JS-computed per-element
+    delays over a variable, non-fixed count of SVG nodes). Their existing
+    nested selectors (`.lp-metrics.is-in .lp-metric::before`,
+    `.lp-research.is-in .lp-diagram__fold`) were left untouched and still work,
+    since `revealed`/`is-in` is still computed and applied exactly as before —
+    only now redundantly with, not in place of, the wrapper's own CSS animation.
+  - **The other five** (`Coverage`, `Platform`, `Rigour`, `Closing` in
+    `LandingPage.tsx`, plus `ComparePage.tsx`'s `SectionTable`) had `useReveal`
+    removed entirely. Their list/grid children (`.lp-provider`, `.lp-surface`,
+    `.lp-principle`) get their own self `animation-timeline: view()` rather
+    than subscribing to a named ancestor timeline — matching the existing
+    `.lp-glyph__stage` precedent in the same file, and simpler than named
+    view-timeline propagation (the newer, less battle-tested half of the spec).
+  - **Base state is always the fully-visible one**, exactly like the existing
+    hero/platform-card blocks: `@supports (animation-timeline: view())` is what
+    adds the hidden-then-reveal animation, so a browser without support renders
+    every section as authored rather than a permanently blank one — this
+    matters more here than for the hero, since five of these sections no
+    longer have any JS fallback path at all.
+  - **A defensible simplification, not yet re-confirmed with the user**:
+    `.lp-metric`'s existing 90/180/270ms `nth-child` stagger (a wall-clock
+    `transition-delay`) was left as-is rather than reproduced for the
+    scroll-timeline versions of `.lp-provider`/`.lp-surface`/`.lp-principle` —
+    `animation-delay` on a non-monotonic timeline is a percentage of the
+    timeline's own range, not a wall-clock offset, and re-deriving an
+    equivalent stagger per section was judged not worth the added CSS for a
+    cosmetic difference on grids/lists whose items already sit close enough
+    together to enter the viewport within one scroll frame of each other.
+  - **Verified in a real foregrounded browser, not the claude-in-chrome
+    extension.** The extension's tabs are always `visibilityState: "hidden"`
+    ([[reference_cdp_raf_frozen]]) — confirmed mid-check that this doesn't just
+    freeze `requestAnimationFrame`-driven JS, it also froze `getComputedStyle`
+    at a stale, wrong-looking `opacity: 1` for elements thousands of pixels
+    below the fold that had never scrolled into view. Re-verified instead with
+    real headless Chrome over CDP ([[reference_headless_visual_check]]):
+    `.lp-coverage` (and the rest) correctly read `opacity: 0` off-screen,
+    `opacity: 1` once scrolled to centre, `0` again after scrolling back to the
+    top, and `1` again on re-entry — the accepted replay tradeoff, working as
+    described, not stuck either direction.
+
+**The same staleness check, applied to the "Medium" section before starting
+the next batch, found two more already-shipped items** in the same
+2026-08-26 merge:
+
+- **Regional Indian language support — already shipped.** `agent.py`'s
+  `_SYSTEM_PROMPT` already detects the question's language (including Hindi,
+  Tamil, Telugu, Bengali, Malayalam, Kannada, Marathi, Gujarati, Odia,
+  Punjabi) and answers in it, and the glossary guardrail
+  (`_untranslated_glossary_terms`, `worktree-sih-item-3-glossary` merged
+  2026-08-26) checks the answer for a fixed technical-term list (SST,
+  chlorophyll, wave height, wind speed, cyclone, PFZ, marine advisory) that
+  must survive untranslated. TODO.md's "confirmed absent — no hits... under
+  `backend/services`" was true only because the actual code lives in
+  `services/chat/agent.py`'s prompt string, not a separate language-detection
+  module a directory grep would find as its own file.
+- **Cyclone/severe-weather REST endpoint + map layer — already shipped**, in
+  the same `routers/tools.py` (`/cyclones`, `/cyclones/point`,
+  `/severe-weather`, `/severe-weather/point`) and frontend commit
+  (`CycloneTooltip.tsx`, `CycloneStatus.tsx`, `SevereWeatherPanel.tsx`) as the
+  other three tools in the Easy-section finding above.
+- **Metric-page forecast pre-warming — already shipped, since 2026-08-07**
+  (`6dbd19f`, on `main`). `services/forecast_warm.py` calls the real
+  `forecasting.predictor.predict` path (deliberately, not a reconstructed
+  cache key — see its own docstring on why) against
+  `MetricIntelligencePage`'s default location every `REFRESH_INTERVAL_HOURS`
+  (4), registered in `main.py`'s scheduler and as a boot-time task. The
+  33s-cold/0.08s-warm gap this closes is [[project_forecast_cold_path]]'s own
+  finding. Honest, stated limit worth keeping in mind: only the one default
+  point is warmed — "warming the whole ocean is not possible", per the
+  module's own docstring — so a metric page opened at a location the user
+  clicked elsewhere on the map still pays the cold fetch. That residual gap
+  is not a bug to fix, it is the actual shape of the tradeoff.
+
+## TODO.md's "Medium" section — self-contained backend fixes and data/ML pipeline work, shipped 2026-08-28
+
+### Marine heatwave onset, duration and cumulative intensity — `services/heatwave_tracking.py`
+
+The eddy-tracking analogy in TODO.md turned out to overstate the problem: an
+eddy moves between frames and needs a real assignment solve
+(`services/eddy_tracking.py`'s KD-tree + connected components +
+`linear_sum_assignment`); a heatwave cell does not move, so cell identity is
+free and there was nothing to match. The actual gap was that
+`services/heatwaves.py::detect` only ever re-derives a run length from
+whatever `WINDOW_DAYS` (30) window it was just handed, so a run older than
+that is reported as 30 days old forever.
+
+Fixed with a day-by-day persistent fold (`services/heatwave_tracking.py`),
+called from `heatwaves.refresh_cache` with the same `record`/`climatology`
+already fetched there (no second OISST fetch). Shares the Hobday
+exceedance/category arithmetic with `detect` via a new
+`services/heatwave_common.py` (day_state/categorize/MIN_DURATION_DAYS/
+CATEGORY_NAMES) rather than each computing it separately — the reason that
+module exists rather than either importing the other, avoiding a cycle
+(`heatwaves` -> `heatwave_tracking` -> `heatwave_common`).
+
+Honest about what it cannot know: a run already active on the tracker's own
+first processed day is flagged `possibly_started_earlier` rather than given
+a false onset date, the same "censored" idea `run_days_censored` gave the
+old window-only field, just narrowed from "every 30 days" to "once, at
+boot." State does not survive a restart, same limitation
+`eddy_tracking.py`/`services/dashboard/history.py` already carry and for the
+same reason.
+
+Wired into `heatwaves.at_point`'s `tracked` sub-object,
+`heatwaves.cells()`'s per-rectangle `tracked` field, and
+`services/brief.py`'s events section (now states a real onset date —
+`"severe marine heatwave — 47 days above the seasonal 90th percentile, since
+2026-07-12"` — instead of always hedging with "or more"). 54 new tests
+(`test_heatwave_tracking.py`, `test_heatwaves.py` additions,
+`test_brief.py` additions); full suite green throughout.
+
+### Routing vessel profile — `services/routing.py`
+
+`plan_route` takes optional `vessel_draft_m`, `vessel_speed_kmh`,
+`vessel_fuel_range_km`. Draft is structural, not a post-hoc flag: threaded
+into `_DepthGrid.is_water`/`segment_is_water`'s `min_depth_m`, so a search
+grid node or edge too shallow for the vessel is excluded from the graph the
+same way land already is — reusing GEBCO bathymetry's actual depth values,
+which the router already fetched and had been discarding down to a bare
+land/water boolean. Speed and fuel range are computed *after* the
+hazard-optimal search, never steering it: `estimated_duration_hours` and
+`within_fuel_range`/`fuel_range_exceeded_by_km` are read off the route
+`plan_route` already found, so "lowest hazard" and "shortest" staying
+different concepts is preserved. Wired through `routers/tools.py`'s
+`/route` and the `plan_safe_route` chat tool (with a specialist-prompt note
+not to invent a vessel figure the user did not give). 7 new tests
+(`TestVesselProfile` in `test_routing.py`), plus a router passthrough test.
+
+### Cyclone proximity forecast cone — investigated, moved to Blocked/Parked
+
+Verified live 2026-08-28 against the then-active tropical cyclone SAUDEL-26
+(`eventid=1001305`) that GDACS really does expose per-storm wind-radii/
+buffer geometry (`geteventdata`'s own `properties.url.geometry` and
+`properties.impacts[].resource.buffer74/39` fields) — but every sub-resource
+endpoint (`getgeometry`, `getimpact`, `getepisodedata`) failed to respond at
+all within 120 seconds, tried directly, while `geteventlist`/`geteventdata`
+themselves reliably return in ~20-40s. Not an account wall like WDPA/AVISO+
+— a latency one: a per-storm fetch that may never return cannot go in a
+live chat-tool/REST call, and the response shape was consequently never
+even observed, so implementing a parser now would be guessing at a wire
+format. Full finding and the recommended path (a scheduled cache, the same
+shape `forecast_warm.py`/`eddy_tracking.py` already use for a slow upstream)
+are in `services/cyclones.py`'s docstring and TODO.md's Blocked/Parked
+section.
+
+### A rolling wind history — `services/wind_history.py`
+
+Built the one untried lever `services/sst_anomaly.py`'s and
+`services/upwelling.py`'s own docstrings pointed at: both prior attempts
+(closing OISST's latency gap; fitting the baseline on the product being
+scored) held the wind snapshot instantaneous on both sides of the control.
+`services/wind_history.py` keeps a trailing ring buffer of Ekman transport
+(not raw wind — averaging stress is the physically defensible version,
+since stress is quadratic in wind speed and averaging the vectors first can
+cancel real forcing), resampled onto a fixed 1-degree grid at record time
+(the same resolution OISST's own climatology already uses, far cheaper to
+retain for days than the wind product's native ~0.25deg). Refuses to average
+a window it does not have real coverage for (`MIN_COVERAGE_FRACTION`).
+`services/upwelling.py` was refactored (behaviour-preserving — all 30
+existing tests passed unchanged) to share its coastal-normal/corroboration
+logic between one instantaneous snapshot (`detect`) and a trailing mean
+(`detect_from_history`) via a new `_assemble_field` so the two can never
+silently disagree about what "upwelling-favourable" means.
+
+Wired into production: `copernicus_wind.refresh_wind_cache` now folds every
+successful hourly refresh into the history (own try/except — a history bug
+can never take down the wind cache itself). 18 new tests
+(`test_wind_history.py`, `test_upwelling.py`/`test_copernicus_wind.py`
+additions).
+
+**The comparison measurement itself needed a real backfill**, since testing
+"does a multi-day mean help" needs multiple real days of history that a
+fresh session does not have. `scripts/backfill_wind_history.py` +
+`scripts/measure_wind_history_corroboration.py --backfill-hours N` populate
+it from real past Copernicus timesteps in-process (a separately-invoked
+backfill script would populate a process that then exits — the ring buffer
+was never meant to survive a restart, and does not survive a second process
+either). **First backfill attempt hit `copernicus_wind.py`'s own documented
+"24 straight empty hourly placeholders" gap** — a naive `time.values[-N:]`
+took the most recent window, which is exactly that empty tail; fixed by
+offsetting the backfill by `_MAX_LOOKBACK_STEPS` (30h) before taking the
+requested hours. Measured per-timestep cost live: ~2-2.5 min each via
+`arco-geo-series` (real network variance against the ~27s
+`copernicus_wind.py` itself measures for its own single-timestep fetch).
+
+**The measured answer, once the backfill completed (2026-08-28, 30/30
+timesteps, 1.21-day real span): the third lever also failed to widen the
+contrast — if anything it narrowed slightly.** Same live wind/currents
+snapshot and OISST field scored twice, instantaneous vs. the 1.2-day
+trailing mean:
+
+| wind input | cool contrast | below-p10 contrast |
+| --- | --- | --- |
+| instantaneous | +0.0234 | -0.0061 |
+| 1.2-day trailing mean | +0.0182 | -0.0049 |
+
+Both contrasts moved toward zero, not away from it — the weak tier fell
+~22% relatively (0.0234 -> 0.0182) and the already-near-zero strong tier
+barely moved. **All three levers TODO.md and `services/sst_anomaly.py` named
+are now tried and none widened the contrast**: closing the OISST/live-field
+latency gap, matching the baseline to the product being scored, and now
+integrating the wind over time. This one data point is a single snapshot at
+a 1.2-day window, not a repeated-sampling statistical result — the honest
+scope of the claim is "tried once, real data, did not help," not "proven not
+to help at any window length." A longer window (the original 3-day target)
+or repeated sampling across multiple days remains open if this is
+re-examined, but the infrastructure to do so (`wind_history.py`,
+`detect_from_history`, the backfill script) is what makes that a re-run
+away rather than a re-build.
+
+### ARGO float profiles — `services/argo.py`
+
+The subsurface counterpart to `services/ndbc.py`, and the first
+independent, instrument-measured check on this platform's served ocean
+temperature. Found a live, free, keyless source
+(`argovis-api.colorado.edu/argo`, over the Ifremer/Coriolis ARGO GDAC) —
+confirmed live 2026-08-28 that a search over the Arabian Sea returns a real
+INCOIS-operated float, and that this platform's own region is directly
+covered, not an edge case. Two calls per lookup: a cheap metadata search
+ranks candidates by distance, then one detail fetch by `_id` gets the
+winning profile's real depth-resolved temperature/salinity.
+
+Wired through `routers/tools.py`'s `/argo` and a new `get_argo_profile` chat
+tool on the `weather_safety` specialist (tool count pin 21 -> 22). 8 new
+tests (`test_argo.py`), plus router tests.
+
+**The "validation first" measurement was run live, not simulated**:
+`scripts/compare_against_argo.py` found a real float 90.8 km from
+(15.0N, 65.0E), profiled 2026-08-25, and compared its shallowest available
+reading (45.5 m — shallower levels were QC-missing on this particular
+profile) against `services/copernicus_sst.py`'s live field at the float's
+own position: **-0.09 degC** (live minus ARGO), 3 days and 90.8 km apart.
+A single-instance check, not a statistical validation — the honest reading
+is "the two products agree to within a tenth of a degree on this one
+comparison," not "validated." Bias correction (the TODO's own stated second
+step) is not warranted from n=1.
+
+### Ocean heat content as a map field — `services/ocean_heat_content_field.py`
+
+A field needs the whole 0-700m depth column at every cell, not one surface
+value — a materially heavier fetch than the point series
+(`services/dashboard/copernicus_series.py`) already serves, which is why
+that module's own docstring calls a field "a different cost class." Scoped
+regional (55-95degE, 5S-25N — the habitat/HAB models' own established box)
+rather than global, deliberately: OHC's vertical resolution makes a global
+depth-resolved fetch a different order of cost again, and nothing downstream
+asks for global coverage anyway.
+
+Built offline (`scripts/build_ocean_heat_content_grid.py`, one Copernicus
+fetch integrated into all four layers rather than one fetch per layer the
+point series pays) and served read-only from the written file
+(`services/ocean_heat_content_field.py`), the same "script writes, service
+only ever reads" split `services/predictions.py` already uses for
+ML-exported grids — a tile/map request can never start a multi-minute
+Copernicus depth fetch. **Run live 2026-08-28**: fetched a real (33-level,
+361x481) column in 437.8s and integrated all four layers — 50m 5.39 GJ/m²,
+100m 9.95, 200m 16.66, 700m 36.60 GJ/m² mean, 141,154 of 173,641 cells valid
+ocean. Wired into `routers/marine.py` (`/ocean-heat-content/cells`,
+`/ocean-heat-content/point`). 9 new tests
+(`test_ocean_heat_content_field.py`), including the vectorised vertical
+integral checked against a hand-computed closed form.
+
+### Union GBIF with OBIS — `marine_ml/sources/gbif.py`
+
+Confirmed the measured table still holds (probed live again 2026-08-28,
+`api.gbif.org/v1/occurrence/search`, matched TODO.md's 2026-08-05 numbers
+exactly — 1228 for yellowfin tuna 2000-2013 over `NORTH_INDIAN_OCEAN`).
+Built as a union: `marine_ml/sources/gbif.py` mirrors `obis.py`'s own shape
+(same renamed-column schema, same per-species fetch-and-concat), and
+`fish_habitat_prediction.src.labels.union_presences` combines the two,
+deduplicating on `occurrence_id` first (both sources now carry it — added
+to `obis.py`'s own column set) and falling back to `(dataset_id,
+catalog_number, latitude, longitude, observation_date)` for rows without
+one, exactly the scheme TODO.md specified. Wired into
+`fish_habitat_prediction/src/pipeline.py::build` for the regional path (a
+`wide`/global run stays OBIS-only — GBIF has never been probed at global
+extent). 11 new tests (`test_gbif_and_union.py`).
+
+**A real retrain confirms the union works end to end**: 4032 presence
+records (up from an OBIS-only count in the ~800-1900 range recorded
+elsewhere in this file/`docs/ml-notes.md`), spatial-block-CV holdout TSS
+0.855 (ensemble) / 0.856 (lightgbm) / 0.855 (random_forest) / 0.670
+(maxent) — comparable to or better than the previously-recorded regional
+baseline (TSS 0.798, `docs/ml-notes.md`), on materially more label data.
+
+### Stacking on out-of-fold predictions — `fish_habitat_prediction/src/models.py::StackedEnsemble`
+
+The genuinely-untried lever `docs/ml-notes.md`'s own softmax-weighting
+finding left open. `train.py::cross_validate` now also returns every test
+row's per-model score from whichever fold actually held it out — the
+out-of-fold predictions a meta-learner needs to train on without leaking
+each base model's in-sample near-perfect fit into its own training data.
+`StackedEnsemble` (`models.py`) fits a logistic-regression combiner over
+those OOF scores; deliberately linear, since the meta-learner's own input
+is only 3 columns (one per `MODEL_BUILDERS` tier) and a high-capacity
+combiner has no useful room to work with there.
+
+`train.py::fit_final` now fits and scores **both** ensembles —
+`EnsembleWeights` (softmax, still the served product) and `StackedEnsemble`
+— on the identical held-out block, so the comparison is paired rather than
+two separate claims. 5 new tests (`test_stacked_ensemble.py`) plus a real
+spatial-CV integration test against a small synthetic frame, checking the
+OOF plumbing itself (columns, row count, valid probability range) rather
+than only the meta-learner in isolation.
+
+**Measured on the same held-out block as the GBIF+OBIS retrain above
+(2026-08-28), and the answer is "not worth it, on this evidence":**
+
+| ensemble | TSS | ROC-AUC | PR-AUC | Boyce |
+| --- | --- | --- | --- | --- |
+| softmax (served) | 0.855 | 0.963 | 0.956 | 0.790 |
+| stacked | 0.856 | 0.964 | 0.960 | 0.679 |
+
+Stacking is a rounding error ahead on discrimination (+0.001 TSS, +0.001
+ROC-AUC, +0.004 PR-AUC) and materially worse on Boyce (0.790 -> 0.679) — the
+same shape of tradeoff the softmax-vs-proportional finding already recorded
+in `docs/ml-notes.md`, except here the discrimination side barely moved at
+all, so the calibration cost buys nothing. `EnsembleWeights` (softmax)
+stays the served ensemble; `StackedEnsemble` is built, tested and wired for
+comparison but not exported to `habitat_suitability.nc`. Re-run
+`fish_habitat_prediction.src.pipeline` (no `--refresh-features` needed
+against the cached store) if this is ever worth re-asking after a bigger
+retrain — the code is real and the comparison is a byproduct of every
+future run, not a one-off script.
+
+
 
 Both variables ship at all four horizons, 0 of 5 folds negative everywhere:
 
@@ -215,6 +604,384 @@ Rejected anyway, on grounds cost does not settle: it would cost the downloader
 provider into three, and force a full retrain of everything carrying SST /
 salinity / currents as a covariate. Revisit only if the grid builder becomes
 fetch-bound again, or if a *new* variable needs a daily-only field.
+
+### KPI ring buffer given real persistence — 2026-08-28
+
+Scoped down from the former "Postgres for persistence" TODO item, by explicit
+product decision: feedback is mail-only (no local log at all — see
+`services/feedback.py`), and download history is out of scope for now.
+Only the KPI ring buffer (`services/dashboard/history.py`) got a database.
+
+**The in-process ring buffer stays the read path — this adds a durability
+backstop, not a rewrite.** `record()`/`series()`/`trend()`/`reset()` are all
+still plain, synchronous, in-process calls; `summary.py`, `health.py` and
+their routers needed *zero* changes. `record()` additionally schedules a
+background write (`loop.create_task`, following `main.py`'s existing
+fire-and-forget convention for cache warming) into a new
+`dashboard.points` table when `DATABASE_URL` is configured and a loop is
+running — a plain sync caller (this module's own unit tests included) or a
+missing database just skips the write, exactly `services/chat/store.py`'s
+"degrade rather than fail" shape. `app/models/dashboard/kpi_point.py` /
+migration `4cfe6c59327f` (chained after the alert-subscriptions migration,
+`CREATE SCHEMA`/`DROP SCHEMA ... RESTRICT` by hand exactly like the two
+migrations before it needed) — both `upgrade()`/`downgrade()` verified against
+a real local Postgres, not just read.
+
+- `hydrate_from_db()` runs once at boot (`main.py`'s `lifespan`, fire-and-forget
+  like every other cache warm there) and reloads `_series`/`_last_sample` from
+  the persisted rows, so a restart resumes the sparkline instead of starting
+  over. `prune_db()` runs on a 6-hourly scheduler job and deletes rows beyond
+  `MAX_POINTS` per key (a `row_number() OVER (PARTITION BY key ...)` delete) —
+  the table is a bounded backstop for the same window the ring buffer already
+  keeps, not an unbounded log.
+- **A real bug caught by the new test suite, not by inspection**: the first
+  version of `hydrate_from_db()` checked `if key in _series: continue` against
+  the *same* dict the loop was populating, so a key's first persisted row made
+  every later row for that key look "already there" and get silently skipped —
+  a two-point series hydrated back as one point. Fixed by snapshotting
+  `_series.keys()` once before the loop starts. Caught by
+  `test_hydrate_from_db_reloads_after_a_simulated_restart` in the new
+  `tests/test_dashboard_history_db.py` (four tests, same real-Postgres/
+  skip-if-absent convention as `test_chat_store.py`, including its
+  asyncpg-binds-to-the-opening-loop fixture fix) before this ever reached a
+  real restart.
+- **Live-verified against a running server, not just the test suite**: booted
+  `uvicorn`, watched `hydrate_from_db()`'s query run at startup in the log,
+  hit `GET /api/dashboard/summary` and `GET /api/dashboard/health`, and
+  confirmed real rows landed in `dashboard.points` (`psql` query against the
+  live table) with the correct keys (`sea_surface_temperature`,
+  `health:copernicus_sst`, etc.) and values, then confirmed `GET
+  /api/dashboard/sources/noaa_ndbc`'s `recent_health` sparkline reads them back.
+- Three other modules' docstrings (`wind_history.py`, `eddy_tracking.py`,
+  `heatwave_tracking.py`) cited this buffer's old "does not survive a restart"
+  as shared precedent for *their own* unpersisted state being an acceptable
+  choice — updated to stop citing a property this module no longer has,
+  pointing at each other instead where the reasoning still holds.
+
+### Ocean Assistant: image upload / vision — 2026-08-28
+
+Attach an image to a chat turn and have the assistant describe/answer about
+it. Additive, as TODO.md's own note predicted: the provider client
+(`langchain_openai`/`langchain_google_genai`, both reached the same way
+through `agent._model()`) already speaks LangChain's standard multimodal
+content-block shape, so this needed no new client.
+
+- **Backend**: `ChatRequest.image` (`routers/chat.py`) — an optional
+  `data:image/{png,jpeg,webp};base64,...` URL, validated at the request
+  boundary (mime-type prefix, ~6 MB decoded size cap so an unauthenticated
+  endpoint cannot push an oversized inline payload through a paid LLM call).
+  Threaded through `answer()`/`answer_stream()` to a new
+  `agent._question_message()`, which builds a plain-string `HumanMessage` as
+  before with no image, or `content: [{"type": "text", ...}, {"type":
+  "image_url", "image_url": {"url": ...}}]` with one — the shape LangChain
+  standardised across `ChatOpenAI` and `ChatGoogleGenerativeAI`, so it applies
+  unchanged to the Ollama path too (served through the OpenAI adapter against
+  an OpenAI-compatible endpoint). Whether the *configured model* understands
+  an image is then a property of that model, not of this plumbing.
+- **Scoped deliberately, not by oversight**: the image is not persisted to the
+  chat transcript (`store.record` still only ever takes question/answer text
+  — a resumed session replays the question but not the original picture) and
+  is not forwarded into a delegate specialist's own sub-loop (each specialist
+  already "does not see the rest of this conversation" per the system prompt;
+  this implements a direct, top-level capability, not a new tool for every
+  specialist).
+- **Frontend** (`features/assistant/`): `SimpleImageAttachmentAdapter`
+  (`@assistant-ui/react`, already a dependency) wired into `useLocalRuntime`'s
+  `adapters.attachments` — no upload endpoint, the picked file becomes a
+  `data:` URL client-side and travels inline in the same request body as the
+  composer's text. `ComposerPrimitive.AddAttachment`/`.Attachments` and
+  `AttachmentPrimitive.Root`/`.Remove` are the headless primitives used, per
+  this codebase's existing `@assistant-ui/react` convention — a ghost icon
+  button mirroring the send button's corner position, a small thumbnail row
+  above the input with a remove control, styled entirely through the existing
+  `chat.css`/`assistant.css` tokens.
+- **A real bug the composer's own data model exposed, not an edge case**:
+  the first version read the image off `message.content`, following the same
+  shape a text part has. Wrong — a composer attachment lives in a *separate*
+  `message.attachments: CompleteAttachment[]` array, each carrying its own
+  `content: ThreadUserMessagePart[]`; `message.content` only ever holds what
+  the text input produced. `imageOf()` in `runtime.ts` reads `attachments`
+  instead. Caught by inspecting the real network request body in a live
+  browser test, not by reading the types — the wrong version typechecked
+  fine and silently sent no image at all.
+- **The sent image is also shown back in the user's own bubble**
+  (`MessagePrimitive.Attachments` in `UserMessage`), reading the *sent* form's
+  data URL rather than the composer's `File` object — a historical message
+  never has the original `File` to hand, only what the attachment adapter's
+  `send()` produced.
+- **Live-verified end to end**, not just unit-tested: headless Chrome over
+  CDP ([[reference_headless_visual_check]] — the claude-in-chrome extension's
+  hidden tabs cannot open a native file-picker dialog at all) clicked the real
+  attach button, injected a real PNG via `DOM.setFileInputFiles` on the
+  input the button's own handler creates, confirmed the thumbnail preview and
+  captured the actual `POST /api/v1/chat/stream` body: `image` present, correct
+  `data:image/png;base64,...` prefix, matching length. Confirmed the request
+  reaches the real (currently configured) Ollama cloud model
+  (`gpt-oss:20b-cloud`, text-only) without crashing — it replied "I'm not able
+  to see the image you're referring to", the honest degradation a non-vision
+  model should give, not a 500. **What this does *not* prove**: genuine visual
+  understanding, since no vision-capable model is currently configured to test
+  against — swapping in `gemini-2.0-flash`/`gpt-4o`-class model would exercise
+  the real path this plumbing was built for.
+
+---
+
+## Drift trajectory validated against real NOAA drifter tracks — shipped 2026-08-30
+
+The one gap left after the drift trajectory forecaster itself turned out to
+already be shipped (see the entry directly below): the RK4 ensemble had
+thorough internal/unit test coverage but had never been checked against a
+real, independent ground-truth drifter track.
+
+**Fully unblocked, unlike the eddy atlas (AVISO+) or WDPA validations** —
+NOAA's Global Drifter Program (GDP) is a fully public ERDDAP server
+(`erddap.aoml.noaa.gov/gdp/erddap`, dataset `drifter_6hour_qc`), no account
+needed, confirmed live with real drogued-buoy tracks sitting in the exact
+Indian Ocean region this platform covers. `drogue_lost_date` (a real GDP
+column) filters to the population GDP's own drogued-buoy design specifically
+built to minimize wind slip — a defensible proxy for testing the current+
+Stokes engine specifically, at `alpha=0.0`.
+
+**The RK4/ensemble core needed zero new logic** — `services/drift_trajectory.py`'s
+`_run_ensemble` already took pre-built field interpolators rather than
+fetching them itself, so `scripts/compare_against_drifter_tracks.py`
+constructs its own from a historical reanalysis fetch
+(`cmems_mod_glo_phy_my_0.083deg_P1D-m` for currents, `cmems_mod_glo_wav_my_0.2deg_PT3H-i`
+for Stokes — the latter's real coverage, live-confirmed, runs 1980-01-01 to
+2026-05-31) and calls the same integrator production calls, the same "pure,
+snapshot-in features-out" reuse `compare_against_eddy_atlas.py` makes of
+`eddies.detect()`. One small, additive, fully-backward-compatible change was
+needed in production code: `_build_live_field` extracted out of
+`_fetch_live_field` for reuse, and a new `allow_present_day_fallback: bool =
+True` parameter threaded through `_combined_velocity` -> `_run_ensemble` ->
+`plan_trajectory` — every existing caller (the router, the chat tool) is
+unaffected by the default; the validation script passes `False` so a
+historical field gap is reported in `degraded_terms` and the segment
+excluded, rather than silently substituting *today's* real operational data
+into a past integration.
+
+**Live-verified, not just unit-tested, and a real exclusion happened
+unprompted during the real run** — the single strongest piece of evidence
+this actually works: a 20-segment run over the Indian Ocean (`--bbox
+-10,30,30,100 --start-date 2020-06-01 --end-date 2020-07-31`) found 17 real
+drogued segments, 3 of which were excluded live with exactly the expected
+reason (`"current: 100/100 members lost current coverage entirely... would
+have needed the present-day ML-grid fallback but allow_present_day_fallback=
+False — held stationary there instead of silently substituting today's
+data"`) — the safety mechanism firing correctly on a real historical-coverage
+gap, not a synthetic test case. The other 14 segments scored cleanly: 104
+scored points, real measured numbers:
+
+| lead hour | median position error (km) | containment (P50 / P90) |
+|---|---|---|
+| 6 | 4.1 | .462 / .615 |
+| 12 | 6.3 | .538 / .769 |
+| 24 | 12.7 | .615 / .846 |
+| 36 | 17.7 | .615 / .846 |
+| 48 | 26.3 | .538 / .846 |
+
+Error grows monotonically with lead hour (the expected error-compounds-
+over-time signature — checked explicitly, not assumed) across the whole
+6-48h range. **One honest, real finding, not smoothed over**: containment
+rate dips slightly at 48h on both percentiles rather than continuing to
+improve — a real signal (small sample caveats aside, n=13 per lead-hour
+bucket) that the ensemble's own stated spread may be a little narrow at the
+longest lead times relative to how much real error actually accumulates,
+worth watching if a larger run is ever done. Full run: 17 segments, 4m59s
+wall-clock (~35s/segment, two concurrent bounded-bbox reanalysis fetches
+each).
+
+**What this validates and what it doesn't, stated plainly**: only the
+current+Stokes engine at `alpha=0.0` — wind/leeway has no historical source
+anywhere in this module and remains untested. The current comparison is
+against a *daily-mean* reanalysis, coarser in time than the live product;
+the Stokes comparison is matched in time (3-hourly) but coarser in space
+(0.2deg vs. 0.083deg live). A drogued GDP buoy stands in for the
+current+Stokes engine, not for the very different objects (life rafts,
+vessels) the live tool serves under its other leeway presets. 17-20 segments
+is a first real measurement, not a statistically powered one.
+
+New/changed files: `services/drift_trajectory.py` (additive), `scripts/compare_against_drifter_tracks.py`
+(new), `tests/test_drift_trajectory.py` (+5 tests for the extraction and the
+new parameter), `tests/test_compare_against_drifter_tracks.py` (new, 16
+pure-logic tests). Full backend suite green throughout (866 passed).
+
+## Drift trajectory forecast — an ensemble corridor, not a line — shipped 2026-08-28, live-reverified 2026-08-30
+
+TODO.md's Hard-tier "drift trajectory integration" item — the combined
+current+Stokes+leeway field (`services/drift.py`) only ever advected against
+a single snapshot, wrong for a 48h+ forecast crossing a changing field.
+`services/drift_trajectory.py` (697 lines) is an RK4-integrated, 100-member
+ensemble over perturbed start position, leeway and field error, 6-96h ahead.
+Per-term source verified live at the time (`scripts/probe_forecast_timesteps.py`):
+current+Stokes from a live Copernicus forecast fetch (~9 days of real
+coverage, past the 96h ceiling), falling back per-point to the ML forecast
+grid on a gap; wind leeway from the ML forecast grids only, since the live
+wind product carries no forecast timesteps at all; field-error perturbation
+from each ML model's own real CV-measured residual quantiles, not invented
+numbers. Wired end-to-end: `GET /api/ocean/drift/trajectory`
+(`routers/marine.py`), a `plan_drift_trajectory` chat tool on the
+geospatial_risk specialist, a frontend planner (`driftTrajectoryStore` +
+`useDriftTrajectoryPlanner` + `api/driftTrajectory.ts`, mirroring the
+existing route planner), and a map layer drawing the ensemble as a
+faint-line corridor with a highlighted median track. 14 new backend tests,
+full suite green (838 at ship time).
+
+**This TODO entry went stale immediately** — shipped, on `main`, and never
+struck through, the same doc-drift pattern this file's own top note and the
+"two finished branches" entry above already document. Caught on
+2026-08-30 only because a later session was asked to "continue with the
+drift trajectory" and checked `git log`/`merge-base` before writing any
+code, rather than trusting TODO.md's framing. **Re-verified live, not just
+by reading the diff**: called `drift_trajectory.plan_trajectory` directly
+for a real point (15°N 68°E, life-raft preset, 48h) and got a real 20-member
+result with `provenance: {current: live_forecast, stokes: live_forecast,
+wind_leeway: ml_grid_1deg_daily}`, zero degraded terms, and the note field
+stating plainly: *"A probability envelope from a 20-member ensemble over
+perturbed start position, leeway and field error — not a prediction of
+where the object is."* — the exact honesty standard TODO.md's own warning
+demanded, confirmed in the live output rather than assumed from the commit
+message.
+
+**What is still genuinely open, not done**: the integrator has solid
+internal/unit test coverage but has never been checked against a real,
+independent ground-truth drifter track (e.g. NOAA's Global Drifter
+Program) — same shape of gap as "Eddy atlas validation" elsewhere in this
+file. Moved to TODO.md under that name; not investigated for source
+availability yet.
+
+---
+
+## TODO.md's Medium/Hard sections — visual standard audit and SHAP Phase 1, shipped 2026-08-30
+
+### The visual standard — audit pass across landing, `/map`, `/dashboard`
+
+TODO.md's Medium item frames this as "a standard, not a task" — that framing
+still holds; what shipped is one dated, measured audit-and-fix pass against
+it, not a claim the standard is now permanently satisfied.
+
+**One type scale, no literal bypasses.** The dashboard had no type scale at
+all: 193 raw `text-[Npx]` Tailwind arbitrary values across 30 files, 20
+distinct pixel sizes, no shared name. Audited the values actually in use
+(not invented) and found a genuine 10-step micro-scale (8.5-13px, used 192
+times) the app-wide `--ma-text-*` scale doesn't cover (its floor is 11px) —
+added `--oid-text-6xs` through `--oid-text-lg` to
+`features/dashboard/styles/tailwind.css` and mechanically replaced all 192
+real usages, zero visual change (same computed pixels, now named). Landing's
+`pages/landing.css` had 19 of 30 `font-size` declarations numerically equal
+to an existing `--ma-text-*` step but restated as a literal rather than a
+reference — repointed to `var(--ma-text-*)`. 11 landing sizes and ~15
+dashboard display sizes matched no existing step and were left alone
+(flagged, not invented).
+
+**Contrast, computed, not eyeballed.** A real WCAG script (sRGB compositing
++ relative luminance) against every surface's actual token values in both
+themes found two real failures: `--oid-text-ghost` (60+ real usage sites —
+dossier labels, footnotes, placeholders, not decoration) at 2.65:1 dark /
+2.51:1 light against a 3:1 floor, and five map-chrome severity/route colours
+(`route-hazard`, `layer-status--error`, severe-weather badges,
+boundary-watch alerts) with **no light-mode override at all** — down to
+1.48:1 on a white panel. Fixed by darkening/lightening the same hue in HSL
+space until each clears 3:1 (`features/map/styles/map.css` gained
+`--ocean-severity-critical/severe/moderate` and
+`--ocean-route-calm/caution`). One judgment call left open rather than
+silently resolved: `eddy-status__dot--live` has the identical failure but is
+pinned by its own code comment to match the eddy layer's live map-rendering
+ramp exactly — legibility vs. ramp-identity is a human call.
+
+**Loading/empty/error states: audited, nothing missing.** Checked the
+dashboard's `Panel`/`PanelSkeleton`/`PanelEmpty` three-way pattern against
+every data-bearing panel on both surfaces (including every map chrome status
+panel — `SelectedLocationPanel`, `BoundaryWatchPanel`, `SevereWeatherPanel`,
+`CycloneStatus`, `EddyDetectionStatus`, and others). Every one already had a
+real loading/unavailable/success branch with a reason string; none fabricate
+a zero or a skeleton implying imminent data. **The standard was already
+being held** — this pass found no gap to fix here, which is itself the
+finding worth recording so it isn't re-audited from scratch next time.
+
+33 files changed (30 of them a mechanical Tailwind class-name substitution
+only — no logic touched). `npx tsc -b` and `npx vite build` both clean.
+Static contrast/token verification only; no browser screenshot pass — see
+[[reference_cdp_raf_frozen]] for why that's a known gap for the map surface
+specifically, not skipped out of laziness.
+
+### SHAP explainability, Phase 1 — HAB bloom risk only
+
+TODO.md's Hard section flagged that HAB risk and habitat suitability have no
+attribution path. **The item's own framing of *where* the gap lives was
+wrong, found before writing any code**: it reads as if the two just need to
+be plugged into the dashboard's existing Explainability section
+(`features/dashboard/metric/sections/Explainability.tsx`). That component is
+actually hard-wired to the forecasting engine's per-variable catalog
+(`variable.trained_horizons`, `useBatchForecast`/`useModelDetail`) — HAB and
+habitat aren't in that catalog and can't join it without a much bigger
+refactor. The real, already-existing surface for HAB/habitat point queries
+is the map's click panel (`SelectedLocationPanel.tsx`, via
+`useSelectedLocationPredictions.ts`), which is what got the new drivers UI
+instead.
+
+**Scoped to HAB risk only.** Habitat suitability is a skill-weighted
+ensemble of three heterogeneous models (MaxEnt-as-logistic-regression +
+RandomForest + LightGBM — `fish_habitat_prediction/src/models.py`) needing a
+combined-explainer design (TreeSHAP for two tiers, LinearSHAP for MaxEnt,
+reconciled back through the MaxEnt tier's hinge/quadratic feature expansion)
+that is real, separate work — deferred, not attempted. HAB risk is one
+LightGBM model per horizon with no ensembling, and its training pipeline
+already computes SHAP successfully for the global importance ranking
+(`hab_early_warning/src/train.py::_explain`) — the clean first slice.
+
+**The calibration-unwrap chain was verified by loading the real shipped
+artifact, not by reading `train.py` and assuming.** `hab_early_warning.joblib`
+holds, per horizon, a `CalibratedClassifierCV` wrapping
+`FrozenEstimator(pipeline)` (isotonic calibration) or a bare `Pipeline` when
+a horizon's validation split was single-class; the empirically-walked unwrap
+is `model.calibrated_classifiers_[0].estimator.estimator` ->
+`Pipeline.named_steps["prep"/"model"]`. This is now `marine_ml/shap_utils.py`
+(`unwrap_calibrated_pipeline`, `strip_transform_prefix`, `tree_shap_matrix`,
+`top_k_indices_and_values`) — the shared-spine location per
+[[project_ml_direction]]'s and `docs/ml-notes.md`'s rule, reusable as-is for
+habitat's two tree tiers once Phase 2 exists.
+
+New companion export `machine_learning/exports/hab_risk_shap.nc` (7.6 MB,
+matching the size computed from real grid dims before writing any code):
+`driver_index` (int16, fill -1) + `driver_contribution` (float32) per cell,
+top-5, alongside the existing `hab_risk.nc`. Feature names went in
+`manifest.json` instead of as a NetCDF string variable — sidesteps
+vlen-string encoding's engine-dependent round-tripping (netCDF4/h5netcdf/
+scipy disagree) for a payload (139 short strings) trivial enough that the
+risk wasn't worth taking. `services/predictions.py`'s `hab_point()` gained a
+`drivers` key that degrades to `None` (never raises) if the companion file
+is missing, reusing `FeatureContribution`/`humanise` from
+`forecasting/shap_explainer.py` for a wire shape consistent with the live
+per-point forecasting path — confirmed importable with zero risk to the
+documented machine_learning/backend boundary, since `shap` itself is only
+ever imported lazily inside `ShapExplainer.__init__`, never at module load.
+
+**Verified against the real export, not a mock**: ran the actual offline
+export end-to-end (~1 minute total, 3 horizons); the highest-risk real cell
+found (lat 6.75, lon 69.75, risk 0.906) has its top-5 drivers *all*
+chlorophyll-related (`is_bloom`, `chl_anomaly`, `chl_delta`, `chl_zanomaly`,
+`chl`) and all pushing risk up; the lowest-risk real cell has the same
+features pushing down. Confirmed the same numbers end-to-end through
+`predictions.hab_point()` directly and through a real running
+`GET /api/predictions/hab/point`. Confirmed graceful degradation against a
+real missing file (renamed `hab_risk_shap.nc` away): `risk` unchanged,
+`drivers: null`, no exception. Full suites green: 845/845 backend, 103/103
+machine_learning (7 new in `test_shap_utils.py`). Frontend `tsc -b`/`vite
+build` clean.
+
+**Known, accepted cosmetic gap, not fixed**: `humanise()` falls back to
+de-underscored title case for HAB's short Copernicus field-code features
+(`chl` -> "Chl", not "Chlorophyll-a") because those short codes aren't
+`VARIABLE_REGISTRY` keys — working exactly as `humanise()` documents itself
+("clumsy prose, never a crash"), confirmed live via the real endpoint above,
+not a bug.
+
+**Still needed before Phase 1 is fully live-checked**: one human look at
+`/map` clicking a Bloom Risk point — same CDP/`requestAnimationFrame`
+limitation as every other map-UI item in TODO.md's Blocked/Parked section
+([[reference_cdp_raf_frozen]]), not attempted again expecting a different
+result.
 
 ---
 
@@ -631,6 +1398,54 @@ and everything else is ready."
   TODO.md's still-open "closed-SSH-contour detection as a cross-check on the
   count" item should try this before writing a contour detector from
   scratch.
+
+### `py-eddy-tracker` cross-check — tried, and not viable without a legacy environment — 2026-08-28
+
+The lead above, followed up: **the PyPI package is `pyeddytracker` (no
+hyphens) — `py-eddy-tracker` finds nothing.** `uv add pyeddytracker` resolves
+to 3.5.0 against this project's numpy/matplotlib/zarr, since the actual
+latest release (3.6.1, confirmed live against PyPI's JSON API) fails to
+resolve at all: it declares `numpy<1.23`, which this project's `numpy>=1.26`
+(resolved 2.4.6 here) directly conflicts with. That is the library's own
+maintainers' constraint, not a guess from trial and error.
+
+**3.5.0 installs, but does not run, on this stack — six separate breaks
+surfaced in sequence, working *into* the library rather than stopping at the
+first one**:
+
+1. `zarr.Delta` (a v2 codec class the package's own `__init__.py` uses in a
+   module-level NetCDF-field-encoding dict) does not exist in zarr 3.1.6.
+2. `matplotlib.cm.get_cmap` (removed in matplotlib 3.9+) — used at import time
+   in `observations/observation.py`.
+3. `numpy.in1d` (removed in numpy 2.0, renamed `isin`).
+4. `numpy.float_` (removed in numpy 2.0, renamed `float64`).
+5. `numpy.round_` (removed in numpy 2.0, renamed `round`).
+6. **The one that actually stops this working**: `eddy_feature.py`'s
+   `Contours.__init__` reads `self.contours.collections` off a Matplotlib
+   `QuadContourSet` — an attribute matplotlib removed as part of a real
+   internal restructuring of how contour paths are exposed (not a rename),
+   somewhere in the 3.8-3.9 range. The first five are one-line monkeypatches
+   (shim the old name to the new one) and were applied and confirmed working,
+   in order, against a synthetic Gaussian-bump SSH grid built specifically to
+   smoke-test the import and call path before spending a real Copernicus
+   fetch on it. The sixth is not a rename to shim — it is a different data
+   shape, inside the package's own contour-extraction algorithm, and fixing
+   it means patching that algorithm, not routing around a renamed symbol.
+
+**Verdict: not worth pursuing further without a dedicated, numpy<1.23-pinned
+environment isolated from this project's real dependency set** (the same
+shape of isolation `machine_learning/` already uses for its own venv, for an
+unrelated reason) — and even then, whichever matplotlib version ships with a
+numpy<1.23-era environment would need to predate the `.collections` removal
+too, so the two constraints have to be satisfied together, not
+independently. That is a real, but bounded, amount of future work if someone
+wants this cross-check badly enough to give it its own environment; it is
+not a quick pip install into this backend. No code from this attempt was
+kept — `services/climatology/copernicus_reanalysis.py` was extended with a
+`fetch_ssh_and_currents_day` helper to feed the comparison, then reverted
+once the library itself proved non-functional, since a fetch helper with no
+working caller and no live verification of its own is exactly the
+half-finished code this codebase's own conventions rule out.
 
 ### Eddy tracking: frame-to-frame identity over a live detection grid — 2026-08-24
 

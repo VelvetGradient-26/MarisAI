@@ -279,6 +279,113 @@
   color: var(--chat-panel);
 }
 
+/* --- Composer attach button -------------------------------------------------
+   Mirrors `.chat-send-btn`'s corner-button shape on the opposite side —
+   ghost-styled rather than filled, since attaching is a secondary action next
+   to send's primary one. */
+
+.chat-attach-btn {
+  position: absolute;
+  left: 7px;
+  bottom: 7px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--chat-muted);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.chat-attach-btn:hover {
+  background: var(--chat-hover-bg);
+  color: var(--chat-text);
+}
+
+/* --- Pending attachment previews --------------------------------------------
+   Sits above `.chat-input-wrap`, inside the same composer form — see
+   `ComposerAttachments` in AssistantThread.tsx for why this never renders an
+   empty wrapper. */
+
+.chat-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.chat-attachment {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-input-bg);
+}
+
+.chat-attachment-thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chat-attachment-name {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0 4px;
+  font-size: 0.65rem;
+  color: var(--chat-muted);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.chat-attachment-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: pointer;
+}
+
+.chat-attachment-remove:hover {
+  background: rgba(0, 0, 0, 0.75);
+}
+
+/* --- Sent image, shown in the user's own bubble ---------------------------
+   Larger than the composer's pending preview — it is the message content
+   now, not a small chip confirming a pick. */
+
+.chat-attachments--sent {
+  margin-bottom: 8px;
+}
+
+.chat-attachment-thumb--sent {
+  display: block;
+  max-width: 220px;
+  max-height: 220px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 10px;
+  border: 1px solid var(--chat-user-border);
+}
+
 /* --- Scroll to bottom ------------------------------------------------------
    Unlike `ActionBarPrimitive.Root`, `ThreadPrimitive.ScrollToBottom` never
    unmounts — it stays in the DOM and only toggles `disabled` once the

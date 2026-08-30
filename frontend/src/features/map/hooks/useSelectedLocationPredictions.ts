@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMapStore } from '../../../store/mapStore';
 import { fetchHabPoint, fetchHabitatPoint } from '../api/predictions';
+import type { PredictionDriver } from '../api/predictions';
 import { predictionPointSources } from '../layers/layerRegistry';
 import type { PredictionPointSource } from '../layers/layerRegistry';
 
@@ -19,6 +20,9 @@ export interface PredictionPointResult {
    * run, not a forecast issued today, so the layer's "+3d" name alone would
    * imply three days from now — the date says which +3d this actually is. */
   date: string | null;
+  /** Null for habitat (no per-cell attribution built yet) and for any hab
+   * point where the export predates this field or the cell has no value. */
+  drivers: PredictionDriver[] | null;
 }
 
 /**
@@ -65,6 +69,7 @@ export function useSelectedLocationPredictions(
       outsideCoverage: false,
       valueLabel: null,
       date: null,
+      drivers: null,
     }));
     setResults(pending);
 
@@ -85,6 +90,7 @@ export function useSelectedLocationPredictions(
               value: point.suitability,
               outsideCoverage: point.outside_coverage,
               valueLabel: point.value_label,
+              drivers: null,
             };
           }
           const point = await fetchHabPoint(
@@ -101,6 +107,9 @@ export function useSelectedLocationPredictions(
             outsideCoverage: point.outside_coverage,
             valueLabel: point.value_label,
             date: point.date,
+            // Guards a rolling-deploy window where the backend hasn't picked
+            // up this field yet, even though the type claims it's present.
+            drivers: point.drivers ?? null,
           };
         } catch {
           return { ...row, status: 'error' };

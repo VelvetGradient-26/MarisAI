@@ -20,10 +20,14 @@ from app.models.chat.session import ChatMessage, ChatSession
 # Alerts (sihtodo.md item 8)
 from app.models.alerts.subscription import AlertSubscription
 
+# Dashboard — persisted backing for the KPI ring buffer's history
+from app.models.dashboard.kpi_point import KpiHistoryPoint
+
 __all__ = [
     "ChatMessage",
     "ChatSession",
     "AlertSubscription",
+    "KpiHistoryPoint",
     "DataSource",
     "Dataset",
     "Location",

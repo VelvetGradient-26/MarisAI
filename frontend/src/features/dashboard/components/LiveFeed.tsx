@@ -41,14 +41,14 @@ function BuoyCard({ entry }: { entry: LiveEntry }) {
         <header className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">
             <Radio size={13} className="text-[color:var(--oid-accent-soft)]" />
-            <span className="text-[12.5px] font-semibold text-[color:var(--oid-text-strong)]">{entry.title}</span>
+            <span className="text-[length:var(--oid-text-md)] font-semibold text-[color:var(--oid-text-strong)]">{entry.title}</span>
           </div>
-          <span className="shrink-0 text-[10px] text-[color:var(--oid-text-faint)]">
+          <span className="shrink-0 text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-faint)]">
             {formatAge(entry.age_seconds)}
           </span>
         </header>
 
-        <p className="mt-1 text-[10.5px] text-[color:var(--oid-text-faint)]">
+        <p className="mt-1 text-[length:var(--oid-text-2xs)] text-[color:var(--oid-text-faint)]">
           {entry.latitude != null && entry.longitude != null
             ? `${entry.latitude.toFixed(2)}°, ${entry.longitude.toFixed(2)}°`
             : 'Position unknown'}
@@ -59,15 +59,15 @@ function BuoyCard({ entry }: { entry: LiveEntry }) {
           <dl className="mt-2.5 grid grid-cols-3 gap-x-2 gap-y-2">
             {readings.map((reading) => (
               <div key={reading.label}>
-                <dt className="text-[9.5px] tracking-wide text-[color:var(--oid-text-faint)] uppercase">
+                <dt className="text-[length:var(--oid-text-4xs)] tracking-wide text-[color:var(--oid-text-faint)] uppercase">
                   {reading.label}
                 </dt>
-                <dd className="text-[12px] font-medium text-[color:var(--oid-text)]">{reading.value}</dd>
+                <dd className="text-[length:var(--oid-text-base)] font-medium text-[color:var(--oid-text)]">{reading.value}</dd>
               </div>
             ))}
           </dl>
         ) : (
-          <p className="mt-2 text-[10.5px] text-[color:var(--oid-text-ghost)]">
+          <p className="mt-2 text-[length:var(--oid-text-2xs)] text-[color:var(--oid-text-ghost)]">
             Station reported no usable measurements in this cycle.
           </p>
         )}
@@ -91,12 +91,12 @@ function ProductRow({ entry }: { entry: LiveEntry }) {
         <Icon size={13} className="mt-0.5 shrink-0 text-[color:var(--oid-accent)]" />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
-            <h4 className="truncate text-[12px] font-medium text-[color:var(--oid-text)]">{entry.title}</h4>
-            <span className="shrink-0 text-[10px] text-[color:var(--oid-text-faint)]">
+            <h4 className="truncate text-[length:var(--oid-text-base)] font-medium text-[color:var(--oid-text)]">{entry.title}</h4>
+            <span className="shrink-0 text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-faint)]">
               {entry.available ? formatAge(entry.age_seconds) : 'unavailable'}
             </span>
           </div>
-          <p className="mt-0.5 truncate text-[10.5px] text-[color:var(--oid-text-faint)]">
+          <p className="mt-0.5 truncate text-[length:var(--oid-text-2xs)] text-[color:var(--oid-text-faint)]">
             {entry.available
               ? [entry.coverage, entry.resolution, entry.cadence].filter(Boolean).join(' · ') ||
                 entry.source
@@ -175,7 +175,7 @@ export function LiveFeed({
 
           {products.length > 0 && (
             <div>
-              <h3 className="px-3 pb-1 text-[9.5px] font-semibold tracking-widest text-[color:var(--oid-text-ghost)] uppercase">
+              <h3 className="px-3 pb-1 text-[length:var(--oid-text-4xs)] font-semibold tracking-widest text-[color:var(--oid-text-ghost)] uppercase">
                 Latest products
               </h3>
               <ul>

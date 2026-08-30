@@ -23,6 +23,11 @@ exists rather than silently rendering empty tiles.
 
 Grids are memory-mapped on first use and cached for the process lifetime; they
 are a few MB and change only when the export is re-run.
+
+`hab_risk_shap.nc` is a companion export next to `hab_risk.nc`: same grid,
+plus per-cell top-k SHAP driver indices/contributions. It is optional --
+`hab_point()` degrades to `drivers: None` if it is missing, so an older
+export still serves `risk` correctly.
 """
 
 from __future__ import annotations
@@ -39,6 +44,7 @@ import xarray as xr
 from PIL import Image
 
 from app.core.config import settings
+from forecasting.shap_explainer import FeatureContribution, humanise
 from services.colormaps import ColorStop, build_colormap
 from services.field_sampling import Sampler, build_sampler
 
@@ -48,6 +54,7 @@ TILE_SIZE = 256
 
 HABITAT_GRID = "habitat_suitability.nc"
 HAB_GRID = "hab_risk.nc"
+HAB_SHAP_GRID = "hab_risk_shap.nc"
 MANIFEST = "manifest.json"
 
 
@@ -130,6 +137,16 @@ def _load_grid(filename: str) -> xr.Dataset:
         raise PredictionError(f"could not read prediction grid {filename}: {exc}") from exc
 
 
+def _load_optional_grid(filename: str) -> xr.Dataset | None:
+    """Like `_load_grid`, but a missing or unreadable file degrades to
+    `None` instead of raising -- for companion grids (SHAP drivers) whose
+    absence must never break the primary value they annotate."""
+    try:
+        return _load_grid(filename)
+    except PredictionError:
+        return None
+
+
 def manifest() -> dict[str, Any]:
     """Everything the UI needs to describe what exists and how good it is."""
     return _load_manifest()
@@ -204,16 +221,80 @@ def habitat_point(species: str, month: int, latitude: float, longitude: float) -
     }
 
 
+def _hab_shap_feature_names() -> list[str] | None:
+    try:
+        names = _load_manifest().get("products", {}).get("hab", {}).get("shap", {}).get("feature_names")
+    except PredictionError:
+        return None
+    return names or None
+
+
+def _hab_drivers(horizon: int, date_str: str, latitude: float, longitude: float) -> list[dict[str, Any]] | None:
+    """Top-k SHAP drivers for one HAB cell, or None if unavailable.
+
+    Every reason this can fail degrades to None rather than raising: the
+    export predates this feature (no hab_risk_shap.nc yet), the manifest is
+    missing the feature-name lookup the indices need, or the requested
+    horizon/date isn't in the SHAP grid. `hab_point()` calls this only after
+    confirming `risk` itself has a value, so land/outside-coverage cells
+    never reach here.
+    """
+    dataset = _load_optional_grid(HAB_SHAP_GRID)
+    if dataset is None:
+        return None
+    if horizon not in dataset.horizon.values:
+        return None
+    if date_str not in [str(d) for d in dataset.date.values]:
+        return None
+
+    feature_names = _hab_shap_feature_names()
+    if not feature_names:
+        return None
+
+    try:
+        indices = (
+            dataset["driver_index"]
+            .sel(horizon=horizon, date=date_str)
+            .sel(latitude=latitude, longitude=longitude, method="nearest")
+            .to_numpy()
+        )
+        contributions = (
+            dataset["driver_contribution"]
+            .sel(horizon=horizon, date=date_str)
+            .sel(latitude=latitude, longitude=longitude, method="nearest")
+            .to_numpy()
+        )
+    except Exception:  # noqa: BLE001 -- a bad lookup here must not break `risk`
+        return None
+
+    drivers = []
+    for index, contribution in zip(indices, contributions):
+        if index < 0:
+            continue
+        name = feature_names[int(index)]
+        drivers.append(
+            FeatureContribution(
+                feature=name,
+                label=humanise(name),
+                value=None,
+                contribution=float(contribution),
+            ).as_dict()
+        )
+    return drivers or None
+
+
 def hab_point(horizon: int, latitude: float, longitude: float,
               day: str | None = None) -> dict[str, Any]:
     field = hab_slice(horizon, day)
     value = _nearest_value(field, latitude, longitude)
+    date_str = str(field.date.values)
     return {
         "horizon_days": horizon,
-        "date": str(field.date.values),
+        "date": date_str,
         "risk": value,
         "outside_coverage": value is None and not _within_hab_domain(latitude, longitude),
         "value_label": "probability of bloom",
+        "drivers": _hab_drivers(horizon, date_str, latitude, longitude) if value is not None else None,
     }
 
 

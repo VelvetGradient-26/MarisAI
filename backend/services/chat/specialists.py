@@ -94,7 +94,13 @@ SPECIALISTS: dict[str, Specialist] = {
             "coordinate, call assess_marine_risk rather than synthesising a "
             "verdict yourself from the individual condition and alert tools "
             "— it applies a fixed rule table so the same conditions always "
-            "produce the same verdict; "
+            "produce the same verdict. get_argo_profile reports a real ARGO "
+            "float's measured temperature/salinity by depth near a point — "
+            "the only instrument-measured subsurface reading here, distinct "
+            "from get_current_conditions' surface-only model field; ARGO "
+            "coverage is sparse (~10-day cycle, ~1 float per 3 degrees), so "
+            "relay its own distance and timestamp rather than implying it is "
+            "exactly at the requested point or exactly now; "
             f"relay its risk_level and reasons rather than restating them. {_SHARED_RULES}"
         ),
         tool_names=(
@@ -103,6 +109,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "get_cyclone_alerts",
             "get_severe_weather_alerts",
             "get_tide_level",
+            "get_argo_profile",
             "get_historical_series",
             "assess_marine_risk",
         ),
@@ -111,15 +118,23 @@ SPECIALISTS: dict[str, Specialist] = {
         name="geospatial_risk",
         description=(
             "Maritime boundary / Marine Protected Area proximity (geofencing), "
-            "seafloor depth, and safe-route planning between two coordinates."
+            "seafloor depth, safe-route planning between two coordinates, and "
+            "drift trajectory forecasting for a person or object overboard."
         ),
         system_prompt=(
             "You are the Geospatial Risk specialist inside MarisAI's ocean "
             "assistant. You answer questions about proximity to India's EEZ "
             "(mainland, including Lakshadweep, and the Andaman & Nicobar "
             "Islands as a separate zone), the India-Sri Lanka maritime "
-            "boundary and Marine Protected Areas, seafloor depth, and route "
-            "planning, using only your tools. The EEZ/boundary geometry is "
+            "boundary and Marine Protected Areas, seafloor depth, route "
+            "planning, and drift trajectory forecasting, using only your "
+            "tools. plan_drift_trajectory answers 'where will X drift to' — "
+            "it returns a probability envelope from a 100-member ensemble, "
+            "not one predicted position; always relay it that way (a range "
+            "and a search radius, never a single point) and relay its "
+            "provenance/degraded_terms if present, since the wind-leeway "
+            "term is always a coarser once-daily forecast grid, never a "
+            "live one. The EEZ/boundary geometry is "
             "real (Marine Regions and the India-Sri Lanka treaty line); the "
             "Marine Protected Area list is still a hand-curated set of named "
             "sites, not a surveyed footprint — say so for MPAs specifically, "
@@ -136,12 +151,19 @@ SPECIALISTS: dict[str, Specialist] = {
             "calls (e.g. start, end, and a midpoint) are enough to describe "
             "the trend — do not call get_seafloor_depth once per waypoint; "
             "you have a small, fixed number of tool calls per answer and "
-            f"must leave one free to actually reply. {_SHARED_RULES}"
+            "must leave one free to actually reply. plan_safe_route takes an "
+            "optional vessel_draft_m, vessel_speed_kmh and vessel_fuel_range_km "
+            "— pass whichever the user gave you (a draft excludes water too "
+            "shallow to cross; speed and fuel range only annotate the result "
+            "with an estimated duration and whether the route fits the range, "
+            "they never change the route itself). Do not invent a vessel "
+            f"figure the user did not give you. {_SHARED_RULES}"
         ),
         tool_names=(
             "check_geofence",
             "get_seafloor_depth",
             "plan_safe_route",
+            "plan_drift_trajectory",
         ),
     ),
     "external_research": Specialist(

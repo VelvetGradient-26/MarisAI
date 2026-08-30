@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { useLocalRuntime } from '@assistant-ui/react';
+import { SimpleImageAttachmentAdapter, useLocalRuntime } from '@assistant-ui/react';
 import type { ChatModelAdapter, ThreadMessage } from '@assistant-ui/react';
 import { streamChat } from './api/stream';
 import type { ChatStreamMeta } from './api/stream';
@@ -34,6 +34,23 @@ function textOf(message: ThreadMessage): string {
     .trim();
 }
 
+/** The data: URL of the first image attachment on a message, if any.
+ *
+ * **Not on `message.content`.** A composer attachment lives in its own
+ * `message.attachments` array (`CompleteAttachment[]`), each carrying its
+ * own `content: ThreadUserMessagePart[]` — `SimpleImageAttachmentAdapter`
+ * produces `[{ type: "image", image: dataUrl }]` there. `content` on the
+ * message itself only ever holds what the composer's text input produced.
+ * Only the *last* user message can carry an attachment in this adapter
+ * (`run`'s own turn), but this reads whichever message it is given. */
+function imageOf(message: ThreadMessage): string | undefined {
+  for (const attachment of message.attachments ?? []) {
+    const part = attachment.content?.find((candidate) => candidate.type === 'image');
+    if (part?.type === 'image') return part.image;
+  }
+  return undefined;
+}
+
 /**
  * Bridges MarisAI's SSE endpoint to assistant-ui's local runtime.
  *
@@ -61,7 +78,9 @@ export function useMarisChatRuntime() {
     () => ({
       async *run({ messages, abortSignal, unstable_assistantMessageId }) {
         const id = unstable_assistantMessageId ?? 'pending';
-        const question = textOf(messages[messages.length - 1]);
+        const lastMessage = messages[messages.length - 1];
+        const question = textOf(lastMessage);
+        const image = imageOf(lastMessage);
 
         // Everything before this turn, in the shape the backend expects. Only
         // used when no database is configured — otherwise the stored
@@ -82,6 +101,7 @@ export function useMarisChatRuntime() {
           message: question,
           history,
           sessionId: sessionRef.current,
+          image,
           signal: abortSignal,
         })) {
           if (event.type === 'delta') {
@@ -127,7 +147,12 @@ export function useMarisChatRuntime() {
     []
   );
 
-  const runtime = useLocalRuntime(adapter);
+  // Converts a picked File straight to a data: URL (no upload endpoint — the
+  // image travels inline in the chat request body, same as the composer's
+  // text). `useMemo` so attaching, then removing, an image mid-conversation
+  // doesn't get a fresh adapter instance.
+  const attachmentAdapter = useMemo(() => new SimpleImageAttachmentAdapter(), []);
+  const runtime = useLocalRuntime(adapter, { adapters: { attachments: attachmentAdapter } });
 
   return {
     runtime,

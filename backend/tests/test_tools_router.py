@@ -1,6 +1,7 @@
 """routers/tools.py: thin-router checks over the five previously chat-only
 services (pfz, geofencing, routing, cyclones, severe_weather), plus the
-later sihtodo.md item 4 additions (web_search, fetch_webpage, literature).
+later sihtodo.md item 4 additions (web_search, fetch_webpage, literature),
+the sihtodo.md item 6 addition (tide), and the ARGO float profile addition.
 
 Same shape as `test_dashboard.py`'s router tests: mount the router alone on a
 bare FastAPI app, monkeypatch the service call the router itself holds a
@@ -82,7 +83,7 @@ def test_geofence_endpoint_returns_the_service_payload(monkeypatch, client):
 
 @pytest.mark.asyncio
 async def test_route_endpoint_returns_the_plan_on_success(monkeypatch, client):
-    async def fake_plan_route(start_lat, start_lon, end_lat, end_lon):
+    async def fake_plan_route(start_lat, start_lon, end_lat, end_lon, **_vessel_kwargs):
         return {"distance_km": 12.3, "waypoints": [{"latitude": start_lat, "longitude": start_lon}]}
 
     monkeypatch.setattr(tools_router, "plan_route", fake_plan_route)
@@ -94,6 +95,37 @@ async def test_route_endpoint_returns_the_plan_on_success(monkeypatch, client):
 
     assert response.status_code == 200
     assert response.json()["distance_km"] == 12.3
+
+
+@pytest.mark.asyncio
+async def test_route_endpoint_passes_vessel_profile_through(monkeypatch, client):
+    captured = {}
+
+    async def fake_plan_route(start_lat, start_lon, end_lat, end_lon, **vessel_kwargs):
+        captured.update(vessel_kwargs)
+        return {"distance_km": 12.3, "waypoints": []}
+
+    monkeypatch.setattr(tools_router, "plan_route", fake_plan_route)
+
+    response = client.get(
+        "/api/ocean/route",
+        params={
+            "start_lat": 10.0,
+            "start_lon": 75.0,
+            "end_lat": 10.3,
+            "end_lon": 75.3,
+            "vessel_draft_m": 6.0,
+            "vessel_speed_kmh": 20.0,
+            "vessel_fuel_range_km": 500.0,
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "vessel_draft_m": 6.0,
+        "vessel_speed_kmh": 20.0,
+        "vessel_fuel_range_km": 500.0,
+    }
 
 
 def test_route_endpoint_maps_routing_error_to_502(monkeypatch, client):
@@ -369,4 +401,54 @@ def test_tide_endpoint_maps_tide_error_to_502(monkeypatch, client):
 
 def test_tide_endpoint_rejects_an_out_of_range_radius(client):
     response = client.get("/api/ocean/tide", params={"lat": 13.08, "lon": 80.27, "radius_km": 5000})
+    assert response.status_code == 422
+
+
+# --------------------------------------------------------------------------
+# ARGO — a live Argovis fetch on every call, so failures map to 502; "no
+# float nearby" is an ordinary 200 answer, the same split as /tide.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_argo_endpoint_returns_the_service_payload(monkeypatch, client):
+    async def fake_nearest(lat, lon, radius_km, lookback_days):
+        return {"available": True, "profile": {"profile_id": "1_1", "distance_km": 12.3}}
+
+    monkeypatch.setattr(tools_router, "get_nearest_argo_profile", fake_nearest)
+
+    response = client.get("/api/ocean/argo", params={"lat": 15.0, "lon": 65.0})
+
+    assert response.status_code == 200
+    assert response.json()["profile"]["profile_id"] == "1_1"
+
+
+@pytest.mark.asyncio
+async def test_argo_endpoint_passes_through_an_unavailable_answer(monkeypatch, client):
+    async def fake_nearest(lat, lon, radius_km, lookback_days):
+        return {"available": False, "unavailable_reason": "no ARGO float profiled within 300 km"}
+
+    monkeypatch.setattr(tools_router, "get_nearest_argo_profile", fake_nearest)
+
+    response = client.get("/api/ocean/argo", params={"lat": 0.0, "lon": 0.0})
+
+    assert response.status_code == 200
+    assert response.json()["available"] is False
+
+
+def test_argo_endpoint_maps_argo_error_to_502(monkeypatch, client):
+    from services.argo import ArgoError
+
+    async def fake_nearest(*args, **kwargs):
+        raise ArgoError("Argovis could not be reached: timeout")
+
+    monkeypatch.setattr(tools_router, "get_nearest_argo_profile", fake_nearest)
+
+    response = client.get("/api/ocean/argo", params={"lat": 15.0, "lon": 65.0})
+
+    assert response.status_code == 502
+
+
+def test_argo_endpoint_rejects_an_out_of_range_radius(client):
+    response = client.get("/api/ocean/argo", params={"lat": 15.0, "lon": 65.0, "radius_km": 5000})
     assert response.status_code == 422

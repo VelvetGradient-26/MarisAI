@@ -46,6 +46,7 @@ class TrainingResult:
     fold_scores: pd.DataFrame
     model_scores: dict[str, float]
     ensemble_weights: model_lib.EnsembleWeights
+    stacked_ensemble: model_lib.StackedEnsemble
     holdout: pd.DataFrame
     fitted: dict
     feature_columns: list[str]
@@ -58,14 +59,22 @@ def cross_validate(
     n_splits: int = 5,
     block_degrees: float = 3.0,
     seed: int = config.RANDOM_SEED,
-) -> tuple[pd.DataFrame, dict[str, float]]:
+) -> tuple[pd.DataFrame, dict[str, float], pd.DataFrame]:
     """Spatial block CV across all three model tiers.
 
     The thermal niche is refitted inside every fold, on that fold's training
     presences only. Fitting it once outside the loop would leak held-out
     temperatures into a training feature and quietly inflate every fold.
+
+    The third return value is every test row's per-model score, from
+    whichever fold actually held it out — the out-of-fold predictions
+    `model_lib.StackedEnsemble.fit` needs. Collected here rather than
+    recomputed separately so the stacking meta-learner trains on the exact
+    same folds the reported CV metrics come from, not a second CV pass that
+    could disagree with the first.
     """
     rows: list[dict] = []
+    oof_rows: list[dict] = []
 
     for split in splits.spatial_block_splits(
         frame["latitude"], frame["longitude"],
@@ -83,10 +92,12 @@ def cross_validate(
         train_fold = feature_lib.apply_thermal_niche(train_frame, niche)
         test_fold = feature_lib.apply_thermal_niche(test_frame, niche)
 
+        fold_oof: dict[str, np.ndarray] = {}
         for name, builder in model_lib.MODEL_BUILDERS.items():
             model = builder(train_fold, columns, seed)
             model.fit(train_fold[columns], train_fold["presence"])
             scores = model.predict_proba(test_fold[columns])[:, 1]
+            fold_oof[name] = scores
 
             report = metrics.evaluate_classification(
                 test_fold["presence"].to_numpy(), scores,
@@ -96,6 +107,10 @@ def cross_validate(
             row["model"] = name
             rows.append(row)
 
+        oof_fold_frame = pd.DataFrame(fold_oof)
+        oof_fold_frame["presence"] = test_fold["presence"].to_numpy()
+        oof_rows.append(oof_fold_frame)
+
     fold_scores = pd.DataFrame(rows)
     if fold_scores.empty:
         raise RuntimeError("no usable spatial folds — try fewer splits or smaller blocks")
@@ -103,7 +118,8 @@ def cross_validate(
     model_scores = (
         fold_scores.groupby("model")["tss"].mean(numeric_only=True).to_dict()
     )
-    return fold_scores, model_scores
+    oof_predictions = pd.concat(oof_rows, ignore_index=True)
+    return fold_scores, model_scores, oof_predictions
 
 
 def fit_final(
@@ -111,9 +127,19 @@ def fit_final(
     test_frame: pd.DataFrame,
     columns: list[str],
     model_scores: dict[str, float],
+    oof_predictions: pd.DataFrame,
     seed: int = config.RANDOM_SEED,
-) -> tuple[dict, pd.DataFrame, model_lib.EnsembleWeights]:
-    """Refit each tier on the full training set and score the held-out block."""
+) -> tuple[dict, pd.DataFrame, model_lib.EnsembleWeights, model_lib.StackedEnsemble]:
+    """Refit each tier on the full training set and score the held-out block.
+
+    Fits *both* ensemble combiners — the served softmax-weighted average and
+    the stacking meta-learner — and scores both on the same held-out block,
+    so `holdout` is a direct, paired comparison ("was stacking ever actually
+    better, measured on the same water") rather than two separate claims.
+    `EnsembleWeights` stays what `habitat_suitability.nc` is exported as
+    regardless of which one wins here — see `ENSEMBLE_WEIGHTING`'s own
+    docstring for why that choice is not made silently.
+    """
     niche = feature_lib.fit_thermal_niche(train_frame)
     train_fold = feature_lib.apply_thermal_niche(train_frame, niche)
     test_fold = feature_lib.apply_thermal_niche(test_frame, niche)
@@ -148,6 +174,14 @@ def fit_final(
     )
     rows.append(ensemble_report.as_row() | {"model": "ensemble"})
 
+    stacked = model_lib.StackedEnsemble.fit(oof_predictions, list(model_lib.MODEL_BUILDERS), seed=seed)
+    stacked_scores = stacked.combine(predictions)
+    stacked_report = metrics.evaluate_classification(
+        test_fold["presence"].to_numpy(), stacked_scores,
+        name="stacked_ensemble", compute_boyce=True,
+    )
+    rows.append(stacked_report.as_row() | {"model": "stacked_ensemble"})
+
     # Extrapolation check: how much of the held-out block sits outside the
     # environmental envelope the model was fitted on.
     numeric = [c for c in columns if pd.api.types.is_numeric_dtype(train_fold[c])]
@@ -156,7 +190,7 @@ def fit_final(
     holdout["mess_median"] = float(np.nanmedian(similarity))
     holdout["mess_extrapolating_fraction"] = float(np.mean(similarity < 0))
 
-    return fitted, holdout, weights
+    return fitted, holdout, weights, stacked
 
 
 def explain(
@@ -213,7 +247,7 @@ def run(
           f"{int(frame['presence'].sum())} presences", flush=True)
 
     started = time.time()
-    fold_scores, model_scores = cross_validate(
+    fold_scores, model_scores, oof_predictions = cross_validate(
         frame, columns, n_splits=n_splits, block_degrees=block_degrees, seed=seed
     )
     print(f"  spatial block CV done in {time.time()-started:.1f}s", flush=True)
@@ -228,8 +262,8 @@ def run(
     train_frame = frame.iloc[final_split.train]
     test_frame = frame.iloc[final_split.test]
 
-    fitted, holdout, weights = fit_final(
-        train_frame, test_frame, columns, model_scores, seed
+    fitted, holdout, weights, stacked = fit_final(
+        train_frame, test_frame, columns, model_scores, oof_predictions, seed
     )
 
     niche = fitted["_thermal_niche"]
@@ -241,6 +275,7 @@ def run(
         fold_scores=fold_scores,
         model_scores=model_scores,
         ensemble_weights=weights,
+        stacked_ensemble=stacked,
         holdout=holdout,
         fitted=fitted,
         feature_columns=columns,

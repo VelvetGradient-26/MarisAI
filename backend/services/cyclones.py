@@ -28,12 +28,35 @@ caller here filters on `properties.eventtype == "TC"` itself rather than
 trusting the query string.
 
 **This is proximity to the storm's last reported position, not an
-intersection with its forecast track or wind-radius cone.** GDACS does expose
-per-timestep wind-radii polygons (`getgeometry`'s `PointRadii` features) that
-would make `check_point` a real "are you inside the gale-force wind field"
-answer rather than a circle around the last fix — that is the natural next
-step (see TODO.md) and was left out of this pass to keep the fetch to one
-call per check rather than one per active storm.
+intersection with its forecast track or wind-radius cone — verified live
+2026-08-28 that this is a latency blocker, not merely "more calls than one
+per check" as originally assumed.** GDACS's own event detail
+(`geteventdata`) does link to real per-storm geometry resources — confirmed
+against the then-active SAUDEL-26 (`eventid=1001305`,
+`https://www.gdacs.org/gdacsapi/api/events/geteventdata?eventtype=TC&eventid=1001305&episodeid=39`,
+which returned in ~30-40s): `properties.url.geometry` points at
+`api/polygons/getgeometry?eventtype=TC&eventid=...&episodeid=...`, and
+`properties.impacts[].resource` links `buffer74`/`buffer39` wind-speed-buffer
+exports and a `getepisodedata` call per historical episode. **All three of
+those sub-resource endpoints failed to respond at all within 120 seconds**,
+tried directly (`curl`, not this module's own client) — while
+`geteventlist`/`geteventdata` themselves reliably return, just slowly
+(~20-40s). A per-storm fetch at that latency cannot go in a live request
+path at all — this is not "one call per storm is more expensive than one
+call per check", it is "one call per storm may never return" — so a keyless
+account is not what blocks this, unlike WDPA/AVISO+.
+
+The path that would actually work is the one `services/forecast_warm.py` and
+`services/eddy_tracking.py` already establish for a slow upstream: fetch on a
+schedule, into a cache, decoupled from any request — periodically resolve
+`getgeometry` for every currently-`iscurrent` storm (rarely more than a
+handful) and cache whatever comes back, with `check_point` reading that cache
+opportunistically and falling back to today's circle for a storm with no
+cached polygon yet (or a fetch that never completed). Not built here because
+the response shape was never actually seen — every attempt to fetch it
+timed out — and parsing a shape no one has actually observed would be
+guessing at a wire format, the opposite of how every other provider
+integration in this codebase was verified.
 """
 
 from __future__ import annotations

@@ -1,6 +1,7 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import {
   ActionBarPrimitive,
+  AttachmentPrimitive,
   AuiIf,
   BranchPickerPrimitive,
   ComposerPrimitive,
@@ -16,11 +17,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  ImagePlus,
   Pencil,
   RefreshCw,
   ShieldCheck,
   Square,
   TriangleAlert,
+  X,
 } from 'lucide-react';
 import { Markdown } from '../../components/Markdown';
 import ShinyText from '../../components/reactbits/ShinyText/ShinyText';
@@ -139,6 +142,15 @@ export function AssistantThread({ error }: { error: string | null }) {
                 <AssistantMark />
               </div>
               <p className="chat-empty__lead">Ask about conditions anywhere in the ocean.</p>
+
+              {/* The same `<Composer>` the docked position below renders —
+                  never both at once (`isEmpty` gates them oppositely), so
+                  `layoutId` gives a real shared-element transition: this one
+                  physically becomes the docked one the moment the first
+                  message lands, rather than one fading while a second one
+                  fades in somewhere else. */}
+              <Composer variant="centered" />
+
               <div className="chat-suggestions">
                 {SUGGESTIONS.map((suggestion, index) => (
                   <motion.div
@@ -197,7 +209,13 @@ export function AssistantThread({ error }: { error: string | null }) {
         ) : null}
       </AnimatePresence>
 
-      <Composer />
+      {/* The centered composer above is unmounted the instant the thread
+          stops being empty (the user's own message landing is what flips
+          `isEmpty`), so this one is never a second, competing input — it is
+          the *only* composer once a conversation exists. */}
+      <AuiIf condition={(s) => !s.thread.isEmpty}>
+        <Composer variant="docked" />
+      </AuiIf>
 
       <p className="chat-disclaimer">
         Alerts shown here are threshold rules computed over real fields, not issued marine
@@ -207,37 +225,104 @@ export function AssistantThread({ error }: { error: string | null }) {
   );
 }
 
-function Composer() {
+/**
+ * `variant` only ever changes *where* this renders, never how it behaves —
+ * `AssistantThread` mounts exactly one of the two at a time, gated on
+ * `thread.isEmpty`, so this is never rendered twice at once. `layoutId`
+ * turns that mount/unmount pair into a single animated element as far as
+ * framer-motion is concerned: the centered composer *becomes* the docked
+ * one, sliding from the middle of the empty state down to the foot of the
+ * page, the same shared-element technique the navbar's active-link
+ * underline already uses (see `Navbar.tsx`).
+ */
+function Composer({ variant }: { variant: 'centered' | 'docked' }) {
+  const reduce = useReducedMotion();
   return (
-    <ComposerPrimitive.Root className="chat-composer">
-      <div className="chat-input-wrap">
-        <ComposerPrimitive.Input
-          className="chat-input"
-          rows={1}
-          autoFocus
-          submitOnEnter
-          placeholder="Ask about ocean conditions, forecasts or alerts…"
-        />
+    <ComposerPrimitive.Root asChild>
+      <motion.form
+        layout={!reduce}
+        layoutId={reduce ? undefined : 'chat-composer'}
+        className={`chat-composer${variant === 'centered' ? ' chat-composer--centered' : ''}`}
+        transition={{ duration: 0.5, ease: EASE }}
+      >
+        <ComposerAttachments />
+        <div className="chat-input-wrap chat-input-wrap--has-attach">
+          <ComposerPrimitive.AddAttachment className="chat-attach-btn" aria-label="Attach an image">
+            <ImagePlus size={17} aria-hidden />
+          </ComposerPrimitive.AddAttachment>
 
-        {/* Send and Stop occupy the same slot — a run can take tens of
-            seconds and the composer is where a user looks to stop it.
-            `AuiIf` rather than `ComposerPrimitive.If`: the latter only
-            filters on `editing`/`dictation` and is deprecated in this
-            version, so "is a run in flight" has to come off the thread
-            state. */}
-        <AuiIf condition={(s) => !s.thread.isRunning}>
-          <ComposerPrimitive.Send className="chat-send-btn" aria-label="Send message">
-            <ArrowUp size={17} aria-hidden />
-          </ComposerPrimitive.Send>
-        </AuiIf>
-        <AuiIf condition={(s) => s.thread.isRunning}>
-          <ComposerPrimitive.Cancel className="chat-send-btn chat-send-btn--stop" aria-label="Stop generating">
-            <Square size={12} aria-hidden fill="currentColor" />
-          </ComposerPrimitive.Cancel>
-        </AuiIf>
-      </div>
+          <ComposerPrimitive.Input
+            className="chat-input"
+            rows={1}
+            autoFocus
+            submitOnEnter
+            placeholder="Ask about ocean conditions, forecasts or alerts…"
+          />
+
+          {/* Send and Stop occupy the same slot — a run can take tens of
+              seconds and the composer is where a user looks to stop it.
+              `AuiIf` rather than `ComposerPrimitive.If`: the latter only
+              filters on `editing`/`dictation` and is deprecated in this
+              version, so "is a run in flight" has to come off the thread
+              state. */}
+          <AuiIf condition={(s) => !s.thread.isRunning}>
+            <ComposerPrimitive.Send className="chat-send-btn" aria-label="Send message">
+              <ArrowUp size={17} aria-hidden />
+            </ComposerPrimitive.Send>
+          </AuiIf>
+          <AuiIf condition={(s) => s.thread.isRunning}>
+            <ComposerPrimitive.Cancel className="chat-send-btn chat-send-btn--stop" aria-label="Stop generating">
+              <Square size={12} aria-hidden fill="currentColor" />
+            </ComposerPrimitive.Cancel>
+          </AuiIf>
+        </div>
+      </motion.form>
     </ComposerPrimitive.Root>
   );
+}
+
+/**
+ * Pending image attachments, previewed above the input before the turn is
+ * sent. Renders nothing at all (not even an empty wrapper) with zero
+ * attachments — gated on the composer's own attachment count rather than on
+ * whether children exist, so an empty row never adds spacing above the input.
+ */
+function ComposerAttachments() {
+  const hasAttachments = useAuiState((s) => s.composer.attachments.length > 0);
+  if (!hasAttachments) return null;
+
+  return (
+    <div className="chat-attachments">
+      <ComposerPrimitive.Attachments>
+        {({ attachment }) => (
+          <AttachmentPrimitive.Root className="chat-attachment">
+            <ChatAttachmentThumb file={attachment.file} name={attachment.name} />
+            <AttachmentPrimitive.Remove className="chat-attachment-remove" aria-label="Remove image">
+              <X size={12} aria-hidden />
+            </AttachmentPrimitive.Remove>
+          </AttachmentPrimitive.Root>
+        )}
+      </ComposerPrimitive.Attachments>
+    </div>
+  );
+}
+
+/** An attachment's own thumbnail. `file` is only present on a *pending*
+ * attachment (before send); a `CompleteAttachment` (already sent) has none,
+ * which never happens here since sending clears the composer immediately —
+ * kept as a fallback to the plain name rather than assumed. */
+function ChatAttachmentThumb({ file, name }: { file?: File; name: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!file) return;
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+
+  if (!url) return <span className="chat-attachment-name">{name}</span>;
+  return <img className="chat-attachment-thumb" src={url} alt="" />;
 }
 
 /** The composer swapped in for a user turn mid-edit — same shape as the
@@ -384,6 +469,7 @@ function UserMessage() {
         <div className="chat-col chat-col--user">
           <AuiIf condition={(s) => !s.message.composer.isEditing}>
             <div className="chat-bubble chat-bubble--user">
+              <UserMessageAttachments />
               <MessagePrimitive.Parts components={{ Text: PlainText }} />
             </div>
             <div className="chat-msg-controls chat-msg-controls--user">
@@ -408,6 +494,30 @@ function UserMessage() {
         </div>
       </motion.div>
     </MessagePrimitive.Root>
+  );
+}
+
+/** The image(s) a user turn was sent with, shown as small thumbnails above its
+ * text — mirrors `ComposerAttachments`' preview, but reads the *sent* form
+ * (`CompleteAttachment.content`, a data: URL) rather than a `File`, since a
+ * historical message never has the original `File` object to hand. Renders
+ * nothing for a text-only turn, or for a past turn resumed from a stored
+ * session — the backend does not persist the image bytes (see
+ * `agent._question_message`'s docstring), so a reloaded conversation shows
+ * the question text only, honestly reflecting what was actually kept. */
+function UserMessageAttachments() {
+  return (
+    <MessagePrimitive.Attachments>
+      {({ attachment }) => {
+        const part = attachment.content?.find((candidate) => candidate.type === 'image');
+        if (!part || part.type !== 'image') return null;
+        return (
+          <div className="chat-attachments chat-attachments--sent">
+            <img className="chat-attachment-thumb chat-attachment-thumb--sent" src={part.image} alt="" />
+          </div>
+        );
+      }}
+    </MessagePrimitive.Attachments>
   );
 }
 

@@ -105,7 +105,7 @@ export function Downloads({ variable, latitude, longitude }: SectionProps) {
           to={`/download?lat=${latitude}&lon=${longitude}&variable=${variable.key}`}
           className={cn(
             'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5',
-            'border-[color:var(--oid-border)] text-[11.5px] no-underline',
+            'border-[color:var(--oid-border)] text-[length:var(--oid-text-sm)] no-underline',
             'text-[color:var(--oid-text)] transition-colors hover:bg-[color:var(--oid-track)]'
           )}
         >
@@ -134,7 +134,7 @@ function Action({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11.5px]',
+        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[length:var(--oid-text-sm)]',
         'border-[color:var(--oid-border)] text-[color:var(--oid-text)]',
         'transition-colors hover:bg-[color:var(--oid-track)]',
         'disabled:cursor-not-allowed disabled:opacity-40'

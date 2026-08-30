@@ -116,7 +116,7 @@
 .lp-eyebrow {
   margin: 0 0 1.25rem;
   font-family: var(--lp-font-mono);
-  font-size: 0.75rem;
+  font-size: var(--ma-text-xs);
   font-weight: 500;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -151,7 +151,7 @@
   align-items: center;
   gap: 0.4rem;
   margin-top: 0.5rem;
-  font-size: 1.0625rem;
+  font-size: var(--ma-text-md);
   font-weight: 500;
   color: var(--lp-accent);
   text-decoration: none;
@@ -212,8 +212,30 @@
   opacity: 0.34;
 }
 
-/* One shared entrance: fade plus a short rise. Applied by adding `is-in`,
-   which the reveal hook sets once and never removes. */
+/* One shared entrance: fade plus a short rise, driven by the browser's own
+   scroll-linked animation rather than `useReveal`'s JS/IntersectionObserver
+   hook — see the hero's `@supports` block above for the full reasoning,
+   restated briefly here: **the guarded state is the animated one, never the
+   hidden one.** The base rule below is fully visible; only inside
+   `@supports (animation-timeline: view())` does an element start hidden and
+   get revealed, so a browser without view timelines renders every section
+   exactly as authored rather than a permanently blank one.
+
+   Child reveals (the provider rows, surface cards, research diagram, principle
+   cards) each get their *own* self `animation-timeline: view()` below, rather
+   than subscribing to this wrapper's timeline — matching the `.lp-glyph__stage`
+   precedent further down this file. For a list/grid whose items already sit at
+   close to the same scroll position, an item's own entry is a fine proxy for
+   "the section is revealing," and it avoids leaning on named view-timelines
+   propagating through descendants, which is the newer, less battle-tested half
+   of this spec.
+
+   **Accepted tradeoff, not an oversight**: unlike `useReveal` (which never
+   re-reveals once fired), a scroll-linked timeline's progress is a pure
+   function of current scroll position, so scrolling back above a section
+   and back down again replays its entrance. Kept anyway, for one fewer
+   animation mechanism on the page — see TODO.md/DONE.md for the tradeoff
+   this was weighed against. */
 .lp-metrics,
 .lp-feature,
 .lp-coverage,
@@ -221,22 +243,49 @@
 .lp-research,
 .lp-principles,
 .lp-closing {
-  opacity: 0;
-  transform: translate3d(0, 26px, 0);
-  transition:
-    opacity 0.85s cubic-bezier(0.22, 0.61, 0.36, 1),
-    transform 0.85s cubic-bezier(0.22, 0.61, 0.36, 1);
-}
-
-.lp-metrics.is-in,
-.lp-feature.is-in,
-.lp-coverage.is-in,
-.lp-surfaces.is-in,
-.lp-research.is-in,
-.lp-principles.is-in,
-.lp-closing.is-in {
   opacity: 1;
   transform: none;
+}
+
+@supports (animation-timeline: view()) {
+  .lp-metrics,
+  .lp-feature,
+  .lp-coverage,
+  .lp-surfaces,
+  .lp-research,
+  .lp-principles,
+  .lp-closing {
+    animation: lp-reveal linear both;
+    animation-timeline: view();
+    /* Finishes well before the section is centred, so the entrance never
+       competes with reading the content it is introducing. */
+    animation-range: entry 0% entry 60%;
+  }
+
+  @keyframes lp-reveal {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 26px, 0);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lp-metrics,
+    .lp-feature,
+    .lp-coverage,
+    .lp-surfaces,
+    .lp-research,
+    .lp-principles,
+    .lp-closing {
+      animation: none;
+      opacity: 1;
+      transform: none;
+    }
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -483,7 +532,7 @@
 .lp-metric__label {
   margin-top: 0.7rem;
   font-family: var(--lp-font-mono);
-  font-size: 0.75rem;
+  font-size: var(--ma-text-xs);
   font-weight: 400;
   letter-spacing: 0.04em;
   line-height: 1.5;
@@ -549,14 +598,14 @@
 
 .lp-skill__name {
   grid-area: name;
-  font-size: 0.9375rem;
+  font-size: var(--ma-text-base);
   font-weight: 500;
 }
 
 .lp-skill__horizon {
   grid-area: horizon;
   font-family: var(--lp-font-mono);
-  font-size: 0.75rem;
+  font-size: var(--ma-text-xs);
   letter-spacing: 0.02em;
   color: var(--lp-faint);
   font-variant-numeric: tabular-nums;
@@ -582,7 +631,7 @@
 .lp-skill__value {
   grid-area: value;
   font-family: var(--lp-font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--ma-text-sm);
   font-weight: 500;
   letter-spacing: 0.01em;
   color: var(--lp-accent);
@@ -627,20 +676,37 @@
   gap: 1rem 2rem;
   padding: 1.4rem 0;
   border-bottom: 1px solid var(--lp-rule-soft);
-  opacity: 0;
-  transform: translate3d(0, 12px, 0);
-  transition:
-    opacity 0.7s ease,
-    transform 0.7s ease;
-}
-
-.lp-coverage.is-in .lp-provider {
   opacity: 1;
   transform: none;
 }
 
+@supports (animation-timeline: view()) {
+  .lp-provider {
+    animation: lp-provider-in linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 65%;
+  }
+
+  @keyframes lp-provider-in {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 12px, 0);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lp-provider {
+      animation: none;
+    }
+  }
+}
+
 .lp-provider__name {
-  font-size: 1.0625rem;
+  font-size: var(--ma-text-md);
   font-weight: 500;
   letter-spacing: -0.005em;
 }
@@ -648,7 +714,7 @@
 .lp-provider__detail {
   font-family: var(--lp-font-mono);
   color: var(--lp-faint);
-  font-size: 0.8125rem;
+  font-size: var(--ma-text-sm);
   letter-spacing: 0.015em;
   line-height: 1.6;
 }
@@ -677,17 +743,34 @@
   background: var(--lp-card);
   color: inherit;
   text-decoration: none;
-  opacity: 0;
-  transform: translate3d(0, 18px, 0);
-  transition:
-    opacity 0.7s ease,
-    transform 0.7s ease,
-    box-shadow 0.28s ease;
-}
-
-.lp-surfaces.is-in .lp-surface {
   opacity: 1;
   transform: none;
+  transition: box-shadow 0.28s ease;
+}
+
+@supports (animation-timeline: view()) {
+  .lp-surface {
+    animation: lp-surface-in linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 65%;
+  }
+
+  @keyframes lp-surface-in {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 18px, 0);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lp-surface {
+      animation: none;
+    }
+  }
 }
 
 /* Elevation only — no colour shift. An accent wash here tinted the whole card
@@ -715,7 +798,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  font-size: 0.9375rem;
+  font-size: var(--ma-text-base);
   font-weight: 500;
   color: var(--lp-accent);
 }
@@ -1046,7 +1129,7 @@
 .lp-research-card__eyebrow {
   margin: 0 0 0.5rem;
   font-family: var(--lp-font-mono);
-  font-size: 0.6875rem;
+  font-size: var(--ma-text-2xs);
   font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1105,7 +1188,7 @@
   padding-top: 0.75rem;
   border-top: 1px solid var(--lp-rule-soft);
   font-family: var(--lp-font-mono);
-  font-size: 0.6875rem;
+  font-size: var(--ma-text-2xs);
   letter-spacing: 0.03em;
   color: var(--lp-faint);
 }
@@ -1172,7 +1255,7 @@
 
 .lp-spec dt {
   font-family: var(--lp-font-mono);
-  font-size: 0.75rem;
+  font-size: var(--ma-text-xs);
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--lp-faint);
@@ -1181,7 +1264,7 @@
 .lp-spec dd {
   margin: 0;
   font-family: var(--lp-font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--ma-text-sm);
   font-weight: 500;
   letter-spacing: 0.01em;
   text-align: right;
@@ -1210,16 +1293,33 @@
 }
 
 .lp-principle {
-  opacity: 0;
-  transform: translate3d(0, 16px, 0);
-  transition:
-    opacity 0.7s ease,
-    transform 0.7s ease;
-}
-
-.lp-principles.is-in .lp-principle {
   opacity: 1;
   transform: none;
+}
+
+@supports (animation-timeline: view()) {
+  .lp-principle {
+    animation: lp-principle-in linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 65%;
+  }
+
+  @keyframes lp-principle-in {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 16px, 0);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lp-principle {
+      animation: none;
+    }
+  }
 }
 
 .lp-principle__rule {
@@ -1231,7 +1331,7 @@
 
 .lp-principle h3 {
   margin: 0 0 0.75rem;
-  font-size: 1.25rem;
+  font-size: var(--ma-text-lg);
   font-weight: 600;
   letter-spacing: -0.015em;
 }
@@ -1286,7 +1386,7 @@
 }
 
 .lp-footer__brand {
-  font-size: 1.25rem;
+  font-size: var(--ma-text-lg);
   font-weight: 600;
   letter-spacing: -0.02em;
 }
@@ -1294,7 +1394,7 @@
 .lp-footer__copy {
   margin: 0.5rem 0 0;
   max-width: 34ch;
-  font-size: 0.9375rem;
+  font-size: var(--ma-text-base);
   line-height: 1.5;
   color: var(--lp-faint);
 }
@@ -1307,7 +1407,7 @@
 }
 
 .lp-footer__links a {
-  font-size: 0.9375rem;
+  font-size: var(--ma-text-base);
   color: var(--lp-muted);
   text-decoration: none;
 }
@@ -1451,7 +1551,7 @@
   background: var(--lp-card);
   backdrop-filter: blur(10px);
   font-family: var(--lp-font-mono);
-  font-size: 0.6875rem;
+  font-size: var(--ma-text-2xs);
   font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1628,7 +1728,7 @@
   gap: 0.75rem;
   padding: 0 1.5rem;
   font-family: var(--lp-font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--ma-text-sm);
   letter-spacing: 0.02em;
   color: var(--lp-faint);
   white-space: nowrap;

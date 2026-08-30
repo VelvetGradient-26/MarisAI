@@ -226,6 +226,70 @@ def test_a_censored_run_does_not_claim_a_duration(monkeypatch):
     assert "or more" in value
 
 
+def test_a_tracked_run_states_its_real_onset_date(monkeypatch):
+    """Once `services/heatwave_tracking.py` has watched a run start, the brief
+    can say when — a stronger claim than the window-censored fallback."""
+    monkeypatch.setattr(
+        brief_service.heatwaves,
+        "at_point",
+        lambda lat, lon: {
+            "available": True,
+            "in_heatwave": True,
+            "category": "strong",
+            "exceedance_c": 2.1,
+            "run_days": 30,
+            "run_days_censored": True,
+            "baseline": {"start": 1991, "end": 2020},
+            "tracked": {
+                "available": True,
+                "in_heatwave": True,
+                "run_days": 47,
+                "onset_date": "2026-07-12",
+                "peak_category": "severe",
+                "cumulative_intensity_c_days": 88.5,
+                "possibly_started_earlier": False,
+                "tracking_since": "2026-06-01",
+            },
+        },
+    )
+    value = brief_service._events_section(9.5, 75.0).rows[0]["value"]
+    assert "47 days" in value
+    assert "since 2026-07-12" in value
+    assert "or more" not in value
+
+
+def test_a_run_already_active_at_boot_still_hedges(monkeypatch):
+    """Tracking itself can be honestly uncertain — a run already live the
+    first time the tracker ever looked must not be given a start date it
+    cannot support, the same rule the window-only fallback already follows."""
+    monkeypatch.setattr(
+        brief_service.heatwaves,
+        "at_point",
+        lambda lat, lon: {
+            "available": True,
+            "in_heatwave": True,
+            "category": "moderate",
+            "exceedance_c": 0.5,
+            "run_days": 6,
+            "run_days_censored": False,
+            "baseline": {"start": 1991, "end": 2020},
+            "tracked": {
+                "available": True,
+                "in_heatwave": True,
+                "run_days": 6,
+                "onset_date": "2026-06-01",
+                "peak_category": "moderate",
+                "cumulative_intensity_c_days": 3.2,
+                "possibly_started_earlier": True,
+                "tracking_since": "2026-06-01",
+            },
+        },
+    )
+    value = brief_service._events_section(9.5, 75.0).rows[0]["value"]
+    assert "6 days or more" in value
+    assert "since" not in value
+
+
 def test_no_heatwave_is_stated_rather_than_omitted(monkeypatch):
     """An absence is a result. A dropped row reads as "we did not check"."""
     monkeypatch.setattr(

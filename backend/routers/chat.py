@@ -14,13 +14,24 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from services.chat import ChatError, answer, answer_stream, store
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
+
+# A data: URL's base64 payload runs ~4/3 the decoded byte count, so this bounds
+# the decoded image at roughly 6 MB — generous for a phone photo attached to a
+# chat message, small enough that an unauthenticated endpoint cannot be made to
+# push a very large inline payload through a paid LLM call on every turn.
+_MAX_IMAGE_DATA_URL_CHARS = 8 * 1024 * 1024
+_ALLOWED_IMAGE_PREFIXES = (
+    "data:image/png;base64,",
+    "data:image/jpeg;base64,",
+    "data:image/webp;base64,",
+)
 
 
 class ChatTurn(BaseModel):
@@ -38,6 +49,26 @@ class ChatRequest(BaseModel):
     # transcript is the authority. Bounded server-side regardless, since it is
     # replayed into the prompt.
     history: list[ChatTurn] = Field(default_factory=list, max_length=20)
+    image: str | None = Field(
+        None,
+        description=(
+            "A data: URL (image/png, image/jpeg or image/webp) attached to this "
+            "turn, for the assistant to describe or answer about."
+        ),
+    )
+
+    @field_validator("image")
+    @classmethod
+    def _validate_image(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        if len(value) > _MAX_IMAGE_DATA_URL_CHARS:
+            raise ValueError("image is too large")
+        if not value.startswith(_ALLOWED_IMAGE_PREFIXES):
+            raise ValueError(
+                "image must be a data: URL with mime type image/png, image/jpeg or image/webp"
+            )
+        return value
 
 
 @router.post("")
@@ -48,6 +79,7 @@ async def post_chat(request: ChatRequest):
             [turn.model_dump() for turn in request.history],
             session_id=request.session_id,
             client_id=request.client_id,
+            image=request.image,
         )
     except ChatError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -75,6 +107,7 @@ async def post_chat_stream(request: ChatRequest):
                 [turn.model_dump() for turn in request.history],
                 session_id=request.session_id,
                 client_id=request.client_id,
+                image=request.image,
             ):
                 yield _sse(event)
         except ChatError as exc:

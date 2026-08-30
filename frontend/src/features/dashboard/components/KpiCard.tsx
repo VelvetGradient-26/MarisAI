@@ -44,7 +44,7 @@ function TrendBadge({ card }: { card: KpiCardData }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10.5px] font-medium',
+        'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[length:var(--oid-text-2xs)] font-medium',
         'bg-[color:var(--oid-track)] text-[color:var(--oid-text)]'
       )}
       title={`Change across ${trend.points} readings observed by this server`}
@@ -84,7 +84,7 @@ export function KpiCard({
     return (
       <Panel className="min-h-[168px]">
         <div className="px-4 pt-3.5">
-          <h3 className="text-[11.5px] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
+          <h3 className="text-[length:var(--oid-text-sm)] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
             {card.label}
           </h3>
         </div>
@@ -130,7 +130,7 @@ export function KpiCard({
 
         <div className="flex h-full flex-col gap-3 p-4">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="text-[11.5px] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
+            <h3 className="text-[length:var(--oid-text-sm)] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
               {card.label}
             </h3>
             {card.scope && (
@@ -157,7 +157,7 @@ export function KpiCard({
                   )}
                 </span>
                 {card.unit && (
-                  <span className="text-[12px] font-medium text-[color:var(--oid-text-faint)]">{card.unit}</span>
+                  <span className="text-[length:var(--oid-text-base)] font-medium text-[color:var(--oid-text-faint)]">{card.unit}</span>
                 )}
               </div>
 
@@ -166,7 +166,7 @@ export function KpiCard({
                 {card.anomaly_c != null && (
                   <span
                     className={cn(
-                      'rounded-full px-1.5 py-0.5 text-[10.5px] font-medium',
+                      'rounded-full px-1.5 py-0.5 text-[length:var(--oid-text-2xs)] font-medium',
                       card.anomaly_c > 0
                         ? 'bg-[color:color-mix(in_oklab,var(--color-alert-warning)_16%,transparent)] text-[color:var(--color-alert-warning)]'
                         : 'bg-[color:var(--oid-accent-wash)] text-[color:var(--oid-accent)]'
@@ -189,7 +189,7 @@ export function KpiCard({
           </div>
 
           {card.detail && (
-            <p className="text-[11px] leading-snug text-[color:var(--oid-text-faint)]">{card.detail}</p>
+            <p className="text-[length:var(--oid-text-xs)] leading-snug text-[color:var(--oid-text-faint)]">{card.detail}</p>
           )}
 
           {showScope && card.scope && (
@@ -198,14 +198,14 @@ export function KpiCard({
               animate={{ opacity: 1, height: 'auto' }}
               className={cn(
                 'rounded-lg border border-[color:var(--oid-border)] p-2',
-                'bg-[color:var(--oid-elevated)] text-[10.5px] leading-relaxed text-[color:var(--oid-text-muted)]'
+                'bg-[color:var(--oid-elevated)] text-[length:var(--oid-text-2xs)] leading-relaxed text-[color:var(--oid-text-muted)]'
               )}
             >
               {card.scope}
             </motion.p>
           )}
 
-          <footer className="mt-auto flex items-center justify-between gap-2 pt-1 text-[10px] text-[color:var(--oid-text-ghost)]">
+          <footer className="mt-auto flex items-center justify-between gap-2 pt-1 text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-ghost)]">
             <span className="truncate" title={card.source ?? undefined}>
               {card.source ?? 'Unknown source'}
             </span>
@@ -218,7 +218,7 @@ export function KpiCard({
             <span
               aria-hidden="true"
               className={cn(
-                'absolute right-3 bottom-3 inline-flex items-center gap-1 text-[10px]',
+                'absolute right-3 bottom-3 inline-flex items-center gap-1 text-[length:var(--oid-text-3xs)]',
                 'text-[color:var(--oid-accent)] opacity-0 transition-opacity',
                 'group-hover:opacity-100'
               )}
