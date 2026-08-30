@@ -723,6 +723,23 @@ function PredictionRow({ prediction }: { prediction: PredictionPointResult }) {
           )}
         </span>
       )}
+      {prediction.status === 'success' && prediction.drivers && prediction.drivers.length > 0 && (
+        <div className="selected-location-panel__prediction-drivers">
+          {/* Top 3 of the up to 5 the API carries — a presentation choice to
+              keep this already-terse panel from growing tall, not a backend
+              limit. Don't "fix" this into showing all 5. */}
+          {prediction.drivers.slice(0, 3).map((driver) => (
+            <span key={driver.feature} className="selected-location-panel__prediction-driver">
+              <span>{driver.label}</span>
+              <span
+                className={`selected-location-panel__prediction-driver-direction selected-location-panel__prediction-driver-direction--${driver.direction}`}
+              >
+                {driver.direction === 'increases' ? '↑ raises risk' : '↓ lowers risk'}
+              </span>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

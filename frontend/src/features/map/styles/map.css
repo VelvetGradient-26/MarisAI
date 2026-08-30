@@ -38,6 +38,23 @@
   --ocean-accent-line: rgba(79, 209, 255, 0.55);
   --ocean-error: #fca5a5;
   --ocean-warn: #f59e0b;
+  --ocean-good: var(--ma-good);
+  /* Severity/hazard indicator dots and borders — a saturated fill colour,
+     distinct from `--ocean-error`'s softer text-legible tone above. These
+     were four repeated literals (route-hazard badges, the generic
+     layer-status error dot, severe-weather alerts, boundary-watch alerts)
+     with no light-mode counterpart at all, so every one of them still
+     rendered its dark-mode hue on a white panel — down to 1.5:1 for the
+     yellow/teal steps, checked with a real contrast calculation, not
+     eyeballed. Light values are the same hue darkened until it clears 3:1
+     against a white panel (`--ocean-severity-critical` reuses
+     `--ocean-error`'s own light value, since both are already the app's
+     vetted "red" for a light background). */
+  --ocean-severity-critical: #ef4444;
+  --ocean-severity-severe: #f97316;
+  --ocean-severity-moderate: #eab308;
+  --ocean-route-calm: #5eead4;
+  --ocean-route-caution: #facc15;
   --ocean-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   /* A heavier blur surface than --ocean-panel-bg, and more transparent: the
      story overlay is meant to read as one scene with the map behind it, not
@@ -61,6 +78,15 @@
   --ocean-accent-line: rgba(15, 118, 110, 0.5);
   --ocean-error: #b91c1c;
   --ocean-warn: #b45309;
+  /* Same hue as the dark-mode values above, darkened in HSL space until each
+     clears 3:1 against a white panel (computed, not picked by eye):
+     critical reuses --ocean-error's own light red; the rest are this file's
+     first light-mode values for these hues. */
+  --ocean-severity-critical: var(--ocean-error);
+  --ocean-severity-severe: #ea6406;
+  --ocean-severity-moderate: #af8606;
+  --ocean-route-calm: #149b86;
+  --ocean-route-caution: #a58504;
   /* A panel over a dark basemap needs a real shadow in light mode too, or it
      reads as a hole punched in the map rather than as something floating. */
   --ocean-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
@@ -595,6 +621,41 @@ body,
   color: var(--ocean-muted);
 }
 
+/* Per-cell SHAP drivers for a bloom-risk point — why the number is what it
+   is, not just what it is. Forces its own full-width line the same way
+   -name does above (a flex-wrap row, not a grid, so flex-basis is the tool
+   for that here). */
+.selected-location-panel__prediction-drivers {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+  padding-left: 8px;
+  border-left: 1px solid var(--ocean-border);
+}
+
+.selected-location-panel__prediction-driver {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--ocean-muted);
+}
+
+/* Bloom risk itself already reads cool-to-hot toward red (services/
+   predictions.py's colormap) — amber for "raises risk" matches that sense
+   of "worse", and keeping "lowers risk" in the same muted tone as the rest
+   of this row keeps good news visually quiet rather than drawing the eye. */
+.selected-location-panel__prediction-driver-direction--increases {
+  color: var(--ocean-warn);
+}
+
+.selected-location-panel__prediction-driver-direction--decreases {
+  color: var(--ocean-muted);
+}
+
 .selected-location-panel__route {
   display: flex;
   flex-direction: column;
@@ -669,9 +730,9 @@ body,
   font-weight: 600;
 }
 
-.selected-location-panel__route-hazard--calm { color: #5eead4; }
-.selected-location-panel__route-hazard--caution { color: #facc15; }
-.selected-location-panel__route-hazard--hazardous { color: #ef4444; }
+.selected-location-panel__route-hazard--calm { color: var(--ocean-route-calm); }
+.selected-location-panel__route-hazard--caution { color: var(--ocean-route-caution); }
+.selected-location-panel__route-hazard--hazardous { color: var(--ocean-severity-critical); }
 .selected-location-panel__route-hazard--unknown { color: var(--ocean-muted); }
 
 .selected-location-panel__drift-select {
@@ -1002,7 +1063,7 @@ body,
 }
 
 .layer-status--error {
-  color: #fca5a5;
+  color: var(--ocean-error);
 }
 
 .layer-status__spinner {
@@ -1020,7 +1081,7 @@ body,
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #ef4444;
+  background: var(--ocean-severity-critical);
 }
 
 @keyframes layer-status-spin {
@@ -1381,7 +1442,7 @@ body,
 }
 
 .vessel-feed-status__dot--live {
-  background: #4ade80;
+  background: var(--ocean-good);
   box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6);
   animation: vessel-feed-pulse 2.4s ease-out infinite;
 }
@@ -1888,17 +1949,17 @@ body,
 
 .severe-weather-panel__badge--extreme .severe-weather-panel__badge-dot,
 .severe-weather-panel__alert--extreme {
-  background: #ef4444;
+  background: var(--ocean-severity-critical);
 }
 
 .severe-weather-panel__badge--severe .severe-weather-panel__badge-dot,
 .severe-weather-panel__alert--severe {
-  background: #f97316;
+  background: var(--ocean-severity-severe);
 }
 
 .severe-weather-panel__badge--moderate .severe-weather-panel__badge-dot,
 .severe-weather-panel__alert--moderate {
-  background: #eab308;
+  background: var(--ocean-severity-moderate);
 }
 
 .severe-weather-panel__badge--minor .severe-weather-panel__badge-dot,
@@ -1918,9 +1979,9 @@ body,
   gap: 3px;
 }
 
-.severe-weather-panel__alert--extreme { border-left-color: #ef4444; }
-.severe-weather-panel__alert--severe { border-left-color: #f97316; }
-.severe-weather-panel__alert--moderate { border-left-color: #eab308; }
+.severe-weather-panel__alert--extreme { border-left-color: var(--ocean-severity-critical); }
+.severe-weather-panel__alert--severe { border-left-color: var(--ocean-severity-severe); }
+.severe-weather-panel__alert--moderate { border-left-color: var(--ocean-severity-moderate); }
 .severe-weather-panel__alert--minor { border-left-color: var(--ocean-accent); }
 .severe-weather-panel__alert--quiet { border-left-color: var(--ocean-muted); }
 
@@ -2121,7 +2182,7 @@ body,
 }
 
 .boundary-watch-panel__alert--eez_crossing {
-  border-left-color: #ef4444;
+  border-left-color: var(--ocean-severity-critical);
 }
 
 .boundary-watch-panel__alert-message {
