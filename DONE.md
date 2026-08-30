@@ -726,6 +726,265 @@ content-block shape, so this needed no new client.
 
 ---
 
+## Drift trajectory validated against real NOAA drifter tracks — shipped 2026-08-30
+
+The one gap left after the drift trajectory forecaster itself turned out to
+already be shipped (see the entry directly below): the RK4 ensemble had
+thorough internal/unit test coverage but had never been checked against a
+real, independent ground-truth drifter track.
+
+**Fully unblocked, unlike the eddy atlas (AVISO+) or WDPA validations** —
+NOAA's Global Drifter Program (GDP) is a fully public ERDDAP server
+(`erddap.aoml.noaa.gov/gdp/erddap`, dataset `drifter_6hour_qc`), no account
+needed, confirmed live with real drogued-buoy tracks sitting in the exact
+Indian Ocean region this platform covers. `drogue_lost_date` (a real GDP
+column) filters to the population GDP's own drogued-buoy design specifically
+built to minimize wind slip — a defensible proxy for testing the current+
+Stokes engine specifically, at `alpha=0.0`.
+
+**The RK4/ensemble core needed zero new logic** — `services/drift_trajectory.py`'s
+`_run_ensemble` already took pre-built field interpolators rather than
+fetching them itself, so `scripts/compare_against_drifter_tracks.py`
+constructs its own from a historical reanalysis fetch
+(`cmems_mod_glo_phy_my_0.083deg_P1D-m` for currents, `cmems_mod_glo_wav_my_0.2deg_PT3H-i`
+for Stokes — the latter's real coverage, live-confirmed, runs 1980-01-01 to
+2026-05-31) and calls the same integrator production calls, the same "pure,
+snapshot-in features-out" reuse `compare_against_eddy_atlas.py` makes of
+`eddies.detect()`. One small, additive, fully-backward-compatible change was
+needed in production code: `_build_live_field` extracted out of
+`_fetch_live_field` for reuse, and a new `allow_present_day_fallback: bool =
+True` parameter threaded through `_combined_velocity` -> `_run_ensemble` ->
+`plan_trajectory` — every existing caller (the router, the chat tool) is
+unaffected by the default; the validation script passes `False` so a
+historical field gap is reported in `degraded_terms` and the segment
+excluded, rather than silently substituting *today's* real operational data
+into a past integration.
+
+**Live-verified, not just unit-tested, and a real exclusion happened
+unprompted during the real run** — the single strongest piece of evidence
+this actually works: a 20-segment run over the Indian Ocean (`--bbox
+-10,30,30,100 --start-date 2020-06-01 --end-date 2020-07-31`) found 17 real
+drogued segments, 3 of which were excluded live with exactly the expected
+reason (`"current: 100/100 members lost current coverage entirely... would
+have needed the present-day ML-grid fallback but allow_present_day_fallback=
+False — held stationary there instead of silently substituting today's
+data"`) — the safety mechanism firing correctly on a real historical-coverage
+gap, not a synthetic test case. The other 14 segments scored cleanly: 104
+scored points, real measured numbers:
+
+| lead hour | median position error (km) | containment (P50 / P90) |
+|---|---|---|
+| 6 | 4.1 | .462 / .615 |
+| 12 | 6.3 | .538 / .769 |
+| 24 | 12.7 | .615 / .846 |
+| 36 | 17.7 | .615 / .846 |
+| 48 | 26.3 | .538 / .846 |
+
+Error grows monotonically with lead hour (the expected error-compounds-
+over-time signature — checked explicitly, not assumed) across the whole
+6-48h range. **One honest, real finding, not smoothed over**: containment
+rate dips slightly at 48h on both percentiles rather than continuing to
+improve — a real signal (small sample caveats aside, n=13 per lead-hour
+bucket) that the ensemble's own stated spread may be a little narrow at the
+longest lead times relative to how much real error actually accumulates,
+worth watching if a larger run is ever done. Full run: 17 segments, 4m59s
+wall-clock (~35s/segment, two concurrent bounded-bbox reanalysis fetches
+each).
+
+**What this validates and what it doesn't, stated plainly**: only the
+current+Stokes engine at `alpha=0.0` — wind/leeway has no historical source
+anywhere in this module and remains untested. The current comparison is
+against a *daily-mean* reanalysis, coarser in time than the live product;
+the Stokes comparison is matched in time (3-hourly) but coarser in space
+(0.2deg vs. 0.083deg live). A drogued GDP buoy stands in for the
+current+Stokes engine, not for the very different objects (life rafts,
+vessels) the live tool serves under its other leeway presets. 17-20 segments
+is a first real measurement, not a statistically powered one.
+
+New/changed files: `services/drift_trajectory.py` (additive), `scripts/compare_against_drifter_tracks.py`
+(new), `tests/test_drift_trajectory.py` (+5 tests for the extraction and the
+new parameter), `tests/test_compare_against_drifter_tracks.py` (new, 16
+pure-logic tests). Full backend suite green throughout (866 passed).
+
+## Drift trajectory forecast — an ensemble corridor, not a line — shipped 2026-08-28, live-reverified 2026-08-30
+
+TODO.md's Hard-tier "drift trajectory integration" item — the combined
+current+Stokes+leeway field (`services/drift.py`) only ever advected against
+a single snapshot, wrong for a 48h+ forecast crossing a changing field.
+`services/drift_trajectory.py` (697 lines) is an RK4-integrated, 100-member
+ensemble over perturbed start position, leeway and field error, 6-96h ahead.
+Per-term source verified live at the time (`scripts/probe_forecast_timesteps.py`):
+current+Stokes from a live Copernicus forecast fetch (~9 days of real
+coverage, past the 96h ceiling), falling back per-point to the ML forecast
+grid on a gap; wind leeway from the ML forecast grids only, since the live
+wind product carries no forecast timesteps at all; field-error perturbation
+from each ML model's own real CV-measured residual quantiles, not invented
+numbers. Wired end-to-end: `GET /api/ocean/drift/trajectory`
+(`routers/marine.py`), a `plan_drift_trajectory` chat tool on the
+geospatial_risk specialist, a frontend planner (`driftTrajectoryStore` +
+`useDriftTrajectoryPlanner` + `api/driftTrajectory.ts`, mirroring the
+existing route planner), and a map layer drawing the ensemble as a
+faint-line corridor with a highlighted median track. 14 new backend tests,
+full suite green (838 at ship time).
+
+**This TODO entry went stale immediately** — shipped, on `main`, and never
+struck through, the same doc-drift pattern this file's own top note and the
+"two finished branches" entry above already document. Caught on
+2026-08-30 only because a later session was asked to "continue with the
+drift trajectory" and checked `git log`/`merge-base` before writing any
+code, rather than trusting TODO.md's framing. **Re-verified live, not just
+by reading the diff**: called `drift_trajectory.plan_trajectory` directly
+for a real point (15°N 68°E, life-raft preset, 48h) and got a real 20-member
+result with `provenance: {current: live_forecast, stokes: live_forecast,
+wind_leeway: ml_grid_1deg_daily}`, zero degraded terms, and the note field
+stating plainly: *"A probability envelope from a 20-member ensemble over
+perturbed start position, leeway and field error — not a prediction of
+where the object is."* — the exact honesty standard TODO.md's own warning
+demanded, confirmed in the live output rather than assumed from the commit
+message.
+
+**What is still genuinely open, not done**: the integrator has solid
+internal/unit test coverage but has never been checked against a real,
+independent ground-truth drifter track (e.g. NOAA's Global Drifter
+Program) — same shape of gap as "Eddy atlas validation" elsewhere in this
+file. Moved to TODO.md under that name; not investigated for source
+availability yet.
+
+---
+
+## TODO.md's Medium/Hard sections — visual standard audit and SHAP Phase 1, shipped 2026-08-30
+
+### The visual standard — audit pass across landing, `/map`, `/dashboard`
+
+TODO.md's Medium item frames this as "a standard, not a task" — that framing
+still holds; what shipped is one dated, measured audit-and-fix pass against
+it, not a claim the standard is now permanently satisfied.
+
+**One type scale, no literal bypasses.** The dashboard had no type scale at
+all: 193 raw `text-[Npx]` Tailwind arbitrary values across 30 files, 20
+distinct pixel sizes, no shared name. Audited the values actually in use
+(not invented) and found a genuine 10-step micro-scale (8.5-13px, used 192
+times) the app-wide `--ma-text-*` scale doesn't cover (its floor is 11px) —
+added `--oid-text-6xs` through `--oid-text-lg` to
+`features/dashboard/styles/tailwind.css` and mechanically replaced all 192
+real usages, zero visual change (same computed pixels, now named). Landing's
+`pages/landing.css` had 19 of 30 `font-size` declarations numerically equal
+to an existing `--ma-text-*` step but restated as a literal rather than a
+reference — repointed to `var(--ma-text-*)`. 11 landing sizes and ~15
+dashboard display sizes matched no existing step and were left alone
+(flagged, not invented).
+
+**Contrast, computed, not eyeballed.** A real WCAG script (sRGB compositing
++ relative luminance) against every surface's actual token values in both
+themes found two real failures: `--oid-text-ghost` (60+ real usage sites —
+dossier labels, footnotes, placeholders, not decoration) at 2.65:1 dark /
+2.51:1 light against a 3:1 floor, and five map-chrome severity/route colours
+(`route-hazard`, `layer-status--error`, severe-weather badges,
+boundary-watch alerts) with **no light-mode override at all** — down to
+1.48:1 on a white panel. Fixed by darkening/lightening the same hue in HSL
+space until each clears 3:1 (`features/map/styles/map.css` gained
+`--ocean-severity-critical/severe/moderate` and
+`--ocean-route-calm/caution`). One judgment call left open rather than
+silently resolved: `eddy-status__dot--live` has the identical failure but is
+pinned by its own code comment to match the eddy layer's live map-rendering
+ramp exactly — legibility vs. ramp-identity is a human call.
+
+**Loading/empty/error states: audited, nothing missing.** Checked the
+dashboard's `Panel`/`PanelSkeleton`/`PanelEmpty` three-way pattern against
+every data-bearing panel on both surfaces (including every map chrome status
+panel — `SelectedLocationPanel`, `BoundaryWatchPanel`, `SevereWeatherPanel`,
+`CycloneStatus`, `EddyDetectionStatus`, and others). Every one already had a
+real loading/unavailable/success branch with a reason string; none fabricate
+a zero or a skeleton implying imminent data. **The standard was already
+being held** — this pass found no gap to fix here, which is itself the
+finding worth recording so it isn't re-audited from scratch next time.
+
+33 files changed (30 of them a mechanical Tailwind class-name substitution
+only — no logic touched). `npx tsc -b` and `npx vite build` both clean.
+Static contrast/token verification only; no browser screenshot pass — see
+[[reference_cdp_raf_frozen]] for why that's a known gap for the map surface
+specifically, not skipped out of laziness.
+
+### SHAP explainability, Phase 1 — HAB bloom risk only
+
+TODO.md's Hard section flagged that HAB risk and habitat suitability have no
+attribution path. **The item's own framing of *where* the gap lives was
+wrong, found before writing any code**: it reads as if the two just need to
+be plugged into the dashboard's existing Explainability section
+(`features/dashboard/metric/sections/Explainability.tsx`). That component is
+actually hard-wired to the forecasting engine's per-variable catalog
+(`variable.trained_horizons`, `useBatchForecast`/`useModelDetail`) — HAB and
+habitat aren't in that catalog and can't join it without a much bigger
+refactor. The real, already-existing surface for HAB/habitat point queries
+is the map's click panel (`SelectedLocationPanel.tsx`, via
+`useSelectedLocationPredictions.ts`), which is what got the new drivers UI
+instead.
+
+**Scoped to HAB risk only.** Habitat suitability is a skill-weighted
+ensemble of three heterogeneous models (MaxEnt-as-logistic-regression +
+RandomForest + LightGBM — `fish_habitat_prediction/src/models.py`) needing a
+combined-explainer design (TreeSHAP for two tiers, LinearSHAP for MaxEnt,
+reconciled back through the MaxEnt tier's hinge/quadratic feature expansion)
+that is real, separate work — deferred, not attempted. HAB risk is one
+LightGBM model per horizon with no ensembling, and its training pipeline
+already computes SHAP successfully for the global importance ranking
+(`hab_early_warning/src/train.py::_explain`) — the clean first slice.
+
+**The calibration-unwrap chain was verified by loading the real shipped
+artifact, not by reading `train.py` and assuming.** `hab_early_warning.joblib`
+holds, per horizon, a `CalibratedClassifierCV` wrapping
+`FrozenEstimator(pipeline)` (isotonic calibration) or a bare `Pipeline` when
+a horizon's validation split was single-class; the empirically-walked unwrap
+is `model.calibrated_classifiers_[0].estimator.estimator` ->
+`Pipeline.named_steps["prep"/"model"]`. This is now `marine_ml/shap_utils.py`
+(`unwrap_calibrated_pipeline`, `strip_transform_prefix`, `tree_shap_matrix`,
+`top_k_indices_and_values`) — the shared-spine location per
+[[project_ml_direction]]'s and `docs/ml-notes.md`'s rule, reusable as-is for
+habitat's two tree tiers once Phase 2 exists.
+
+New companion export `machine_learning/exports/hab_risk_shap.nc` (7.6 MB,
+matching the size computed from real grid dims before writing any code):
+`driver_index` (int16, fill -1) + `driver_contribution` (float32) per cell,
+top-5, alongside the existing `hab_risk.nc`. Feature names went in
+`manifest.json` instead of as a NetCDF string variable — sidesteps
+vlen-string encoding's engine-dependent round-tripping (netCDF4/h5netcdf/
+scipy disagree) for a payload (139 short strings) trivial enough that the
+risk wasn't worth taking. `services/predictions.py`'s `hab_point()` gained a
+`drivers` key that degrades to `None` (never raises) if the companion file
+is missing, reusing `FeatureContribution`/`humanise` from
+`forecasting/shap_explainer.py` for a wire shape consistent with the live
+per-point forecasting path — confirmed importable with zero risk to the
+documented machine_learning/backend boundary, since `shap` itself is only
+ever imported lazily inside `ShapExplainer.__init__`, never at module load.
+
+**Verified against the real export, not a mock**: ran the actual offline
+export end-to-end (~1 minute total, 3 horizons); the highest-risk real cell
+found (lat 6.75, lon 69.75, risk 0.906) has its top-5 drivers *all*
+chlorophyll-related (`is_bloom`, `chl_anomaly`, `chl_delta`, `chl_zanomaly`,
+`chl`) and all pushing risk up; the lowest-risk real cell has the same
+features pushing down. Confirmed the same numbers end-to-end through
+`predictions.hab_point()` directly and through a real running
+`GET /api/predictions/hab/point`. Confirmed graceful degradation against a
+real missing file (renamed `hab_risk_shap.nc` away): `risk` unchanged,
+`drivers: null`, no exception. Full suites green: 845/845 backend, 103/103
+machine_learning (7 new in `test_shap_utils.py`). Frontend `tsc -b`/`vite
+build` clean.
+
+**Known, accepted cosmetic gap, not fixed**: `humanise()` falls back to
+de-underscored title case for HAB's short Copernicus field-code features
+(`chl` -> "Chl", not "Chlorophyll-a") because those short codes aren't
+`VARIABLE_REGISTRY` keys — working exactly as `humanise()` documents itself
+("clumsy prose, never a crash"), confirmed live via the real endpoint above,
+not a bug.
+
+**Still needed before Phase 1 is fully live-checked**: one human look at
+`/map` clicking a Bloom Risk point — same CDP/`requestAnimationFrame`
+limitation as every other map-UI item in TODO.md's Blocked/Parked section
+([[reference_cdp_raf_frozen]]), not attempted again expecting a different
+result.
+
+---
+
 ## Detection
 
 ### The climatology — built 2026-08-17

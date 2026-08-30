@@ -94,7 +94,7 @@ page's loading state is the shape to copy: it says what is happening and why
 it takes time, rather than drawing a ghost of a table whose shape is exactly
 what the request is still deciding.
 
-The actionable, auditable half:
+The criteria, unchanged as the ongoing bar new work should keep meeting:
 
 - **Three surfaces carry the product**: the landing page, `/map`,
   `/dashboard`.
@@ -104,47 +104,41 @@ The actionable, auditable half:
   the Abyss basemap, ≥2:1 for the hatched unforecastable mark) applied to the
   chrome too.
 
+**A first dated audit-and-fix pass against this bar shipped 2026-08-30** —
+see DONE.md's "The visual standard" entry for the measured findings (a
+missing dashboard type scale, two real contrast failures, states already
+solid everywhere they were checked). One judgment call it deliberately left
+open: `eddy-status__dot--live`'s light-mode contrast vs. its pinned match to
+the eddy layer's own map ramp colour. Re-audit next time a new panel or
+surface is added rather than assuming this pass covers it forever.
+
 ---
 
 ## Hard
 
-### Drift: the field ships, the trajectory does not
+### Explainability for the derived indices (SHAP) — HAB done, habitat open
 
-The combined drift field ships (`u_total = u_curr + u_stokes + alpha *
-u_wind`, with `alpha` a named object preset). **Trajectory integration is
-the architectural jump and it is the half that is left.**
+**HAB bloom risk shipped 2026-08-30.** Per-cell top-k SHAP is exported
+alongside the prediction grid (`machine_learning/exports/hab_risk_shap.nc`),
+served through `services/predictions.py::hab_point()`'s new `drivers` field,
+and surfaced in the map's `SelectedLocationPanel` — **not** the dashboard's
+Explainability section, which turned out to be the wrong surface (it's
+hard-wired to the forecasting engine's per-variable catalog; HAB/habitat
+aren't in it). See DONE.md's "SHAP explainability, Phase 1" entry for the
+full design and measured verification.
 
-`VectorFieldParticleLayer` advects against a **single snapshot texture** —
-every particle sees the same instant forever, which is correct for an
-animated streamline and wrong for a drift forecast, where a 48-hour
-trajectory must cross 48 hours of changing field.
-
-- That needs a time-indexed stack of textures with interpolation in the
-  update pass, or a server-side integrator returning a polyline. **Prefer
-  the server-side integrator**: it is testable against known drifter
-  tracks, and a trajectory is a *result* the user wants to export, brief on
-  and compare — not a visual effect.
-- **State the uncertainty or do not ship it.** A single deterministic track
-  reads as a prediction of where the object *is*. Operational SAR drift is
-  run as an ensemble over perturbed start position, `alpha` and field error,
-  and what is drawn is a probability envelope. A lone line on a map, in a
-  product someone might actually search from, is the most dangerous thing
-  in this file.
-- A forecast drift horizon is now possible — the `wind_u`/`wind_v` grids
-  exist — but the live field's wind term is still observation-only.
-
-### Explainability for the derived indices (SHAP)
-
-`forecasting/shap_explainer.py` exists and the metric pages render an
-Explainability section, but **HAB risk and habitat suitability have no SHAP
-path** — the two things a user most wants explained are the two that cannot
-answer.
-
-The honest version is not small. `services/predictions.py` deliberately
-serves precomputed grids so `machine_learning/` stays out of the backend
-import graph, and that boundary is worth keeping. So local attribution means
-**exporting per-cell top-k SHAP as a grid** from the ML side, alongside the
-prediction grid.
+**Habitat suitability remains open — a genuinely different problem, not
+just more of the same work.** It's a skill-weighted ensemble of three
+heterogeneous models (MaxEnt-as-logistic-regression + RandomForest +
+LightGBM — `fish_habitat_prediction/src/models.py`), so attribution needs
+`shap.TreeExplainer` for the two tree tiers plus a different explainer
+(`shap.LinearExplainer` or similar) for the MaxEnt tier, reconciled back
+through MaxEnt's hinge/quadratic feature expansion to original feature
+names, then combined with the same skill weights the prediction itself
+uses. `machine_learning/marine_ml/shap_utils.py`'s four primitives (unwrap,
+prefix-stripping, TreeSHAP, top-k) are already reusable for the two tree
+tiers — the LinearExplainer path and the cross-explainer combination are the
+real remaining work.
 
 The cheap alternative — serving the global importances already in
 `reports/*_shap_*.csv` — answers "what drives this model" rather than "why
