@@ -74,6 +74,7 @@ from functools import lru_cache
 from typing import Any
 
 import numpy as np
+import xarray as xr
 from scipy.interpolate import RegularGridInterpolator
 
 from forecasting import ForecastingError
@@ -154,6 +155,43 @@ class _LiveField:
     t0: datetime  # the interpolator's time axis is seconds-since-t0
 
 
+def _build_live_field(dataset: xr.Dataset, u_field: str, v_field: str) -> _LiveField | None:
+    """Turn a fetched `(time, latitude, longitude)` dataset into a `_LiveField`
+    time/lat/lon interpolator, or `None` if the dataset has no timesteps.
+
+    Split out of `_fetch_live_field` (which still does the network fetch and
+    decides what "no data" means for the live path) so a caller that already
+    has a dataset in hand — `scripts/compare_against_drifter_tracks.py`,
+    substituting a historical reanalysis fetch for the live one — can build
+    the same interpolator without duplicating this construction. Raises
+    nothing; an empty dataset is a normal case for both callers, handled
+    differently by each (this one falls back, the validation script excludes
+    the segment).
+    """
+    dataset = dataset.transpose("time", "latitude", "longitude")
+    times = dataset["time"].values
+    if times.size == 0:
+        return None
+
+    t0 = datetime.fromisoformat(str(times[0])[:19]).replace(tzinfo=UTC)
+    t_seconds = np.array(
+        [
+            (datetime.fromisoformat(str(t)[:19]).replace(tzinfo=UTC) - t0).total_seconds()
+            for t in times
+        ]
+    )
+    lat = dataset["latitude"].values.astype(np.float64)
+    lon = dataset["longitude"].values.astype(np.float64)
+
+    def _interp(field: str) -> RegularGridInterpolator:
+        values = dataset[field].values.astype(np.float64)
+        return RegularGridInterpolator(
+            (t_seconds, lat, lon), values, method="linear", bounds_error=False, fill_value=np.nan
+        )
+
+    return _LiveField(u_interp=_interp(u_field), v_interp=_interp(v_field), t0=t0)
+
+
 async def _fetch_live_field(
     label: str,
     dataset_id: str,
@@ -185,29 +223,10 @@ async def _fetch_live_field(
         logger.warning(f"{label} live forecast fetch failed, will fall back", exc_info=True)
         return None
 
-    dataset = dataset.transpose("time", "latitude", "longitude")
-    times = dataset["time"].values
-    if times.size == 0:
+    field = _build_live_field(dataset, u_field, v_field)
+    if field is None:
         logger.warning(f"{label} live forecast fetch returned no timesteps, will fall back")
-        return None
-
-    t0 = datetime.fromisoformat(str(times[0])[:19]).replace(tzinfo=UTC)
-    t_seconds = np.array(
-        [
-            (datetime.fromisoformat(str(t)[:19]).replace(tzinfo=UTC) - t0).total_seconds()
-            for t in times
-        ]
-    )
-    lat = dataset["latitude"].values.astype(np.float64)
-    lon = dataset["longitude"].values.astype(np.float64)
-
-    def _interp(field: str) -> RegularGridInterpolator:
-        values = dataset[field].values.astype(np.float64)
-        return RegularGridInterpolator(
-            (t_seconds, lat, lon), values, method="linear", bounds_error=False, fill_value=np.nan
-        )
-
-    return _LiveField(u_interp=_interp(u_field), v_interp=_interp(v_field), t0=t0)
+    return field
 
 
 def _sample_live(field: _LiveField, at_time: datetime, lat: np.ndarray, lon: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -380,6 +399,7 @@ def _combined_velocity(
     alpha: np.ndarray,
     wind_bias: tuple[np.ndarray, np.ndarray],
     flags: dict[str, np.ndarray],
+    allow_present_day_fallback: bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
     n = lat.shape[0]
 
@@ -390,10 +410,13 @@ def _combined_velocity(
         cur_u, cur_v = np.full(n, np.nan), np.full(n, np.nan)
     missing = np.isnan(cur_u)
     if missing.any():
-        flags["current_fell_back"] |= missing
-        fb_u, fb_v = _ml_grid_velocity("current_u", "current_v", lead_hours, lat, lon)
-        cur_u = np.where(missing, fb_u, cur_u)
-        cur_v = np.where(missing, fb_v, cur_v)
+        if allow_present_day_fallback:
+            flags["current_fell_back"] |= missing
+            fb_u, fb_v = _ml_grid_velocity("current_u", "current_v", lead_hours, lat, lon)
+            cur_u = np.where(missing, fb_u, cur_u)
+            cur_v = np.where(missing, fb_v, cur_v)
+        else:
+            flags["current_fallback_disabled"] |= missing
     still_missing = np.isnan(cur_u)
     if still_missing.any():
         flags["current_lost"] |= still_missing
@@ -407,10 +430,13 @@ def _combined_velocity(
         stk_u, stk_v = np.full(n, np.nan), np.full(n, np.nan)
     missing = np.isnan(stk_u)
     if missing.any():
-        flags["stokes_fell_back"] |= missing
-        fb_u, fb_v = _stokes_last_observed(lat, lon)
-        stk_u = np.where(missing, fb_u, stk_u)
-        stk_v = np.where(missing, fb_v, stk_v)
+        if allow_present_day_fallback:
+            flags["stokes_fell_back"] |= missing
+            fb_u, fb_v = _stokes_last_observed(lat, lon)
+            stk_u = np.where(missing, fb_u, stk_u)
+            stk_v = np.where(missing, fb_v, stk_v)
+        else:
+            flags["stokes_fallback_disabled"] |= missing
     still_missing = np.isnan(stk_u)
     if still_missing.any():
         flags["stokes_lost"] |= still_missing
@@ -470,6 +496,12 @@ def _degraded_terms(flags: dict[str, np.ndarray], n_members: int) -> list[str]:
             f"current: {int(flags['current_lost'].sum())}/{n_members} members lost current "
             "coverage entirely for at least one step and were held stationary there"
         )
+    if flags["current_fallback_disabled"].any():
+        notes.append(
+            f"current: {int(flags['current_fallback_disabled'].sum())}/{n_members} members "
+            "would have needed the present-day ML-grid fallback but allow_present_day_fallback="
+            "False — held stationary there instead of silently substituting today's data"
+        )
     if flags["stokes_fell_back"].any():
         notes.append(
             f"stokes: {int(flags['stokes_fell_back'].sum())}/{n_members} members used the "
@@ -479,6 +511,12 @@ def _degraded_terms(flags: dict[str, np.ndarray], n_members: int) -> list[str]:
         notes.append(
             f"stokes: {int(flags['stokes_lost'].sum())}/{n_members} members had no Stokes "
             "data at all for at least one step (dropped, not zero-filled)"
+        )
+    if flags["stokes_fallback_disabled"].any():
+        notes.append(
+            f"stokes: {int(flags['stokes_fallback_disabled'].sum())}/{n_members} members "
+            "would have needed the present-day nowcast fallback but allow_present_day_fallback="
+            "False — held stationary there instead of silently substituting today's data"
         )
     if flags["wind_lost"].any():
         notes.append(
@@ -504,6 +542,7 @@ async def plan_trajectory(
     n_members: int = DEFAULT_N_MEMBERS,
     start_position_uncertainty_km: float = DEFAULT_START_POSITION_UNCERTAINTY_KM,
     rng: np.random.Generator | None = None,
+    allow_present_day_fallback: bool = True,
 ) -> dict[str, Any]:
     """An ensemble drift trajectory: perturbed start position, leeway and
     field error, integrated with RK4 against the best available forecast
@@ -512,6 +551,14 @@ async def plan_trajectory(
     Raises `DriftTrajectoryError` only when the current term has no source at
     all, live or fallback — every partial degradation is reported in the
     result's `degraded_terms` instead.
+
+    `allow_present_day_fallback` (default `True`, unchanged behavior for
+    every existing caller): when a live/historical current or Stokes source
+    has a gap, the ordinary fallback reads *today's* operational ML grid or
+    nowcast — correct for the live forecast this function normally serves,
+    wrong for a historical replay (`scripts/compare_against_drifter_tracks.py`),
+    which sets this `False` so a gap is reported in `degraded_terms` instead
+    of silently substituting present-day data into a past integration.
 
     The live fetch (network-bound) runs here, awaited directly; the ensemble
     integration (CPU-bound: RK4 over every member, no `await` in it) runs in
@@ -564,6 +611,7 @@ async def plan_trajectory(
         live_current,
         live_stokes,
         rng or np.random.default_rng(),
+        allow_present_day_fallback=allow_present_day_fallback,
     )
 
 
@@ -579,6 +627,8 @@ def _run_ensemble(
     live_current: _LiveField | None,
     live_stokes: _LiveField | None,
     rng: np.random.Generator,
+    *,
+    allow_present_day_fallback: bool = True,
 ) -> dict[str, Any]:
     """The synchronous, CPU-bound half of `plan_trajectory` — draws, RK4
     integration, and result assembly. Runs off the event loop; see that
@@ -627,7 +677,15 @@ def _run_ensemble(
     at_time = resolved_start
     flags = {
         key: np.zeros(n_members, dtype=bool)
-        for key in ("current_fell_back", "current_lost", "stokes_fell_back", "stokes_lost", "wind_lost")
+        for key in (
+            "current_fell_back",
+            "current_lost",
+            "current_fallback_disabled",
+            "stokes_fell_back",
+            "stokes_lost",
+            "stokes_fallback_disabled",
+            "wind_lost",
+        )
     }
     history_lat = [lat.copy()]
     history_lon = [lon.copy()]
@@ -647,6 +705,7 @@ def _run_ensemble(
             alpha=alpha_members,
             wind_bias=(wind_bias_u, wind_bias_v),
             flags=flags,
+            allow_present_day_fallback=allow_present_day_fallback,
         )
         at_time = at_time + timedelta(seconds=DT_SECONDS)
         if step % _REPORT_STEP == 0 or step == n_steps:

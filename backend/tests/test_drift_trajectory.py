@@ -212,3 +212,117 @@ def test_ml_grid_bracket_endpoints_and_interior():
     lo, hi, fraction = drift_trajectory._ml_grid_bracket(48.0)  # 2 days: between h1 and h3
     assert (lo, hi) == (1, 3)
     assert 0.0 < fraction < 1.0
+
+
+# --------------------------------------------------------------------------
+# _build_live_field — extracted so scripts/compare_against_drifter_tracks.py
+# can build the same interpolator shape from a historical reanalysis fetch.
+# --------------------------------------------------------------------------
+
+
+def _tiny_dataset(u_value: float, v_value: float, n_times: int = 2) -> xr.Dataset:
+    times = np.array(["2020-06-01T00:00:00", "2020-06-01T06:00:00"][:n_times], dtype="datetime64[ns]")
+    lat = np.array([-1.0, 1.0])
+    lon = np.array([-1.0, 1.0])
+    shape = (n_times, 2, 2)
+    return xr.Dataset(
+        {"uo": (("time", "latitude", "longitude"), np.full(shape, u_value)),
+         "vo": (("time", "latitude", "longitude"), np.full(shape, v_value))},
+        coords={"time": times, "latitude": lat, "longitude": lon},
+    )
+
+
+def test_build_live_field_returns_none_for_an_empty_dataset():
+    empty = _tiny_dataset(0.0, 0.0, n_times=0)
+    assert drift_trajectory._build_live_field(empty, "uo", "vo") is None
+
+
+def test_build_live_field_constructs_a_working_interpolator():
+    dataset = _tiny_dataset(0.3, -0.2)
+    field = drift_trajectory._build_live_field(dataset, "uo", "vo")
+    assert field is not None
+
+    u, v = drift_trajectory._sample_live(field, datetime(2020, 6, 1, tzinfo=UTC), np.array([0.0]), np.array([0.0]))
+    assert u[0] == pytest.approx(0.3)
+    assert v[0] == pytest.approx(-0.2)
+
+
+# --------------------------------------------------------------------------
+# allow_present_day_fallback=False — for a historical replay, a gap must be
+# reported and the member held stationary, never silently filled with
+# today's real operational data.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_disabled_fallback_holds_current_stationary_and_never_touches_the_ml_grid(monkeypatch):
+    async def fake_fetch_live_field(label, *_args, **_kwargs):
+        return None  # both live fetches "fail" -> current has a gap from step 0
+
+    def _fail_if_called(*_args, **_kwargs):
+        raise AssertionError("ML grid fallback used despite allow_present_day_fallback=False")
+
+    monkeypatch.setattr(drift_trajectory, "_fetch_live_field", fake_fetch_live_field)
+    # _ml_grid_available (checked once, up front) must still see a real grid,
+    # or this hits the "no source at all" raise instead of the fallback path
+    # this test means to exercise.
+    monkeypatch.setattr(drift_trajectory, "_ml_grid_field", lambda variable, horizon_days: _synthetic_ml_field(0.2))
+    monkeypatch.setattr(drift_trajectory, "_ml_grid_velocity", _fail_if_called)
+    _disable_measured_error_bounds(monkeypatch)
+
+    result = await drift_trajectory.plan_trajectory(
+        10.0, 70.0, alpha=0.0, preset_used=False,
+        horizon_hours=6.0, n_members=drift_trajectory.MIN_MEMBERS,
+        rng=np.random.default_rng(6),
+        allow_present_day_fallback=False,
+    )
+
+    assert any("current" in note and "allow_present_day_fallback" in note for note in result["degraded_terms"])
+    start = result["median_track"][0]
+    end = result["median_track"][-1]
+    assert (end["lat"], end["lon"]) == (start["lat"], start["lon"])  # held stationary, not moved
+
+
+@pytest.mark.asyncio
+async def test_disabled_fallback_holds_stokes_stationary_and_never_touches_the_nowcast(monkeypatch):
+    def _fail_if_called(*_args, **_kwargs):
+        raise AssertionError("Stokes nowcast fallback used despite allow_present_day_fallback=False")
+
+    # Current has a real source (so only Stokes is under test); Stokes has
+    # none, forcing the would-be _stokes_last_observed fallback every step.
+    _install_live_fields(monkeypatch, _constant_live_field(0.0, 0.0), None)
+    monkeypatch.setattr(drift_trajectory, "_stokes_last_observed", _fail_if_called)
+    _disable_measured_error_bounds(monkeypatch)
+
+    result = await drift_trajectory.plan_trajectory(
+        10.0, 70.0, alpha=0.0, preset_used=False,
+        horizon_hours=6.0, n_members=drift_trajectory.MIN_MEMBERS,
+        rng=np.random.default_rng(7),
+        allow_present_day_fallback=False,
+    )
+
+    assert any("stokes" in note and "allow_present_day_fallback" in note for note in result["degraded_terms"])
+    start = result["median_track"][0]
+    end = result["median_track"][-1]
+    assert (end["lat"], end["lon"]) == (start["lat"], start["lon"])  # held stationary, not moved
+
+
+@pytest.mark.asyncio
+async def test_default_still_falls_back_when_allow_present_day_fallback_unset(monkeypatch):
+    """Every existing caller (the router, the chat tool) omits the new
+    parameter — confirms the default genuinely preserves today's behaviour
+    rather than only being exercised by tests that pass it explicitly."""
+    async def fake_fetch_live_field(label, *_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(drift_trajectory, "_fetch_live_field", fake_fetch_live_field)
+    monkeypatch.setattr(drift_trajectory, "_ml_grid_field", lambda variable, horizon_days: _synthetic_ml_field(0.2))
+    _disable_measured_error_bounds(monkeypatch)
+
+    result = await drift_trajectory.plan_trajectory(
+        10.0, 70.0, alpha=0.0, preset_used=False,
+        horizon_hours=6.0, n_members=drift_trajectory.MIN_MEMBERS,
+        rng=np.random.default_rng(8),
+    )
+    assert result["provenance"]["current"] == "ml_grid_1deg_daily"
+    assert not any("fallback_disabled" in note for note in result["degraded_terms"])
