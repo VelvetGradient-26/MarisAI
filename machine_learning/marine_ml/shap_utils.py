@@ -1,4 +1,4 @@
-"""Shared SHAP-attribution helpers for tree-based problem pipelines.
+"""Shared SHAP-attribution helpers for tree-based and linear problem pipelines.
 
 Both `hab_early_warning` and `fish_habitat_prediction` build their pipelines
 the same way -- `Pipeline([("prep", ColumnTransformer(...)), ("model", ...)])`,
@@ -6,12 +6,30 @@ optionally wrapped in `CalibratedClassifierCV(FrozenEstimator(pipeline))` for
 HAB's isotonic calibration -- so the unwrap-and-explain plumbing belongs here
 rather than in one problem's `src/`.
 
-What is deliberately *not* here: combining multiple explainers (TreeExplainer
-+ LinearExplainer) into one per-original-feature attribution. That is fish
-habitat's ensemble problem (MaxEnt + RandomForest + LightGBM, skill-weighted;
-see `fish_habitat_prediction/src/models.py`), it needs real design work of its
-own, and it is out of scope for this pass -- see TODO.md's "Explainability for
-the derived indices" item.
+**Combining multiple explainers into one per-original-feature attribution is
+still not here.** That is fish habitat's ensemble problem (MaxEnt +
+RandomForest + LightGBM, skill-weighted) and lives in
+`fish_habitat_prediction/src/explain.py`, because it needs MaxEnt's own
+hinge/quadratic feature expansion (`models.py::HingeQuadraticExpansion`) to
+reconcile the tiers back to shared feature names -- knowledge this module
+has no business holding. What *is* here are the two more primitives that
+work required: `tree_shap_matrix_probability` and `linear_shap_matrix`.
+
+**A tree model's SHAP output space is not one fixed thing, and mixing them
+silently would be wrong.** `EnsembleWeights.combine` (`models.py`) averages
+`predict_proba` outputs directly, so an attribution meant to explain *that*
+number has to live in probability space too -- verified empirically (not
+assumed) on real fitted models: scikit-learn's `RandomForestClassifier`
+leaves store class-probability fractions, so `tree_shap_matrix`'s plain
+`shap.TreeExplainer(model)` is *already* additive in probability space for it
+(reconstruction error ~1e-16 on a real `class_weight="balanced_subsample"`
+forest). LightGBM's leaves store raw scores, so its default TreeSHAP output
+is margin/log-odds space instead (this is what `hab_risk_shap.nc` uses, and
+is correct there since HAB never combines it with anything else) --
+`tree_shap_matrix_probability` is the explicit probability-space request for
+it, needing a background sample and costing nothing more than one extra
+`shap.TreeExplainer` argument (verified ~1e-9 reconstruction error, still the
+same fast tree algorithm, not a black-box fallback).
 """
 
 from __future__ import annotations
@@ -90,3 +108,53 @@ def top_k_indices_and_values(matrix: np.ndarray, top_k: int) -> tuple[np.ndarray
     order = np.argsort(-np.abs(matrix), axis=1)[:, :top_k]
     values = np.take_along_axis(matrix, order, axis=1)
     return order.astype("int16"), values.astype("float32")
+
+
+def tree_shap_matrix_probability(booster, transformed: np.ndarray, background: np.ndarray) -> np.ndarray:
+    """Per-row, per-feature TreeSHAP contributions toward `predict_proba`'s
+    positive-class probability, for a booster whose leaves are *not*
+    already probability-valued (LightGBM, XGBoost, CatBoost) -- see this
+    module's docstring for why `tree_shap_matrix` is the right call instead
+    for a `RandomForestClassifier`.
+
+    `feature_perturbation="interventional"` is what makes `model_output=
+    "probability"` possible at all: TreeSHAP's fast default algorithm
+    (`"tree_path_dependent"`) only supports the model's own raw output, so
+    the probability-space request needs the slower-but-still-tree-exact
+    interventional algorithm and a `background` sample to estimate feature
+    marginals against. Still the same order of cost as `tree_shap_matrix`,
+    not a black-box fallback -- verified ~1e-9 reconstruction error against
+    a real fitted LightGBM's own `predict_proba`.
+    """
+    import shap
+
+    explainer = shap.TreeExplainer(
+        booster, data=background, model_output="probability", feature_perturbation="interventional"
+    )
+    values = explainer.shap_values(transformed)
+    if isinstance(values, list):
+        values = values[1]
+    elif np.asarray(values).ndim == 3:
+        values = np.asarray(values)[:, :, 1]
+    return np.asarray(values, dtype="float32")
+
+
+def linear_shap_matrix(model, transformed: np.ndarray, background: np.ndarray) -> np.ndarray:
+    """Per-row, per-feature LinearSHAP contributions toward a linear model's
+    raw decision-function output (logit / log-odds for a classifier) --
+    deliberately *not* probability space.
+
+    `shap.LinearExplainer`'s `model_output="probability"` option does not
+    give an additive decomposition of `predict_proba` for a model behind a
+    nonlinear (sigmoid) link -- checked empirically on a real fit, off by
+    several probability units, because a Shapley decomposition of a
+    nonlinear function of a linear score is a different (and here,
+    prohibitively slower black-box) computation, not a flag on the linear
+    explainer. Callers combining this with a tree tier's probability-space
+    attribution (`fish_habitat_prediction/src/explain.py`) must treat the
+    mixed units as a stated approximation, not paper over it.
+    """
+    import shap
+
+    explainer = shap.LinearExplainer(model, background)
+    return np.asarray(explainer.shap_values(transformed), dtype="float32")

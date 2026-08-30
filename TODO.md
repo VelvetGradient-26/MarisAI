@@ -116,7 +116,7 @@ surface is added rather than assuming this pass covers it forever.
 
 ## Hard
 
-### Explainability for the derived indices (SHAP) — HAB done, habitat open
+### Explainability for the derived indices (SHAP) — HAB done, habitat designed and coded but unrun
 
 **HAB bloom risk shipped 2026-08-30.** Per-cell top-k SHAP is exported
 alongside the prediction grid (`machine_learning/exports/hab_risk_shap.nc`),
@@ -127,22 +127,31 @@ hard-wired to the forecasting engine's per-variable catalog; HAB/habitat
 aren't in it). See DONE.md's "SHAP explainability, Phase 1" entry for the
 full design and measured verification.
 
-**Habitat suitability remains open — a genuinely different problem, not
-just more of the same work.** It's a skill-weighted ensemble of three
-heterogeneous models (MaxEnt-as-logistic-regression + RandomForest +
-LightGBM — `fish_habitat_prediction/src/models.py`), so attribution needs
-`shap.TreeExplainer` for the two tree tiers plus a different explainer
-(`shap.LinearExplainer` or similar) for the MaxEnt tier, reconciled back
-through MaxEnt's hinge/quadratic feature expansion to original feature
-names, then combined with the same skill weights the prediction itself
-uses. `machine_learning/marine_ml/shap_utils.py`'s four primitives (unwrap,
-prefix-stripping, TreeSHAP, top-k) are already reusable for the two tree
-tiers — the LinearExplainer path and the cross-explainer combination are the
-real remaining work.
+**Habitat suitability's 3-tier combination is designed, implemented and
+unit-tested — shipped 2026-08-30 — but never run end-to-end against a real
+trained artifact.** See DONE.md's "Habitat suitability SHAP, Phase 2" entry
+for the full design (the two genuinely hard sub-problems — reconciling
+MaxEnt's hinge/quadratic expansion back to shared feature names, and the
+cross-model *unit* mismatch between probability-space RandomForest/LightGBM
+and logit-space MaxEnt — were each verified empirically against real fitted
+models, not assumed) and exactly what remains: no `fish_habitat.joblib`
+artifact exists in this environment (habitat training was never run here),
+so `scripts/export_predictions.py::export_habitat()`'s new
+`habitat_suitability_shap.nc` output has only been exercised by
+`fish_habitat_prediction/src/explain.py`'s own unit tests (17 passing, real
+fits, synthetic data) and a syntax/import check of the export script itself
+— not a real run against real ocean data. **Do this before trusting the
+shipped file**: train habitat (`fish_habitat_prediction/src/train.py`), run
+`PYTHONPATH=. python scripts/export_predictions.py`, and spot-check a
+handful of `services.predictions.habitat_point()` calls the way HAB's Phase
+1 did (a real high-suitability cell's top drivers should read as ecologically
+sensible, e.g. thermal/prey-related features pushing up).
 
 The cheap alternative — serving the global importances already in
 `reports/*_shap_*.csv` — answers "what drives this model" rather than "why
-is it 0.71 *here*". Worth shipping only if labelled as exactly that.
+is it 0.71 *here*". Superseded by the above now that a real per-cell answer
+exists (once run), but still the fallback if the per-cell path is ever
+disabled.
 
 ### ConvLSTM / U-Net for spatial forecasting
 

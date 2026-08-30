@@ -310,6 +310,23 @@ class EnsembleWeights:
             stacked += self.weights.get(name, 0.0) * np.asarray(values)
         return stacked
 
+    def combine_shap(self, contributions: dict[str, np.ndarray]) -> np.ndarray:
+        """The attribution analogue of `combine`: a weighted sum of each
+        tier's `(n_rows, n_features)` per-original-feature contribution
+        matrix, using the same skill weights the predictions themselves are
+        blended with.
+
+        Callers are responsible for getting every matrix into the same
+        units and the same feature order first
+        (`fish_habitat_prediction/src/explain.py`) — this method only
+        applies the weights, the same narrow job `combine` does for
+        predictions.
+        """
+        stacked = np.zeros_like(np.asarray(next(iter(contributions.values()))))
+        for name, matrix in contributions.items():
+            stacked += self.weights.get(name, 0.0) * np.asarray(matrix)
+        return stacked.astype("float32")
+
 
 @dataclass
 class StackedEnsemble:

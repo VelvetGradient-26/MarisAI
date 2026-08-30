@@ -112,7 +112,14 @@ def _habitat_feature_frame(region, start: date, end: date) -> pd.DataFrame:
     return frame
 
 
+# Same rationale and value as HAB_SHAP_TOP_K: matches ShapExplainer.explain_row's
+# own default, independent of _top_drivers' limit=8 (global mean-|SHAP| ranking
+# over the training sample, not this per-cell local ranking).
+HABITAT_SHAP_TOP_K = 5
+
+
 def export_habitat() -> dict:
+    from fish_habitat_prediction.src import explain
     from fish_habitat_prediction.src import features as feature_lib
 
     artifact = joblib.load(config.MODELS_DIR / "fish_habitat.joblib")
@@ -136,6 +143,15 @@ def export_habitat() -> dict:
 
     grid = np.full((len(species_keys), len(months), len(latitudes), len(longitudes)),
                    np.nan, dtype="float32")
+    driver_index_grid = np.full(
+        (len(species_keys), len(months), len(latitudes), len(longitudes), HABITAT_SHAP_TOP_K),
+        -1, dtype="int16",
+    )
+    driver_contribution_grid = np.full(
+        (len(species_keys), len(months), len(latitudes), len(longitudes), HABITAT_SHAP_TOP_K),
+        np.nan, dtype="float32",
+    )
+    shap_feature_names: list[str] | None = None
 
     for si, species_key in enumerate(tqdm(species_keys, desc="habitat species")):
         scored = frame.copy()
@@ -153,11 +169,35 @@ def export_habitat() -> dict:
             blended += weights.get(name, 0.0) * model.predict_proba(scored[columns])[:, 1]
         scored["suitability"] = blended
 
+        # Combined ensemble attribution — see fish_habitat_prediction/src/
+        # explain.py for why this needs its own reconciliation across the
+        # three tiers' feature spaces and units, unlike HAB's single model.
+        contributions, feature_names = explain.combined_feature_attribution(
+            models, weights, columns, scored
+        )
+        if shap_feature_names is None:
+            shap_feature_names = feature_names
+        elif feature_names != shap_feature_names:
+            raise RuntimeError(
+                f"{species_key}'s fitted preprocessors produced different "
+                f"feature names than an earlier species' — habitat_suitability_"
+                "shap.nc's shared feature vocabulary assumes every species "
+                "shares one feature space (true today since species only "
+                "changes species_key/thermal-niche columns, not the column "
+                "set itself; re-check if that ever stops holding)."
+            )
+        driver_index, driver_contribution = shap_utils.top_k_indices_and_values(
+            contributions, HABITAT_SHAP_TOP_K
+        )
+
         for mi, month in enumerate(months):
-            month_rows = scored[pd.to_datetime(scored["date"]).dt.month == month]
+            month_mask = (pd.to_datetime(scored["date"]).dt.month == month).to_numpy()
+            month_rows = scored[month_mask]
             lat_index = np.searchsorted(latitudes, month_rows["latitude"].to_numpy())
             lon_index = np.searchsorted(longitudes, month_rows["longitude"].to_numpy())
             grid[si, mi, lat_index, lon_index] = month_rows["suitability"].to_numpy()
+            driver_index_grid[si, mi, lat_index, lon_index, :] = driver_index[month_mask]
+            driver_contribution_grid[si, mi, lat_index, lon_index, :] = driver_contribution[month_mask]
 
     dataset = xr.Dataset(
         {"suitability": (("species", "month", "latitude", "longitude"), grid)},
@@ -177,11 +217,43 @@ def export_habitat() -> dict:
     dataset.to_netcdf(path)
     print(f"  wrote {path} ({path.stat().st_size / 1e6:.1f} MB)", flush=True)
 
+    shap_dataset = xr.Dataset(
+        {
+            "driver_index": (("species", "month", "latitude", "longitude", "top_k"), driver_index_grid),
+            "driver_contribution": (
+                ("species", "month", "latitude", "longitude", "top_k"), driver_contribution_grid
+            ),
+        },
+        coords={"species": species_keys, "month": months,
+                "latitude": latitudes, "longitude": longitudes,
+                "top_k": np.arange(HABITAT_SHAP_TOP_K)},
+        attrs={
+            "title": "Fish habitat suitability — per-cell combined-ensemble SHAP attribution",
+            "model": "MaxEnt + RandomForest + LightGBM, skill-weighted (see explain.py)",
+            "region": region.name,
+            "note": ("driver_index[..., k] indexes into manifest.json's "
+                     "products.habitat.shap.feature_names for the k-th ranked "
+                     "driver at that cell (k=0 strongest |contribution|); -1 "
+                     "means no value. driver_contribution is the ensemble's "
+                     "skill-weighted combined attribution: RandomForest and "
+                     "LightGBM in predict_proba (probability) space, MaxEnt "
+                     "collapsed from its hinge/quadratic expansion in logit "
+                     "space -- a stated, weight-bounded approximation, not an "
+                     "exact decomposition of `suitability` "
+                     "(fish_habitat_prediction/src/explain.py)."),
+        },
+    )
+    shap_path = EXPORT_DIR / "habitat_suitability_shap.nc"
+    shap_dataset.to_netcdf(shap_path)
+    print(f"  wrote {shap_path} ({shap_path.stat().st_size / 1e6:.1f} MB)", flush=True)
+
     return {
         "species": species_keys,
         "months": [int(m) for m in months],
         "year": HABITAT_OUTPUT_YEAR,
         "missing_features": missing,
+        "shap_top_k": HABITAT_SHAP_TOP_K,
+        "shap_feature_names": shap_feature_names,
     }
 
 
@@ -414,6 +486,12 @@ def build_manifest(habitat_meta: dict, hab_meta: dict) -> dict:
                 ],
                 "drivers": _top_drivers(reports / "fish_habitat_shap.csv"),
                 "value_label": "relative habitat suitability",
+                "shap": {
+                    "available": True,
+                    "grid": "habitat_suitability_shap.nc",
+                    "top_k": habitat_meta["shap_top_k"],
+                    "feature_names": habitat_meta["shap_feature_names"],
+                },
                 "caveats": [
                     "Presence-only labels — there are no verified absences anywhere in "
                     "this model. Pseudo-absences are drawn from other ray-finned fish "
@@ -426,6 +504,13 @@ def build_manifest(habitat_meta: dict, hab_meta: dict) -> dict:
                     "Monthly resolution supports strategic questions, not "
                     "'where should a boat go tomorrow'.",
                     "Suitability is relative, not a probability of catch.",
+                    "Per-cell driver attribution (habitat_suitability_shap.nc) combines "
+                    "the three tiers' own SHAP with the same skill weights the "
+                    "suitability score uses, but MaxEnt's share is computed in a "
+                    "different unit (logit, not probability) than RandomForest/"
+                    "LightGBM's — a stated approximation bounded by MaxEnt's own "
+                    "(typically small) ensemble weight, not an exact decomposition "
+                    "of `suitability` (fish_habitat_prediction/src/explain.py).",
                 ],
             },
             "hab": {

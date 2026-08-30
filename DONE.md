@@ -1053,6 +1053,76 @@ result.
 
 ---
 
+### Habitat suitability SHAP, Phase 2 — designed, implemented, unit-tested; not run end-to-end — 2026-08-30
+
+Phase 1's own docstring deferred this as "real design work of its own": a
+skill-weighted ensemble of three heterogeneous tiers (MaxEnt-as-logistic-
+regression, RandomForest, LightGBM) needs a combined-explainer design, not
+just TreeSHAP reused three times. Two genuinely hard sub-problems, both
+resolved by measuring against real fitted models rather than assuming a
+library default did the right thing:
+
+**Problem 1 — MaxEnt's tier operates in a different *feature space* than the
+two tree tiers.** `HingeQuadraticExpansion` (`models.py`) turns each
+pre-expansion column into `2 + n_hinges` derived columns
+(`[X, X**2, hinge_0(X), ..., hinge_{k-1}(X)]`, `np.hstack`'d in that fixed
+block order, never interleaved). `fish_habitat_prediction/src/explain.py::
+collapse_hinge_quadratic_shap` sums each original column's own block back
+together — verified two ways: a hand-derived 2-column/1-hinge example, and a
+round trip against a *real* fitted `HingeQuadraticExpansion` instance
+compared to an independently-computed expected sum
+(`test_collapse_matches_a_real_hinge_quadratic_expansion_round_trip`).
+
+**Problem 2 — the three tiers operate in different *units*, and only two of
+three can be reconciled cheaply.** `EnsembleWeights.combine` (the existing
+prediction-blending method) averages `predict_proba` outputs directly, so an
+attribution meant to explain that number needs every tier in probability
+space too — mixing margin-space and probability-space SHAP values in one
+weighted sum would silently misattribute the ensemble's actual output.
+Measured empirically on real fitted models (`test_shap_utils.py`), not
+assumed:
+
+| tier | default SHAP space | reconciled to probability space |
+| --- | --- | --- |
+| RandomForest | **already probability** (sklearn leaves store class-probability fractions) | free — `tree_shap_matrix` unchanged, error ~1e-16 |
+| LightGBM | margin/log-odds (leaves store raw scores) | `tree_shap_matrix_probability` (new): `model_output="probability"` + `feature_perturbation="interventional"` + a background sample — still tree-exact, not black-box; error ~1e-9 |
+| MaxEnt (LogisticRegression) | logit/decision-function | **not reconciled** — `shap.LinearExplainer`'s own `model_output="probability"` does not actually decompose `predict_proba` additively for a model behind a nonlinear (sigmoid) link (checked: off by several probability units on a real fit). A black-box/permutation explainer over the whole pipeline *can* get exact probability-space attribution (verified: 1e-16 error using `shap.Explainer` as a black box), but costs ~2–30 ms/row at a realistic ~28-feature scale against tree-exact's ~0.1–4 ms/row — at this problem's grid-export scale (tens of thousands of species-month-cell rows), minutes-to-hours rather than seconds. **Accepted as a stated approximation**: MaxEnt's collapsed contribution stays in logit space and is weighted into the combination anyway, `combine_shap` (new `EnsembleWeights` method, mirrors `combine`) applying the same skill weights the prediction itself uses. The resulting error is bounded by MaxEnt's own ensemble weight — small by construction under the shipped softmax config (`TSS_SOFTMAX_TEMPERATURE`'s own documented example: 0.008, under 1% of the vote), precisely because MaxEnt was the weakest tier on this problem's holdout. |
+
+New module `fish_habitat_prediction/src/explain.py`
+(`combined_feature_attribution`) orchestrates all three tiers per the table
+above and returns one `(n_rows, n_features)` matrix in the shared
+post-preprocessing feature space — verified that space is genuinely shared
+(`test_the_three_tiers_preprocessors_agree_on_feature_names`, against real
+fitted pipelines including a categorical column, not just numeric) and that
+the combination is the weighted sum it claims to be
+(`test_a_weight_of_one_reduces_to_that_tiers_own_contribution`: collapsing
+the ensemble to one tier's weight reproduces that tier's own attribution
+computed independently). 17 new tests across `test_shap_utils.py`,
+`test_ensemble_weights.py`, `test_explain.py`; full machine_learning suite
+113/113, full backend suite 856/856 (backend gained 5 new tests for
+`services/predictions.py::habitat_point`'s new `drivers` field — that module
+had *no* prior test coverage at all, HAB's own equivalent wiring having been
+verified only live per Phase 1's own entry above).
+
+`scripts/export_predictions.py::export_habitat()` gained the export wiring
+(`habitat_suitability_shap.nc`, dims `(species, month, latitude, longitude,
+top_k)`, mirroring `hab_risk_shap.nc`'s shape exactly) and
+`services/predictions.py::habitat_point()` gained the `drivers` field,
+mirroring `hab_point()`'s wiring line for line, including the same
+degrade-to-`None` behaviour for a missing companion file, a missing manifest
+feature-name list, or a cell with no `suitability` value.
+
+**What this entry does not claim, unlike Phase 1's**: Phase 1 ran the real
+HAB export end-to-end and inspected real cells. Phase 2 has not — no
+`fish_habitat.joblib` artifact exists in this environment (habitat's own
+training pipeline was never run here), so the export wiring is verified only
+by import/syntax checks and the unit tests above, which exercise the same
+code paths on synthetic data but not the real North Indian Ocean feature
+frame or a real trained ensemble. See TODO.md's updated entry for exactly
+what running it for real would need.
+
+---
+
 ## Detection
 
 ### The climatology — built 2026-08-17

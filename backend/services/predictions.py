@@ -24,10 +24,11 @@ exists rather than silently rendering empty tiles.
 Grids are memory-mapped on first use and cached for the process lifetime; they
 are a few MB and change only when the export is re-run.
 
-`hab_risk_shap.nc` is a companion export next to `hab_risk.nc`: same grid,
-plus per-cell top-k SHAP driver indices/contributions. It is optional --
-`hab_point()` degrades to `drivers: None` if it is missing, so an older
-export still serves `risk` correctly.
+`hab_risk_shap.nc` and `habitat_suitability_shap.nc` are companion exports
+next to `hab_risk.nc`/`habitat_suitability.nc` respectively: same grid, plus
+per-cell top-k SHAP driver indices/contributions. Both are optional --
+`hab_point()`/`habitat_point()` degrade to `drivers: None` if their companion
+is missing, so an older export still serves `risk`/`suitability` correctly.
 """
 
 from __future__ import annotations
@@ -53,6 +54,7 @@ logger = logging.getLogger(__name__)
 TILE_SIZE = 256
 
 HABITAT_GRID = "habitat_suitability.nc"
+HABITAT_SHAP_GRID = "habitat_suitability_shap.nc"
 HAB_GRID = "hab_risk.nc"
 HAB_SHAP_GRID = "hab_risk_shap.nc"
 MANIFEST = "manifest.json"
@@ -207,6 +209,74 @@ def _nearest_value(field: xr.DataArray, latitude: float, longitude: float) -> fl
     return None if np.isnan(value) else round(value, 4)
 
 
+def _habitat_shap_feature_names() -> list[str] | None:
+    try:
+        names = _load_manifest().get("products", {}).get("habitat", {}).get("shap", {}).get("feature_names")
+    except PredictionError:
+        return None
+    return names or None
+
+
+def _habitat_drivers(species: str, month: int, latitude: float, longitude: float) -> list[dict[str, Any]] | None:
+    """Top-k combined-ensemble SHAP drivers for one habitat cell, or None if
+    unavailable — same degrade-to-None shape as `_hab_drivers`, and for the
+    same reasons: an export that predates this feature, a manifest missing
+    the feature-name lookup, or a species/month not in the SHAP grid must
+    never break `suitability` itself.
+
+    Unlike `_hab_drivers`, `driver_contribution` here is the *ensemble's*
+    combined attribution (`fish_habitat_prediction/src/explain.py`), not one
+    booster's own margin-space SHAP — RandomForest and LightGBM in
+    probability space, MaxEnt in logit space via its hinge/quadratic
+    expansion collapsed back to original features, weighted-summed by the
+    same skill weights the suitability score itself uses. See that module's
+    docstring for why the units are mixed and why that is a stated,
+    weight-bounded approximation rather than an exact decomposition.
+    """
+    dataset = _load_optional_grid(HABITAT_SHAP_GRID)
+    if dataset is None:
+        return None
+    if species not in dataset.species.values:
+        return None
+    if month not in dataset.month.values:
+        return None
+
+    feature_names = _habitat_shap_feature_names()
+    if not feature_names:
+        return None
+
+    try:
+        indices = (
+            dataset["driver_index"]
+            .sel(species=species, month=month)
+            .sel(latitude=latitude, longitude=longitude, method="nearest")
+            .to_numpy()
+        )
+        contributions = (
+            dataset["driver_contribution"]
+            .sel(species=species, month=month)
+            .sel(latitude=latitude, longitude=longitude, method="nearest")
+            .to_numpy()
+        )
+    except Exception:  # noqa: BLE001 -- a bad lookup here must not break `suitability`
+        return None
+
+    drivers = []
+    for index, contribution in zip(indices, contributions):
+        if index < 0:
+            continue
+        name = feature_names[int(index)]
+        drivers.append(
+            FeatureContribution(
+                feature=name,
+                label=humanise(name),
+                value=None,
+                contribution=float(contribution),
+            ).as_dict()
+        )
+    return drivers or None
+
+
 def habitat_point(species: str, month: int, latitude: float, longitude: float) -> dict[str, Any]:
     value = _nearest_value(habitat_slice(species, month), latitude, longitude)
     return {
@@ -218,6 +288,7 @@ def habitat_point(species: str, month: int, latitude: float, longitude: float) -
         # and there is nothing there.
         "outside_coverage": value is None and not _within_habitat_domain(latitude, longitude),
         "value_label": "relative habitat suitability",
+        "drivers": _habitat_drivers(species, month, latitude, longitude) if value is not None else None,
     }
 
 
