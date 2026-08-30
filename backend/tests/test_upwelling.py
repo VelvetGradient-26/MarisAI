@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 from scipy.interpolate import RegularGridInterpolator
 
-from services import sst_anomaly, upwelling
+from services import sst_anomaly, upwelling, wind_history
 from services.vector_source import VectorSnapshot
 
 
@@ -475,3 +475,70 @@ class TestCorroboration:
             )
         )
         assert field.corroboration()["available"] is True
+
+
+class TestDetectFromHistory:
+    """`detect_from_history` must decide "upwelling-favourable" exactly the
+    way `detect` does — same coastal normal, same band/equator exclusion,
+    same SST corroboration — so a comparison between an instantaneous run and
+    a windowed one is a comparison of the wind input alone, not of two
+    slightly different definitions of the index."""
+
+    @staticmethod
+    def _mean_transport(lat, lon, m_east, m_north, *, window_days=3.0, samples=10):
+        return wind_history.MeanTransport(
+            latitude=np.asarray(lat, dtype="float64"),
+            longitude=np.asarray(lon, dtype="float64"),
+            m_east=np.asarray(m_east, dtype="float32"),
+            m_north=np.asarray(m_north, dtype="float32"),
+            window_days=window_days,
+            samples=samples,
+            span_days=window_days,
+            oldest=datetime(2026, 8, 15, tzinfo=UTC),
+            newest=datetime(2026, 8, 18, tzinfo=UTC),
+        )
+
+    def test_matches_detect_when_fed_the_same_transport(self):
+        """Feed `detect_from_history` the exact transport `detect` itself
+        would have computed from one snapshot — the two fields must agree,
+        cell for cell, since nothing about "is this coast favourable" should
+        depend on which function produced the transport."""
+        lat = np.arange(20.0, 40.0, 2.0)
+        lon = np.arange(-130.0, -110.0, 2.0)
+        u, v = _coast(lat, lon, land_columns=slice(-3, None))
+        currents = _snapshot(lat, lon, u, v)
+        wind = _snapshot(lat, lon, np.zeros((len(lat), len(lon))), np.full((len(lat), len(lon)), -8.0))
+
+        direct = upwelling.detect(wind, currents)
+
+        tau_east, tau_north = upwelling.wind_stress(
+            np.zeros((len(lat), len(lon))), np.full((len(lat), len(lon)), -8.0)
+        )
+        f = upwelling.coriolis(lat)
+        m_east, m_north = upwelling.ekman_transport(tau_east, tau_north, f)
+        mean = self._mean_transport(lat, lon, m_east, m_north)
+
+        windowed = upwelling.detect_from_history(mean, currents)
+
+        finite = np.isfinite(direct.index) & np.isfinite(windowed.index)
+        assert finite.any()
+        np.testing.assert_allclose(direct.index[finite], windowed.index[finite], rtol=1e-4)
+
+    def test_carries_the_window_metadata_the_instantaneous_path_does_not(self):
+        lat = np.arange(20.0, 40.0, 2.0)
+        lon = np.arange(-130.0, -110.0, 2.0)
+        u, v = _coast(lat, lon, land_columns=slice(-3, None))
+        currents = _snapshot(lat, lon, u, v)
+        mean = self._mean_transport(
+            lat, lon, np.zeros((len(lat), len(lon))), np.full((len(lat), len(lon)), 0.05), window_days=3.0, samples=42
+        )
+
+        windowed = upwelling.detect_from_history(mean, currents)
+        direct = upwelling.detect(
+            _snapshot(lat, lon, np.zeros((len(lat), len(lon))), np.full((len(lat), len(lon)), -8.0)), currents
+        )
+
+        assert direct.wind_window is None
+        assert windowed.wind_window is not None
+        assert windowed.wind_window["samples"] == 42
+        assert windowed.as_dict()["wind_window"] == windowed.wind_window

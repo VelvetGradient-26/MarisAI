@@ -309,3 +309,51 @@ class EnsembleWeights:
         for name, values in predictions.items():
             stacked += self.weights.get(name, 0.0) * np.asarray(values)
         return stacked
+
+
+@dataclass
+class StackedEnsemble:
+    """A logistic-regression meta-learner over the base tiers' scores —
+    "stacking on out-of-fold predictions" (TODO.md), the more principled
+    alternative to `EnsembleWeights`' fixed linear combination.
+
+    **Why this needs out-of-fold predictions and `EnsembleWeights` does not.**
+    `EnsembleWeights` only ever needs one *scalar* per model (its CV-mean
+    TSS) to set a weight. A meta-learner needs *training data* — a score
+    from each base model paired with the true label, for enough rows to fit
+    on — and those scores must come from a fold where that row was held out,
+    or the meta-learner would be trained on each base model's in-sample
+    (near-perfect) predictions and learn nothing about how they generalise.
+    `train.cross_validate` collects exactly this: every row's prediction
+    from whichever fold held it out.
+
+    **Why logistic regression, not something heavier.** The meta-learner's
+    own input is only `len(MODEL_BUILDERS)` columns (three, today) — there
+    is no room for a meta-learner to overfit a large feature space here, and
+    a linear model on three already-informative scores is the standard,
+    well-behaved choice in the stacking literature (Wolpert 1992's own
+    original used a similarly simple combiner). It also degrades gracefully
+    to something close to a weighted average when the scores are strongly
+    correlated, rather than finding spurious structure in three collinear
+    inputs the way a high-capacity model could.
+    """
+
+    meta_model: LogisticRegression
+    model_names: list[str]
+
+    @classmethod
+    def fit(
+        cls,
+        oof_predictions: pd.DataFrame,
+        model_names: list[str],
+        seed: int = config.RANDOM_SEED,
+    ) -> "StackedEnsemble":
+        features = oof_predictions[model_names].to_numpy()
+        target = oof_predictions["presence"].to_numpy()
+        meta_model = LogisticRegression(random_state=seed)
+        meta_model.fit(features, target)
+        return cls(meta_model=meta_model, model_names=list(model_names))
+
+    def combine(self, predictions: dict[str, np.ndarray]) -> np.ndarray:
+        features = np.column_stack([np.asarray(predictions[name]) for name in self.model_names])
+        return self.meta_model.predict_proba(features)[:, 1]

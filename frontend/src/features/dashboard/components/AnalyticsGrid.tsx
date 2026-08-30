@@ -133,10 +133,10 @@ export function AnalyticsGrid({
     <section aria-label="Historical analytics">
       <header className="mb-3 flex items-baseline justify-between gap-3">
         <div>
-          <h2 className="text-[13px] font-semibold tracking-wide text-[color:var(--oid-text-strong)] uppercase">
+          <h2 className="text-[length:var(--oid-text-lg)] font-semibold tracking-wide text-[color:var(--oid-text-strong)] uppercase">
             Historical analytics
           </h2>
-          <p className="mt-0.5 text-[11px] text-[color:var(--oid-text-faint)]">
+          <p className="mt-0.5 text-[length:var(--oid-text-xs)] text-[color:var(--oid-text-faint)]">
             Point series at {latitude.toFixed(2)}°, {longitude.toFixed(2)}° · ranges reflect
             each product’s real coverage
           </p>

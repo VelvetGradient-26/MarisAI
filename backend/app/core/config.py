@@ -40,6 +40,26 @@ class Settings(BaseSettings):
     # must not depend on a live socket being up.
     AISSTREAM_API_KEY: str = ""
 
+    # Tavily web search (services/web_search.py), the assistant's
+    # controlled-internet tool. Without this the tool raises rather than
+    # silently degrading — a web search that always returns nothing is
+    # indistinguishable from a broken feature, so it is treated the same way
+    # GFW_TOKEN's absence is (see services/gfw.py): a clear "not configured"
+    # error the chat loop relays plainly, not an empty result set.
+    TAVILY_API_KEY: str = ""
+
+    # Sent as CrossRef's `mailto` query param (services/literature.py) to use
+    # its documented "polite pool" — no key required either way, but omitting
+    # it risks the shared anonymous pool's lower rate limit under load.
+    CROSSREF_MAILTO: str = ""
+
+    # HMAC key for services/watch_tokens.py's signed confirm/unsubscribe
+    # tokens (sihtodo.md item 8). Not an external credential — a locally
+    # generated app secret (any random string) — but treated the same way:
+    # empty by default, and the create-a-watch endpoint raises a clear "not
+    # configured" error rather than signing tokens with an empty key.
+    WATCH_TOKEN_SECRET: str = ""
+
     # LLM insights provider (swap providers without touching code)
     LLM_PROVIDER: str = "gemini"
     LLM_API_KEY: str = ""

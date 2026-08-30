@@ -7,9 +7,8 @@ import { MapControls } from './MapControls';
 import { CoordinateDisplay } from './CoordinateDisplay';
 import { SelectedLocationPanel } from './SelectedLocationPanel';
 import { SevereWeatherPanel } from './SevereWeatherPanel';
+import { BoundaryWatchPanel } from './BoundaryWatchPanel';
 import { ForecastHorizonControl } from './ForecastHorizonControl';
-import { SstLegend } from './SstLegend';
-import { WindLegend } from './WindLegend';
 import { StoryMode } from './story/StoryMode';
 import './styles/map.css';
 
@@ -27,28 +26,29 @@ export function MapView() {
     <Map>
       <MapControls />
       <CoordinateDisplay />
-      {/* One rail, not three independently-positioned overlays. The legends
+      {/* One rail, not two independently-positioned overlays. The top group
           and the location panel both live on the right and both size
           themselves from their content, so as absolute siblings they drew
           straight over each other the moment either grew — measured at
           1440x749 with wind on and a location selected, the overlap was
-          210px. Inside one flex column they cannot: the legends take the
-          space they need from the top, the panel takes what is left. */}
+          210px. Inside one flex column they cannot: the top group takes the
+          space it needs from the top, the panel takes what is left. */}
       <div className="map-rail map-rail--right">
         <div className="legend-stack">
-          <SstLegend />
-          <WindLegend />
-          {/* Renders only while a forecast layer is active, and sits with the
-              legends because it always appears beside one. */}
+          {/* Renders only while a forecast layer is active. The floating
+              SST/wind legends used to live here too; removed per user
+              request — the same color scale is still available inline in
+              the layer control panel (MapControls.tsx's <Legend />). */}
           <ForecastHorizonControl />
         </div>
         {/* One rail child, not two: `.map-rail--right` uses
-            `justify-content: space-between` to pin the legends to the top and
-            the last child to the bottom, so a bare sibling here would float in
-            the middle of whatever space is left rather than sitting with the
-            panel it belongs beside. */}
+            `justify-content: space-between` to pin the top group to the top
+            and the last child to the bottom, so a bare sibling here would
+            float in the middle of whatever space is left rather than sitting
+            with the panel it belongs beside. */}
         <div className="map-rail__bottom-group">
           <SevereWeatherPanel />
+          <BoundaryWatchPanel />
           <SelectedLocationPanel />
         </div>
       </div>

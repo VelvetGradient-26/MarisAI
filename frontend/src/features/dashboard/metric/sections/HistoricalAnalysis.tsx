@@ -201,7 +201,7 @@ export function HistoricalAnalysis({ variable, latitude, longitude }: SectionPro
               type="button"
               onClick={() => setRange(option)}
               className={cn(
-                'rounded-full px-2.5 py-1 text-[10.5px] font-medium transition-colors',
+                'rounded-full px-2.5 py-1 text-[length:var(--oid-text-2xs)] font-medium transition-colors',
                 range === option
                   ? 'bg-[color:var(--oid-accent-wash-strong)] text-[color:var(--oid-accent)]'
                   : 'text-[color:var(--oid-text-faint)] hover:bg-[color:var(--oid-track)]'
@@ -214,14 +214,14 @@ export function HistoricalAnalysis({ variable, latitude, longitude }: SectionPro
 
         <span className="mx-1 h-4 w-px bg-[color:var(--oid-border)]" />
 
-        <span className="text-[10px] text-[color:var(--oid-text-ghost)]">Moving avg</span>
+        <span className="text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-ghost)]">Moving avg</span>
         {MA_WINDOWS.map((option) => (
           <button
             key={option}
             type="button"
             onClick={() => setMaWindow(option)}
             className={cn(
-              'rounded-full px-2 py-1 text-[10.5px] transition-colors',
+              'rounded-full px-2 py-1 text-[length:var(--oid-text-2xs)] transition-colors',
               maWindow === option
                 ? 'bg-[color:var(--oid-accent-wash-strong)] text-[color:var(--oid-accent)]'
                 : 'text-[color:var(--oid-text-faint)] hover:bg-[color:var(--oid-track)]'
@@ -233,7 +233,7 @@ export function HistoricalAnalysis({ variable, latitude, longitude }: SectionPro
 
         <span className="mx-1 h-4 w-px bg-[color:var(--oid-border)]" />
 
-        <label className="inline-flex cursor-pointer items-center gap-1.5 text-[10.5px] text-[color:var(--oid-text-faint)]">
+        <label className="inline-flex cursor-pointer items-center gap-1.5 text-[length:var(--oid-text-2xs)] text-[color:var(--oid-text-faint)]">
           <input
             type="checkbox"
             checked={showTrend}
@@ -244,7 +244,7 @@ export function HistoricalAnalysis({ variable, latitude, longitude }: SectionPro
         </label>
 
         {hovered?.value != null && (
-          <span className="ml-auto font-mono text-[10.5px] text-[color:var(--oid-text-muted)]">
+          <span className="ml-auto font-mono text-[length:var(--oid-text-2xs)] text-[color:var(--oid-text-muted)]">
             {new Date(hovered.time * 1000).toISOString().slice(0, 10)} ·{' '}
             {hovered.value.toFixed(2)} {variable.unit}
             {hovered.ma != null && ` · MA ${hovered.ma.toFixed(2)}`}
@@ -283,7 +283,7 @@ export function HistoricalAnalysis({ variable, latitude, longitude }: SectionPro
                 : []),
             ]}
           />
-          <p className="mt-2 text-[10px] text-[color:var(--oid-text-ghost)]">
+          <p className="mt-2 text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-ghost)]">
             Drag horizontally to zoom · {data.sources.join(' · ')}
             {data.coverage_start && ` · record begins ${data.coverage_start}`}
           </p>

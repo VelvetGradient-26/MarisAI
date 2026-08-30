@@ -38,6 +38,23 @@
   --ocean-accent-line: rgba(79, 209, 255, 0.55);
   --ocean-error: #fca5a5;
   --ocean-warn: #f59e0b;
+  --ocean-good: var(--ma-good);
+  /* Severity/hazard indicator dots and borders — a saturated fill colour,
+     distinct from `--ocean-error`'s softer text-legible tone above. These
+     were four repeated literals (route-hazard badges, the generic
+     layer-status error dot, severe-weather alerts, boundary-watch alerts)
+     with no light-mode counterpart at all, so every one of them still
+     rendered its dark-mode hue on a white panel — down to 1.5:1 for the
+     yellow/teal steps, checked with a real contrast calculation, not
+     eyeballed. Light values are the same hue darkened until it clears 3:1
+     against a white panel (`--ocean-severity-critical` reuses
+     `--ocean-error`'s own light value, since both are already the app's
+     vetted "red" for a light background). */
+  --ocean-severity-critical: #ef4444;
+  --ocean-severity-severe: #f97316;
+  --ocean-severity-moderate: #eab308;
+  --ocean-route-calm: #5eead4;
+  --ocean-route-caution: #facc15;
   --ocean-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   /* A heavier blur surface than --ocean-panel-bg, and more transparent: the
      story overlay is meant to read as one scene with the map behind it, not
@@ -61,6 +78,15 @@
   --ocean-accent-line: rgba(15, 118, 110, 0.5);
   --ocean-error: #b91c1c;
   --ocean-warn: #b45309;
+  /* Same hue as the dark-mode values above, darkened in HSL space until each
+     clears 3:1 against a white panel (computed, not picked by eye):
+     critical reuses --ocean-error's own light red; the rest are this file's
+     first light-mode values for these hues. */
+  --ocean-severity-critical: var(--ocean-error);
+  --ocean-severity-severe: #ea6406;
+  --ocean-severity-moderate: #af8606;
+  --ocean-route-calm: #149b86;
+  --ocean-route-caution: #a58504;
   /* A panel over a dark basemap needs a real shadow in light mode too, or it
      reads as a hole punched in the map rather than as something floating. */
   --ocean-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
@@ -595,6 +621,41 @@ body,
   color: var(--ocean-muted);
 }
 
+/* Per-cell SHAP drivers for a bloom-risk point — why the number is what it
+   is, not just what it is. Forces its own full-width line the same way
+   -name does above (a flex-wrap row, not a grid, so flex-basis is the tool
+   for that here). */
+.selected-location-panel__prediction-drivers {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+  padding-left: 8px;
+  border-left: 1px solid var(--ocean-border);
+}
+
+.selected-location-panel__prediction-driver {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--ocean-muted);
+}
+
+/* Bloom risk itself already reads cool-to-hot toward red (services/
+   predictions.py's colormap) — amber for "raises risk" matches that sense
+   of "worse", and keeping "lowers risk" in the same muted tone as the rest
+   of this row keeps good news visually quiet rather than drawing the eye. */
+.selected-location-panel__prediction-driver-direction--increases {
+  color: var(--ocean-warn);
+}
+
+.selected-location-panel__prediction-driver-direction--decreases {
+  color: var(--ocean-muted);
+}
+
 .selected-location-panel__route {
   display: flex;
   flex-direction: column;
@@ -669,10 +730,63 @@ body,
   font-weight: 600;
 }
 
-.selected-location-panel__route-hazard--calm { color: #5eead4; }
-.selected-location-panel__route-hazard--caution { color: #facc15; }
-.selected-location-panel__route-hazard--hazardous { color: #ef4444; }
+.selected-location-panel__route-hazard--calm { color: var(--ocean-route-calm); }
+.selected-location-panel__route-hazard--caution { color: var(--ocean-route-caution); }
+.selected-location-panel__route-hazard--hazardous { color: var(--ocean-severity-critical); }
 .selected-location-panel__route-hazard--unknown { color: var(--ocean-muted); }
+
+.selected-location-panel__drift-select {
+  font: 11px/1 var(--ocean-font-mono);
+  color: var(--ocean-accent);
+  background: transparent;
+  border: 1px dashed var(--ocean-border);
+  border-radius: 6px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.selected-location-panel__drift-note {
+  color: var(--ocean-muted);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+/* --- Watch this location (sihtodo.md item 8) ----------------------------
+   Same card shape as .selected-location-panel__route immediately above. */
+.selected-location-panel__watch {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--ocean-border);
+  font: 12px/1.4 var(--ocean-font-mono);
+}
+
+.selected-location-panel__watch-form {
+  display: flex;
+  gap: 8px;
+}
+
+.selected-location-panel__watch-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--ocean-panel-solid);
+  border: 1px solid var(--ocean-border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  color: var(--ocean-text);
+  font: 12px/1.4 var(--ocean-font-mono);
+}
+
+.selected-location-panel__watch-input:focus {
+  outline: none;
+  border-color: var(--ocean-accent);
+}
+
+.selected-location-panel__watch-input:disabled {
+  opacity: 0.6;
+}
 
 .map-controls h3 {
   font-size: 11px;
@@ -949,7 +1063,7 @@ body,
 }
 
 .layer-status--error {
-  color: #fca5a5;
+  color: var(--ocean-error);
 }
 
 .layer-status__spinner {
@@ -967,7 +1081,7 @@ body,
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #ef4444;
+  background: var(--ocean-severity-critical);
 }
 
 @keyframes layer-status-spin {
@@ -1126,12 +1240,12 @@ body,
  * is already owned by .selected-location-panel, whose height varies with
  * its open/collapsed state and content. */
 /* Inset by the control column rather than sitting at the edge: MapLibre's
-   NavigationControl / GeolocateControl / FullscreenControl stack is also
-   top-right (ControlManager.ts adds all three there), and at `right: 16px` the
-   legends were drawn straight over it — measured, the controls occupy 10-41px
-   from the right edge and the legends covered 16-236px. `--map-ctrl-gutter` is
-   that measured column plus a gap, named so the two stay in step if a control
-   is ever added or removed. */
+   NavigationControl / FullscreenControl stack is also top-right
+   (ControlManager.ts adds both there), and at `right: 16px` the legends were
+   drawn straight over it — measured, the controls occupy 10-41px from the
+   right edge and the legends covered 16-236px. `--map-ctrl-gutter` is that
+   measured column plus a gap, named so the two stay in step if a control is
+   ever added or removed. */
 /* The right-hand rail: legends at the top, the selected-location panel at the
    bottom, in one column that owns the vertical space between the navbar and
    the viewport floor.
@@ -1162,11 +1276,11 @@ body,
 
 .map-rail--right {
   /* Inset by the control column rather than sitting at the edge: MapLibre's
-     NavigationControl / GeolocateControl / FullscreenControl stack is also
-     top-right (ControlManager.ts adds all three there), and at `right: 16px`
-     the legends were drawn straight over it — measured, the controls occupy
-     10-41px from the right edge. `--map-ctrl-gutter` is that measured column
-     plus a gap, named so the two stay in step if a control is ever added or
+     NavigationControl / FullscreenControl stack is also top-right
+     (ControlManager.ts adds both there), and at `right: 16px` the legends
+     were drawn straight over it — measured, the controls occupy 10-41px
+     from the right edge. `--map-ctrl-gutter` is that measured column plus a
+     gap, named so the two stay in step if a control is ever added or
      removed. */
   right: var(--map-ctrl-gutter);
   align-items: flex-end;
@@ -1190,6 +1304,16 @@ body,
   min-height: 0;
 }
 
+/* `.map-rail > *` only reaches its own direct children, and this group
+   nests severe-weather/boundary-watch/selected-location one level deeper —
+   so without this, each panel's default `min-height: auto` refused to
+   shrink below its content height, growing past the rail's bottom edge
+   instead of capping itself and letting its own `overflow-y: auto` body
+   scroll. Same fix as `.map-rail > *`, one level down. */
+.map-rail__bottom-group > * {
+  min-height: 0;
+}
+
 .legend-stack {
   display: flex;
   flex-direction: column;
@@ -1203,58 +1327,6 @@ body,
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
-}
-
-.sst-legend,
-.wind-legend {
-  width: 220px;
-  background: var(--ocean-panel-bg);
-  border: 1px solid var(--ocean-border);
-  border-radius: 10px;
-  padding: 12px 14px;
-  color: var(--ocean-text);
-  backdrop-filter: blur(6px);
-  box-sizing: border-box;
-}
-
-.sst-legend__title,
-.wind-legend__title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ocean-muted);
-  margin-bottom: 8px;
-}
-
-.sst-legend__meta,
-.wind-legend__meta {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: 8px;
-  color: var(--ocean-muted);
-  font: 10px/1.4 var(--ocean-font-mono);
-}
-
-.sst-legend__error,
-.wind-legend__error {
-  color: var(--ocean-warn);
-}
-
-.sst-legend__source,
-.wind-legend__source {
-  opacity: 0.8;
-}
-
-.wind-legend__beaufort {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--ocean-border);
-  font: 10px/1.4 var(--ocean-font-mono);
-  color: var(--ocean-muted);
 }
 
 /* --- Map hover tooltips ------------------------------------------------ */
@@ -1370,7 +1442,7 @@ body,
 }
 
 .vessel-feed-status__dot--live {
-  background: #4ade80;
+  background: var(--ocean-good);
   box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6);
   animation: vessel-feed-pulse 2.4s ease-out infinite;
 }
@@ -1590,11 +1662,6 @@ body,
     align-items: stretch;
     width: calc(50vw - 20px - (var(--map-ctrl-gutter) - 16px));
     max-width: 220px;
-  }
-
-  .sst-legend,
-  .wind-legend {
-    width: 100%;
   }
 
   /* Bottom row: readout left, feed status right. The status normally centres
@@ -1882,17 +1949,17 @@ body,
 
 .severe-weather-panel__badge--extreme .severe-weather-panel__badge-dot,
 .severe-weather-panel__alert--extreme {
-  background: #ef4444;
+  background: var(--ocean-severity-critical);
 }
 
 .severe-weather-panel__badge--severe .severe-weather-panel__badge-dot,
 .severe-weather-panel__alert--severe {
-  background: #f97316;
+  background: var(--ocean-severity-severe);
 }
 
 .severe-weather-panel__badge--moderate .severe-weather-panel__badge-dot,
 .severe-weather-panel__alert--moderate {
-  background: #eab308;
+  background: var(--ocean-severity-moderate);
 }
 
 .severe-weather-panel__badge--minor .severe-weather-panel__badge-dot,
@@ -1912,9 +1979,9 @@ body,
   gap: 3px;
 }
 
-.severe-weather-panel__alert--extreme { border-left-color: #ef4444; }
-.severe-weather-panel__alert--severe { border-left-color: #f97316; }
-.severe-weather-panel__alert--moderate { border-left-color: #eab308; }
+.severe-weather-panel__alert--extreme { border-left-color: var(--ocean-severity-critical); }
+.severe-weather-panel__alert--severe { border-left-color: var(--ocean-severity-severe); }
+.severe-weather-panel__alert--moderate { border-left-color: var(--ocean-severity-moderate); }
 .severe-weather-panel__alert--minor { border-left-color: var(--ocean-accent); }
 .severe-weather-panel__alert--quiet { border-left-color: var(--ocean-muted); }
 
@@ -1998,6 +2065,137 @@ body,
 }
 
 .severe-weather-panel__attribution {
+  font-size: 10px;
+  color: var(--ocean-muted);
+  border-top: 1px solid var(--ocean-border);
+  padding-top: 8px;
+}
+
+/* --- Boundary watch panel/badge -----------------------------------------
+   sihtodo.md item 9. Same shape and rail placement as the severe-weather
+   panel above — collapsed to a badge by default, most visits have nothing
+   to report. */
+.boundary-watch-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100vw - 32px));
+  box-sizing: border-box;
+}
+
+.boundary-watch-panel__badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--ocean-text);
+  font: 12px/1.4 var(--ocean-font-mono);
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  text-align: left;
+}
+
+.boundary-watch-panel__badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ocean-muted);
+  flex-shrink: 0;
+}
+
+.boundary-watch-panel__badge--alert .boundary-watch-panel__badge-dot {
+  background: var(--ocean-accent);
+}
+
+.boundary-watch-panel__badge--error .boundary-watch-panel__badge-dot {
+  background: var(--ocean-error);
+}
+
+.boundary-watch-panel__body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 10px;
+  padding: 14px;
+  color: var(--ocean-text);
+  backdrop-filter: blur(6px);
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.boundary-watch-panel__header h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.boundary-watch-panel__subtitle {
+  color: var(--ocean-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.boundary-watch-panel__toggle-button {
+  background: var(--ocean-accent);
+  color: var(--ocean-bg);
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font: 12px/1.4 var(--ocean-font-mono);
+  font-weight: 600;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.boundary-watch-panel__state {
+  font-size: 12px;
+  color: var(--ocean-muted);
+  margin: 0;
+}
+
+.boundary-watch-panel__state--error {
+  color: var(--ocean-error);
+}
+
+.boundary-watch-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.boundary-watch-panel__alert {
+  background: transparent;
+  border-left: 3px solid var(--ocean-accent);
+  border-radius: 4px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.boundary-watch-panel__alert--eez_crossing {
+  border-left-color: var(--ocean-severity-critical);
+}
+
+.boundary-watch-panel__alert-message {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.boundary-watch-panel__alert-time {
+  font-size: 10px;
+  color: var(--ocean-muted);
+}
+
+.boundary-watch-panel__attribution {
   font-size: 10px;
   color: var(--ocean-muted);
   border-top: 1px solid var(--ocean-border);

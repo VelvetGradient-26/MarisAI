@@ -73,22 +73,33 @@ curious and genuinely enthusiastic about the ocean — you enjoy this. Talk like
 a knowledgeable friend who happens to have live ocean data at hand, not like a \
 database that learned English.
 
-You do not hold ocean data yourself. You coordinate three specialists, each an \
+You do not hold ocean data yourself. You coordinate four specialists, each an \
 expert with its own tools, and you delegate to them:
 
-- delegate_to_ocean_analytics — forecasts, global ocean state, harmful algal \
-bloom risk, fish habitat suitability, potential fishing zones, historical \
-trends, and whether two or more variables are correlated over time.
-- delegate_to_weather_safety — present-day sea/weather conditions, active \
-hazard alerts, "is it safe to go out" questions (answered with a fixed, \
-deterministic risk verdict, not a freeform guess).
+- delegate_to_ocean_analytics — forecasts, a *worldwide aggregate* ocean-state \
+summary (no single coordinate), harmful algal bloom risk, fish habitat \
+suitability, potential fishing zones, historical/past trends, and whether \
+two or more variables are correlated over time.
+- delegate_to_weather_safety — the *right-now* reading at one coordinate: \
+current sea surface temperature, wind, waves, tide-gauge sea level, and \
+other present-day sea/weather conditions, plus active hazard alerts and \
+"is it safe to go out" questions (answered with a fixed, deterministic risk \
+verdict, not a freeform guess).
+
+A "what is the SST/wind/wave/tide right now at this point" question is \
+always weather_safety, never ocean_analytics — ocean_analytics's "global \
+ocean state" means a single worldwide summary number with no coordinate \
+(get_global_ocean_summary), not a point reading. Sending a current-conditions \
+question to ocean_analytics gets you a specialist with no tool for it.
 - delegate_to_geospatial_risk — maritime boundary / Marine Protected Area \
-proximity (geofencing), seafloor depth, safe-route planning between two points.
-- delegate_to_web_research — web search, reading a specific webpage, and \
-scientific literature search, for context beyond MarisAI's own live ocean \
-data: recent events, background explanations, what published research says. \
-Use this when a question asks *why* something is happening, or wants recent \
-news or research MarisAI's own live data cannot explain by itself.
+proximity (geofencing), seafloor depth, safe-route planning between two points, \
+and drift trajectory forecasting for a person or object overboard ("where will \
+X drift to" — a probability envelope, not one predicted position).
+- delegate_to_external_research — web search, fetching a specific webpage, \
+and scientific-literature search, for anything MarisAI's own data cannot \
+answer: recent news, an explanation of a current event, or published \
+research. Its tools return other people's claims, not MarisAI measurements — \
+relay them with their source, never as something MarisAI observed.
 
 You also have get_documentation, your own tool rather than a delegate, for \
 questions about MarisAI itself — how to use a feature, where a page lives, \
@@ -103,6 +114,14 @@ answer from what they reported. Give each delegate the coordinates, dates and \
 any other detail it needs in its own question text; it does not see the rest \
 of this conversation. The dataset catalog below is static knowledge you may \
 answer directly, without delegating, since it is not a live measurement.
+
+A "why is [place] unusually [warm/rough/...] right now" question usually \
+needs two delegates in sequence, not one: first ocean_analytics or \
+weather_safety for the actual measurement (an anomaly, a trend), then \
+external_research — telling it what was measured — for context or an \
+explanation. Do not send external_research a bare "why is it warm" with no \
+measurement to explain; it has no ocean data of its own and would only be \
+able to guess.
 
 How to be good company:
 
@@ -144,11 +163,10 @@ warnings. Never imply an official warning exists.
 5. Coverage is genuinely uneven — habitat models cover the North Indian Ocean, \
 bloom models the Arabian Sea, boundary/MPA geometry is an approximate \
 reference. Outside those, say so rather than extrapolating.
-6. web_research's results are external and supplementary, not MarisAI's own \
-measurements. Always relay which source said something (site, publication, \
-paper, and its date if given), and never let a web result or a paper's \
-finding contradict or stand in for a live figure another specialist \
-actually measured — add context with it, don't replace the measurement.
+6. external_research's tools return other people's claims (a news article, a \
+paper), never a MarisAI measurement — always name the source when relaying \
+one, and never present a single result as established fact the way you would \
+a number from any other specialist.
 7. Keep it tight — a few sentences unless more is asked for. Always name units."""
 
 
@@ -570,6 +588,33 @@ def _record_delegation(call: dict[str, Any], delegations: list[dict[str, Any]]) 
     delegations.append({"agent": name[len(_DELEGATE_PREFIX):], "question": question})
 
 
+def _question_message(question: str, image: str | None) -> HumanMessage:
+    """The turn's `HumanMessage` — multimodal only when an image is attached.
+
+    The content-block shape (`{"type": "image_url", "image_url": {"url": ...}}`)
+    is the one LangChain standardised across `ChatOpenAI` and
+    `ChatGoogleGenerativeAI`; the Ollama path is served through the OpenAI
+    adapter (see `_model()`) against an OpenAI-compatible endpoint, so the same
+    shape applies there too — whether the *configured model itself* understands
+    an image is a property of that model, not of this plumbing.
+
+    **Scope, deliberately**: the image is not persisted to the chat transcript
+    (`store.record` only ever took question/answer text) and is not forwarded
+    to a delegate specialist's own sub-loop — each specialist already "does not
+    see the rest of this conversation" per the system prompt, and the ask this
+    implements is "describe/answer about an attached image" as a direct,
+    top-level capability, not a new image-analysis tool for every specialist.
+    """
+    if not image:
+        return HumanMessage(content=question)
+    return HumanMessage(
+        content=[
+            {"type": "text", "text": question},
+            {"type": "image_url", "image_url": {"url": image}},
+        ]
+    )
+
+
 def _history_messages(history: list[dict[str, str]]) -> list[BaseMessage]:
     messages: list[BaseMessage] = []
     for turn in history[-10:]:
@@ -590,6 +635,7 @@ async def answer(
     *,
     session_id: str | None = None,
     client_id: str | None = None,
+    image: str | None = None,
 ) -> dict[str, Any]:
     """Run one conversation turn to completion.
 
@@ -601,6 +647,10 @@ async def answer(
     forgetting itself: the browser's copy is lost on reload, and trusting it
     also let a client silently rewrite what the model believed it had said.
     `history` remains the fallback for a deployment with no database.
+
+    `image`, when given, is a `data:image/...;base64,...` URL attached to this
+    turn — see `_question_message`'s docstring for the multimodal content
+    shape and what is deliberately out of scope.
     """
     question = (question or "").strip()
     if not question:
@@ -626,7 +676,7 @@ async def answer(
 
     messages: list[BaseMessage] = [SystemMessage(content=_SYSTEM_PROMPT)]
     messages.extend(history_messages)
-    messages.append(HumanMessage(content=question))
+    messages.append(_question_message(question, image))
 
     delegations: list[dict[str, Any]] = []
     truncated = False
@@ -723,6 +773,7 @@ async def answer_stream(
     *,
     session_id: str | None = None,
     client_id: str | None = None,
+    image: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """`answer()`, yielded as it happens.
 
@@ -784,7 +835,7 @@ async def answer_stream(
 
     messages: list[BaseMessage] = [SystemMessage(content=_SYSTEM_PROMPT)]
     messages.extend(history_messages)
-    messages.append(HumanMessage(content=question))
+    messages.append(_question_message(question, image))
 
     delegations: list[dict[str, Any]] = []
     truncated = False

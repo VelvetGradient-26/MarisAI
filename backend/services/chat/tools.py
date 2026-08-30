@@ -172,30 +172,6 @@ class DocumentationArgs(BaseModel):
     )
 
 
-class WebSearchArgs(BaseModel):
-    query: str = Field(
-        ..., min_length=1, description="What to search the open web for, in plain language."
-    )
-    max_results: int = Field(5, ge=1, le=10, description="Maximum number of results to return.")
-
-
-class FetchWebpageArgs(BaseModel):
-    url: str = Field(
-        ...,
-        description=(
-            "A real http(s) URL to fetch and read, e.g. one returned by "
-            "web_search or given directly by the user."
-        ),
-    )
-
-
-class LiteratureSearchArgs(BaseModel):
-    query: str = Field(
-        ..., min_length=1, description="Topic or keywords to search scholarly literature for."
-    )
-    max_results: int = Field(5, ge=1, le=10, description="Maximum number of results to return.")
-
-
 class CorrelationArgs(PointArgs):
     variables: list[str] = Field(
         ...,
@@ -225,6 +201,77 @@ class RouteArgs(BaseModel):
     start_longitude: float = Field(..., ge=-180, le=180, description="Start longitude in degrees east.")
     end_latitude: float = Field(..., ge=-90, le=90, description="Destination latitude in degrees north.")
     end_longitude: float = Field(..., ge=-180, le=180, description="Destination longitude in degrees east.")
+    vessel_draft_m: float | None = Field(
+        None,
+        gt=0,
+        description=(
+            "Vessel draft in metres, if given. Water too shallow to clear it is excluded from the "
+            "route outright, so the path may detour around a shoal it would otherwise cross."
+        ),
+    )
+    vessel_speed_kmh: float | None = Field(
+        None,
+        gt=0,
+        description="Vessel speed in km/h, if given. Only used to estimate travel time; never changes the route.",
+    )
+    vessel_fuel_range_km: float | None = Field(
+        None,
+        gt=0,
+        description=(
+            "Vessel fuel range in km, if given. Checked against the found route's own distance "
+            "to say whether it fits within range; never changes the route."
+        ),
+    )
+
+
+class WebSearchArgs(BaseModel):
+    query: str = Field(..., description="What to search for on the open web.")
+    max_results: int = Field(5, ge=1, le=10, description="Maximum number of results to return.")
+
+
+class FetchWebpageArgs(BaseModel):
+    url: str = Field(
+        ...,
+        description=(
+            "A specific http(s) URL to fetch and read, e.g. one returned by "
+            "web_search. Not a search query."
+        ),
+    )
+
+
+class LiteratureArgs(BaseModel):
+    query: str = Field(..., description="Topic, species, or research question to search for.")
+    max_results: int = Field(5, ge=1, le=10, description="Maximum number of papers to return.")
+
+
+class TideArgs(PointArgs):
+    radius_km: float = Field(
+        200.0,
+        ge=10,
+        le=500,
+        description="How far from the point to look for an INCOIS tide-gauge station, in km.",
+    )
+
+
+class ArgoArgs(PointArgs):
+    radius_km: float = Field(300.0, ge=10, le=1000, description="How far from the point to look for an ARGO float.")
+    lookback_days: int = Field(
+        30, ge=1, le=120, description="How many days back to look for a profile (a float reports roughly every 10 days)."
+    )
+
+
+class DriftTrajectoryArgs(PointArgs):
+    preset: str = Field(
+        "life_raft",
+        description=(
+            "What is drifting, which sets how much of the wind it picks up "
+            "directly (leeway) on top of the current and waves. One of: "
+            "water_only (no leeway — a slick or larva), swamped_hull, "
+            "oil_slick, person_in_water, life_raft (default — the common "
+            "person-overboard/SAR case)."
+        ),
+    )
+    horizon_hours: float = Field(48.0, ge=6, le=96, description="How far ahead to forecast, in hours.")
 
 
 # --------------------------------------------------------------------------
@@ -380,30 +427,26 @@ async def _get_documentation(query: str) -> dict[str, Any]:
     }
 
 
-async def _web_search(query: str, max_results: int = 5) -> dict[str, Any]:
-    from services.web_search import search
-
-    return await search(query, max_results=max_results)
-
-
-async def _fetch_webpage(url: str) -> dict[str, Any]:
-    from services.webpage import fetch
-
-    return await fetch(url)
-
-
-async def _literature_search(query: str, max_results: int = 5) -> dict[str, Any]:
-    from services.literature import search
-
-    return await search(query, max_results=max_results)
-
-
 async def _safe_route(
-    start_latitude: float, start_longitude: float, end_latitude: float, end_longitude: float
+    start_latitude: float,
+    start_longitude: float,
+    end_latitude: float,
+    end_longitude: float,
+    vessel_draft_m: float | None = None,
+    vessel_speed_kmh: float | None = None,
+    vessel_fuel_range_km: float | None = None,
 ) -> dict[str, Any]:
     from services.routing import plan_route
 
-    return await plan_route(start_latitude, start_longitude, end_latitude, end_longitude)
+    return await plan_route(
+        start_latitude,
+        start_longitude,
+        end_latitude,
+        end_longitude,
+        vessel_draft_m=vessel_draft_m,
+        vessel_speed_kmh=vessel_speed_kmh,
+        vessel_fuel_range_km=vessel_fuel_range_km,
+    )
 
 
 async def _assess_risk(latitude: float, longitude: float) -> dict[str, Any]:
@@ -418,6 +461,78 @@ async def _correlate(
     from services.correlation import analyze
 
     return await analyze(variables, latitude, longitude, range_key)
+
+
+async def _web_search(query: str, max_results: int) -> dict[str, Any]:
+    from services.web_search import search
+
+    return await search(query, max_results)
+
+
+async def _fetch_webpage(url: str) -> dict[str, Any]:
+    from services.webpage import fetch
+
+    return await fetch(url)
+
+
+async def _search_literature(query: str, max_results: int) -> dict[str, Any]:
+    from services.literature import search_literature
+
+    return await search_literature(query, max_results)
+
+
+async def _tide_level(latitude: float, longitude: float, radius_km: float) -> dict[str, Any]:
+    from services.tides import nearest_station
+
+    return await nearest_station(latitude, longitude, radius_km)
+
+
+async def _argo_profile(latitude: float, longitude: float, radius_km: float, lookback_days: int) -> dict[str, Any]:
+    from services.argo import nearest_profile
+
+    return await nearest_profile(latitude, longitude, radius_km, lookback_days)
+
+
+async def _drift_trajectory(
+    latitude: float, longitude: float, preset: str, horizon_hours: float
+) -> dict[str, Any]:
+    """A trimmed view of `drift_trajectory.plan_trajectory`'s ensemble: the
+    100 raw member tracks would swamp the model's context for no benefit, so
+    this reports the median path at a 12-hourly cadence plus one spread
+    number — how far the 90th-percentile member sits from the median at the
+    end of the horizon, which is the "how big is the search area" question a
+    SAR-style answer actually needs."""
+    import math
+
+    from services.drift import resolve_alpha
+    from services.drift_trajectory import plan_trajectory
+
+    alpha = resolve_alpha(None, preset)
+    result = await plan_trajectory(latitude, longitude, alpha, True, horizon_hours=horizon_hours)
+
+    median = result["median_track"]
+    final_hour = median[-1]["hour"]
+    final_median = median[-1]
+
+    distances_km = []
+    for member in result["members"]:
+        point = member["track"][-1]
+        dlat_km = (point["lat"] - final_median["lat"]) * 111.32
+        dlon_km = (point["lon"] - final_median["lon"]) * 111.32 * math.cos(math.radians(final_median["lat"]))
+        distances_km.append(math.hypot(dlat_km, dlon_km))
+    distances_km.sort()
+    p90_index = min(len(distances_km) - 1, round(0.9 * (len(distances_km) - 1)))
+
+    return {
+        "start": result["start"],
+        "object": preset,
+        "leeway_alpha": result["leeway_alpha"],
+        "median_track": [p for p in median if p["hour"] % 12 == 0 or p["hour"] == final_hour],
+        "search_radius_90th_percentile_km_at_horizon": round(distances_km[p90_index], 1),
+        "provenance": result["provenance"],
+        "degraded_terms": result["degraded_terms"],
+        "note": result["note"],
+    }
 
 
 # --------------------------------------------------------------------------
@@ -539,34 +654,6 @@ _SPECS: list[tuple[str, str, type[BaseModel], Any]] = [
         _safe_route,
     ),
     (
-        "web_search",
-        "Search the open web for current information beyond MarisAI's own "
-        "ocean data — news, background context, explanations for a recent or "
-        "unusual event. Returns titles, URLs, snippets and (where available) "
-        "publication dates. Not for ocean measurements themselves — use the "
-        "ocean_analytics/weather_safety tools for those.",
-        WebSearchArgs,
-        _web_search,
-    ),
-    (
-        "fetch_webpage",
-        "Fetch and read the text content of one specific webpage, e.g. a URL "
-        "returned by web_search or given directly by the user. Only "
-        "http/https pages with HTML or plain-text content; returns the "
-        "page's title and main text, truncated if long.",
-        FetchWebpageArgs,
-        _fetch_webpage,
-    ),
-    (
-        "search_scientific_literature",
-        "Search scholarly literature (via Crossref) for peer-reviewed papers "
-        "and preprints on a topic. Returns title, authors, publication date, "
-        "venue, DOI and an abstract snippet where available. Use for 'what "
-        "does research say' style questions.",
-        LiteratureSearchArgs,
-        _literature_search,
-    ),
-    (
         "get_documentation",
         "Look up MarisAI's own documentation for questions about the "
         "platform itself — how to use a feature, where a page lives, what a "
@@ -599,6 +686,70 @@ _SPECS: list[tuple[str, str, type[BaseModel], Any]] = [
         "claim — correlation is not causation.",
         CorrelationArgs,
         _correlate,
+    ),
+    (
+        "web_search",
+        "Search the open web for current information MarisAI's own ocean "
+        "data cannot provide — news, explanations of an unusual event, "
+        "context beyond a measured number. Returns a ranked list of "
+        "{title, url, snippet, published_date}. Always attribute what you "
+        "relay to its source; a web result is a claim someone made, not a "
+        "MarisAI measurement.",
+        WebSearchArgs,
+        _web_search,
+    ),
+    (
+        "fetch_webpage",
+        "Fetch one specific webpage (e.g. a URL web_search returned, or one "
+        "the user gave you) and return its title and readable text. Only "
+        "plain public http(s) HTML/text pages can be fetched — not a search "
+        "query, and not a PDF or image.",
+        FetchWebpageArgs,
+        _fetch_webpage,
+    ),
+    (
+        "search_scientific_literature",
+        "Search published, peer-reviewed scientific literature (via "
+        "CrossRef) for a topic, species or research question. Returns "
+        "{title, authors, journal, published, doi, url} per paper — use the "
+        "DOI/URL to cite it, never restate a finding as MarisAI's own.",
+        LiteratureArgs,
+        _search_literature,
+    ),
+    (
+        "get_tide_level",
+        "Current measured sea level at the nearest INCOIS tide-gauge station "
+        "to a coordinate (~50 Indian coastal stations), with a rising/"
+        "falling/steady trend. This is a real-time gauge reading — it folds "
+        "in storm surge and wave setup along with the astronomical tide — "
+        "not a predicted tide table; no keyless Indian tide-prediction feed "
+        "exists. Reports if the nearest station is out of range or not "
+        "currently reporting rather than guessing a value.",
+        TideArgs,
+        _tide_level,
+    ),
+    (
+        "get_argo_profile",
+        "The nearest real ARGO float's measured temperature and salinity by "
+        "depth (roughly surface to 2000 m) near a coordinate — the only "
+        "in-situ, instrument-measured check on subsurface conditions this "
+        "platform has. ARGO floats profile on a ~10-day cycle and are "
+        "sparse (about one per 3 degrees globally), so report if none is "
+        "within range rather than guessing; a profile found may be several "
+        "days old, and its own timestamp says how old.",
+        ArgoArgs,
+        _argo_profile,
+    ),
+    (
+        "plan_drift_trajectory",
+        "Forecast where a drifting object (a person overboard, a life raft, "
+        "an oil slick) will be over the next 6-96 hours, starting from a "
+        "coordinate — a probability envelope from a 100-member ensemble, "
+        "not one predicted position. Use for 'where will X end up' or "
+        "search-and-rescue-shaped questions; get_current_conditions and "
+        "get_active_alerts answer 'what is happening now', not this.",
+        DriftTrajectoryArgs,
+        _drift_trajectory,
     ),
 ]
 

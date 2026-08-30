@@ -7,4 +7,4 @@ are used by both ``hab_early_warning`` and ``fish_habitat_prediction``. Only
 labels and problem-specific derived features diverge (approach doc section 5).
 """
 
-__all__ = ["config", "sources", "fusion", "features", "validation"]
+__all__ = ["config", "sources", "fusion", "features", "validation", "shap_utils"]

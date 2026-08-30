@@ -78,6 +78,63 @@ async def test_a_specialist_cannot_reach_another_specialists_tool():
 
 
 @pytest.mark.asyncio
+async def test_external_research_specialist_calls_web_search(monkeypatch):
+    async def fake_search(query: str, max_results: int):
+        return {
+            "query": query,
+            "results": [
+                {
+                    "title": "Arabian Sea marine heatwave",
+                    "url": "https://example.org/article",
+                    "snippet": "Unusually warm water this week.",
+                    "published_date": "2026-08-20",
+                }
+            ],
+            "result_count": 1,
+            "source": "Tavily web search",
+        }
+
+    monkeypatch.setattr("services.web_search.search", fake_search)
+
+    model = ScriptedModel(
+        [
+            _tool_call("web_search", {"query": "arabian sea warming", "max_results": 5}),
+            AIMessage(
+                content="Per example.org, the Arabian Sea has seen unusually warm water this week."
+            ),
+        ]
+    )
+    ledger = Ledger()
+
+    result = await run_specialist(
+        "external_research", "why is the water warm", ledger, [], lambda: model
+    )
+
+    assert "example.org" in result.text
+    assert ledger.observations[0]["tool"] == "web_search"
+    assert ledger.observations[0]["agent"] == "external_research"
+    assert ledger.observations[0]["result"]["results"][0]["url"] == "https://example.org/article"
+
+
+@pytest.mark.asyncio
+async def test_external_research_specialist_has_no_ocean_data_tools():
+    """`external_research` must not be able to call an ocean-data tool even
+    if the model hallucinates the name — its tool set is web-only."""
+    model = ScriptedModel(
+        [
+            _tool_call("get_current_conditions", {"latitude": 1.0, "longitude": 1.0}),
+            AIMessage(content="I can't check live conditions myself."),
+        ]
+    )
+    ledger = Ledger()
+
+    await run_specialist("external_research", "is it warm there", ledger, [], lambda: model)
+
+    assert ledger.observations == []
+    assert "No such tool" in str(model.seen[-1][-1].content)
+
+
+@pytest.mark.asyncio
 async def test_a_specialist_loop_is_bounded():
     model = ScriptedModel(
         [
@@ -103,7 +160,7 @@ async def test_delegate_tools_are_one_per_specialist():
         "delegate_to_ocean_analytics",
         "delegate_to_weather_safety",
         "delegate_to_geospatial_risk",
-        "delegate_to_web_research",
+        "delegate_to_external_research",
     }
     for tool in delegates:
         assert tool.description

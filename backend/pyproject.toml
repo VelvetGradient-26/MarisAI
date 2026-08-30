@@ -23,6 +23,10 @@ dependencies = [
     # Live AIS websocket feed (services/ais.py). Already present via
     # uvicorn[standard], but declared directly since we import it ourselves.
     "websockets>=13.0",
+    # services/tides.py builds a custom SSL context to work around
+    # tsunami.incois.gov.in serving an incomplete certificate chain. Already
+    # present via httpx, but declared directly since we import it ourselves.
+    "certifi>=2024.0.0",
     # Configuration
     "pydantic>=2.7.0",
     "pydantic-settings>=2.3.0",

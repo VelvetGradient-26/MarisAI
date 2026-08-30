@@ -133,7 +133,7 @@ function readCoordinates(searchParams: URLSearchParams) {
 function Breadcrumb({ label }: { label: string }) {
   const crumb = 'text-[color:var(--oid-text-faint)] no-underline hover:text-[color:var(--oid-accent)]';
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-[11.5px]">
+    <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-[length:var(--oid-text-sm)]">
       <Link to="/" className={crumb}>
         Home
       </Link>
@@ -234,7 +234,7 @@ export function MetricIntelligencePage({ variableKey }: { variableKey: string })
           <div className="px-5 pb-5 text-center">
             <Link
               to="/dashboard/metrics"
-              className="text-[12px] text-[color:var(--oid-accent)] no-underline hover:underline"
+              className="text-[length:var(--oid-text-base)] text-[color:var(--oid-accent)] no-underline hover:underline"
             >
               See all metrics
             </Link>
@@ -269,7 +269,7 @@ export function MetricIntelligencePage({ variableKey }: { variableKey: string })
             key={section.id}
             href={`#${section.id}`}
             className={cn(
-              'rounded-full border px-3 py-1 text-[11px] no-underline transition-colors',
+              'rounded-full border px-3 py-1 text-[length:var(--oid-text-xs)] no-underline transition-colors',
               'border-[color:var(--oid-border)] text-[color:var(--oid-text-faint)]',
               'hover:bg-[color:var(--oid-track)] hover:text-[color:var(--oid-accent)]'
             )}
@@ -314,12 +314,12 @@ export function MetricIntelligencePage({ variableKey }: { variableKey: string })
       {omitted.length > 0 && (
         <Panel className="mt-4">
           <div className="p-4">
-            <h2 className="text-[11px] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
+            <h2 className="text-[length:var(--oid-text-xs)] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
               Not shown for this metric
             </h2>
             <ul className="mt-2 space-y-1.5">
               {omitted.map(({ section, reason }) => (
-                <li key={section.id} className="text-[11.5px] text-[color:var(--oid-text-faint)]">
+                <li key={section.id} className="text-[length:var(--oid-text-sm)] text-[color:var(--oid-text-faint)]">
                   <span className="text-[color:var(--oid-text)]">{section.title}</span> — {reason}
                 </li>
               ))}
@@ -328,7 +328,7 @@ export function MetricIntelligencePage({ variableKey }: { variableKey: string })
         </Panel>
       )}
 
-      <footer className="mt-6 text-[10px] leading-relaxed text-[color:var(--oid-text-ghost)]">
+      <footer className="mt-6 text-[length:var(--oid-text-3xs)] leading-relaxed text-[color:var(--oid-text-ghost)]">
         Values are model and satellite-derived, from Copernicus Marine Service, Open-Meteo and
         GEBCO. Forecasts are statistical, validated by rolling-origin cross-validation, and are
         not official marine warnings or suitable for navigation.
@@ -377,7 +377,7 @@ function LocationControl({
           onChange={(event) => setLatitudeText(event.target.value)}
           inputMode="decimal"
           aria-label="Latitude"
-          className="w-14 bg-transparent text-[11.5px] text-[color:var(--oid-text)] outline-none"
+          className="w-14 bg-transparent text-[length:var(--oid-text-sm)] text-[color:var(--oid-text)] outline-none"
         />
         <span className="text-[color:var(--oid-text-ghost)]">,</span>
         <input
@@ -385,12 +385,12 @@ function LocationControl({
           onChange={(event) => setLongitudeText(event.target.value)}
           inputMode="decimal"
           aria-label="Longitude"
-          className="w-14 bg-transparent text-[11.5px] text-[color:var(--oid-text)] outline-none"
+          className="w-14 bg-transparent text-[length:var(--oid-text-sm)] text-[color:var(--oid-text)] outline-none"
         />
       </div>
       <button
         type="submit"
-        className="inline-flex items-center gap-1.5 rounded-full bg-[color:var(--oid-accent-wash)] px-3 py-1.5 text-[11px] font-medium text-[color:var(--oid-accent)] transition-colors hover:bg-[color:var(--oid-accent-wash-strong)]"
+        className="inline-flex items-center gap-1.5 rounded-full bg-[color:var(--oid-accent-wash)] px-3 py-1.5 text-[length:var(--oid-text-xs)] font-medium text-[color:var(--oid-accent)] transition-colors hover:bg-[color:var(--oid-accent-wash-strong)]"
       >
         <Search size={11} />
         Update
@@ -398,7 +398,7 @@ function LocationControl({
       <Link
         to="/dashboard/metrics"
         title="All metrics"
-        className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--oid-border)] px-3 py-1.5 text-[11px] text-[color:var(--oid-text-faint)] no-underline transition-colors hover:text-[color:var(--oid-accent)]"
+        className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--oid-border)] px-3 py-1.5 text-[length:var(--oid-text-xs)] text-[color:var(--oid-text-faint)] no-underline transition-colors hover:text-[color:var(--oid-accent)]"
       >
         <Globe2 size={11} />
         All metrics

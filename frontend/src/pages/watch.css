@@ -1,0 +1,53 @@
+/* ConfirmWatchPage / UnsubscribeWatchPage — same token-aliasing shape as
+   feedback.css. Both pages share this file since they are visually
+   identical (a centered card with a one-line result). */
+.watch-page {
+  --wt-bg: var(--ma-bg);
+  --wt-card-bg: var(--ma-surface);
+  --wt-border: var(--ma-border);
+  --wt-text: var(--ma-text);
+  --wt-muted: var(--ma-muted);
+  --wt-primary: var(--ma-accent);
+  --wt-error: var(--ma-error);
+
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--navbar-h, 64px) + 24px) 24px 24px;
+  background: var(--wt-bg);
+  font-family: var(--ma-font-ui);
+}
+
+.watch-card {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--wt-border);
+  border-radius: 16px;
+  padding: 40px;
+  background: var(--wt-card-bg);
+  color: var(--wt-text);
+  text-align: center;
+}
+
+.watch-card h1 {
+  margin: 0;
+  font-size: var(--ma-text-2xl);
+}
+
+.watch-card p {
+  margin: 0;
+  color: var(--wt-muted);
+  line-height: 1.6;
+}
+
+.watch-card p.watch-success {
+  color: var(--wt-primary);
+}
+
+.watch-card p.watch-error {
+  color: var(--wt-error);
+}

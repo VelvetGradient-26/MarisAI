@@ -61,6 +61,8 @@ export interface StreamChatArgs {
   message: string;
   history: ChatTurn[];
   sessionId: string | null;
+  /** A `data:image/...;base64,...` URL attached to this turn, if any. */
+  image?: string | null;
   signal?: AbortSignal;
 }
 
@@ -68,6 +70,7 @@ export async function* streamChat({
   message,
   history,
   sessionId,
+  image,
   signal,
 }: StreamChatArgs): AsyncGenerator<ChatStreamEvent> {
   const response = await fetch(url('/api/v1/chat/stream').toString(), {
@@ -79,6 +82,7 @@ export async function* streamChat({
       history,
       session_id: sessionId,
       client_id: clientId(),
+      image: image ?? null,
     }),
   });
 

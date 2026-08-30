@@ -51,7 +51,7 @@ function AlertRow({
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <h4 className="text-[12.5px] font-semibold text-[color:var(--oid-text-strong)]">{alert.title}</h4>
+            <h4 className="text-[length:var(--oid-text-md)] font-semibold text-[color:var(--oid-text-strong)]">{alert.title}</h4>
             <button
               type="button"
               onClick={() => onDismiss(alert.id)}
@@ -62,7 +62,7 @@ function AlertRow({
             </button>
           </div>
 
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px]">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[length:var(--oid-text-2xs)]">
             <span className={cn('font-semibold tracking-wide uppercase', style.text)}>
               {style.label}
             </span>
@@ -82,7 +82,7 @@ function AlertRow({
             <span className="text-[color:var(--oid-text-faint)]">{formatAge(ageSeconds(alert.observed_at))}</span>
           </div>
 
-          <p className="mt-1.5 text-[11px] leading-relaxed text-[color:var(--oid-text-muted)]">{alert.basis}</p>
+          <p className="mt-1.5 text-[length:var(--oid-text-xs)] leading-relaxed text-[color:var(--oid-text-muted)]">{alert.basis}</p>
         </div>
       </div>
     </motion.li>
@@ -116,7 +116,7 @@ export function AlertsPanel({
               <button
                 type="button"
                 onClick={() => setDismissed(new Set())}
-                className="text-[10px] text-[color:var(--oid-text-faint)] transition-colors hover:text-[color:var(--oid-text)]"
+                className="text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-faint)] transition-colors hover:text-[color:var(--oid-text)]"
               >
                 Restore {dismissedCount}
               </button>
@@ -168,11 +168,11 @@ export function AlertsPanel({
       {data && (
         <footer className="space-y-1 border-t border-[color:var(--oid-border)] px-3 py-2">
           {data.sources_unavailable.length > 0 && (
-            <p className="text-[10px] text-[color:var(--color-alert-warning)]">
+            <p className="text-[length:var(--oid-text-3xs)] text-[color:var(--color-alert-warning)]">
               Not evaluated: {data.sources_unavailable.join('; ')}
             </p>
           )}
-          <p className="text-[9.5px] leading-relaxed text-[color:var(--oid-text-ghost)]">{data.disclaimer}</p>
+          <p className="text-[length:var(--oid-text-4xs)] leading-relaxed text-[color:var(--oid-text-ghost)]">{data.disclaimer}</p>
         </footer>
       )}
     </Panel>

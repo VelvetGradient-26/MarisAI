@@ -52,15 +52,24 @@ dataclass and the scorer there means the two sources cannot drift into two
 definitions of what an anomaly is; this module supplies the record's answer and
 labels it as the record's.
 
-What this deliberately does not do
-----------------------------------
-It does not track events between refreshes, exactly as `services/eddies.py` does
-not track eddies. A marine heatwave has a duration, an onset date and a
-cumulative intensity, and all three require holding identity across days; that
-is the same frame-to-frame assignment problem, with the same failure mode of
-presenting a matcher's artefact as an observation. What is reported here is
-"this cell is in its Nth consecutive day above threshold *within the window
-examined*", which is a bounded claim the data supports.
+Identity across refreshes lives in `services/heatwave_tracking.py`
+-------------------------------------------------------------------
+`detect` itself stays a pure, window-censored snapshot — "this cell is in its
+Nth consecutive day above threshold *within the window examined*" — exactly
+as before, because that purity is what makes `tests/test_heatwaves.py` able to
+drive it with synthetic fields and no network. Unlike an eddy, a heatwave
+cell does not move between refreshes — the grid is the same grid — so there
+is no spatial matching problem to solve; the actual gap was simpler than the
+eddy analogy suggested: `detect` only ever re-derives a run length from
+whatever window it was just handed, so a run older than `WINDOW_DAYS` is
+reported as 30 days old forever, never more. `heatwave_tracking.advance()`
+closes that by walking the same daily stack this module fetches one calendar
+day at a time and folding each new day into per-cell state that survives
+across refreshes (onset date, true duration, cumulative intensity, peak
+category) — called from `refresh_cache` below with the same `record` and
+`climatology` already in hand, so tracking costs no second fetch. It shares
+this module's own per-day exceedance/category arithmetic (`day_state`,
+`categorize`) rather than recomputing the Hobday formula a second way.
 """
 
 from __future__ import annotations
@@ -76,19 +85,12 @@ import pandas as pd
 import xarray as xr
 from loguru import logger
 
-from services import field_sampling, sst_anomaly
+from services import field_sampling, heatwave_tracking, sst_anomaly
 from services.climatology import build as climatology_build
 from services.climatology import oisst
 from services.climatology import store as climatology_store
+from services.heatwave_common import CATEGORY_NAMES, MIN_DURATION_DAYS, categorize, day_state
 from services.sst_anomaly import SstAnomalyField
-
-# Hobday's minimum duration. Five days is the published definition, not a knob —
-# it is exposed as a constant so the response can state it, not so it can be
-# tuned down until something shows up.
-MIN_DURATION_DAYS = 5
-
-# Category boundaries as multiples of (p90 - mean). Hobday et al. 2018.
-CATEGORY_NAMES = ("none", "moderate", "strong", "severe", "extreme")
 
 # Aggregates only. See the module docstring and `services/crw.py`.
 AGGREGATE_LATITUDE_LIMIT = 60.0
@@ -105,10 +107,13 @@ METHOD = (
 )
 
 LIMITS = (
-    "Detection only — events are not tracked between refreshes, so no heatwave "
-    "here has an onset date, a duration or a cumulative intensity.",
-    f"Run lengths are censored at the {WINDOW_DAYS}-day window examined: a cell "
-    "in heatwave on the window's first day may have been so for much longer.",
+    "This snapshot's own run length is censored at the "
+    f"{WINDOW_DAYS}-day window examined — a cell in heatwave on the window's "
+    "first day may have been so for much longer. `services/heatwave_tracking.py` "
+    "carries the true onset date, duration and cumulative intensity across "
+    "refreshes instead; see the `tracked` field on a point query. That state "
+    "does not survive a server restart, so a run already active when tracking "
+    "last (re)started is itself possibly older than its recorded onset says.",
     "Aggregate statistics cover 60S-60N. Polar ice-margin cells carry anomalies "
     "above +15 degC because the climatology expects ice, and including them "
     "triples the global mean. The per-cell field is unmasked.",
@@ -254,7 +259,7 @@ def detect(
     latest = values[-1]
     latest_p90 = p90[-1]
     latest_mean = mean[-1]
-    exceedance = (latest - latest_p90).astype("float32")
+    exceedance, multiple = day_state(latest, latest_p90, latest_mean)
     anomaly = (latest - latest_mean).astype("float32")
     # Only the latest day is gathered for p10: the run length is a property of
     # the heat side, and the cold side is read as a state at the most recent
@@ -266,23 +271,8 @@ def detect(
     else:
         cold_exceedance = np.full(latest.shape, np.nan, dtype="float32")
 
-    # Hobday's category scale: multiples of the mean-to-p90 gap. Where that gap
-    # is zero or undefined the category is undefined too, not "extreme" —
-    # dividing by it would make a degenerate cell the most alarming one on the
-    # map.
-    gap = latest_p90 - latest_mean
-    with np.errstate(divide="ignore", invalid="ignore"):
-        multiple = np.where(gap > 0, (latest - latest_mean) / gap, np.nan)
-
     qualifies = (run_days >= min_duration_days) & np.isfinite(exceedance) & (exceedance > 0)
-    category = np.zeros(latest.shape, dtype="int8")
-    for index in (1, 2, 3, 4):
-        lower = index
-        upper = index + 1
-        band = qualifies & np.isfinite(multiple) & (multiple >= lower)
-        if index < 4:
-            band &= multiple < upper
-        category[band] = index
+    category = categorize(multiple, qualifies)
 
     return HeatwaveField(
         category=category,
@@ -367,10 +357,18 @@ def at_point(
         "run_days_censored": bool(resolved.run_days[row, column] >= resolved.window_days),
         "timestamp": resolved.timestamp.isoformat(),
         "baseline": {"start": resolved.baseline[0], "end": resolved.baseline[1]},
+        # The true onset/duration/cumulative-intensity, held across refreshes
+        # by `heatwave_tracking` rather than re-derived from this one window —
+        # see that module's own `snapshot` for what each field means and its
+        # own honesty caveat (`possibly_started_earlier`).
+        "tracked": heatwave_tracking.snapshot(
+            float(resolved.latitude[row]), float(resolved.longitude[column])
+        ),
         "note": (
             "Marine heatwave state against a 1991-2020 daily 90th-percentile "
-            "baseline. Not tracked between refreshes, so this carries no onset "
-            "date or total duration."
+            "baseline. `run_days` here is censored at this snapshot's own "
+            f"{resolved.window_days}-day window; see `tracked` for the true "
+            "onset date and duration held across refreshes."
         ),
     }
 
@@ -482,6 +480,15 @@ async def refresh_cache(variable: str = "sea_surface_temperature") -> None:
         _cached_field(field)
         log_detection(field)
 
+        try:
+            # Same record and climatology already fetched above — tracking
+            # costs no second OISST call. Its own try/except: a tracking
+            # failure must not un-cache the field this refresh just produced,
+            # since the plain snapshot is the more important of the two.
+            await asyncio.to_thread(heatwave_tracking.advance, record["sst"], climatology)
+        except Exception as exc:  # noqa: BLE001 - see the docstring above
+            logger.warning(f"marine heatwave tracking update failed: {exc}")
+
 
 def current_field() -> HeatwaveField:
     """The cached field, or a clear reason there is none.
@@ -525,6 +532,29 @@ def cells(field: HeatwaveField | None = None) -> dict[str, Any]:
     west, east = field_sampling.cell_edges(resolved.longitude)
     rows, columns = np.nonzero(resolved.category > 0)
 
+    # Bulk, not a per-rectangle nearest-cell lookup: the tracker's grid is the
+    # same grid this field was detected on (both fed from the same
+    # climatology), so an exact index match is always correct where available
+    # at all, and `None` degrades every rectangle's `tracked` uniformly rather
+    # than partially.
+    tracked = heatwave_tracking.tracked_arrays(resolved.latitude, resolved.longitude)
+
+    def _tracked_for(row: int, column: int) -> dict[str, Any] | None:
+        if tracked is None:
+            return None
+        run_days = int(tracked["run_days"][row, column])
+        if run_days == 0:
+            return {"in_heatwave": False, "run_days": 0, "onset_date": None}
+        onset_ordinal = int(tracked["onset_ordinal"][row, column])
+        return {
+            "in_heatwave": True,
+            "run_days": run_days,
+            "onset_date": heatwave_tracking.ordinal_to_iso(onset_ordinal),
+            "peak_category": CATEGORY_NAMES[int(tracked["peak_category"][row, column])],
+            "cumulative_intensity_c_days": round(float(tracked["cumulative_c_days"][row, column]), 2),
+            "possibly_started_earlier": onset_ordinal == tracked["tracking_started_ordinal"],
+        }
+
     return {
         **resolved.as_dict(),
         "cells": [
@@ -537,6 +567,7 @@ def cells(field: HeatwaveField | None = None) -> dict[str, Any]:
                 "category_index": int(resolved.category[row, column]),
                 "exceedance_c": round(float(resolved.exceedance[row, column]), 3),
                 "run_days": int(resolved.run_days[row, column]),
+                "tracked": _tracked_for(row, column),
             }
             for row, column in zip(rows.tolist(), columns.tolist(), strict=True)
         ],

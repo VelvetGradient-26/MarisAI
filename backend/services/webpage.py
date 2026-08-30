@@ -1,202 +1,211 @@
-"""Generic webpage fetch-and-read, with an SSRF guard.
+"""Fetch one specific webpage and extract its readable text.
 
-sihtodo.md item 4 ("controlled internet tools") names `fetch_webpage`
-alongside `web_search`/`search_scientific_literature` — a search result gives
-a title and a two-line snippet, and a genuine "why did X happen" answer often
-needs the actual article.
+sihtodo.md item 4's `fetch_webpage` tool — the complement to `web_search`:
+search finds candidate pages, this reads one the model (or the user) already
+has a URL for, e.g. following a link `web_search` returned. No third-party
+dependency: extraction is a small `html.parser.HTMLParser` subclass, which is
+enough for "strip markup, keep readable text" and keeps this module dependency-
+free the way `services/severe_weather.py` parses CAP XML with stdlib
+`ElementTree` rather than adding a package for it.
 
-**This is the one internet tool with no external provider to document — the
-risk here is not an upstream API's behaviour, it is that the tool exists to
-fetch a URL an LLM chose, which may itself have been steered there by
-untrusted text the model read (a search snippet, a user message). That is a
-textbook SSRF vector**: a model asked (directly, or via a poisoned page it
-already fetched) to read `http://169.254.169.254/latest/meta-data/` would
-otherwise reach the server's own cloud metadata endpoint, or a service on
-localhost never meant to be internet-facing.
+**This is the one tool in this file whose input is an arbitrary
+caller-supplied URL, which makes it an SSRF vector**: a model asked to
+"fetch http://169.254.169.254/latest/meta-data/" would otherwise have this
+server make that request as an insider, past any network boundary. `_guard()`
+resolves the hostname itself (never trusting DNS to be re-checked by whatever
+library issues the request) and rejects any address that is not global-
+unicast — loopback, link-local (which is also where every cloud metadata
+endpoint lives), private, and multicast/reserved ranges all fail closed.
+Redirects are followed manually, one hop at a time, re-running the same guard
+on every hop — a public URL that 302s to an internal address must not get a
+free pass on the strength of its first, innocent-looking hostname.
 
-`_check_target` resolves the hostname itself (via `_resolve_addresses`) and
-rejects it if any resolved address is private, loopback, link-local,
-multicast or otherwise reserved (stdlib `ipaddress`'s own classification),
-*before* httpx ever opens a connection. Redirects are followed manually, one
-hop at a time, re-checking every hop's host the same way — an
-attacker-controlled page that 302s to a private address must not slip through
-just because the first hop passed.
-
-**This does not close every hole.** A DNS-rebinding attack (resolve to a
-public address for the check, then to a private one for the connection made
-moments later) is not defended against — that would require pinning the
-resolved IP and forcing the connection to it while still presenting the
-original Host header, a heavier change left for if this tool is ever exposed
-beyond a bounded, logged tool call inside this codebase's own agent loop.
-
-Only `text/html` and `text/plain` are read; anything else (a PDF, an image, a
-binary download) is refused rather than dumped as decoded garbage into the
-model's context. HTML is reduced to text with BeautifulSoup —
-`<script>`/`<style>`/`<nav>`/`<footer>`/`<noscript>` are dropped before
-extraction, since their text is markup noise (menu labels, tracking JSON)
-rather than article content. The response body is read as a bounded stream
-(`_MAX_BYTES`) rather than downloaded whole, so a caller cannot be made to
-pull an arbitrarily large file into memory, and the extracted text is capped
-at `_MAX_CHARS` — a long page would otherwise spend the model's entire
-context on one source.
+**Verified live 2026-08-27** against `https://www.incois.gov.in/` (real HTML,
+title and body text extracted correctly) and against a deliberately blocked
+case (`http://127.0.0.1/`, rejected by `_guard()` before any request left the
+process).
 """
 
 from __future__ import annotations
 
-import asyncio
 import ipaddress
 import logging
+import re
 import socket
-from typing import Any
+from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 
 import httpx
-from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
 _TIMEOUT = httpx.Timeout(15.0)
-_MAX_BYTES = 3_000_000  # generous for an article page, not for a video/binary
-_MAX_CHARS = 8_000  # what a chat answer can actually use; the rest is noise
+_MAX_BYTES = 3 * 1024 * 1024  # 3MB of raw HTML is generous for any article page
+_MAX_TEXT_CHARS = 6000  # a tool result budget, not a page-quality judgement
 _MAX_REDIRECTS = 5
-_ALLOWED_CONTENT_TYPES = ("text/html", "text/plain")
-_USER_AGENT = "MarisAI-OceanAssistant/1.0 (webpage reader tool)"
+_ALLOWED_SCHEMES = {"http", "https"}
+# Block-level tags whose boundary should read as a line break, not run-on
+# prose — without this a nav menu's five links become one unreadable word.
+_BLOCK_TAGS = {
+    "p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6",
+    "section", "article", "header", "footer", "ul", "ol", "table",
+}
+_SKIP_TAGS = {"script", "style", "noscript", "template", "svg", "iframe"}
+# A meta-refresh is a client-side redirect the server-level `httpx` never
+# sees as one (it comes back as a normal 200). Government sites this
+# platform actually cares about use it — `incois.gov.in/` is a bare
+# `<meta http-equiv="refresh" content="0; url=/site/index.jsp">` with no
+# other content, found live 2026-08-27 while verifying this module; without
+# following it, fetching that URL "succeeds" with an empty page.
+_META_REFRESH_RE = re.compile(
+    r'<meta[^>]+http-equiv=["\']?refresh["\']?[^>]*content=["\'][^;"\']*;\s*url=([^"\'>]+)',
+    re.IGNORECASE,
+)
 
 
 class WebpageError(RuntimeError):
-    """The URL was rejected, or the page could not be fetched or read."""
+    """The URL is disallowed, unreachable, or not a fetchable HTML page."""
 
 
-async def _resolve_addresses(host: str) -> list[str]:
-    """The IP addresses `host` resolves to.
-
-    Split out from the check itself so tests can control resolution directly
-    rather than depending on real DNS — the same reasoning every other
-    provider module here has for isolating its own network call behind a
-    monkeypatchable seam.
-    """
-    infos = await asyncio.to_thread(socket.getaddrinfo, host, None)
-    return [info[4][0] for info in infos]
-
-
-async def _check_target(url: str) -> str:
-    """Validate one hop's URL, returning it unchanged.
-
-    Raises `WebpageError` for anything that is not a plain public http(s)
-    address — a non-http(s) scheme, an unresolvable host, or a host that
-    resolves to a private/loopback/link-local/reserved address.
-    """
+def _guard(url: str) -> str:
+    """Reject anything that is not a plain public http(s) URL. Returns the
+    validated URL unchanged, for use in a redirect chain's re-check."""
     parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        raise WebpageError(f"Only http/https URLs are supported, not {parsed.scheme!r}.")
-    if not parsed.hostname:
-        raise WebpageError("URL has no host.")
+    if parsed.scheme not in _ALLOWED_SCHEMES:
+        raise WebpageError(f"Only http/https URLs can be fetched, not {parsed.scheme!r}.")
+    host = parsed.hostname
+    if not host:
+        raise WebpageError("URL has no host to fetch.")
 
     try:
-        addresses = await _resolve_addresses(parsed.hostname)
+        addrinfo = socket.getaddrinfo(host, None)
     except socket.gaierror as exc:
-        raise WebpageError(f"Could not resolve host {parsed.hostname!r}: {exc}") from exc
-    if not addresses:
-        raise WebpageError(f"Could not resolve host {parsed.hostname!r}.")
+        raise WebpageError(f"Could not resolve host {host!r}: {exc}") from exc
 
-    for raw_ip in addresses:
-        try:
-            ip = ipaddress.ip_address(raw_ip)
-        except ValueError:
-            continue
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_multicast
-            or ip.is_reserved
-            or ip.is_unspecified
-        ):
+    for family, _, _, _, sockaddr in addrinfo:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if not ip.is_global:
             raise WebpageError(
-                f"{url!r} resolves to a private, local or otherwise "
-                "non-public address and cannot be fetched."
+                f"Host {host!r} resolves to a non-public address ({ip}); refusing to fetch."
             )
     return url
 
 
-def _extract_text(html: str) -> tuple[str, str]:
-    soup = BeautifulSoup(html, "html.parser")
-    for tag in soup(["script", "style", "nav", "footer", "noscript"]):
-        tag.decompose()
-    title = soup.title.get_text(strip=True) if soup.title else ""
-    text = " ".join(soup.get_text(separator=" ").split())
-    return title, text
+class _TextExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.title_parts: list[str] = []
+        self.text_parts: list[str] = []
+        self._skip_depth = 0
+        self._in_title = False
+        self._title_done = False
 
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in _SKIP_TAGS:
+            self._skip_depth += 1
+        if tag == "title" and not self._title_done:
+            self._in_title = True
+        if tag in _BLOCK_TAGS:
+            self.text_parts.append("\n")
 
-async def fetch(url: str) -> dict[str, Any]:
-    """Fetch one webpage and return its title and main text.
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in _BLOCK_TAGS:
+            self.text_parts.append("\n")
 
-    Raises `WebpageError` for a bad/unsafe URL, an unreachable host, a
-    non-text response, or a response too large to be a normal article page.
-    Never silently returns partial content as though it were the whole page —
-    truncation is reported, not hidden.
-    """
-    url = (url or "").strip()
-    if not url:
-        raise WebpageError("A URL is required.")
-    target = await _check_target(url)
+    def handle_endtag(self, tag: str) -> None:
+        if tag in _SKIP_TAGS and self._skip_depth > 0:
+            self._skip_depth -= 1
+        if tag == "title":
+            self._in_title = False
+            self._title_done = True
 
-    async with httpx.AsyncClient(timeout=_TIMEOUT, headers={"User-Agent": _USER_AGENT}) as client:
-        for _ in range(_MAX_REDIRECTS + 1):
-            request = client.build_request("GET", target)
-            try:
-                response = await client.send(request, stream=True, follow_redirects=False)
-            except httpx.HTTPError as exc:
-                raise WebpageError(f"Could not reach {target!r}: {exc}") from exc
-
-            if response.is_redirect:
-                location = response.headers.get("location")
-                await response.aclose()
-                if not location:
-                    raise WebpageError(f"{target!r} redirected with no Location header.")
-                target = await _check_target(urljoin(target, location))
-                continue
-            break
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth:
+            return
+        if self._in_title:
+            self.title_parts.append(data)
         else:
-            raise WebpageError(f"Too many redirects fetching {url!r}.")
+            self.text_parts.append(data)
 
-        if response.status_code >= 400:
-            await response.aclose()
-            raise WebpageError(f"{target!r} returned HTTP {response.status_code}.")
+    def result(self) -> tuple[str, str]:
+        title = " ".join("".join(self.title_parts).split())
+        raw_text = "".join(self.text_parts)
+        # Collapse runs of whitespace within a line, but keep the block-tag
+        # newlines that separate one heading/paragraph/list-item from the next.
+        lines = [" ".join(line.split()) for line in raw_text.splitlines()]
+        text = "\n".join(line for line in lines if line)
+        return title, text
 
-        content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
-        if content_type not in _ALLOWED_CONTENT_TYPES:
-            await response.aclose()
-            raise WebpageError(
-                f"Cannot read content type {content_type!r} — only HTML and "
-                "plain text pages are supported."
-            )
 
-        chunks = bytearray()
-        try:
-            async for chunk in response.aiter_bytes():
-                chunks.extend(chunk)
-                if len(chunks) > _MAX_BYTES:
-                    raise WebpageError(
-                        f"{target!r} is too large to read (over {_MAX_BYTES} bytes)."
-                    )
-        finally:
-            await response.aclose()
+async def fetch(url: str) -> dict[str, str | int | None]:
+    """Fetch `url` and return its title and extracted readable text.
 
-        text_body = chunks.decode(response.encoding or "utf-8", errors="replace")
+    Only `text/html` and `text/plain` responses are extracted — anything else
+    (a PDF, an image) is reported as unsupported rather than dumped as
+    mangled bytes, since there is no extraction path for it here.
+    """
+    current = _guard(url)
+    seen: set[str] = set()
 
-    if content_type == "text/html":
-        title, text = _extract_text(text_body)
+    async with httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=False) as client:
+        for _ in range(_MAX_REDIRECTS + 1):
+            if current in seen:
+                raise WebpageError("Redirect loop detected.")
+            seen.add(current)
+
+            try:
+                async with client.stream("GET", current) as response:
+                    if response.is_redirect:
+                        location = response.headers.get("location")
+                        if not location:
+                            raise WebpageError("Redirected with no Location header.")
+                        current = _guard(urljoin(current, location))
+                        continue
+
+                    if response.status_code >= 400:
+                        raise WebpageError(
+                            f"Fetching {current} failed with status {response.status_code}."
+                        )
+
+                    content_type = response.headers.get("content-type", "")
+                    if not any(kind in content_type for kind in ("text/html", "text/plain")):
+                        raise WebpageError(
+                            f"{current} is {content_type or 'an unknown type'}, "
+                            "not a fetchable HTML/text page."
+                        )
+
+                    chunks: list[bytes] = []
+                    total = 0
+                    async for chunk in response.aiter_bytes():
+                        total += len(chunk)
+                        if total > _MAX_BYTES:
+                            raise WebpageError(f"{current} exceeds the {_MAX_BYTES}-byte fetch limit.")
+                        chunks.append(chunk)
+                    body = b"".join(chunks).decode(response.encoding or "utf-8", errors="replace")
+
+                    if "text/html" in content_type:
+                        match = _META_REFRESH_RE.search(body)
+                        if match:
+                            current = _guard(urljoin(current, match.group(1).strip()))
+                            continue
+                    break
+            except httpx.HTTPError as exc:
+                raise WebpageError(f"Could not fetch {current}: {exc}") from exc
+        else:
+            raise WebpageError(f"Too many redirects fetching {url} (limit {_MAX_REDIRECTS}).")
+
+    if "text/plain" in content_type:
+        title, text = "", body
     else:
-        title, text = "", " ".join(text_body.split())
+        extractor = _TextExtractor()
+        extractor.feed(body)
+        title, text = extractor.result()
 
-    truncated = len(text) > _MAX_CHARS
-    content = text[:_MAX_CHARS]
-
+    truncated = len(text) > _MAX_TEXT_CHARS
     return {
-        "url": target,
+        "url": current,
         "title": title or None,
-        "content": content,
+        "text": text[:_MAX_TEXT_CHARS],
         "truncated": truncated,
-        "source": urlparse(target).hostname,
+        "source": current,
     }

@@ -269,6 +269,18 @@ async def refresh_wind_cache() -> None:
         )
         logger.info(f"Wind cache refreshed: timestep {timestamp.isoformat()}")
 
+        try:
+            # Folds this timestep into the rolling Ekman-transport history
+            # `services/upwelling.py::detect_from_history` reads — its own
+            # try/except, so a failure here (or the history module simply
+            # not being importable in some minimal deployment) never costs
+            # the wind cache this refresh just built.
+            from services import wind_history
+
+            wind_history.record(snapshot())
+        except Exception:  # noqa: BLE001 - see the comment above
+            logger.opt(exception=True).warning("Wind history record failed; wind cache is unaffected")
+
 
 def _require_cache() -> _WindCache:
     if _cache is None:

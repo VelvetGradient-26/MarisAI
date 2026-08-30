@@ -1,0 +1,103 @@
+% ---------------------------------------------------------------------------
+% IEEE conference build.  Compile with:
+%     tectonic -X compile main.tex --outdir .
+% The body is shared verbatim with ../springer/main.tex; only this wrapper
+% differs.
+% ---------------------------------------------------------------------------
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{siunitx}
+\usepackage{microtype}
+\usepackage{cite}
+\usepackage[hidelinks]{hyperref}
+
+\graphicspath{{../shared/generated/}{../shared/diagrams/}}
+
+% siunitx v3 dropped \degree; every use in the body is in math mode.
+\providecommand{\degree}{^{\circ}}
+
+% IEEEtran is two-column: a "wide" float must span both columns.
+\newenvironment{wfigure}{\csname figure*\endcsname}{\csname endfigure*\endcsname}
+\newenvironment{wtable}{\csname table*\endcsname}{\csname endtable*\endcsname}
+\newcommand{\tabscale}{\scriptsize}
+
+% IEEEtran appends its own colon to a run-in \paragraph; adding a period too
+% renders as "Mechanism.:".
+\newcommand{\para}[1]{\paragraph{#1}}
+
+% The shared body uses natbib's \citep; IEEEtran uses plain \cite.
+\providecommand{\citep}[1]{\cite{#1}}
+
+% Every experimental number in the prose is a macro; see the header comment
+% in shared/generated/macros.tex for its (currently hand-verified, not yet
+% script-generated) provenance.
+\input{../shared/generated/macros}
+
+\begin{document}
+
+\title{More Data, Worse Water: When Expanding a Species Distribution Model's
+Training Extent Degrades Skill on the Region It Serves}
+
+\author{\IEEEauthorblockN{Deepak Krishna}
+\IEEEauthorblockA{\textit{MarisAI} \\
+India \\
+deepakkrishna2206@gmail.com}}
+
+\maketitle
+
+\begin{abstract}
+More training data is conventionally assumed to help a species distribution
+model. We report a controlled counter-example: expanding a fish-habitat
+ensemble's training extent from one regional sea to the global ocean
+multiplies training rows \DataMultiple{}$\times$ (\NRegionalTrain{} to
+\NGlobalTrain{}) without extending the usable label window, and on
+\NHoldout{} identical held-out regional rows --- the global model's training
+set with the holdout's spatial blocks removed, to prevent leakage --- every
+accuracy metric is worse: true skill statistic \TSSGlobal{} against
+\TSSRegion{}, Boyce index \BoyceGlobal{} against \BoyceRegion{}. A comparative
+Multivariate Environmental Similarity Surface (MESS) analysis rules out the
+obvious explanation: the global model extrapolates \emph{less} on this
+holdout than the regional model does on its own (\MESSFracGlobal{}\% of rows
+outside its training envelope, against \MESSFracRegion{}\%). SHAP feature
+attribution instead shows a mechanism: the regional model's leading features
+are coastal geometry (depth, distance to coast); the global model's are
+water-mass chemistry (dissolved oxygen, 60-day lagged temperature), which
+displaces the fine, locally decisive signal with coarser variables that
+generalise across oceans but say less about any one of them. An ablation confirms the mechanism causally rather than leaving it a SHAP-only association: removing the two displaced features from the global LightGBM tier improves every metric on the same holdout, closing \AblGapClosedPct{}\% of that tier's gap to the regional model. We reconcile
+this with the two closest prior findings, one of which recommends
+range-wide data despite finding it does not help \citep{elgabbas2018}, and
+one of which recommends larger training extents on an apparently opposite
+finding \citep{hanberry2026}, showing both address a different axis of
+variation than the one manipulated here.
+\end{abstract}
+
+\begin{IEEEkeywords}
+species distribution modelling, negative transfer, MESS, SHAP, ensemble
+modelling, fisheries, spatial extent
+\end{IEEEkeywords}
+
+\input{../shared/body}
+
+\section*{Reproducibility}
+The matched-holdout comparison is built by
+\texttt{machine\_learning/scripts/validate\_global\_on\_region.py}, which
+reproduces the regional model's own final holdout split, removes the holdout's
+spatial blocks from the global feature store, refits both ensembles with the
+shared training routine, and scores both on the identical holdout rows,
+writing \texttt{machine\_learning/reports/global\_vs\_regional\_habitat.csv}.
+SHAP importances are read from
+\texttt{machine\_learning/reports/fish\_habitat\_summary.json} (regional) and
+\texttt{fish\_habitat\_global\_ocean\_summary.json} (global). The ablation is
+\texttt{machine\_learning/scripts/ablate\_global\_chemistry\_features.py}, writing
+\texttt{machine\_learning/reports/global\_ablation\_chemistry\_features.csv}.
+Every number in this paper was verified against those files as of \AsOf{}.
+
+\bibliographystyle{IEEEtran}
+\bibliography{../shared/references}
+
+\end{document}

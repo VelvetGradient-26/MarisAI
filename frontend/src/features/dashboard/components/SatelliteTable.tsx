@@ -72,7 +72,7 @@ export function SatelliteTable() {
         <div className="oid-scroll flex-1 overflow-auto">
           <table className="min-w-[640px] text-left">
             <thead className="sticky top-0 z-10 bg-[color:var(--oid-panel-strong)] backdrop-blur">
-              <tr className="text-[9.5px] tracking-widest text-[color:var(--oid-text-faint)] uppercase">
+              <tr className="text-[length:var(--oid-text-4xs)] tracking-widest text-[color:var(--oid-text-faint)] uppercase">
                 <th scope="col" className="px-3 py-2 font-semibold">Satellite</th>
                 <th scope="col" className="px-3 py-2 font-semibold">Product</th>
                 <th scope="col" className="px-3 py-2 font-semibold">Coverage</th>
@@ -99,15 +99,15 @@ export function SatelliteTable() {
                     }}
                     className="cursor-pointer border-t border-[color:var(--oid-border)] transition-colors hover:bg-[color:var(--oid-hover)]"
                   >
-                    <td className="px-3 py-2 text-[11.5px] font-medium text-[color:var(--oid-text)]">
+                    <td className="px-3 py-2 text-[length:var(--oid-text-sm)] font-medium text-[color:var(--oid-text)]">
                       {product.satellite}
                     </td>
-                    <td className="px-3 py-2 text-[11.5px] text-[color:var(--oid-text)]">{product.product}</td>
-                    <td className="px-3 py-2 text-[11px] text-[color:var(--oid-text-faint)]">Global</td>
-                    <td className="px-3 py-2 text-[11px] text-[color:var(--oid-text-muted)]">
+                    <td className="px-3 py-2 text-[length:var(--oid-text-sm)] text-[color:var(--oid-text)]">{product.product}</td>
+                    <td className="px-3 py-2 text-[length:var(--oid-text-xs)] text-[color:var(--oid-text-faint)]">Global</td>
+                    <td className="px-3 py-2 text-[length:var(--oid-text-xs)] text-[color:var(--oid-text-muted)]">
                       {product.resolution ?? '—'}
                     </td>
-                    <td className="px-3 py-2 text-[11px] text-[color:var(--oid-text-muted)]">
+                    <td className="px-3 py-2 text-[length:var(--oid-text-xs)] text-[color:var(--oid-text-muted)]">
                       <span title={product.latest_date ?? undefined}>
                         {formatAgeDays(product.age_days)}
                       </span>
@@ -115,7 +115,7 @@ export function SatelliteTable() {
                     <td className="px-3 py-2">
                       <span
                         className={cn(
-                          'inline-block rounded-full px-2 py-0.5 text-[10px] font-medium',
+                          'inline-block rounded-full px-2 py-0.5 text-[length:var(--oid-text-3xs)] font-medium',
                           status.className
                         )}
                       >
@@ -131,7 +131,7 @@ export function SatelliteTable() {
       )}
 
       {data && (
-        <footer className="border-t border-[color:var(--oid-border)] px-3 py-2 text-[9.5px] text-[color:var(--oid-text-ghost)]">
+        <footer className="border-t border-[color:var(--oid-border)] px-3 py-2 text-[length:var(--oid-text-4xs)] text-[color:var(--oid-text-ghost)]">
           {data.meta.source} · a stale row reflects the upstream layer, not this dashboard
         </footer>
       )}

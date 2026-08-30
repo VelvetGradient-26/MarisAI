@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useReveal } from '../hooks/useReveal';
 import { useThemeStore } from '../store/themeStore';
 import {
   fetchComparison,
@@ -165,17 +164,17 @@ function SectionTable({ section }: { section: CompareSection }) {
   // Sections stack down a long page and arrive together after one request, so
   // they reveal on scroll rather than all animating at once on load — which
   // would be a page-wide flourish nobody reads, and would fire before the
-  // tables below the fold have been looked at.
-  const { ref, revealed } = useReveal<HTMLElement>();
+  // tables below the fold have been looked at. Driven by CSS
+  // (`animation-timeline: view()`, see compare.css's `.compare-section.ma-reveal`
+  // override) rather than `useReveal`'s JS/IntersectionObserver hook — no child
+  // here needs a JS-only sub-animation, so there is nothing left for the hook
+  // to do that the browser's own scroll-linked animation doesn't already cover.
 
   if (!section.available) {
     // Unavailable at both points. Which is itself an answer, and it says why —
     // the same rule the dashboard holds for every panel.
     return (
-      <section
-        ref={ref}
-        className={`compare-section compare-section--empty ma-reveal${revealed ? ' is-revealed' : ''}`}
-      >
+      <section className="compare-section compare-section--empty ma-reveal">
         <h2>{section.title}</h2>
         <p>{section.a_unavailable_reason ?? section.b_unavailable_reason ?? 'No data.'}</p>
       </section>
@@ -183,10 +182,7 @@ function SectionTable({ section }: { section: CompareSection }) {
   }
 
   return (
-    <section
-      ref={ref}
-      className={`compare-section ma-reveal${revealed ? ' is-revealed' : ''}`}
-    >
+    <section className="compare-section ma-reveal">
       <h2>{section.title}</h2>
       <div className="compare-table-scroll">
         <table className="compare-table">

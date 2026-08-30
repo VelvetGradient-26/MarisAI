@@ -48,7 +48,7 @@ function VariableCard({
           />
           <div className="flex h-full flex-col gap-2 p-3.5">
             <div className="flex items-start justify-between gap-2">
-              <h3 className="text-[13px] leading-snug font-medium text-[color:var(--oid-text-strong)]">
+              <h3 className="text-[length:var(--oid-text-lg)] leading-snug font-medium text-[color:var(--oid-text-strong)]">
                 {entry.label}
               </h3>
               <ArrowRight
@@ -58,16 +58,16 @@ function VariableCard({
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="rounded-full bg-[color:var(--oid-track)] px-1.5 py-0.5 text-[10px] text-[color:var(--oid-text-muted)]">
+              <span className="rounded-full bg-[color:var(--oid-track)] px-1.5 py-0.5 text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-muted)]">
                 {entry.unit}
               </span>
               {entry.trained_horizons.length > 0 ? (
-                <span className="rounded-full bg-[color:var(--oid-accent-wash)] px-1.5 py-0.5 text-[10px] text-[color:var(--oid-accent)]">
+                <span className="rounded-full bg-[color:var(--oid-accent-wash)] px-1.5 py-0.5 text-[length:var(--oid-text-3xs)] text-[color:var(--oid-accent)]">
                   forecast {entry.trained_horizons.map((h) => `${h}d`).join('/')}
                 </span>
               ) : (
                 <span
-                  className="rounded-full bg-[color:var(--oid-track)] px-1.5 py-0.5 text-[10px] text-[color:var(--oid-text-ghost)]"
+                  className="rounded-full bg-[color:var(--oid-track)] px-1.5 py-0.5 text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-ghost)]"
                   title={entry.unavailable_reason ?? undefined}
                 >
                   history only
@@ -133,7 +133,7 @@ export function MetricsIndexPage() {
         className="mx-auto max-w-[1500px] px-3 pb-16 sm:px-5"
         style={{ paddingTop: 'calc(var(--navbar-h, 64px) + 16px)' }}
       >
-        <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-[11.5px]">
+        <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-[length:var(--oid-text-sm)]">
           <Link
             to="/dashboard"
             className="text-[color:var(--oid-text-faint)] no-underline hover:text-[color:var(--oid-accent)]"
@@ -149,7 +149,7 @@ export function MetricsIndexPage() {
             <h1 className="text-[22px] leading-none font-semibold tracking-tight text-[color:var(--oid-text-strong)]">
               Ocean metrics
             </h1>
-            <p className="mt-1.5 text-[11.5px] text-[color:var(--oid-text-faint)]">
+            <p className="mt-1.5 text-[length:var(--oid-text-sm)] text-[color:var(--oid-text-faint)]">
               {data
                 ? `${data.variables.length} variables, ${trainedCount} with a trained forecast. Every one has its own intelligence page.`
                 : 'Loading the catalog…'}
@@ -163,7 +163,7 @@ export function MetricsIndexPage() {
               onChange={(event) => setFilter(event.target.value)}
               placeholder="Filter metrics"
               aria-label="Filter metrics"
-              className="w-40 bg-transparent text-[11.5px] text-[color:var(--oid-text)] outline-none placeholder:text-[color:var(--oid-text-ghost)]"
+              className="w-40 bg-transparent text-[length:var(--oid-text-sm)] text-[color:var(--oid-text)] outline-none placeholder:text-[color:var(--oid-text-ghost)]"
             />
           </label>
         </header>
@@ -193,7 +193,7 @@ export function MetricsIndexPage() {
         <div className="space-y-6">
           {grouped.map(([category, entries]) => (
             <section key={category} aria-label={category}>
-              <h2 className="mb-2.5 text-[11px] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
+              <h2 className="mb-2.5 text-[length:var(--oid-text-xs)] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
                 {category}
                 <span className="ml-2 text-[color:var(--oid-text-ghost)]">{entries.length}</span>
               </h2>

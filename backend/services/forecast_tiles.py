@@ -538,6 +538,15 @@ async def refresh_grids(*, force: bool = False) -> None:
                 # the server's event loop.
                 await asyncio.to_thread(save_grid, grid, variable)
                 clear_cache()
+                # Lazy import: `drift_trajectory` imports from this module, so
+                # a top-level import here would be circular. Its own
+                # `_cached_sampler` sits directly on top of `_load_grid` and
+                # would otherwise keep serving this variable's *previous*
+                # grid indefinitely once cached, rather than the 12-hourly
+                # staleness window every other consumer of this grid gets.
+                from services.drift_trajectory import clear_cache as _clear_drift_trajectory_cache
+
+                _clear_drift_trajectory_cache()
                 logger.info(
                     f"forecast grid refreshed for {variable}: "
                     f"{grid.attrs.get('cells_scored')} cells, "

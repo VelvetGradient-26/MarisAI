@@ -599,7 +599,7 @@ def web_search_result(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_web_research_is_a_real_delegate_and_feeds_grounding(patched, web_search_result):
+async def test_external_research_is_a_real_delegate_and_feeds_grounding(patched, web_search_result):
     """The fourth specialist: a figure from a web search result reaches the
     final answer and is recognised as grounded, exactly as a live-data figure
     from any other specialist is — sihtodo.md item 4's own requirement that
@@ -624,7 +624,7 @@ async def test_web_research_is_a_real_delegate_and_feeds_grounding(patched, web_
 
     top = ScriptedModel(
         [
-            _delegate_call("web_research", "Why is the Arabian Sea unusually warm this week?"),
+            _delegate_call("external_research", "Why is the Arabian Sea unusually warm this week?"),
             AIMessage(
                 content=(
                     "According to news.example.com (2026-08-20), SST there is "
@@ -645,7 +645,7 @@ async def test_web_research_is_a_real_delegate_and_feeds_grounding(patched, web_
 
     assert result["grounded"] is True, result["unsupported_numbers"]
     assert result["observations"][0]["tool"] == "web_search"
-    assert result["observations"][0]["agent"] == "web_research"
+    assert result["observations"][0]["agent"] == "external_research"
     assert "news.example.com" in result["sources"]
 
 
@@ -938,17 +938,20 @@ def test_every_tool_declares_a_description_and_schema():
     """The description is the only thing the model reads to choose a tool.
 
     An undescribed tool is invisible in practice, and the failure is silent —
-    the model simply never calls it. 20 = the original 9, the three PS2
+    the model simply never calls it. 23 = the original 9, the three PS2
     additions (find_fishing_zones, check_geofence, plan_safe_route), the
     two cyclone/severe-weather additions (get_cyclone_alerts,
     get_severe_weather_alerts), get_documentation (platform self-knowledge,
-    called directly rather than through a specialist), the three sihtodo.md
-    item 4 additions for the web_research specialist (web_search,
-    fetch_webpage, search_scientific_literature), and the sihtodo.md items
-    7/10 additions (analyze_variable_correlation, assess_marine_risk).
+    called directly rather than through a specialist), the sihtodo.md
+    items 7/10 additions (analyze_variable_correlation, assess_marine_risk),
+    the sihtodo.md item 4 controlled-internet additions (web_search,
+    fetch_webpage, search_scientific_literature), the sihtodo.md item 6
+    addition (get_tide_level), the ARGO float profile addition
+    (get_argo_profile), and the drift trajectory addition
+    (plan_drift_trajectory).
     """
     tools = build_tools(Ledger())
-    assert len(tools) == 20
+    assert len(tools) == 23
     for tool in tools:
         assert tool.description and len(tool.description) > 30, tool.name
         assert tool.args_schema is not None, tool.name
@@ -964,3 +967,64 @@ def test_every_specialist_tool_name_is_real():
     for specialist in SPECIALISTS.values():
         for name in specialist.tool_names:
             assert name in ALL_TOOL_NAMES, f"{specialist.name} references unknown tool {name}"
+
+
+@pytest.mark.asyncio
+async def test_an_attached_image_reaches_the_model_as_a_multimodal_message(patched):
+    """`image` becomes a multimodal `HumanMessage` content list — the shape
+    LangChain standardised across `ChatOpenAI`/`ChatGoogleGenerativeAI` (and
+    thus the OpenAI-compatible Ollama path too, see `agent._model`) — rather
+    than being silently dropped or concatenated into the text."""
+    model = ScriptedModel([AIMessage(content="That looks like a bloom patch.")])
+    patched(model)
+
+    data_url = "data:image/png;base64,aGVsbG8="
+    reply = await agent.answer("what is this?", image=data_url)
+
+    assert reply["answer"] == "That looks like a bloom patch."
+    last_message = model.seen[0][-1]
+    assert last_message.content == [
+        {"type": "text", "text": "what is this?"},
+        {"type": "image_url", "image_url": {"url": data_url}},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_no_image_stays_a_plain_text_message(patched):
+    """The common case is unchanged: no image means the existing plain-string
+    `HumanMessage`, not a single-element multimodal list."""
+    model = ScriptedModel([AIMessage(content="It's warm today.")])
+    patched(model)
+
+    await agent.answer("how warm is it?")
+
+    last_message = model.seen[0][-1]
+    assert last_message.content == "how warm is it?"
+
+
+def test_a_malformed_image_data_url_is_rejected_at_the_request_boundary():
+    """The router validates the `data:` URL shape (and a size cap) before the
+    model is ever touched — see `routers/chat.py::ChatRequest._validate_image`."""
+    from routers.chat import ChatRequest
+
+    with pytest.raises(ValidationError):
+        ChatRequest(
+            message="hi",
+            client_id="test-client-00000000",
+            image="not-a-data-url",
+        )
+
+    with pytest.raises(ValidationError):
+        ChatRequest(
+            message="hi",
+            client_id="test-client-00000000",
+            image="data:image/gif;base64,aGVsbG8=",
+        )
+
+    # A well-formed one passes straight through.
+    request = ChatRequest(
+        message="hi",
+        client_id="test-client-00000000",
+        image="data:image/png;base64,aGVsbG8=",
+    )
+    assert request.image == "data:image/png;base64,aGVsbG8="

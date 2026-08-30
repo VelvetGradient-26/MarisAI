@@ -28,12 +28,24 @@ export interface HabitatPoint {
   value_label: string;
 }
 
+export interface PredictionDriver {
+  feature: string;
+  label: string;
+  value: number | null;
+  contribution: number;
+  direction: 'increases' | 'decreases';
+}
+
 export interface HabPoint {
   horizon_days: number;
   date: string;
   risk: number | null;
   outside_coverage: boolean;
   value_label: string;
+  /** Top SHAP drivers for this cell, strongest first. Null when the export
+   * predates this field, the manifest's feature-name lookup is missing, or
+   * the cell has no risk value (land / outside coverage). */
+  drivers: PredictionDriver[] | null;
 }
 
 export async function fetchHabitatPoint(

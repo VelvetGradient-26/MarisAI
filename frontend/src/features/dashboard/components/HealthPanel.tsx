@@ -34,52 +34,52 @@ function ProviderCard({ provider }: { provider: ProviderStatus }) {
       >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h4 className="truncate text-[12px] font-medium text-[color:var(--oid-text-strong)]">{provider.name}</h4>
-          <p className="mt-0.5 text-[9.5px] tracking-wide text-[color:var(--oid-text-faint)] uppercase">
+          <h4 className="truncate text-[length:var(--oid-text-base)] font-medium text-[color:var(--oid-text-strong)]">{provider.name}</h4>
+          <p className="mt-0.5 text-[length:var(--oid-text-4xs)] tracking-wide text-[color:var(--oid-text-faint)] uppercase">
             {provider.category}
           </p>
         </div>
         <span className="flex shrink-0 items-center gap-1.5">
           <span className={cn('h-1.5 w-1.5 rounded-full', style.dot)} />
-          <span className={cn('text-[10px] font-medium', style.text)}>{style.label}</span>
+          <span className={cn('text-[length:var(--oid-text-3xs)] font-medium', style.text)}>{style.label}</span>
         </span>
       </div>
 
       <dl className="mt-2.5 grid grid-cols-3 gap-2">
         <div>
-          <dt className="text-[9px] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">Latency</dt>
-          <dd className="text-[11px] text-[color:var(--oid-text)]">
+          <dt className="text-[length:var(--oid-text-5xs)] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">Latency</dt>
+          <dd className="text-[length:var(--oid-text-xs)] text-[color:var(--oid-text)]">
             {provider.latency_ms != null ? `${provider.latency_ms} ms` : '—'}
           </dd>
         </div>
         <div>
-          <dt className="text-[9px] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">Last sync</dt>
-          <dd className="text-[11px] text-[color:var(--oid-text)]">
+          <dt className="text-[length:var(--oid-text-5xs)] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">Last sync</dt>
+          <dd className="text-[length:var(--oid-text-xs)] text-[color:var(--oid-text)]">
             {formatAge(ageSeconds(provider.last_sync))}
           </dd>
         </div>
         <div>
-          <dt className="text-[9px] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">Records</dt>
-          <dd className="text-[11px] text-[color:var(--oid-text)]">
+          <dt className="text-[length:var(--oid-text-5xs)] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">Records</dt>
+          <dd className="text-[length:var(--oid-text-xs)] text-[color:var(--oid-text)]">
             {provider.records ? provider.records.toLocaleString() : '—'}
           </dd>
         </div>
       </dl>
 
       {provider.data_timestamp && (
-        <p className="mt-2 text-[10px] text-[color:var(--oid-text-faint)]">
+        <p className="mt-2 text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-faint)]">
           Data timestep {formatAge(ageSeconds(provider.data_timestamp))} — products publish
           behind real time; this does not affect connection health.
         </p>
       )}
 
       {provider.error && (
-        <p className="mt-2 text-[10px] text-[color:var(--color-alert-critical)]">
+        <p className="mt-2 text-[length:var(--oid-text-3xs)] text-[color:var(--color-alert-critical)]">
           {provider.error}
         </p>
       )}
       {!provider.error && provider.notes && (
-        <p className="mt-2 text-[10px] leading-snug text-[color:var(--oid-text-ghost)]">{provider.notes}</p>
+        <p className="mt-2 text-[length:var(--oid-text-3xs)] leading-snug text-[color:var(--oid-text-ghost)]">{provider.notes}</p>
       )}
       </Link>
     </li>

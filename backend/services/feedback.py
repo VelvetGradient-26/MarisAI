@@ -4,16 +4,21 @@ No SMTP credentials are committed anywhere — `SMTP_USERNAME`/`SMTP_PASSWORD`
 default to empty strings in `app/core/config.py` and must be supplied in the
 deployer's own untracked `.env` (a Gmail "app password", not the account's
 real login password — https://myaccount.google.com/apppasswords).
+
+**Mail-only, by deliberate choice.** This used to also append every
+submission to a local `feedback_log.jsonl` as a durable record independent
+of whether the send succeeded. Dropped: a failed send now surfaces as a
+real error to the person submitting (`FeedbackError`, a 502 at the router),
+which is the honest signal — a silent on-disk fallback masked exactly the
+failure a submitter needs to know about, and there is no second consumer
+of that file to preserve.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import smtplib
-from datetime import datetime, timezone
 from email.mime.text import MIMEText
-from pathlib import Path
 
 from loguru import logger
 
@@ -21,34 +26,9 @@ from app.core.config import settings
 
 FEEDBACK_RECIPIENT = "nycteakryfos@gmail.com"
 
-# One JSON object per line — a durable local record of every submission,
-# independent of whether the email send below succeeds. Gitignored (real
-# user emails/messages, not something to commit).
-# Under `data/`, not in the source root. Runtime state and source are different
-# kinds of thing, and this is the only file the backend *writes* to its own
-# tree — it sat beside main.py looking like part of the application.
-FEEDBACK_LOG_PATH = Path(__file__).resolve().parent.parent / "data" / "feedback_log.jsonl"
-
 
 class FeedbackError(RuntimeError):
     pass
-
-
-def _log_submission(name: str, email: str, message: str) -> None:
-    record = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "name": name,
-        "email": email,
-        "message": message,
-    }
-    try:
-        # The directory is not in git (it holds only runtime state), so a fresh
-        # clone has no `data/` until something writes to it.
-        FEEDBACK_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with FEEDBACK_LOG_PATH.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(record) + "\n")
-    except OSError as exc:  # noqa: BLE001 - logging failure shouldn't block the email
-        logger.warning(f"Failed to write feedback log entry: {exc}")
 
 
 def _send_sync(name: str, email: str, message: str) -> None:
@@ -66,8 +46,6 @@ def _send_sync(name: str, email: str, message: str) -> None:
 
 
 async def send_feedback_email(name: str, email: str, message: str) -> None:
-    await asyncio.to_thread(_log_submission, name, email, message)
-
     if not settings.SMTP_USERNAME or not settings.SMTP_PASSWORD:
         raise FeedbackError(
             "Feedback email is not configured on this server (missing SMTP credentials)."

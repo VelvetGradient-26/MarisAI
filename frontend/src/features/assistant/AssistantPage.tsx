@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AssistantRuntimeProvider, fromThreadMessageLike } from '@assistant-ui/react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { MessageSquarePlus, Trash2 } from 'lucide-react';
+import { MessageSquarePlus, PanelLeftClose, PanelLeftOpen, Trash2 } from 'lucide-react';
 import { deleteSession, listSessions, loadSession } from '../map/api/chat';
 import type { ChatSessionSummary } from '../map/api/chat';
 import { useThemeStore } from '../../store/themeStore';
@@ -12,6 +12,20 @@ import '../../pages/chat.css';
 import './assistant.css';
 
 const EASE = [0.22, 0.61, 0.36, 1] as const;
+
+/** Per-viewer convenience only (which side of the rail toggle they left it
+ * on) — a `localStorage` read/write, not a Zustand store: the preference is
+ * scoped to this one page, not the cross-page kind `store/themeStore.ts`'s
+ * pattern exists for. */
+const SIDEBAR_COLLAPSED_KEY = 'marisai-assistant-sidebar-collapsed';
+
+function readSidebarCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 /**
  * The Ocean Assistant, on assistant-ui.
@@ -28,10 +42,17 @@ const EASE = [0.22, 0.61, 0.36, 1] as const;
  * the page exists — an ocean answer you cannot trace is the failure mode the
  * whole backend is built to avoid. They are ported, not reimplemented.
  *
- * Styling is likewise ported: `pages/chat.css` is reused as-is, so this is
- * recognisably the same page. That is also what keeps Tailwind confined to
- * `features/dashboard/` — assistant-ui's primitives are headless, so they take
- * the existing class names without bringing a styling system with them.
+ * **Styling now mirrors assistant-ui's own default Thread template** —
+ * bubble-less assistant turns with an avatar mark, a hover action bar
+ * (copy/reload/edit) wired to real branch-switching behaviour, a
+ * scroll-to-bottom button — while staying `pages/chat.css` +
+ * `assistant.css`, on the app's `--ma-*` tokens, rather than adopting
+ * `@assistant-ui/styles`. That package is deprecated and Tailwind-based;
+ * pulling it in would confine Tailwind to `features/dashboard/` no longer.
+ * The primitives are headless, so every visual choice — including the ones
+ * that now match the template's own look — is this page's own CSS, which is
+ * what makes it invert for dark/light like every other page instead of
+ * carrying a second theming system. See AssistantThread.tsx for the detail.
  */
 export function AssistantPage() {
   const isDark = useThemeStore((s) => s.dark);
@@ -41,6 +62,16 @@ export function AssistantPage() {
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [persistence, setPersistence] = useState(true);
   const [activeSession, setActiveSession] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? '1' : '0');
+    } catch {
+      /* Private browsing, or storage disabled — the toggle still works for
+         this visit, it just will not be remembered for the next one. */
+    }
+  }, [sidebarCollapsed]);
 
   /**
    * The sidebar's three honest answers, kept apart — carried over verbatim
@@ -151,72 +182,110 @@ export function AssistantPage() {
     <AssistantRuntimeProvider runtime={runtime}>
       <ProvenanceProvider value={provenance}>
         <div className={`chat-page${isDark ? '' : ' chat-page--light'}`}>
-          <div className="chat-shell">
-            <aside className="chat-sidebar">
-              <button type="button" className="chat-new" onClick={startNew}>
+          <div className={`chat-shell${sidebarCollapsed ? ' chat-shell--sidebar-collapsed' : ''}`}>
+            <aside className={`chat-sidebar${sidebarCollapsed ? ' chat-sidebar--collapsed' : ''}`}>
+              <div className="chat-sidebar__top">
+                <button
+                  type="button"
+                  className="chat-sidebar__toggle"
+                  onClick={() => setSidebarCollapsed((value) => !value)}
+                  aria-label={sidebarCollapsed ? 'Show chat history' : 'Hide chat history'}
+                  aria-expanded={!sidebarCollapsed}
+                >
+                  {sidebarCollapsed ? (
+                    <PanelLeftOpen size={18} aria-hidden />
+                  ) : (
+                    <PanelLeftClose size={18} aria-hidden />
+                  )}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                className="chat-new"
+                onClick={startNew}
+                aria-label="New chat"
+                title="New chat"
+              >
                 <MessageSquarePlus size={16} aria-hidden />
-                <span>New chat</span>
+                {sidebarCollapsed ? null : <span>New chat</span>}
               </button>
 
-              <p className="chat-sidebar__label">
-                {persistence ? 'Previous chats' : 'History unavailable'}
-              </p>
+              <AnimatePresence initial={false}>
+                {sidebarCollapsed ? null : (
+                  <motion.div
+                    key="sidebar-history"
+                    className="chat-sidebar__history"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15, ease: EASE }}
+                  >
+                    <p className="chat-sidebar__label">
+                      {persistence ? 'Previous chats' : 'History unavailable'}
+                    </p>
 
-              {!persistence ? (
-                <p className="chat-sidebar__empty">
-                  No database is configured, so chats are not saved between visits.
-                </p>
-              ) : sessionsStatus === 'loading' ? (
-                <ul className="chat-sessions" aria-busy="true">
-                  {[0, 1, 2].map((row) => (
-                    <li key={row} className="chat-session chat-session--placeholder">
-                      <span className="ma-skeleton ma-skeleton--sub" style={{ width: `${8 - row}rem` }} />
-                    </li>
-                  ))}
-                </ul>
-              ) : sessionsStatus === 'error' ? (
-                <p className="chat-sidebar__empty chat-sidebar__empty--error">
-                  Couldn't load your previous chats. They aren't lost — reload to try again.
-                </p>
-              ) : sessions.length === 0 ? (
-                <p className="chat-sidebar__empty">Your conversations will appear here.</p>
-              ) : (
-                <ul className="chat-sessions">
-                  <AnimatePresence initial={false}>
-                    {sessions.map((entry) => (
-                      /* Two sibling buttons, not a button inside a button —
-                         nesting interactive content in a <button> is invalid
-                         HTML, and is why the delete previously needed a
-                         hand-rolled role/tabIndex/onKeyDown. */
-                      <motion.li
-                        key={entry.id}
-                        className="chat-session-row"
-                        layout
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -10, height: 0 }}
-                        transition={{ duration: 0.28, ease: EASE }}
-                      >
-                        <button
-                          type="button"
-                          className={`chat-session${entry.id === activeSession ? ' is-active' : ''}`}
-                          onClick={() => void open(entry.id)}
-                        >
-                          <span className="chat-session__title">{entry.title}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="chat-session__delete"
-                          aria-label={`Delete chat: ${entry.title}`}
-                          onClick={() => void remove(entry.id)}
-                        >
-                          <Trash2 size={13} aria-hidden />
-                        </button>
-                      </motion.li>
-                    ))}
-                  </AnimatePresence>
-                </ul>
-              )}
+                    {!persistence ? (
+                      <p className="chat-sidebar__empty">
+                        No database is configured, so chats are not saved between visits.
+                      </p>
+                    ) : sessionsStatus === 'loading' ? (
+                      <ul className="chat-sessions" aria-busy="true">
+                        {[0, 1, 2].map((row) => (
+                          <li key={row} className="chat-session chat-session--placeholder">
+                            <span
+                              className="ma-skeleton ma-skeleton--sub"
+                              style={{ width: `${8 - row}rem` }}
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    ) : sessionsStatus === 'error' ? (
+                      <p className="chat-sidebar__empty chat-sidebar__empty--error">
+                        Couldn't load your previous chats. They aren't lost — reload to try again.
+                      </p>
+                    ) : sessions.length === 0 ? (
+                      <p className="chat-sidebar__empty">Your conversations will appear here.</p>
+                    ) : (
+                      <ul className="chat-sessions">
+                        <AnimatePresence initial={false}>
+                          {sessions.map((entry) => (
+                            /* Two sibling buttons, not a button inside a button —
+                               nesting interactive content in a <button> is invalid
+                               HTML, and is why the delete previously needed a
+                               hand-rolled role/tabIndex/onKeyDown. */
+                            <motion.li
+                              key={entry.id}
+                              className="chat-session-row"
+                              layout
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: -10, height: 0 }}
+                              transition={{ duration: 0.28, ease: EASE }}
+                            >
+                              <button
+                                type="button"
+                                className={`chat-session${entry.id === activeSession ? ' is-active' : ''}`}
+                                onClick={() => void open(entry.id)}
+                              >
+                                <span className="chat-session__title">{entry.title}</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="chat-session__delete"
+                                aria-label={`Delete chat: ${entry.title}`}
+                                onClick={() => void remove(entry.id)}
+                              >
+                                <Trash2 size={13} aria-hidden />
+                              </button>
+                            </motion.li>
+                          ))}
+                        </AnimatePresence>
+                      </ul>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </aside>
 
             <AssistantThread error={error} />

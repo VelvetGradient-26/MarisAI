@@ -60,23 +60,23 @@ function fmtDate(value: unknown): string {
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div>
-      <dt className="text-[9.5px] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">{label}</dt>
-      <dd className="text-[13px] font-medium text-[color:var(--oid-text-strong)]">{value}</dd>
-      {hint && <p className="mt-0.5 text-[10px] leading-tight text-[color:var(--oid-text-faint)]">{hint}</p>}
+      <dt className="text-[length:var(--oid-text-4xs)] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">{label}</dt>
+      <dd className="text-[length:var(--oid-text-lg)] font-medium text-[color:var(--oid-text-strong)]">{value}</dd>
+      {hint && <p className="mt-0.5 text-[length:var(--oid-text-3xs)] leading-tight text-[color:var(--oid-text-faint)]">{hint}</p>}
     </div>
   );
 }
 
 function Chips({ items }: { items: string[] }) {
   if (items.length === 0) {
-    return <p className="text-[11px] text-[color:var(--oid-text-faint)]">None recorded.</p>;
+    return <p className="text-[length:var(--oid-text-xs)] text-[color:var(--oid-text-faint)]">None recorded.</p>;
   }
   return (
     <div className="flex flex-wrap gap-1.5">
       {items.map((item) => (
         <span
           key={item}
-          className="rounded-md border border-[color:var(--oid-border)] bg-[color:var(--oid-elevated)] px-1.5 py-0.5 font-mono text-[10px] text-[color:var(--oid-text-muted)]"
+          className="rounded-md border border-[color:var(--oid-border)] bg-[color:var(--oid-elevated)] px-1.5 py-0.5 font-mono text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-muted)]"
         >
           {item}
         </span>
@@ -87,13 +87,13 @@ function Chips({ items }: { items: string[] }) {
 
 function FoldTable({ folds }: { folds: Record<string, unknown>[] }) {
   if (folds.length === 0) {
-    return <p className="text-[11px] text-[color:var(--oid-text-faint)]">No fold-level scores recorded.</p>;
+    return <p className="text-[length:var(--oid-text-xs)] text-[color:var(--oid-text-faint)]">No fold-level scores recorded.</p>;
   }
   return (
     <div className="oid-scroll overflow-x-auto">
-      <table className="w-full min-w-[420px] border-collapse text-[11px]">
+      <table className="w-full min-w-[420px] border-collapse text-[length:var(--oid-text-xs)]">
         <thead>
-          <tr className="border-b border-[color:var(--oid-border)] text-left text-[9.5px] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">
+          <tr className="border-b border-[color:var(--oid-border)] text-left text-[length:var(--oid-text-4xs)] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">
             <th className="py-1.5 pr-3 font-medium">Fold</th>
             <th className="py-1.5 pr-3 font-medium">Skill</th>
             <th className="py-1.5 pr-3 font-medium">RMSE</th>
@@ -109,7 +109,7 @@ function FoldTable({ folds }: { folds: Record<string, unknown>[] }) {
                 key={str(fold.fold) ?? index}
                 className="border-b border-[color:var(--oid-border)] last:border-0"
               >
-                <td className="py-1.5 pr-3 font-mono text-[10px] text-[color:var(--oid-text-muted)]">
+                <td className="py-1.5 pr-3 font-mono text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-muted)]">
                   {str(fold.fold) ?? `fold ${index + 1}`}
                 </td>
                 <td
@@ -141,7 +141,7 @@ function FoldTable({ folds }: { folds: Record<string, unknown>[] }) {
 function ImportanceBars({ importance }: { importance: FeatureImportance[] }) {
   if (importance.length === 0) {
     return (
-      <p className="text-[11px] text-[color:var(--oid-text-faint)]">
+      <p className="text-[length:var(--oid-text-xs)] text-[color:var(--oid-text-faint)]">
         No global importance ranking was stored for this model.
       </p>
     );
@@ -151,11 +151,11 @@ function ImportanceBars({ importance }: { importance: FeatureImportance[] }) {
     <ul className="space-y-2">
       {importance.map((entry) => (
         <li key={entry.feature}>
-          <div className="flex items-baseline justify-between gap-2 text-[11px]">
+          <div className="flex items-baseline justify-between gap-2 text-[length:var(--oid-text-xs)]">
             <span className="truncate text-[color:var(--oid-text)]" title={entry.feature}>
               {entry.label}
             </span>
-            <span className="shrink-0 font-mono text-[10px] text-[color:var(--oid-text-faint)]">
+            <span className="shrink-0 font-mono text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-faint)]">
               {entry.importance.toFixed(4)}
             </span>
           </div>
@@ -230,7 +230,7 @@ export function ModelDossierPage() {
               <h1 className="text-[22px] leading-none font-semibold tracking-tight text-[color:var(--oid-text-strong)]">
                 {catalogEntry?.label ?? variable}
               </h1>
-              <p className="mt-1.5 text-[11.5px] text-[color:var(--oid-text-faint)]">
+              <p className="mt-1.5 text-[length:var(--oid-text-sm)] text-[color:var(--oid-text-faint)]">
                 Forecast horizon +{horizon} days · full training and validation record for this artifact
               </p>
             </header>
@@ -290,7 +290,7 @@ export function ModelDossierPage() {
                     <div className="grid grid-cols-1 gap-4 border-t border-[color:var(--oid-border)] p-4 sm:grid-cols-2">
                       {trainingPoints.length > 0 && (
                         <div>
-                          <h3 className="mb-2 text-[10.5px] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
+                          <h3 className="mb-2 text-[length:var(--oid-text-2xs)] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
                             Trained on
                           </h3>
                           <Chips items={trainingPoints} />
@@ -298,7 +298,7 @@ export function ModelDossierPage() {
                       )}
                       {covariates.length > 0 && (
                         <div>
-                          <h3 className="mb-2 text-[10.5px] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
+                          <h3 className="mb-2 text-[length:var(--oid-text-2xs)] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
                             Covariates
                           </h3>
                           <Chips items={covariates} />
@@ -317,7 +317,7 @@ export function ModelDossierPage() {
                         value={fmtSkill(skill)}
                         hint="Positive beats the naive 'tomorrow = today' baseline."
                       />
-                      <p className="mt-3 text-[11px] leading-relaxed text-[color:var(--oid-text-faint)]">
+                      <p className="mt-3 text-[length:var(--oid-text-xs)] leading-relaxed text-[color:var(--oid-text-faint)]">
                         <strong className="text-[color:var(--oid-text-muted)]">Skill vs climatology:</strong> not
                         computed for this model. The forecasting engine's models are only scored against
                         persistence — a day-of-year climatology baseline is not wired into this pipeline's
@@ -325,7 +325,7 @@ export function ModelDossierPage() {
                       </p>
                     </div>
                     <div>
-                      <h3 className="mb-2 text-[10.5px] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
+                      <h3 className="mb-2 text-[length:var(--oid-text-2xs)] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
                         Fold scores
                       </h3>
                       <FoldTable folds={folds} />

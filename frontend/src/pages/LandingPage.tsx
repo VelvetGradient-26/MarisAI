@@ -401,11 +401,9 @@ const PROVIDER_GROUPS = [
 ];
 
 function Coverage() {
-  const { ref, revealed } = useReveal<HTMLDivElement>();
-
   return (
     <section className="lp-section lp-section--panel">
-      <div ref={ref} className={`lp-coverage ${revealed ? 'is-in' : ''}`}>
+      <div className="lp-coverage">
         <div className="lp-coverage__head">
           <Eyebrow index="03">Data layer</Eyebrow>
           <KineticText as="h2" className="lp-h2" text="Every variable traced to its source." />
@@ -417,12 +415,8 @@ function Coverage() {
           </p>
         </div>
         <ul className="lp-provider-list">
-          {PROVIDER_GROUPS.map((provider, index) => (
-            <li
-              key={provider.name}
-              className="lp-provider"
-              style={{ transitionDelay: `${index * 70}ms` }}
-            >
+          {PROVIDER_GROUPS.map((provider) => (
+            <li key={provider.name} className="lp-provider">
               <span className="lp-provider__name">{provider.name}</span>
               <span className="lp-provider__detail">{provider.detail}</span>
             </li>
@@ -473,22 +467,19 @@ const SURFACES = [
 ];
 
 function Platform() {
-  const { ref, revealed } = useReveal<HTMLDivElement>();
-
   return (
     <section className="lp-section">
-      <div ref={ref} className={`lp-surfaces ${revealed ? 'is-in' : ''}`}>
+      <div className="lp-surfaces">
         <div className="lp-surfaces__head">
           <Eyebrow index="04">Platform</Eyebrow>
           <KineticText as="h2" className="lp-h2" text="Four ways in." />
         </div>
         <div className="lp-surface-grid">
-          {SURFACES.map((surface, index) => (
+          {SURFACES.map((surface) => (
             <Link
               key={surface.title}
               to={surface.to}
               className="lp-surface"
-              style={{ transitionDelay: `${index * 80}ms` }}
               // Feeds the card's wash and its top-edge highlight (see
               // landing.css). Written straight to the element rather than held
               // in state: this fires on every pointer move over a grid of four
@@ -707,22 +698,16 @@ const PRINCIPLES: { title: string; body: ReactNode }[] = [
 ];
 
 function Rigour() {
-  const { ref, revealed } = useReveal<HTMLDivElement>();
-
   return (
     <section className="lp-section">
-      <div ref={ref} className={`lp-principles ${revealed ? 'is-in' : ''}`}>
+      <div className="lp-principles">
         <div className="lp-principles__head">
           <Eyebrow index="06">How it is built</Eyebrow>
           <KineticText as="h2" className="lp-h2" text="Honesty is a feature." />
         </div>
         <div className="lp-principle-grid">
-          {PRINCIPLES.map((principle, index) => (
-            <div
-              key={principle.title}
-              className="lp-principle"
-              style={{ transitionDelay: `${index * 70}ms` }}
-            >
+          {PRINCIPLES.map((principle) => (
+            <div key={principle.title} className="lp-principle">
               <div className="lp-principle__rule" aria-hidden="true" />
               <h3>{principle.title}</h3>
               <p>{principle.body}</p>
@@ -739,12 +724,10 @@ function Rigour() {
 // --------------------------------------------------------------------------
 
 function Closing() {
-  const { ref, revealed } = useReveal<HTMLDivElement>(0.25);
-
   return (
     <section className="lp-section lp-section--closing">
       <ClosingBackdrop />
-      <div ref={ref} className={`lp-closing ${revealed ? 'is-in' : ''}`}>
+      <div className="lp-closing">
         <KineticText as="h2" className="lp-closing__title" text="Start with the map." />
         <p className="lp-body lp-body--wide">
           Sea surface temperature, chlorophyll, wind and forecast fields over live bathymetry
