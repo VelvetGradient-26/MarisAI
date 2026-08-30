@@ -29,7 +29,7 @@ function Metric({
 }) {
   return (
     <div className="rounded-lg border border-[color:var(--oid-border)] bg-[color:var(--oid-elevated)] p-2.5">
-      <div className="text-[10px] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">
+      <div className="text-[length:var(--oid-text-3xs)] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">
         {label}
       </div>
       <div
@@ -42,7 +42,7 @@ function Metric({
         {value}
       </div>
       {hint && (
-        <div className="mt-0.5 text-[10px] text-[color:var(--oid-text-ghost)]">{hint}</div>
+        <div className="mt-0.5 text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-ghost)]">{hint}</div>
       )}
     </div>
   );
@@ -101,7 +101,7 @@ export function Explainability({ variable, latitude, longitude }: SectionProps) 
                   type="button"
                   onClick={() => setHorizon(option)}
                   className={cn(
-                    'rounded-full px-2 py-0.5 text-[10px] transition-colors',
+                    'rounded-full px-2 py-0.5 text-[length:var(--oid-text-3xs)] transition-colors',
                     horizon === option
                       ? 'bg-[color:var(--oid-accent-wash-strong)] text-[color:var(--oid-accent)]'
                       : 'text-[color:var(--oid-text-faint)] hover:bg-[color:var(--oid-track)]'
@@ -128,25 +128,25 @@ export function Explainability({ variable, latitude, longitude }: SectionProps) 
       {model && (
         <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <div>
-            <h3 className="text-[11px] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
+            <h3 className="text-[length:var(--oid-text-xs)] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
               Drivers of this forecast
             </h3>
 
             {drivers.length === 0 ? (
-              <p className="mt-3 text-[11.5px] text-[color:var(--oid-text-faint)]">
+              <p className="mt-3 text-[length:var(--oid-text-sm)] text-[color:var(--oid-text-faint)]">
                 Attribution is not available for this prediction.
               </p>
             ) : (
               <ul className="mt-3 space-y-2.5">
                 {drivers.map((driver, index) => (
                   <li key={driver.feature}>
-                    <div className="flex items-baseline justify-between gap-2 text-[11.5px]">
+                    <div className="flex items-baseline justify-between gap-2 text-[length:var(--oid-text-sm)]">
                       <span className="truncate text-[color:var(--oid-text)]" title={driver.feature}>
                         {driver.label}
                       </span>
                       <span
                         className={cn(
-                          'shrink-0 font-mono text-[10.5px]',
+                          'shrink-0 font-mono text-[length:var(--oid-text-2xs)]',
                           driver.direction === 'increases'
                             ? 'text-[color:var(--color-alert-warning)]'
                             : 'text-[color:var(--oid-accent)]'
@@ -174,7 +174,7 @@ export function Explainability({ variable, latitude, longitude }: SectionProps) 
               </ul>
             )}
 
-            <p className="mt-3 text-[10px] leading-relaxed text-[color:var(--oid-text-ghost)]">
+            <p className="mt-3 text-[length:var(--oid-text-3xs)] leading-relaxed text-[color:var(--oid-text-ghost)]">
               Shares are SHAP contributions to this specific prediction, normalised across the
               features shown. An arrow says which way that feature pushed the forecast, not
               whether it is good.
@@ -182,7 +182,7 @@ export function Explainability({ variable, latitude, longitude }: SectionProps) 
           </div>
 
           <div>
-            <h3 className="text-[11px] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
+            <h3 className="text-[length:var(--oid-text-xs)] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
               Model performance
             </h3>
             <div className="mt-3 grid grid-cols-2 gap-2">
@@ -207,7 +207,7 @@ export function Explainability({ variable, latitude, longitude }: SectionProps) 
               />
             </div>
 
-            <dl className="mt-3 space-y-1 text-[10.5px] text-[color:var(--oid-text-ghost)]">
+            <dl className="mt-3 space-y-1 text-[length:var(--oid-text-2xs)] text-[color:var(--oid-text-ghost)]">
               <Row term="Model" value={String(model.metadata.model_type ?? '—')} />
               <Row term="Validation" value="rolling-origin CV" />
               <Row

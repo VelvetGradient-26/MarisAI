@@ -64,11 +64,11 @@ export function PanelHeader({
           <span className="mt-0.5 shrink-0 text-[color:var(--oid-accent)]">{icon}</span>
         )}
         <div className="min-w-0">
-          <h2 className="truncate text-[13px] font-semibold tracking-wide text-[color:var(--oid-text-strong)] uppercase">
+          <h2 className="truncate text-[length:var(--oid-text-lg)] font-semibold tracking-wide text-[color:var(--oid-text-strong)] uppercase">
             {title}
           </h2>
           {subtitle && (
-            <p className="mt-0.5 text-[11px] leading-snug text-[color:var(--oid-text-muted)]">{subtitle}</p>
+            <p className="mt-0.5 text-[length:var(--oid-text-xs)] leading-snug text-[color:var(--oid-text-muted)]">{subtitle}</p>
           )}
         </div>
       </div>
@@ -142,15 +142,15 @@ export function PanelEmpty({
       role="status"
     >
       <span className="text-[color:var(--oid-text-faint)]">{icon ?? <AlertCircle size={20} />}</span>
-      <p className="text-[13px] font-medium text-[color:var(--oid-text)]">{title}</p>
-      {reason && <p className="max-w-sm text-[11.5px] leading-relaxed text-[color:var(--oid-text-faint)]">{reason}</p>}
+      <p className="text-[length:var(--oid-text-lg)] font-medium text-[color:var(--oid-text)]">{title}</p>
+      {reason && <p className="max-w-sm text-[length:var(--oid-text-sm)] leading-relaxed text-[color:var(--oid-text-faint)]">{reason}</p>}
       {onRetry && (
         <button
           type="button"
           onClick={onRetry}
           className={cn(
             'mt-1 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5',
-            'border border-[color:var(--oid-border)] text-[11.5px] text-[color:var(--oid-text)]',
+            'border border-[color:var(--oid-border)] text-[length:var(--oid-text-sm)] text-[color:var(--oid-text)]',
             'transition-colors hover:bg-[color:var(--oid-track)]'
           )}
         >
@@ -166,7 +166,7 @@ export function PanelLoading({ label = 'Loading' }: { label?: string }) {
   return (
     <div className="flex items-center justify-center gap-2 px-5 py-8 text-[color:var(--oid-text-muted)]" role="status">
       <Loader2 size={15} className="animate-spin" />
-      <span className="text-[12px]">{label}</span>
+      <span className="text-[length:var(--oid-text-base)]">{label}</span>
     </div>
   );
 }

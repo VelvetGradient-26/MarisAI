@@ -38,9 +38,9 @@ const STATUS_LABEL: Record<SatelliteProduct['status'], string> = {
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div>
-      <dt className="text-[9.5px] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">{label}</dt>
-      <dd className="text-[13px] font-medium text-[color:var(--oid-text-strong)]">{value}</dd>
-      {hint && <p className="mt-0.5 text-[10px] leading-tight text-[color:var(--oid-text-faint)]">{hint}</p>}
+      <dt className="text-[length:var(--oid-text-4xs)] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">{label}</dt>
+      <dd className="text-[length:var(--oid-text-lg)] font-medium text-[color:var(--oid-text-strong)]">{value}</dd>
+      {hint && <p className="mt-0.5 text-[length:var(--oid-text-3xs)] leading-tight text-[color:var(--oid-text-faint)]">{hint}</p>}
     </div>
   );
 }
@@ -100,7 +100,7 @@ export function SatelliteDossierPage() {
               <h1 className="text-[22px] leading-none font-semibold tracking-tight text-[color:var(--oid-text-strong)]">
                 {product?.title ?? layerId}
               </h1>
-              <p className="mt-1.5 text-[11.5px] text-[color:var(--oid-text-faint)]">
+              <p className="mt-1.5 text-[length:var(--oid-text-sm)] text-[color:var(--oid-text-faint)]">
                 {product ? `${product.satellite} · ${product.product}` : 'Loading…'}
               </p>
             </header>
@@ -159,7 +159,7 @@ export function SatelliteDossierPage() {
                       style={{ display: preview ? 'none' : 'flex' }}
                     >
                       <ImageOff size={20} className="text-[color:var(--oid-text-faint)]" />
-                      <p className="text-[11.5px] text-[color:var(--oid-text-faint)]">
+                      <p className="text-[length:var(--oid-text-sm)] text-[color:var(--oid-text-faint)]">
                         Preview unavailable for this product.
                       </p>
                     </div>

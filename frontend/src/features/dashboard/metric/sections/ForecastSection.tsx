@@ -114,7 +114,7 @@ export function ForecastSection({ variable, latitude, longitude }: SectionProps)
             : 'Predicted path with a 95% interval'
         }
         actions={
-          <span className="text-[10px] text-[color:var(--oid-text-ghost)]">
+          <span className="text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-ghost)]">
             {horizons.map((h) => `${h}d`).join(' · ')}
           </span>
         }
@@ -161,7 +161,7 @@ export function ForecastSection({ variable, latitude, longitude }: SectionProps)
             ]}
           />
 
-          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px]">
+          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-[length:var(--oid-text-xs)]">
             <Legend swatchClass="bg-[color:var(--oid-accent)]" label="Observed" />
             <Legend swatchClass="bg-[color:var(--oid-accent-soft)]" label="Forecast" dashed />
             <Legend
@@ -169,7 +169,7 @@ export function ForecastSection({ variable, latitude, longitude }: SectionProps)
               label="95% confidence interval"
             />
             {hovered?.time != null && (
-              <span className="ml-auto font-mono text-[10.5px] text-[color:var(--oid-text-muted)]">
+              <span className="ml-auto font-mono text-[length:var(--oid-text-2xs)] text-[color:var(--oid-text-muted)]">
                 {new Date(hovered.time * 1000).toISOString().slice(0, 10)} ·{' '}
                 {hovered.observed != null
                   ? `${hovered.observed.toFixed(2)} ${variable.unit}`
@@ -189,16 +189,16 @@ export function ForecastSection({ variable, latitude, longitude }: SectionProps)
                   'border-[color:var(--oid-border)] bg-[color:var(--oid-elevated)]'
                 )}
               >
-                <div className="text-[10px] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">
+                <div className="text-[length:var(--oid-text-3xs)] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">
                   {entry.forecast_horizon} day{entry.forecast_horizon === 1 ? '' : 's'}
                 </div>
                 <div className="mt-1 text-[16px] font-semibold text-[color:var(--oid-text-strong)]">
                   {entry.prediction.toFixed(2)}
-                  <span className="ml-1 text-[10px] font-medium text-[color:var(--oid-text-faint)]">
+                  <span className="ml-1 text-[length:var(--oid-text-3xs)] font-medium text-[color:var(--oid-text-faint)]">
                     {variable.unit}
                   </span>
                 </div>
-                <div className="mt-0.5 text-[10px] text-[color:var(--oid-text-ghost)]">
+                <div className="mt-0.5 text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-ghost)]">
                   {entry.confidence_interval.lower.toFixed(2)} –{' '}
                   {entry.confidence_interval.upper.toFixed(2)}
                 </div>
@@ -206,7 +206,7 @@ export function ForecastSection({ variable, latitude, longitude }: SectionProps)
             ))}
           </div>
 
-          <p className="mt-3 text-[10px] leading-relaxed text-[color:var(--oid-text-ghost)]">
+          <p className="mt-3 text-[length:var(--oid-text-3xs)] leading-relaxed text-[color:var(--oid-text-ghost)]">
             Intervals are bootstrapped from the model&apos;s out-of-sample residuals at each
             horizon, so they reflect error it actually made on data it had not seen. This is a
             statistical forecast, not an official marine warning, and is not suitable for

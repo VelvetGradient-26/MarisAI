@@ -10,7 +10,7 @@ import { Link } from '../../../app/router';
 export function Breadcrumb({ current }: { current: string }) {
   const crumb = 'text-[color:var(--oid-text-faint)] no-underline hover:text-[color:var(--oid-accent)]';
   return (
-    <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-[11.5px]">
+    <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-[length:var(--oid-text-sm)]">
       <Link to="/" className={crumb}>
         Home
       </Link>

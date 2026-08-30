@@ -78,7 +78,7 @@ export function AiInsights({
             onClick={() => void generate()}
             disabled={status === 'loading'}
             className={cn(
-              'rounded-full px-3 py-1.5 text-[11px] font-medium transition-colors',
+              'rounded-full px-3 py-1.5 text-[length:var(--oid-text-xs)] font-medium transition-colors',
               'bg-[color:var(--oid-accent-wash)]',
               'text-[color:var(--oid-accent)]',
               'hover:bg-[color:var(--oid-accent-wash-strong)]',
@@ -155,7 +155,7 @@ export function AiInsights({
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-              className="oid-md text-[12.5px] leading-relaxed text-[color:var(--oid-text)]"
+              className="oid-md text-[length:var(--oid-text-md)] leading-relaxed text-[color:var(--oid-text)]"
             >
               <Markdown text={insights} />
             </motion.div>
@@ -163,7 +163,7 @@ export function AiInsights({
         </AnimatePresence>
       </div>
 
-      <footer className="border-t border-[color:var(--oid-border)] px-4 py-2 text-[9.5px] leading-relaxed text-[color:var(--oid-text-ghost)]">
+      <footer className="border-t border-[color:var(--oid-border)] px-4 py-2 text-[length:var(--oid-text-4xs)] leading-relaxed text-[color:var(--oid-text-ghost)]">
         Generated from live model conditions by a language model. Interpretive, not a
         forecast product, and not suitable for navigation.
       </footer>

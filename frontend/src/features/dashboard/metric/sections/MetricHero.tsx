@@ -78,12 +78,12 @@ function Stat({
 }) {
   return (
     <div className="min-w-0">
-      <div className="text-[10px] font-medium tracking-wide text-[color:var(--oid-text-ghost)] uppercase">
+      <div className="text-[length:var(--oid-text-3xs)] font-medium tracking-wide text-[color:var(--oid-text-ghost)] uppercase">
         {label}
       </div>
       <div className="mt-1 text-[color:var(--oid-text-strong)]">{children}</div>
       {hint && (
-        <div className="mt-0.5 truncate text-[10.5px] text-[color:var(--oid-text-ghost)]">
+        <div className="mt-0.5 truncate text-[length:var(--oid-text-2xs)] text-[color:var(--oid-text-ghost)]">
           {hint}
         </div>
       )}
@@ -179,14 +179,14 @@ export function MetricHero({ variable, latitude, longitude }: SectionProps) {
             <h1 className="text-[26px] leading-none font-semibold tracking-tight text-[color:var(--oid-text-strong)]">
               {variable.label}
             </h1>
-            <span className="rounded-full bg-[color:var(--oid-track)] px-2 py-0.5 text-[10.5px] text-[color:var(--oid-text-muted)]">
+            <span className="rounded-full bg-[color:var(--oid-track)] px-2 py-0.5 text-[length:var(--oid-text-2xs)] text-[color:var(--oid-text-muted)]">
               {variable.category}
             </span>
           </div>
 
           <div className="mt-4 flex flex-wrap items-end gap-x-10 gap-y-4">
             <div>
-              <div className="text-[10px] font-medium tracking-wide text-[color:var(--oid-text-ghost)] uppercase">
+              <div className="text-[length:var(--oid-text-3xs)] font-medium tracking-wide text-[color:var(--oid-text-ghost)] uppercase">
                 Current
               </div>
               <div className="mt-1 flex items-baseline gap-1.5">
@@ -280,7 +280,7 @@ export function MetricHero({ variable, latitude, longitude }: SectionProps) {
           </div>
 
           {stats && (
-            <p className="mt-4 text-[10.5px] text-[color:var(--oid-text-ghost)]">
+            <p className="mt-4 text-[length:var(--oid-text-2xs)] text-[color:var(--oid-text-ghost)]">
               {stats.observation_count.toLocaleString()} observations ·{' '}
               {stats.latitude.toFixed(3)}, {stats.longitude.toFixed(3)} ·{' '}
               {stats.sources.join(' · ')}

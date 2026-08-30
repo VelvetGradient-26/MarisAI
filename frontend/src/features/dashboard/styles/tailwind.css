@@ -168,7 +168,36 @@
     --oid-text-strong: #f6f6f8;
     --oid-text-muted: #9a9aa2;
     --oid-text-faint: #75757d;
-    --oid-text-ghost: #56565e;
+    /* #56565e measured at 2.65:1 on #0e0e11 — below even this page's own 3:1
+       UI-component floor, on 60+ real usage sites (dossier field labels,
+       footnote attribution, placeholder text), not decoration. Lightened to
+       the nearest value that clears 3:1 with a small margin, computed against
+       both the solid elevated surface and the translucent glass panel. */
+    --oid-text-ghost: #666666;
+
+    /* --- Type scale -------------------------------------------------------
+     * This page is data-dense in a way the app-wide `--ma-text-*` scale
+     * (11px and up) was never sized for — dossier tables, chips and legends
+     * routinely need half-pixel steps below that floor. Rather than force
+     * one seven-role heading scale to also serve a metrics grid, this is its
+     * own scale, named the same way, sized to what the components already
+     * used as one-off `text-[Npx]` arbitrary values (audited, not invented —
+     * every step below is the exact pixel value already in repeated use).
+     * Same reasoning as the colour tokens above: shared where the need is
+     * shared (--oid-accent aliases --ma-accent), local where the material
+     * is not (this page's information density is not the marketing/app
+     * pages' density). Theme-invariant, so it lives only here, not repeated
+     * in `.oid-root--light`. */
+    --oid-text-6xs: 8.5px;
+    --oid-text-5xs: 9px;
+    --oid-text-4xs: 9.5px;
+    --oid-text-3xs: 10px;
+    --oid-text-2xs: 10.5px;
+    --oid-text-xs: 11px;
+    --oid-text-sm: 11.5px;
+    --oid-text-base: 12px;
+    --oid-text-md: 12.5px;
+    --oid-text-lg: 13px;
 
     --oid-shadow: 0 1px 0 0 color-mix(in oklab, #4fd1ff 8%, transparent) inset,
       0 18px 48px -24px rgb(0 0 0 / 0.85);
@@ -206,7 +235,9 @@
     --oid-text-strong: #061420;
     --oid-text-muted: #47616f;
     --oid-text-faint: #64798a;
-    --oid-text-ghost: #90a2ae;
+    /* Same fix as the dark value above: #90a2ae measured at 2.51:1 on
+       #f6fafc. Darkened to clear 3:1. */
+    --oid-text-ghost: #8a8a8a;
 
     --oid-shadow: 0 1px 0 0 rgb(255 255 255 / 0.9) inset,
       0 14px 36px -26px rgb(15 34 49 / 0.35);

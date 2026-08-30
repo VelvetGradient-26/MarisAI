@@ -53,9 +53,9 @@ const GRADE_STYLES: Record<ModelGrade, { label: string; chip: string }> = {
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div>
-      <dt className="text-[9px] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">{label}</dt>
-      <dd className="text-[13px] font-medium text-[color:var(--oid-text-strong)]">{value}</dd>
-      {hint && <p className="text-[9.5px] leading-tight text-[color:var(--oid-text-faint)]">{hint}</p>}
+      <dt className="text-[length:var(--oid-text-5xs)] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">{label}</dt>
+      <dd className="text-[length:var(--oid-text-lg)] font-medium text-[color:var(--oid-text-strong)]">{value}</dd>
+      {hint && <p className="text-[length:var(--oid-text-4xs)] leading-tight text-[color:var(--oid-text-faint)]">{hint}</p>}
     </div>
   );
 }
@@ -71,12 +71,12 @@ function DatasetRow({ dataset }: { dataset: DatasetEntry }) {
     <li className="rounded-xl border border-[color:var(--oid-border)] bg-[color:var(--oid-elevated)] p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h4 className="truncate text-[12px] font-medium text-[color:var(--oid-text-strong)]">
+          <h4 className="truncate text-[length:var(--oid-text-base)] font-medium text-[color:var(--oid-text-strong)]">
             {dataset.source_label}
           </h4>
-          <p className="mt-0.5 font-mono text-[9.5px] text-[color:var(--oid-text-faint)]">{dataset.key}</p>
+          <p className="mt-0.5 font-mono text-[length:var(--oid-text-4xs)] text-[color:var(--oid-text-faint)]">{dataset.key}</p>
         </div>
-        <span className="shrink-0 text-[10px] text-[color:var(--oid-text-muted)]">
+        <span className="shrink-0 text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-muted)]">
           {dataset.variable_count} var{dataset.variable_count === 1 ? '' : 's'}
         </span>
       </div>
@@ -87,18 +87,18 @@ function DatasetRow({ dataset }: { dataset: DatasetEntry }) {
         <Stat label="Coverage" value={coverage} />
       </dl>
 
-      <p className="mt-2 truncate text-[9.5px] text-[color:var(--oid-text-ghost)]" title={dataset.licence}>
+      <p className="mt-2 truncate text-[length:var(--oid-text-4xs)] text-[color:var(--oid-text-ghost)]" title={dataset.licence}>
         {dataset.licence}
       </p>
 
       {/* Most datasets are fetched per request and hold no warm copy. Saying
           so is very different from reporting them as down. */}
       {dataset.cache.health === 'not_cached' ? (
-        <p className="mt-1.5 text-[9.5px] text-[color:var(--oid-text-faint)]">
+        <p className="mt-1.5 text-[length:var(--oid-text-4xs)] text-[color:var(--oid-text-faint)]">
           {dataset.cache.unavailable_reason}
         </p>
       ) : (
-        <p className="mt-1.5 text-[9.5px] text-[color:var(--oid-text-faint)]">
+        <p className="mt-1.5 text-[length:var(--oid-text-4xs)] text-[color:var(--oid-text-faint)]">
           Live cache: {dataset.cache.health}
           {dataset.cache.unavailable_reason ? ` — ${dataset.cache.unavailable_reason}` : ''}
         </p>
@@ -123,10 +123,10 @@ function ModelRow({ model }: { model: ModelEntry }) {
           to={href}
           className="block rounded-lg border border-[color:var(--color-alert-critical)] p-2.5 no-underline transition-colors hover:bg-[color:var(--oid-elevated)]"
         >
-          <p className="text-[11px] font-medium text-[color:var(--oid-text-strong)]">
+          <p className="text-[length:var(--oid-text-xs)] font-medium text-[color:var(--oid-text-strong)]">
             {model.variable} · h{model.horizon}
           </p>
-          <p className="mt-1 text-[9.5px] text-[color:var(--color-alert-critical)]">
+          <p className="mt-1 text-[length:var(--oid-text-4xs)] text-[color:var(--color-alert-critical)]">
             {model.unavailable_reason}
           </p>
         </Link>
@@ -149,16 +149,16 @@ function ModelRow({ model }: { model: ModelEntry }) {
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate text-[11px] font-medium text-[color:var(--oid-text-strong)] group-hover:text-[color:var(--oid-accent)]">
+            <p className="truncate text-[length:var(--oid-text-xs)] font-medium text-[color:var(--oid-text-strong)] group-hover:text-[color:var(--oid-accent)]">
               {model.label ?? model.variable}
             </p>
-            <p className="text-[9px] text-[color:var(--oid-text-faint)]">
+            <p className="text-[length:var(--oid-text-5xs)] text-[color:var(--oid-text-faint)]">
               +{model.horizon}d · {model.model_type ?? 'model'}
             </p>
           </div>
           <span
             className={cn(
-              'shrink-0 rounded-full border px-1.5 py-0.5 text-[8.5px] font-medium',
+              'shrink-0 rounded-full border px-1.5 py-0.5 text-[length:var(--oid-text-6xs)] font-medium',
               grade.chip
             )}
           >
@@ -182,7 +182,7 @@ function ModelRow({ model }: { model: ModelEntry }) {
 
         {/* A global model that lost points has lost geography, not just rows. */}
         {(model.points_skipped ?? 0) > 0 && (
-          <p className="mt-1.5 text-[9.5px] text-[color:var(--color-alert-warning)]">
+          <p className="mt-1.5 text-[length:var(--oid-text-4xs)] text-[color:var(--color-alert-warning)]">
             Trained on {model.points_used} points, {model.points_skipped} skipped — check coverage
             before trusting it away from the retained points.
           </p>
@@ -227,7 +227,7 @@ export function DataQualityPanel() {
                 type="button"
                 onClick={() => setTab(key)}
                 className={cn(
-                  'rounded-md px-2 py-1 text-[10px] capitalize transition-colors',
+                  'rounded-md px-2 py-1 text-[length:var(--oid-text-3xs)] capitalize transition-colors',
                   tab === key
                     ? 'bg-[color:var(--oid-accent-wash)] text-[color:var(--oid-accent)]'
                     : 'text-[color:var(--oid-text-muted)] hover:text-[color:var(--oid-text)]'
@@ -279,7 +279,7 @@ export function DataQualityPanel() {
               is permanent — listing an Open-Meteo variable as an unbuilt grid
               would be a gap nobody can ever close. */}
           {tab === 'datasets' && coverage.trained_but_ungriddable.length > 0 && (
-            <p className="border-b border-[color:var(--oid-border)] px-3 py-2 text-[9.5px] leading-snug text-[color:var(--oid-text-faint)]">
+            <p className="border-b border-[color:var(--oid-border)] px-3 py-2 text-[length:var(--oid-text-4xs)] leading-snug text-[color:var(--oid-text-faint)]">
               {coverage.trained_but_ungriddable.length} trained variables can never be gridded —
               they come from a point API with no global field, so they are excluded from the
               build queue rather than counted as outstanding.
@@ -302,7 +302,7 @@ export function DataQualityPanel() {
             )}
           </div>
 
-          <p className="border-t border-[color:var(--oid-border)] px-3 py-2 text-[9.5px] leading-snug text-[color:var(--oid-text-ghost)]">
+          <p className="border-t border-[color:var(--oid-border)] px-3 py-2 text-[length:var(--oid-text-4xs)] leading-snug text-[color:var(--oid-text-ghost)]">
             Skill is measured against persistence on rolling-origin validation. A model ships only
             if overall skill is positive <em>and</em> at most one of five folds is negative — the
             aggregate alone would pass models carried by a minority of folds.

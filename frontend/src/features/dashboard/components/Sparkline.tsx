@@ -31,7 +31,7 @@ export function Sparkline({
     return (
       <div
         className={cn(
-          'flex items-center text-[10px] leading-tight text-[color:var(--oid-text-ghost)]',
+          'flex items-center text-[length:var(--oid-text-3xs)] leading-tight text-[color:var(--oid-text-ghost)]',
           className
         )}
         style={{ width, height }}

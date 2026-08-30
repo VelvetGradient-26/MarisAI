@@ -31,13 +31,13 @@ function StatCard({ statistic, index }: { statistic: Statistic; index: number })
     return (
       <Panel className="min-h-[104px]">
         <div className="flex h-full flex-col p-3">
-          <div className="text-[10px] font-medium tracking-wide text-[color:var(--oid-text-ghost)] uppercase">
+          <div className="text-[length:var(--oid-text-3xs)] font-medium tracking-wide text-[color:var(--oid-text-ghost)] uppercase">
             {statistic.label}
           </div>
           <div className="mt-1.5 text-[15px] font-medium text-[color:var(--oid-text-ghost)]">
             Not available
           </div>
-          <p className="mt-auto pt-1.5 text-[10px] leading-snug text-[color:var(--oid-text-ghost)]">
+          <p className="mt-auto pt-1.5 text-[length:var(--oid-text-3xs)] leading-snug text-[color:var(--oid-text-ghost)]">
             {statistic.unavailable_reason}
           </p>
         </div>
@@ -55,7 +55,7 @@ function StatCard({ statistic, index }: { statistic: Statistic; index: number })
     >
       <Panel className="group min-h-[104px] transition-shadow hover:shadow-[var(--oid-shadow-raised)]">
         <div className="flex h-full flex-col p-3">
-          <span className="text-[10px] font-medium tracking-wide text-[color:var(--oid-text-ghost)] uppercase">
+          <span className="text-[length:var(--oid-text-3xs)] font-medium tracking-wide text-[color:var(--oid-text-ghost)] uppercase">
             {statistic.label}
           </span>
 
@@ -83,7 +83,7 @@ function StatCard({ statistic, index }: { statistic: Statistic; index: number })
               )}
             </span>
             {statistic.unit && (
-              <span className="text-[10.5px] text-[color:var(--oid-text-faint)]">
+              <span className="text-[length:var(--oid-text-2xs)] text-[color:var(--oid-text-faint)]">
                 {statistic.unit}
               </span>
             )}
@@ -94,7 +94,7 @@ function StatCard({ statistic, index }: { statistic: Statistic; index: number })
               the whole point of `detail` is to remove that ambiguity. */}
           {statistic.detail && (
             <p
-              className="mt-auto truncate pt-1.5 text-[10px] text-[color:var(--oid-text-ghost)]"
+              className="mt-auto truncate pt-1.5 text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-ghost)]"
               title={statistic.detail}
             >
               {statistic.detail}

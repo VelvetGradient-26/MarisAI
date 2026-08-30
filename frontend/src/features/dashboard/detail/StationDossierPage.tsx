@@ -21,9 +21,9 @@ import '../styles/tailwind.css';
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div>
-      <dt className="text-[9.5px] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">{label}</dt>
-      <dd className="text-[13px] font-medium text-[color:var(--oid-text-strong)]">{value}</dd>
-      {hint && <p className="mt-0.5 text-[10px] leading-tight text-[color:var(--oid-text-faint)]">{hint}</p>}
+      <dt className="text-[length:var(--oid-text-4xs)] tracking-wide text-[color:var(--oid-text-ghost)] uppercase">{label}</dt>
+      <dd className="text-[length:var(--oid-text-lg)] font-medium text-[color:var(--oid-text-strong)]">{value}</dd>
+      {hint && <p className="mt-0.5 text-[length:var(--oid-text-3xs)] leading-tight text-[color:var(--oid-text-faint)]">{hint}</p>}
     </div>
   );
 }
@@ -73,7 +73,7 @@ export function StationDossierPage() {
               <h1 className="text-[22px] leading-none font-semibold tracking-tight text-[color:var(--oid-text-strong)]">
                 NDBC Station {stationId}
               </h1>
-              <p className="mt-1.5 text-[11.5px] text-[color:var(--oid-text-faint)]">
+              <p className="mt-1.5 text-[length:var(--oid-text-sm)] text-[color:var(--oid-text-faint)]">
                 A real NOAA buoy — coordinates, its latest report, and an excerpt of its own live
                 feed as proof.
               </p>
@@ -152,10 +152,10 @@ export function StationDossierPage() {
                   <div className="p-4">
                     {data.raw_feed ? (
                       <>
-                        <pre className="oid-scroll max-h-56 overflow-auto rounded-lg border border-[color:var(--oid-border)] bg-[color:var(--oid-elevated)] p-3 font-mono text-[10.5px] leading-relaxed text-[color:var(--oid-text-muted)]">
+                        <pre className="oid-scroll max-h-56 overflow-auto rounded-lg border border-[color:var(--oid-border)] bg-[color:var(--oid-elevated)] p-3 font-mono text-[length:var(--oid-text-2xs)] leading-relaxed text-[color:var(--oid-text-muted)]">
                           {data.raw_feed.lines.join('\n')}
                         </pre>
-                        <p className="mt-2 text-[10px] text-[color:var(--oid-text-ghost)]">
+                        <p className="mt-2 text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-ghost)]">
                           {data.raw_feed.lines.length} of {data.raw_feed.total_lines} lines shown ·{' '}
                           <a
                             href={data.raw_feed.url}
@@ -168,7 +168,7 @@ export function StationDossierPage() {
                         </p>
                       </>
                     ) : (
-                      <p className="text-[11px] text-[color:var(--oid-text-faint)]">
+                      <p className="text-[length:var(--oid-text-xs)] text-[color:var(--oid-text-faint)]">
                         {data.raw_feed_error ?? 'The live feed excerpt could not be fetched.'}
                       </p>
                     )}

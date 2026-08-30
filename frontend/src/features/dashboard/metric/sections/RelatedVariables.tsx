@@ -51,7 +51,7 @@ export function RelatedVariables({ variable, latitude, longitude }: SectionProps
       <div className="space-y-4 p-4">
         {covariates.length > 0 && (
           <div>
-            <h3 className="text-[11px] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
+            <h3 className="text-[length:var(--oid-text-xs)] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
               Model inputs
             </h3>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -64,7 +64,7 @@ export function RelatedVariables({ variable, latitude, longitude }: SectionProps
 
         {siblings.length > 0 && (
           <div>
-            <h3 className="text-[11px] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
+            <h3 className="text-[length:var(--oid-text-xs)] font-medium tracking-wide text-[color:var(--oid-text-muted)] uppercase">
               Also in {variable.category}
             </h3>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -75,7 +75,7 @@ export function RelatedVariables({ variable, latitude, longitude }: SectionProps
           </div>
         )}
 
-        <p className="text-[10px] leading-relaxed text-[color:var(--oid-text-ghost)]">
+        <p className="text-[length:var(--oid-text-3xs)] leading-relaxed text-[color:var(--oid-text-ghost)]">
           Model inputs are the variables this forecast is fitted on. That is a statement about
           the model, not a measured correlation between the two fields.
         </p>
@@ -98,7 +98,7 @@ function Chip({
       to={`/dashboard/${entry.key}${query}`}
       className={cn(
         'group inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5',
-        'text-[11.5px] no-underline transition-colors',
+        'text-[length:var(--oid-text-sm)] no-underline transition-colors',
         'border-[color:var(--oid-border)]',
         emphasis
           ? 'bg-[color:var(--oid-accent-wash)] text-[color:var(--oid-accent)] hover:bg-[color:var(--oid-accent-wash-strong)]'
@@ -106,7 +106,7 @@ function Chip({
       )}
     >
       {entry.label}
-      <span className="text-[10px] text-[color:var(--oid-text-ghost)]">{entry.unit}</span>
+      <span className="text-[length:var(--oid-text-3xs)] text-[color:var(--oid-text-ghost)]">{entry.unit}</span>
       <ArrowRight
         size={11}
         className="opacity-0 transition-opacity group-hover:opacity-100"

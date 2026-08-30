@@ -269,7 +269,7 @@ export const TrendChart = memo(function TrendChart({
                   : `${variable.label} only goes back to ${variable.coverage_start ?? 'an unknown date'}`
               }
               className={cn(
-                'rounded-full px-2.5 py-1 text-[10.5px] font-medium transition-colors',
+                'rounded-full px-2.5 py-1 text-[length:var(--oid-text-2xs)] font-medium transition-colors',
                 range === key
                   ? 'bg-[color:var(--oid-accent)] text-[color:var(--oid-accent-contrast)]'
                   : isSupported
@@ -285,7 +285,7 @@ export const TrendChart = memo(function TrendChart({
         {stats && (
           <span
             className={cn(
-              'ml-auto inline-flex items-center gap-1 text-[10.5px] font-medium',
+              'ml-auto inline-flex items-center gap-1 text-[length:var(--oid-text-2xs)] font-medium',
               rising ? 'text-[color:var(--color-alert-warning)]' : 'text-[color:var(--oid-accent-soft)]'
             )}
           >
@@ -392,7 +392,7 @@ export const TrendChart = memo(function TrendChart({
       )}
 
       {data && (
-        <footer className="border-t border-[color:var(--oid-border)] px-3 py-1.5 text-[9.5px] text-[color:var(--oid-text-ghost)]">
+        <footer className="border-t border-[color:var(--oid-border)] px-3 py-1.5 text-[length:var(--oid-text-4xs)] text-[color:var(--oid-text-ghost)]">
           {data.source} · {data.resolution} · {data.points.length.toLocaleString()} points
         </footer>
       )}

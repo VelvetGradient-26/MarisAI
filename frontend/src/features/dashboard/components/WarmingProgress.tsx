@@ -50,7 +50,7 @@ export function WarmingProgress({
     <div className={cn('flex flex-col gap-2 px-4 py-5', className)} role="status" aria-live="polite">
       <div className="flex items-center gap-2 text-[color:var(--oid-text-muted)]">
         <Loader2 size={13} className={reduceMotion ? undefined : 'animate-spin'} />
-        <span className="text-[11.5px] font-medium">{label}</span>
+        <span className="text-[length:var(--oid-text-sm)] font-medium">{label}</span>
       </div>
 
       <div
@@ -69,7 +69,7 @@ export function WarmingProgress({
         />
       </div>
 
-      <p className="text-[10px] leading-snug text-[color:var(--oid-text-faint)]">
+      <p className="text-[length:var(--oid-text-3xs)] leading-snug text-[color:var(--oid-text-faint)]">
         {remaining > 1
           ? `Fetching from the provider — usually about ${Math.ceil(remaining)}s more.`
           : 'Taking longer than usual. Still fetching; this panel fills in automatically.'}

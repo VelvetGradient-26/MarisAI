@@ -64,7 +64,7 @@ export function OceanStory({ variable, latitude, longitude }: SectionProps) {
             <span
               title={badge.hint}
               className={cn(
-                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium',
+                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[length:var(--oid-text-3xs)] font-medium',
                 badge.tone === 'accent' &&
                   'bg-[color:var(--oid-accent-wash)] text-[color:var(--oid-accent)]',
                 badge.tone === 'neutral' &&
@@ -106,7 +106,7 @@ export function OceanStory({ variable, latitude, longitude }: SectionProps) {
             onClick={() => setShowFacts((open) => !open)}
             aria-expanded={showFacts}
             className={cn(
-              'mt-3 inline-flex items-center gap-1.5 text-[11px]',
+              'mt-3 inline-flex items-center gap-1.5 text-[length:var(--oid-text-xs)]',
               'text-[color:var(--oid-text-faint)] transition-colors',
               'hover:text-[color:var(--oid-accent)]'
             )}
@@ -126,7 +126,7 @@ export function OceanStory({ variable, latitude, longitude }: SectionProps) {
               className={cn(
                 'mt-2 overflow-x-auto rounded-lg border p-3',
                 'border-[color:var(--oid-border)] bg-[color:var(--oid-elevated)]',
-                'font-mono text-[10.5px] leading-relaxed text-[color:var(--oid-text-muted)]'
+                'font-mono text-[length:var(--oid-text-2xs)] leading-relaxed text-[color:var(--oid-text-muted)]'
               )}
             >
               {data.facts}

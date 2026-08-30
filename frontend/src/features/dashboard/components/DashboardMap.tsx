@@ -26,7 +26,7 @@ function MapFallback() {
     <div className="flex h-full items-center justify-center bg-[color:var(--oid-elevated)]">
       <div className="flex flex-col items-center gap-2 text-[color:var(--oid-text-faint)]">
         <Layers size={20} className="animate-[var(--animate-shimmer)]" />
-        <span className="text-[11.5px]">Loading map engine…</span>
+        <span className="text-[length:var(--oid-text-sm)]">Loading map engine…</span>
       </div>
     </div>
   );
@@ -42,7 +42,7 @@ export function DashboardMap() {
         actions={
           <Link
             to="/map"
-            className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--oid-border)] px-2.5 py-1 text-[10.5px] text-[color:var(--oid-text)] no-underline transition-colors hover:bg-[color:var(--oid-track)]"
+            className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--oid-border)] px-2.5 py-1 text-[length:var(--oid-text-2xs)] text-[color:var(--oid-text)] no-underline transition-colors hover:bg-[color:var(--oid-track)]"
           >
             <Maximize2 size={11} />
             Full map
