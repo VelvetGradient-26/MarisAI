@@ -1,0 +1,71 @@
+# Local-dev stack: postgres + backend (FastAPI) + frontend (Vite dev server).
+#
+# First-time setup:
+#   cp backend/.env.example backend/.env   # then fill in real credentials
+#   docker compose up --build
+#
+# Frontend: http://localhost:5173  Backend: http://localhost:8000
+#
+# machine_learning/ pipelines are NOT run here — they're offline and have
+# their own uv venv (see machine_learning/README.md). This stack only reads
+# the precomputed exports under machine_learning/exports/, bind-mounted
+# read-only so a re-export on the host shows up without a rebuild.
+services:
+  db:
+    # PostGIS, not plain postgres — alembic/env.py runs `CREATE EXTENSION IF
+    # NOT EXISTS postgis` on every migration (app/models/ uses geoalchemy2),
+    # which fails against the vanilla postgres image with "extension
+    # postgis is not available".
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: maris
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-oceanmind}
+      POSTGRES_DB: maris
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maris"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - backend/.env
+    environment:
+      # Overrides backend/.env's DATABASE_URL to reach the `db` service on
+      # the compose network rather than localhost.
+      DATABASE_URL: postgresql+psycopg2://maris:${POSTGRES_PASSWORD:-oceanmind}@db:5432/maris
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./machine_learning/exports:/app/machine_learning/exports:ro
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    environment:
+      # Read by the browser directly (frontend/src/utils/apiBase.ts), not
+      # through container networking — the browser runs on the host, so this
+      # must be the backend's host-mapped port, not the `backend` service name.
+      VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app/frontend
+      - /app/frontend/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  db_data:
