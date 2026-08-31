@@ -16,3 +16,11 @@
 *.pkl filter=lfs diff=lfs merge=lfs -text
 *.nc filter=lfs diff=lfs merge=lfs -text
 backend/models/forecasting/_reports/**/*.png filter=lfs diff=lfs merge=lfs -text
+
+# machine_learning/models/ (trained artifacts, .joblib + .pt) and
+# machine_learning/exports/ (.nc prediction grids the backend serves as map
+# layers) — same reasoning as above, extended to the offline-ML side: a fresh
+# clone or `docker compose build` needs exports/ to exist without first
+# running the ML pipeline, and models/ is what regenerates it.
+*.joblib filter=lfs diff=lfs merge=lfs -text
+*.pt filter=lfs diff=lfs merge=lfs -text

@@ -1,0 +1,675 @@
+{
+  "generated": "2026-08-30T22:43:25Z",
+  "products": {
+    "habitat": {
+      "title": "Fish habitat suitability",
+      "subtitle": "Potential Fishing Zone \u2014 presence-only species distribution model",
+      "grid": "habitat_suitability.nc",
+      "species": [
+        {
+          "key": "bigeye_tuna",
+          "scientific_name": "Thunnus obesus",
+          "label": "Bigeye Tuna"
+        },
+        {
+          "key": "indian_mackerel",
+          "scientific_name": "Rastrelliger kanagurta",
+          "label": "Indian Mackerel"
+        },
+        {
+          "key": "oil_sardine",
+          "scientific_name": "Sardinella longiceps",
+          "label": "Oil Sardine"
+        },
+        {
+          "key": "skipjack_tuna",
+          "scientific_name": "Katsuwonus pelamis",
+          "label": "Skipjack Tuna"
+        },
+        {
+          "key": "yellowfin_tuna",
+          "scientific_name": "Thunnus albacares",
+          "label": "Yellowfin Tuna"
+        }
+      ],
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "year": 2013,
+      "region": {
+        "name": "north_indian_ocean",
+        "west": 55.0,
+        "east": 95.0,
+        "south": -5.0,
+        "north": 25.0
+      },
+      "training_window": [
+        "2000-01-01",
+        "2013-12-31"
+      ],
+      "validation": "spatial block cross-validation, 3\u00b0 blocks",
+      "metrics": {
+        "lightgbm": {
+          "roc_auc": 0.957,
+          "pr_auc": 0.917,
+          "tss": 0.825,
+          "boyce": 0.846
+        },
+        "maxent": {
+          "roc_auc": 0.884,
+          "pr_auc": 0.776,
+          "tss": 0.689,
+          "boyce": 0.887
+        },
+        "random_forest": {
+          "roc_auc": 0.951,
+          "pr_auc": 0.902,
+          "tss": 0.821,
+          "boyce": 0.926
+        }
+      },
+      "holdout": [
+        {
+          "model": "maxent",
+          "roc_auc": 0.851,
+          "pr_auc": 0.793,
+          "tss": 0.67,
+          "boyce": 0.917
+        },
+        {
+          "model": "random_forest",
+          "roc_auc": 0.957,
+          "pr_auc": 0.952,
+          "tss": 0.855,
+          "boyce": 0.829
+        },
+        {
+          "model": "lightgbm",
+          "roc_auc": 0.967,
+          "pr_auc": 0.961,
+          "tss": 0.856,
+          "boyce": 0.67
+        },
+        {
+          "model": "ensemble",
+          "roc_auc": 0.963,
+          "pr_auc": 0.956,
+          "tss": 0.855,
+          "boyce": 0.79
+        },
+        {
+          "model": "stacked_ensemble",
+          "roc_auc": 0.964,
+          "pr_auc": 0.96,
+          "tss": 0.856,
+          "boyce": 0.679
+        }
+      ],
+      "drivers": [
+        {
+          "feature": "distance_to_coast",
+          "importance": 1.1648
+        },
+        {
+          "feature": "depth",
+          "importance": 0.8836
+        },
+        {
+          "feature": "species_key_yellowfin_tuna",
+          "importance": 0.3925
+        },
+        {
+          "feature": "so",
+          "importance": 0.3551
+        },
+        {
+          "feature": "doy_sin",
+          "importance": 0.3409
+        },
+        {
+          "feature": "doy_cos",
+          "importance": 0.3077
+        },
+        {
+          "feature": "thermal_distance",
+          "importance": 0.2938
+        },
+        {
+          "feature": "log_depth",
+          "importance": 0.2284
+        }
+      ],
+      "value_label": "relative habitat suitability",
+      "shap": {
+        "available": true,
+        "grid": "habitat_suitability_shap.nc",
+        "top_k": 5,
+        "feature_names": [
+          "thetao",
+          "so",
+          "uo",
+          "vo",
+          "zos",
+          "mlotst",
+          "chl",
+          "no3",
+          "po4",
+          "si",
+          "o2",
+          "nppv",
+          "sst_gradient",
+          "chl_gradient",
+          "current_speed",
+          "okubo_weiss",
+          "relative_vorticity",
+          "eddy_kinetic_energy",
+          "depth",
+          "distance_to_coast",
+          "seafloor_slope",
+          "data_quality",
+          "chl_lag30",
+          "thetao_lag30",
+          "nppv_lag30",
+          "chl_lag60",
+          "thetao_lag60",
+          "nppv_lag60",
+          "chl_trend_30d",
+          "log_depth",
+          "doy_sin",
+          "doy_cos",
+          "month_sin",
+          "month_cos",
+          "thermal_position",
+          "thermal_distance",
+          "in_thermal_range",
+          "species_key_bigeye_tuna",
+          "species_key_indian_mackerel",
+          "species_key_oil_sardine",
+          "species_key_skipjack_tuna",
+          "species_key_yellowfin_tuna",
+          "depth_bucket_abyssal",
+          "depth_bucket_deep",
+          "depth_bucket_nearshore",
+          "depth_bucket_shelf",
+          "depth_bucket_slope",
+          "monsoon_phase_northeast_monsoon",
+          "monsoon_phase_post_monsoon",
+          "monsoon_phase_pre_monsoon",
+          "monsoon_phase_southwest_monsoon"
+        ]
+      },
+      "caveats": [
+        "Presence-only labels \u2014 there are no verified absences anywhere in this model. Pseudo-absences are drawn from other ray-finned fish records so survey bias largely cancels.",
+        "Depth and distance-to-coast dominate the model, and part of that is residual sampling geometry rather than pure habitat preference: the background pool skews shallower than the pelagic tunas.",
+        "Trained on 2000\u20132013, the period where occurrence records exist. Applying it to present-day conditions is extrapolation.",
+        "Monthly resolution supports strategic questions, not 'where should a boat go tomorrow'.",
+        "Suitability is relative, not a probability of catch.",
+        "Per-cell driver attribution (habitat_suitability_shap.nc) combines all three ensemble tiers in the same probability space the served suitability value uses. MaxEnt's ~3% of that combination is a linearised approximation of its logistic link, not an exact decomposition \u2014 the two tree tiers (~97% of the weight) are exact."
+      ]
+    },
+    "hab": {
+      "title": "Harmful algal bloom risk",
+      "subtitle": "Early warning \u2014 forecast-then-threshold, calibrated probabilities",
+      "grid": "hab_risk.nc",
+      "horizons": [
+        {
+          "horizon_days": 3,
+          "pr_auc": 0.661,
+          "persistence_pr_auc": 0.511,
+          "beats_baseline": true,
+          "roc_auc": 0.942,
+          "brier": 0.038,
+          "brier_uncalibrated": 0.056,
+          "tss": 0.751,
+          "reliability": [
+            {
+              "predicted": 0.017,
+              "observed": 0.011,
+              "n": 475948
+            },
+            {
+              "predicted": 0.148,
+              "observed": 0.115,
+              "n": 32683
+            },
+            {
+              "predicted": 0.25,
+              "observed": 0.172,
+              "n": 12625
+            },
+            {
+              "predicted": 0.344,
+              "observed": 0.241,
+              "n": 10678
+            },
+            {
+              "predicted": 0.44,
+              "observed": 0.329,
+              "n": 6971
+            },
+            {
+              "predicted": 0.556,
+              "observed": 0.464,
+              "n": 9227
+            },
+            {
+              "predicted": 0.652,
+              "observed": 0.634,
+              "n": 11427
+            },
+            {
+              "predicted": 0.753,
+              "observed": 0.781,
+              "n": 13652
+            },
+            {
+              "predicted": 0.817,
+              "observed": 0.885,
+              "n": 4181
+            },
+            {
+              "predicted": 0.934,
+              "observed": 0.926,
+              "n": 216
+            }
+          ],
+          "drivers": [
+            {
+              "feature": "chl_anomaly",
+              "importance": 0.5727
+            },
+            {
+              "feature": "chl_zanomaly",
+              "importance": 0.5505
+            },
+            {
+              "feature": "chl",
+              "importance": 0.4799
+            },
+            {
+              "feature": "is_bloom",
+              "importance": 0.4701
+            },
+            {
+              "feature": "chl_delta",
+              "importance": 0.3547
+            },
+            {
+              "feature": "chl_gradient",
+              "importance": 0.2908
+            },
+            {
+              "feature": "doy_cos",
+              "importance": 0.2594
+            },
+            {
+              "feature": "po4",
+              "importance": 0.2
+            }
+          ]
+        },
+        {
+          "horizon_days": 5,
+          "pr_auc": 0.493,
+          "persistence_pr_auc": 0.384,
+          "beats_baseline": true,
+          "roc_auc": 0.884,
+          "brier": 0.049,
+          "brier_uncalibrated": 0.073,
+          "tss": 0.635,
+          "reliability": [
+            {
+              "predicted": 0.023,
+              "observed": 0.017,
+              "n": 439709
+            },
+            {
+              "predicted": 0.145,
+              "observed": 0.086,
+              "n": 56128
+            },
+            {
+              "predicted": 0.243,
+              "observed": 0.166,
+              "n": 25427
+            },
+            {
+              "predicted": 0.333,
+              "observed": 0.249,
+              "n": 14153
+            },
+            {
+              "predicted": 0.446,
+              "observed": 0.406,
+              "n": 15700
+            },
+            {
+              "predicted": 0.547,
+              "observed": 0.582,
+              "n": 18707
+            },
+            {
+              "predicted": 0.629,
+              "observed": 0.715,
+              "n": 7784
+            }
+          ],
+          "drivers": [
+            {
+              "feature": "chl_anomaly",
+              "importance": 0.5091
+            },
+            {
+              "feature": "chl_zanomaly",
+              "importance": 0.3551
+            },
+            {
+              "feature": "chl",
+              "importance": 0.2989
+            },
+            {
+              "feature": "chl_gradient",
+              "importance": 0.2917
+            },
+            {
+              "feature": "chl_delta",
+              "importance": 0.2885
+            },
+            {
+              "feature": "is_bloom",
+              "importance": 0.2698
+            },
+            {
+              "feature": "po4",
+              "importance": 0.2404
+            },
+            {
+              "feature": "doy_cos",
+              "importance": 0.2109
+            }
+          ]
+        },
+        {
+          "horizon_days": 7,
+          "pr_auc": 0.362,
+          "persistence_pr_auc": 0.309,
+          "beats_baseline": true,
+          "roc_auc": 0.841,
+          "brier": 0.057,
+          "brier_uncalibrated": 0.085,
+          "tss": 0.564,
+          "reliability": [
+            {
+              "predicted": 0.031,
+              "observed": 0.021,
+              "n": 412362
+            },
+            {
+              "predicted": 0.144,
+              "observed": 0.094,
+              "n": 82352
+            },
+            {
+              "predicted": 0.26,
+              "observed": 0.187,
+              "n": 28677
+            },
+            {
+              "predicted": 0.351,
+              "observed": 0.322,
+              "n": 27826
+            },
+            {
+              "predicted": 0.444,
+              "observed": 0.491,
+              "n": 26391
+            }
+          ],
+          "drivers": [
+            {
+              "feature": "chl_anomaly",
+              "importance": 0.401
+            },
+            {
+              "feature": "chl_zanomaly",
+              "importance": 0.3236
+            },
+            {
+              "feature": "chl",
+              "importance": 0.2858
+            },
+            {
+              "feature": "chl_gradient",
+              "importance": 0.2608
+            },
+            {
+              "feature": "chl_delta",
+              "importance": 0.2385
+            },
+            {
+              "feature": "doy_cos",
+              "importance": 0.2311
+            },
+            {
+              "feature": "po4",
+              "importance": 0.2078
+            },
+            {
+              "feature": "chl_clim_std",
+              "importance": 0.1844
+            }
+          ]
+        }
+      ],
+      "dates": [
+        "2021-11-25",
+        "2021-11-26",
+        "2021-11-27",
+        "2021-11-28",
+        "2021-11-29",
+        "2021-11-30",
+        "2021-12-01",
+        "2021-12-02",
+        "2021-12-03",
+        "2021-12-04",
+        "2021-12-05",
+        "2021-12-06",
+        "2021-12-07",
+        "2021-12-08",
+        "2021-12-09",
+        "2021-12-10",
+        "2021-12-11",
+        "2021-12-12",
+        "2021-12-13",
+        "2021-12-14",
+        "2021-12-15",
+        "2021-12-16",
+        "2021-12-17",
+        "2021-12-18",
+        "2021-12-19",
+        "2021-12-20",
+        "2021-12-21",
+        "2021-12-22",
+        "2021-12-23",
+        "2021-12-24"
+      ],
+      "region": {
+        "name": "arabian_sea",
+        "west": 68.0,
+        "east": 78.0,
+        "south": 6.0,
+        "north": 23.0
+      },
+      "training_window": [
+        "2016-01-01",
+        "2021-12-31"
+      ],
+      "validation": "rolling-origin cross-validation with an embargo gap",
+      "value_label": "probability of bloom",
+      "shap": {
+        "available": true,
+        "grid": "hab_risk_shap.nc",
+        "top_k": 5,
+        "feature_names": [
+          "thetao",
+          "so",
+          "uo",
+          "vo",
+          "zos",
+          "mlotst",
+          "chl",
+          "no3",
+          "po4",
+          "si",
+          "o2",
+          "nppv",
+          "eastward_stress",
+          "northward_stress",
+          "stress_curl",
+          "eastward_wind",
+          "northward_wind",
+          "sst_gradient",
+          "chl_gradient",
+          "current_speed",
+          "okubo_weiss",
+          "relative_vorticity",
+          "eddy_kinetic_energy",
+          "wind_stress_magnitude",
+          "upwelling_index",
+          "ekman_pumping",
+          "wind_speed",
+          "seafloor_slope",
+          "distance_to_coast",
+          "data_quality",
+          "depth",
+          "is_bloom",
+          "chl_clim_mean",
+          "chl_clim_std",
+          "thetao_clim_mean",
+          "thetao_clim_std",
+          "chl_anomaly",
+          "chl_zanomaly",
+          "thetao_anomaly",
+          "thetao_zanomaly",
+          "n_to_p",
+          "n_to_p_anomaly",
+          "n_to_si",
+          "n_to_si_anomaly",
+          "stratification_index",
+          "log_mld",
+          "warm_shallow_index",
+          "upwelling_x_stratification",
+          "upwelling_favourable",
+          "chl_lag3",
+          "thetao_lag3",
+          "no3_lag3",
+          "po4_lag3",
+          "si_lag3",
+          "nppv_lag3",
+          "mlotst_lag3",
+          "upwelling_index_lag3",
+          "ekman_pumping_lag3",
+          "wind_stress_magnitude_lag3",
+          "chl_lag7",
+          "thetao_lag7",
+          "no3_lag7",
+          "po4_lag7",
+          "si_lag7",
+          "nppv_lag7",
+          "mlotst_lag7",
+          "upwelling_index_lag7",
+          "ekman_pumping_lag7",
+          "wind_stress_magnitude_lag7",
+          "chl_lag14",
+          "thetao_lag14",
+          "no3_lag14",
+          "po4_lag14",
+          "si_lag14",
+          "nppv_lag14",
+          "mlotst_lag14",
+          "upwelling_index_lag14",
+          "ekman_pumping_lag14",
+          "wind_stress_magnitude_lag14",
+          "chl_lag30",
+          "thetao_lag30",
+          "no3_lag30",
+          "po4_lag30",
+          "si_lag30",
+          "nppv_lag30",
+          "mlotst_lag30",
+          "upwelling_index_lag30",
+          "ekman_pumping_lag30",
+          "wind_stress_magnitude_lag30",
+          "chl_roll7_mean",
+          "chl_roll7_std",
+          "thetao_roll7_mean",
+          "thetao_roll7_std",
+          "current_speed_roll7_mean",
+          "current_speed_roll7_std",
+          "upwelling_index_roll7_mean",
+          "upwelling_index_roll7_std",
+          "ekman_pumping_roll7_mean",
+          "ekman_pumping_roll7_std",
+          "wind_speed_roll7_mean",
+          "wind_speed_roll7_std",
+          "chl_roll14_mean",
+          "chl_roll14_std",
+          "thetao_roll14_mean",
+          "thetao_roll14_std",
+          "current_speed_roll14_mean",
+          "current_speed_roll14_std",
+          "upwelling_index_roll14_mean",
+          "upwelling_index_roll14_std",
+          "ekman_pumping_roll14_mean",
+          "ekman_pumping_roll14_std",
+          "wind_speed_roll14_mean",
+          "wind_speed_roll14_std",
+          "chl_roll30_mean",
+          "chl_roll30_std",
+          "thetao_roll30_mean",
+          "thetao_roll30_std",
+          "current_speed_roll30_mean",
+          "current_speed_roll30_std",
+          "upwelling_index_roll30_mean",
+          "upwelling_index_roll30_std",
+          "ekman_pumping_roll30_mean",
+          "ekman_pumping_roll30_std",
+          "wind_speed_roll30_mean",
+          "wind_speed_roll30_std",
+          "chl_delta",
+          "chl_accel",
+          "thetao_delta",
+          "thetao_accel",
+          "doy_sin",
+          "doy_cos",
+          "month_sin",
+          "month_cos",
+          "marine_heatwave",
+          "hot_run_length",
+          "monsoon_phase_northeast_monsoon",
+          "monsoon_phase_post_monsoon",
+          "monsoon_phase_pre_monsoon",
+          "monsoon_phase_southwest_monsoon"
+        ]
+      },
+      "caveats": [
+        "Weak labels: a 'bloom' here is model chlorophyll above a local seasonal 90th percentile \u2014 a proxy, not a verified bloom, and it says nothing about toxicity.",
+        "Toxic-species classification is not implemented; the in-situ genus and toxin data it needs is not openly available for this coastline.",
+        "Skill falls sharply with lead time. At 80% recall the false-alarm rate is 0.55 at t+3 but 0.80 at t+7 \u2014 four in five week-ahead alerts would be false.",
+        "Probabilities are isotonic-calibrated on a held-out period, so they can be read as probabilities rather than bare scores.",
+        "Per-cell driver attribution (hab_risk_shap.nc) explains the pre-calibration LightGBM model in its own margin (log-odds) space, not the calibrated probability shown as risk \u2014 read it as which features moved the model's score, not as a probability-space decomposition of that number."
+      ]
+    }
+  }
+}

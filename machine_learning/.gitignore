@@ -74,10 +74,10 @@ log/
 *.temp
 *.bak
 
-# ML pipeline outputs — regenerate with scripts/fetch_raw.py + the pipelines.
-# data/ reaches ~840 MB of cached NetCDF for the default fetch profiles.
+# Raw fetch cache — regenerate with scripts/fetch_raw.py. Reaches ~840 MB of
+# cached NetCDF for the default fetch profiles; a local disk cache, not an
+# artifact anyone would want back (unlike models/ and exports/ below).
 data/
-models/
 
 # Contents ignored, directory kept: `reports/` excluded outright would make
 # the negation below unreachable, since git never descends into an excluded
@@ -85,6 +85,9 @@ models/
 reports/*
 !reports/.gitkeep
 
-# Precomputed prediction grids served by the backend — regenerate with
-# scripts/export_predictions.py. The manifest is small but derived too.
-exports/
+# models/ (trained artifacts) and exports/ (precomputed prediction grids the
+# backend serves as map layers, via scripts/export_predictions.py) are now
+# version-controlled through Git LFS instead of ignored — see .gitattributes.
+# A fresh clone (and `docker compose build`, which COPYs exports/ into the
+# backend image) needs exports/ to exist without first running the ML
+# pipeline, which is hours of fetching plus training.
