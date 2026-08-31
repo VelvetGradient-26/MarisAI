@@ -46,7 +46,7 @@ export type ChatStreamEvent =
   | { type: 'delta'; text: string }
   | { type: 'reset' }
   // `agent` names which specialist made the call (ocean_analytics /
-  // weather_safety / geospatial_risk) — absent for a tool the top-level
+  // weather_safety / geospatial_risk / web_research) — absent for a tool the top-level
   // orchestrator called directly, which no longer happens in practice but
   // keeps this type honest about what the backend can send.
   | { type: 'tool'; tool: string; arguments: Record<string, unknown>; agent?: string | null }

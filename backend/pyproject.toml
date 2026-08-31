@@ -82,6 +82,11 @@ dependencies = [
     "langchain-core>=0.3.0",
     "langchain-openai>=0.2.0",
     "langchain-google-genai>=2.0.0",
+    # HTML text extraction for the web_research specialist's fetch_webpage
+    # tool (services/webpage.py). Already present transitively via
+    # nbconvert/jupyter, but declared directly since it is now imported by
+    # production code, not just a notebook-tooling dependency.
+    "beautifulsoup4>=4.12.0",
     # PDF report export (download service)
     "matplotlib>=3.8.0",
     "reportlab>=4.0.0",

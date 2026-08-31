@@ -33,8 +33,9 @@ export interface ChatObservation {
   arguments: Record<string, unknown>;
   result: unknown;
   /** Which specialist made this call (ocean_analytics / weather_safety /
-   * geospatial_risk). Absent for a tool the top-level orchestrator called
-   * directly, which does not happen today but keeps this type honest. */
+   * geospatial_risk / web_research). Absent for a tool the top-level
+   * orchestrator called directly, which does not happen today but keeps
+   * this type honest. */
   agent?: string | null;
 }
 

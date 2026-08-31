@@ -116,34 +116,6 @@ surface is added rather than assuming this pass covers it forever.
 
 ## Hard
 
-### Explainability for the derived indices (SHAP) — HAB done, habitat open
-
-**HAB bloom risk shipped 2026-08-30.** Per-cell top-k SHAP is exported
-alongside the prediction grid (`machine_learning/exports/hab_risk_shap.nc`),
-served through `services/predictions.py::hab_point()`'s new `drivers` field,
-and surfaced in the map's `SelectedLocationPanel` — **not** the dashboard's
-Explainability section, which turned out to be the wrong surface (it's
-hard-wired to the forecasting engine's per-variable catalog; HAB/habitat
-aren't in it). See DONE.md's "SHAP explainability, Phase 1" entry for the
-full design and measured verification.
-
-**Habitat suitability remains open — a genuinely different problem, not
-just more of the same work.** It's a skill-weighted ensemble of three
-heterogeneous models (MaxEnt-as-logistic-regression + RandomForest +
-LightGBM — `fish_habitat_prediction/src/models.py`), so attribution needs
-`shap.TreeExplainer` for the two tree tiers plus a different explainer
-(`shap.LinearExplainer` or similar) for the MaxEnt tier, reconciled back
-through MaxEnt's hinge/quadratic feature expansion to original feature
-names, then combined with the same skill weights the prediction itself
-uses. `machine_learning/marine_ml/shap_utils.py`'s four primitives (unwrap,
-prefix-stripping, TreeSHAP, top-k) are already reusable for the two tree
-tiers — the LinearExplainer path and the cross-explainer combination are the
-real remaining work.
-
-The cheap alternative — serving the global importances already in
-`reports/*_shap_*.csv` — answers "what drives this model" rather than "why
-is it 0.71 *here*". Worth shipping only if labelled as exactly that.
-
 ### ConvLSTM / U-Net for spatial forecasting
 
 **The argument is architectural, not decorative.** `grid_predictor` scores

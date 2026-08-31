@@ -126,11 +126,17 @@
 
 .chat-sidebar__top {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-sidebar__top .chat-new {
+  flex: 1;
 }
 
 .chat-sidebar--collapsed .chat-sidebar__top {
-  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .chat-sidebar__toggle {
@@ -713,16 +719,17 @@
 
 .chat-composer {
   width: 100%;
-  max-width: var(--chat-col-max, 46rem);
-  margin: 14px auto 0;
+  margin: 14px 0 0;
 }
 
 /* The empty-state position — see `Composer`'s `layoutId` in
  * AssistantThread.tsx for how this becomes the docked one above the instant
- * a conversation starts, rather than two separately-animated boxes. Sized
- * the same as the docked composer, deliberately: the input is the same
- * control in two places, not a bigger "hero" version of itself. */
+ * a conversation starts, rather than two separately-animated boxes. Kept at
+ * the reading-column width here, deliberately: as the hero element of the
+ * empty state it sits among the centered suggestions, whereas the docked
+ * composer below a full conversation spans the whole panel instead. */
 .chat-composer--centered {
+  max-width: var(--chat-col-max, 46rem);
   margin: 22px auto 24px;
 }
 

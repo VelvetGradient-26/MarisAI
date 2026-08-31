@@ -125,7 +125,6 @@ export function SelectedLocationPanel() {
 
   const predictions = useSelectedLocationPredictions(selectedLocation);
   const pfz = useToolsStore((s) => s.pfz);
-  const geofence = useToolsStore((s) => s.geofence);
   const {
     start: routeStart,
     end: routeEnd,
@@ -361,51 +360,6 @@ export function SelectedLocationPanel() {
               ))}
             <span className="selected-location-panel__predictions-note">
               Heuristic screening, not a validated PFZ advisory or an official INCOIS product.
-            </span>
-          </div>
-        )}
-
-        {geofence.active && selectedLocation && (
-          <div className="selected-location-panel__predictions">
-            <span className="selected-location-panel__predictions-label">Geofence Check</span>
-            {geofence.loading && <span className="selected-location-panel__state">Checking…</span>}
-            {!geofence.loading && geofence.unavailableReason && (
-              <span className="selected-location-panel__state--error">{geofence.unavailableReason}</span>
-            )}
-            {!geofence.loading && geofence.response && (
-              <>
-                <div className="selected-location-panel__prediction">
-                  <span className="selected-location-panel__prediction-name">India EEZ</span>
-                  <span className="selected-location-panel__prediction-value">
-                    {geofence.response.india_eez.inside
-                      ? geofence.response.india_eez.zone === 'andaman_and_nicobar'
-                        ? 'Inside — Andaman & Nicobar'
-                        : 'Inside — mainland'
-                      : 'Outside'}
-                  </span>
-                </div>
-                <div className="selected-location-panel__prediction">
-                  <span className="selected-location-panel__prediction-name">India-Sri Lanka IMBL</span>
-                  <span className="selected-location-panel__prediction-value">
-                    {geofence.response.india_sri_lanka_imbl.distance_km.toFixed(1)} km
-                    {geofence.response.india_sri_lanka_imbl.near && (
-                      <span className="selected-location-panel__prediction-unit">near</span>
-                    )}
-                  </span>
-                </div>
-                {geofence.response.nearby_protected_areas.map((area) => (
-                  <div key={area.name} className="selected-location-panel__prediction">
-                    <span className="selected-location-panel__prediction-name">{area.name}</span>
-                    <span className="selected-location-panel__prediction-value">
-                      {area.inside ? 'Inside' : `${area.distance_km.toFixed(1)} km away`}
-                    </span>
-                  </div>
-                ))}
-              </>
-            )}
-            <span className="selected-location-panel__predictions-note">
-              {geofence.response?.note ??
-                'EEZ boundary is shown by the "Exclusive Economic Zones" reference layer; MPAs are a hand-curated list, not a surveyed footprint.'}
             </span>
           </div>
         )}
@@ -686,10 +640,12 @@ function RoutePointRow({
 }
 
 function PredictionRow({ prediction }: { prediction: PredictionPointResult }) {
-  const name =
-    prediction.source.kind === 'habitat'
-      ? `${prediction.source.label} habitat`
-      : prediction.source.label;
+  const isHabitat = prediction.source.kind === 'habitat';
+  const name = isHabitat ? `${prediction.source.label} habitat` : prediction.source.label;
+  // "risk" reads wrong for a suitability driver — raising habitat
+  // suitability is a good thing, not a hazard the way raising bloom risk is.
+  const raisesLabel = isHabitat ? '↑ raises suitability' : '↑ raises risk';
+  const lowersLabel = isHabitat ? '↓ lowers suitability' : '↓ lowers risk';
 
   return (
     <div className="selected-location-panel__prediction">
@@ -734,7 +690,7 @@ function PredictionRow({ prediction }: { prediction: PredictionPointResult }) {
               <span
                 className={`selected-location-panel__prediction-driver-direction selected-location-panel__prediction-driver-direction--${driver.direction}`}
               >
-                {driver.direction === 'increases' ? '↑ raises risk' : '↓ lowers risk'}
+                {driver.direction === 'increases' ? raisesLabel : lowersLabel}
               </span>
             </span>
           ))}

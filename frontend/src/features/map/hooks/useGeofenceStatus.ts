@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { MapManager } from '../managers/MapManager';
 import { useMapStore } from '../../../store/mapStore';
 import { useToolsStore } from '../../../store/toolsStore';
+import { useToastStore } from '../../../store/toastStore';
 import { fetchGeofence } from '../api/geofence';
 import type { GeofenceResponse } from '../api/geofence';
 import type { CursorCoordinates } from '../types';
@@ -29,6 +30,7 @@ export function useGeofenceStatus(
 ): void {
   const active = useMapStore((s) => s.layers.get(GEOFENCE_LAYER_ID)?.active ?? false);
   const setGeofence = useToolsStore((s) => s.setGeofence);
+  const pushToast = useToastStore((s) => s.push);
   const inFlight = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -49,20 +51,55 @@ export function useGeofenceStatus(
         if (controller.signal.aborted) return;
         layerManager.setGeoJsonData(GEOFENCE_LAYER_ID, toGeoJson(result, selectedLocation));
         setGeofence({ active, loading: false, unavailableReason: null, response: result });
+        const { title, detail } = summariseGeofence(result);
+        pushToast({ tone: 'success', title, detail });
       })
       .catch((error) => {
         if (controller.signal.aborted) return;
-        setGeofence({
-          active,
-          loading: false,
-          unavailableReason: error instanceof Error ? error.message : 'Geofence check unavailable',
-          response: null,
-        });
+        const reason = error instanceof Error ? error.message : 'Geofence check unavailable';
+        setGeofence({ active, loading: false, unavailableReason: reason, response: null });
+        pushToast({ tone: 'error', title: 'Geofence check failed', detail: reason });
       });
 
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manager, ready, active, selectedLocation]);
+}
+
+/**
+ * The panel used to lay this out as a small table; the check is now reported
+ * as a single toast instead (see this hook's fetch handler), so this collapses
+ * the same fields into one title + a detail line rather than a table row per
+ * field. Named things (a boundary crossing, a nearby MPA) lead; "nothing
+ * nearby" is still reported, not silently skipped, since a snackbar that only
+ * ever fires on bad news trains people to read silence as "checked and fine"
+ * when it might just not have run yet.
+ */
+function summariseGeofence(result: GeofenceResponse): { title: string; detail: string } {
+  const flags: string[] = [];
+
+  if (result.india_eez.inside) {
+    flags.push(
+      result.india_eez.zone === 'andaman_and_nicobar'
+        ? 'Inside India EEZ (Andaman & Nicobar)'
+        : 'Inside India EEZ (mainland)'
+    );
+  }
+  if (result.india_sri_lanka_imbl.near) {
+    flags.push(`${result.india_sri_lanka_imbl.distance_km.toFixed(1)} km from the India-Sri Lanka IMBL`);
+  }
+  for (const area of result.nearby_protected_areas) {
+    flags.push(area.inside ? `Inside ${area.name}` : `${area.distance_km.toFixed(1)} km from ${area.name}`);
+  }
+
+  if (flags.length === 0) {
+    return {
+      title: 'Geofence check: no boundary nearby',
+      detail: 'Outside the India EEZ, clear of the IMBL and known Marine Protected Areas.',
+    };
+  }
+
+  return { title: 'Geofence check', detail: flags.join(' · ') };
 }
 
 function toGeoJson(

@@ -20,20 +20,24 @@ function url(path: string): URL {
   return API_BASE_URL ? new URL(path, API_BASE_URL) : new URL(path, window.location.origin);
 }
 
-export interface HabitatPoint {
-  species: string;
-  month: number;
-  suitability: number | null;
-  outside_coverage: boolean;
-  value_label: string;
-}
-
 export interface PredictionDriver {
   feature: string;
   label: string;
   value: number | null;
   contribution: number;
   direction: 'increases' | 'decreases';
+}
+
+export interface HabitatPoint {
+  species: string;
+  month: number;
+  suitability: number | null;
+  outside_coverage: boolean;
+  value_label: string;
+  /** Top SHAP drivers for this cell, strongest first. Null when the export
+   * predates this field, the manifest's feature-name lookup is missing, or
+   * the cell has no suitability value (land / outside coverage). */
+  drivers: PredictionDriver[] | null;
 }
 
 export interface HabPoint {

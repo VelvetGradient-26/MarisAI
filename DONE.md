@@ -13,6 +13,161 @@ it has been a while.
 
 ---
 
+## sihtodo.md item 4 — controlled internet tools, shipped 2026-08-26
+
+A fourth chat specialist, `web_research` (`services/chat/specialists.py`),
+rather than three top-level tools bolted onto the orchestrator the way
+`get_documentation` is: these are live external measurements, not static
+platform self-knowledge, so they belong in a delegate loop that shares the
+same `Ledger` every other specialist's tools do — which is also the entire
+mechanism by which they satisfy the item's own requirement to feed the
+existing grounding check rather than bypass it. No new checker was written;
+`agent.py`'s existing `_ungrounded_numbers`/`_false_refusal` already scan the
+whole ledger regardless of which specialist populated it.
+
+Three modules, one per capability, matching this codebase's one-integration-
+per-module convention: `services/web_search.py` (Tavily), `services/
+webpage.py` (generic fetch, no provider), `services/literature.py`
+(Crossref). Each has its own `XError`.
+
+**`services/literature.py` is keyless and was verified live 2026-08-26**
+against `query=arabian+sea+sea+surface+temperature+warming` — real, current
+Crossref results, one a 2026-08-05 preprint on Arabian Sea cyclogenesis and
+SST trends. Semantic Scholar's Graph API was tried first and rate-limited
+(429) on the very first unauthenticated request in this session; Crossref
+did not, and is the DOI registry's own metadata source of record rather than
+a narrower AI/CS-heavy index.
+
+**`services/web_search.py` (Tavily) is unverified against a live key.** No
+Tavily account exists in this environment, so it is implemented against
+Tavily's documented REST contract rather than a real response — re-verify
+with a live `TAVILY_API_KEY` before trusting it the way this codebase's
+other integrations have been trusted after a live probe. It was chosen over
+every keyless alternative because none of them is actually general web
+search: DuckDuckGo's public endpoint is an infobox API, not ranked results,
+and Wikipedia is an encyclopedia that cannot answer a "this week" question
+at all — exactly the guide's own motivating example ("why is the Arabian Sea
+unusually warm this week?").
+
+**`services/webpage.py` has no external provider to verify — its risk is
+SSRF, not upstream flakiness.** `fetch_webpage` fetches a URL an LLM chose,
+a textbook vector for reaching a cloud metadata endpoint or an internal
+service. `_check_target` resolves the hostname itself and rejects private/
+loopback/link-local/multicast/reserved addresses before httpx connects, and
+redirects are followed manually, one hop at a time, re-checking every hop —
+a page that 302s to a private address after passing the first check must
+not slip through. Stated rather than fixed: this does not defend against DNS
+rebinding (a public address on the check, a private one moments later),
+which would need pinning the resolved IP through the actual connection. The
+body is read as a bounded stream rather than downloaded whole, and the
+extracted text (BeautifulSoup, menus/scripts/styles stripped first) is
+capped with truncation stated, not hidden.
+
+Citation discipline is prompt-level, the same shape as sihtodo.md item 3's
+glossary rule: `web_research`'s own system prompt requires naming the source
+and date and never blurring a source's claim with the model's own synthesis,
+and `agent.py`'s top-level `_SYSTEM_PROMPT` gained an absolute rule that a
+web/literature result is supplementary and must never be presented as one of
+MarisAI's own measurements. No automated backstop checks this qualitative
+rule — validating an attribution claim is a different, harder problem (real
+fact-checking) than validating that a *number* traces to a tool result, and
+is out of scope here for the same reason Hinglish detection was out of scope
+for item 3's glossary guardrail.
+
+Tool count pin in `test_chat.py` moved 17 -> 20 when merged against
+sihtodo.md items 7/10's `analyze_variable_correlation`/`assess_marine_risk`
+(both landed on `main` while this work was in progress on its own branch).
+22 new unit tests (`test_literature.py`, `test_web_search.py`,
+`test_webpage.py`) plus a new end-to-end grounding test in `test_chat.py`.
+Full backend suite 703/703 green after merging.
+
+---
+
+## SHAP explainability, Phase 2 — habitat suitability ensemble, shipped 2026-08-31
+
+Closes out TODO.md's "Explainability for the derived indices" item
+completely (HAB risk shipped as Phase 1, 2026-08-30; this is the habitat
+suitability half, explicitly deferred at the time as a genuinely different
+problem — see that entry below).
+
+**The real landmine, found before writing any export code**: SHAP's default
+output space differs by model family. Verified empirically against the real
+trained `fish_habitat.joblib` artifact — RandomForest's default TreeSHAP
+output already reconstructs `predict_proba` exactly (probability space,
+~1e-15), but LightGBM's default output reconstructs `logit(predict_proba)`
+(margin space) — the same finding Phase 1 made for a different LightGBM
+model — and MaxEnt's `LinearExplainer` also explains the logit. Summing
+these raw would not correctly decompose anything real, since
+`EnsembleWeights.combine` (`fish_habitat_prediction/src/models.py`) blends
+the three tiers' `predict_proba` outputs, not their logits. Fixed
+asymmetrically, not uniformly: RandomForest keeps its cheap default (also
+~6x cheaper than forcing it through the fix, per real measurement — a
+strictly worse trade for that tier); only LightGBM needed
+`model_output="probability"` + `feature_perturbation="interventional"`
+(verified to ~6e-9). MaxEnt needed a genuine design decision — an exact
+probability-space Shapley decomposition through its sigmoid link would need
+a permutation/kernel explainer, measured at ~1.4s/row on the real model
+(≈2 weeks at this export's real row count) — so its ~3.3%-weighted
+contribution uses a **secant-slope** linearisation instead
+(`marine_ml/shap_utils.py::linear_shap_matrix_probability`), checked against
+a real permutation-SHAP reference and against two cruder alternatives before
+picking it: it's the only one of the three that makes the row *total*
+exactly additive (not just approximately), and all three give identical
+top-k rankings regardless (they differ only by one positive per-row scalar).
+
+**A real operational lesson, learned the hard way**: the first full
+5-species run got killed by an external interruption after ~1h22m (species 1
+complete, correctly) with **zero output saved** — `export_habitat()`
+originally only wrote its NetCDF files after all 5 species finished. Added
+per-species checkpointing (`.npz` per species, loaded instead of recomputed
+on a re-run, deleted once the final files write successfully) and a
+`--species <key>` CLI filter so each species can run as its own ~80-minute
+job instead of one ~7-hour one. This was not a hypothetical robustness
+nice-to-have — it took **five actual attempts** to get all 5 species banked
+(two killed after surviving 1.5-3 hours despite an active anti-sleep
+assertion, two killed within minutes of starting, cause never conclusively
+identified from inside the sandbox), and without checkpointing every one of
+those kills would have cost the *entire* run rather than just the species in
+flight. Real per-species timing, remarkably consistent across all 5 despite
+the interruptions: bigeye_tuna 82.3min, indian_mackerel 81.7min, oil_sardine
+79.3min, skipjack_tuna 81.3min, yellowfin_tuna 80.6min — total compute
+≈6h45m across probably 3x that in real wall-clock time once the failed
+attempts are counted.
+
+**Verified against the complete real 5-species export, not a sample**:
+`habitat_suitability_shap.nc` (29.2 MB, matching the size computed from real
+dims before writing any code almost exactly), dims `(species=5, month=12,
+latitude=121, longitude=161, top_k=5)`. Checked NaN/land consistency across
+*all* 1,168,860 cells (not a spot check): every one of the 222,960
+NaN-suitability cells has `driver_index == -1` in every top-k slot, every one
+of the other 945,900 has a valid top driver. **The plausibility check is
+genuinely convincing, not just present**: the three tuna species (bigeye,
+skipjack, yellowfin — all pelagic, offshore predators) share nearly identical
+top drivers at their real highest-suitability cells (`distance_to_coast`,
+`depth`/`log_depth` — matching this model's own long-documented "depth and
+distance-to-coast dominate" global-importance finding), while indian_mackerel
+and oil_sardine (coastal, planktivorous) show a completely different, equally
+sensible pattern (`chl_trend_30d`, `thermal_distance` — productivity and
+thermal-niche indicators fitting a filter-feeder's biology) — real,
+ecologically coherent divergence the combination pipeline had no way to fake.
+Confirmed end-to-end through `predictions.habitat_point()` directly and
+through a real running `GET /api/predictions/habitat/point`; confirmed
+graceful degradation (SHAP file renamed away: `suitability` unchanged,
+`drivers: null`, no exception). 18 new `machine_learning` tests (114 total),
+full suites green throughout.
+
+**What's approximate vs. exact, stated plainly**: RandomForest and LightGBM's
+contributions are exact (probability-space, verified to float precision);
+MaxEnt's (~3.3% of the ensemble weight) is a linearised approximation of its
+own logistic link, not a true Shapley decomposition — stated in the shipped
+NetCDF attrs and manifest caveats, not hidden. A live-quality UI copy bug was
+also caught and fixed in the same pass: `SelectedLocationPanel.tsx`'s driver
+direction label was hardcoded to "raises/lowers risk" — dead code for habitat
+until this phase wired real drivers through it, at which point it would have
+mislabelled a positive suitability driver as a hazard.
+
+---
+
 ## sihtodo.md items 7 and 10 — shipped 2026-08-26
 
 `services/correlation.py` (cross-variable correlation, chat tool

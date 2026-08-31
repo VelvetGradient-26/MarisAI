@@ -123,10 +123,6 @@ export function AssistantThread({ error }: { error: string | null }) {
           </span>
           Ocean Assistant
         </h1>
-        <p>
-          Answers come from live MarisAI data — forecasts, observations, bathymetry and model
-          output. Every figure is traced back to the call that produced it.
-        </p>
       </header>
 
       <div className="chat-log-wrap">

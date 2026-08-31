@@ -1,4 +1,4 @@
-"""The three specialist agents the orchestrator delegates to.
+"""The specialist agents the orchestrator delegates to.
 
 Each specialist is a name, a system prompt, and a tool-name allowlist drawn
 from `services.chat.tools.ALL_TOOL_NAMES` — the same tool implementations the
@@ -7,6 +7,15 @@ tools relevant to its job. `get_historical_series` appears in two lists
 deliberately: "how has X changed" is both an ocean-analytics question (a
 biogeochemistry trend) and a safety one (a wave/wind trend), and it is the
 same tool either way.
+
+The first three (`ocean_analytics`, `weather_safety`, `geospatial_risk`) are
+split by domain per sihtodo.md item 2's analysis — see CLAUDE.md's Ocean
+Assistant section for why the guide's suggested planning/risk/visualization/
+reporting framing was rejected. `external_research` (sihtodo.md item 4) is a
+fourth, genuinely new domain rather than a rename of one of the three: it is
+the only specialist whose tools reach outside MarisAI's own services onto the
+open internet, which is also why it is the only one with an explicit
+citation/attribution rule in its own prompt below.
 """
 
 from __future__ import annotations

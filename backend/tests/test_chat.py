@@ -585,6 +585,70 @@ def cyclones(monkeypatch):
     return install
 
 
+@pytest.fixture
+def web_search_result(monkeypatch):
+    """Stand in for the Tavily-backed web_search tool."""
+
+    def install(result: dict) -> None:
+        async def fake(query: str, max_results: int = 5):
+            return result
+
+        monkeypatch.setattr("services.web_search.search", fake)
+
+    return install
+
+
+@pytest.mark.asyncio
+async def test_external_research_is_a_real_delegate_and_feeds_grounding(patched, web_search_result):
+    """The fourth specialist: a figure from a web search result reaches the
+    final answer and is recognised as grounded, exactly as a live-data figure
+    from any other specialist is — sihtodo.md item 4's own requirement that
+    these tools feed the existing grounding mechanism rather than bypass it.
+    """
+    web_search_result(
+        {
+            "query": "why is the arabian sea warm this week",
+            "results": [
+                {
+                    "title": "Arabian Sea sees unusual warmth",
+                    "url": "https://news.example.com/arabian-sea",
+                    "snippet": "Sea surface temperatures are running 1.8 C above average.",
+                    "published_date": "2026-08-20",
+                    "source": "news.example.com",
+                }
+            ],
+            "result_count": 1,
+            "source": "Tavily web search",
+        }
+    )
+
+    top = ScriptedModel(
+        [
+            _delegate_call("external_research", "Why is the Arabian Sea unusually warm this week?"),
+            AIMessage(
+                content=(
+                    "According to news.example.com (2026-08-20), SST there is "
+                    "running 1.8 C above average this week."
+                )
+            ),
+        ]
+    )
+    specialist = ScriptedModel(
+        [
+            _tool_call("web_search", {"query": "why is the arabian sea warm this week"}),
+            AIMessage(content="It's running 1.8 C above average per news.example.com."),
+        ]
+    )
+    patched(top, specialist)
+
+    result = await agent.answer("Why is the Arabian Sea unusually warm this week?")
+
+    assert result["grounded"] is True, result["unsupported_numbers"]
+    assert result["observations"][0]["tool"] == "web_search"
+    assert result["observations"][0]["agent"] == "external_research"
+    assert "news.example.com" in result["sources"]
+
+
 @pytest.mark.asyncio
 async def test_a_glossary_term_kept_in_english_is_not_flagged(patched, conditions):
     """A Hindi answer that keeps "SST" in English, exactly as the prompt asks,
