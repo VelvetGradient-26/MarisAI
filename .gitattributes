@@ -13,6 +13,11 @@
 #
 # Anyone cloning this repo needs `git lfs install` before the checkout resolves
 # these to real files rather than to pointer stubs.
+# Shell scripts run inside Linux containers — CRLF from a Windows checkout
+# breaks the shebang (`exec: no such file or directory`). Force LF in the
+# working tree regardless of core.autocrlf.
+*.sh text eol=lf
+
 *.pkl filter=lfs diff=lfs merge=lfs -text
 *.nc filter=lfs diff=lfs merge=lfs -text
 backend/models/forecasting/_reports/**/*.png filter=lfs diff=lfs merge=lfs -text
