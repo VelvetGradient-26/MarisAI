@@ -205,14 +205,17 @@ to call live, or a product decision), not on missing code.
   `services/forecast_warm.py` and `services/eddy_tracking.py` already use for
   a slow upstream, with `check_point` reading it opportunistically and
   falling back to today's circle for any storm with no cached polygon yet.
-- **Browser verification of the globe recentre, the drift layers and the
-  particle animations.** Agent-driven Chrome tabs are always hidden, so
-  `requestAnimationFrame` never fires, the map never initialises and every
-  animation freezes — a limitation of the harness, not evidence of a
-  problem. Needs one human look at `/map`, which should also check several
-  particle systems at once on a mid-range GPU: there are seven possible flow
-  layers, each an independent `requestAnimationFrame` + `map.redraw()` loop
-  with its own trail framebuffers, and nothing coordinates them.
+- **Multiple flow layers running concurrently on a mid-range GPU — the one
+  piece the first browser pass didn't cover.** Globe recentre and each of
+  the seven flow layers individually were human-verified working in a real
+  browser 2026-08-31 (CDP-driven tabs can't run this check at all —
+  `requestAnimationFrame` never fires there, so this genuinely needed a
+  human look, and now has had one; see DONE.md's "Browser verification:
+  globe recentre and flow-layer particle animations"). What's still
+  unchecked is several of those seven independent `requestAnimationFrame` +
+  `map.redraw()` loops and trail framebuffers running *at once*,
+  uncoordinated, on a mid-range GPU — a contention/perf question one-at-a-
+  time checking cannot answer.
 - **Live browser pass on `/assistant`.** The specialist-name pill on each
   tool call, the delegation line, and the false-refusal banner
   (`AssistantThread.tsx`) have only been verified via the raw SSE event

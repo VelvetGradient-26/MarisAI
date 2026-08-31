@@ -2456,6 +2456,19 @@ connection. There is no upstream setting, so the lever is botocore's mutable
 hides every urllib3 warning, including the ones worth reading when CloudFerro
 flaps, and leaves the handshakes in place.
 
+### Browser verification: globe recentre and flow-layer particle animations — 2026-08-31
+
+The blocked item's core ask — a human looking at `/map` in a real browser,
+since CDP-driven tabs never fire `requestAnimationFrame` and the map never
+initialises there — is done. Globe recentre and each of the seven flow
+layers were checked **individually** and confirmed working.
+
+**Still open, and a different question**: the same TODO note flagged that
+those seven layers' independent `requestAnimationFrame` + `map.redraw()`
+loops and trail framebuffers, run *concurrently* on a mid-range GPU, are
+uncoordinated — a contention/perf risk one-at-a-time checking cannot
+surface. Not exercised in this pass. See TODO.md's Blocked/parked section.
+
 ---
 
 ## Hazards that will bite the next person

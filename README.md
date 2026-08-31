@@ -14,6 +14,90 @@ predictions, operating points are stated where they are weak, and the assistant
 verifies that every figure in its answer came from a tool rather than from the
 model.
 
+## Getting started
+
+### Prerequisites
+
+- Node.js 20+
+- Python 3.11
+- [uv](https://docs.astral.sh/uv/)
+- PostgreSQL — **optional.** Only chat-session history uses it; without a
+  `DATABASE_URL` the assistant still works and simply cannot reopen past
+  conversations.
+- Docker + Docker Compose — only if using the Docker option below.
+
+### Docker (fastest way to get running)
+
+```bash
+cp backend/.env.example backend/.env   # then fill in real credentials
+docker compose up --build
+```
+
+Brings up Postgres, the backend (`http://localhost:8000`, migrations run
+automatically on boot) and the frontend dev server (`http://localhost:5173`,
+hot-reload via a bind mount) as one stack — no local Python/Node/Postgres
+install required. `docker-compose.yml` and `backend/.env.example` at the repo
+root have the full variable reference; `machine_learning/` still needs its own
+venv (see below) since its output is only *read* by the backend, never run by
+it. This is a dev stack, not a production deployment — the frontend serves via
+Vite's dev server, not a built bundle.
+
+### Backend (without Docker)
+
+```bash
+cd backend
+uv sync
+# create .env with the variables below
+uv run uvicorn main:app --reload
+```
+
+Serves on `http://127.0.0.1:8000`. On boot it starts warming the global caches
+in the background and serves everything else immediately; layers that depend on
+a cold cache report themselves as warming until their first fetch lands.
+
+`backend/.env` (see `backend/.env.example` for the full list):
+
+| Variable | Purpose |
+|---|---|
+| `COPERNICUS_USERNAME` / `COPERNICUS_PASSWORD` | Copernicus Marine — SST, wind, currents, waves, biogeochemistry. The one credential most of the product needs |
+| `GFW_TOKEN` | Global Fishing Watch (vessel density) |
+| `AISSTREAM_API_KEY` | Live AIS websocket feed. Without it the vessel layer serves an empty collection rather than failing |
+| `NASA_BEARER_TOKEN` | NASA Earthdata (GIBS-authenticated layers) |
+| `LLM_PROVIDER` / `LLM_API_KEY` / `LLM_MODEL` / `LLM_BASE_URL` | Assistant and insights provider (Gemini, OpenAI-compatible, or Ollama) |
+| `TAVILY_API_KEY` | The Ocean Assistant's `web_research` specialist (web search). Without it, `web_search` reports itself unavailable rather than failing the assistant; `fetch_webpage` and `search_scientific_literature` need no key |
+| `SMTP_USERNAME` / `SMTP_PASSWORD` | Gmail app password, for the feedback form |
+| `DATABASE_URL` | PostgreSQL. Optional — see above |
+| `LOG_LEVEL` / `LOG_JSON` | `INFO` by default; `LOG_JSON=true` emits one JSON object per line |
+| `FORECAST_GRID_REFRESH_ON_BOOT` | Set `false` on a small machine — a rebuild peaks around 3 GB per variable |
+
+No key is needed for the voyage-planning chat tools: GDACS, IMD's CAP feed and
+Marine Regions' WFS are all unauthenticated reads. Never commit real values;
+`backend/.env` is untracked.
+
+### Frontend (without Docker)
+
+```bash
+cd frontend
+npm install
+npm run dev        # http://localhost:5173, proxies /api to the backend
+npm run build      # tsc -b + production build
+npm run lint       # oxlint
+```
+
+### Tests
+
+```bash
+cd backend && uv run pytest tests/ -q
+
+# machine_learning/ has its own venv and requirements.txt — no pyproject,
+# so it is not a `uv run` project.
+cd machine_learning && .venv/bin/pytest        # leakage and methodology guards
+```
+
+The machine-learning suite is worth running deliberately: it enforces "only one
+forward shift exists", "never random K-fold", and "climatology fitted on
+training rows only" — the guardrails against silent methodology error.
+
 ## What it does
 
 | Surface | Route | What it answers |
@@ -30,100 +114,44 @@ model.
 
 ### The pieces
 
-- **Live observation layers.** Sea surface temperature, wind, surface currents,
-  Stokes drift, and a combined drift field (current + Stokes + wind leeway,
-  selectable per object type), plus bathymetry, vessel density and marine
-  boundaries. The vector fields are one GPU particle engine (WebGL2, transform
-  feedback) over a texture encoded server-side. The current view — basemap plus
-  whatever overlays are active — can be exported as a true ~4K PNG, a real
-  higher-density re-render rather than an upscaled screenshot.
-- **Mesoscale eddy detection and tracking.** Eddies are detected in the live
-  surface-current field by the Okubo-Weiss method (position, size, polarity,
-  intensity) and, separately, tracked frame to frame — nearest-neighbour
-  matching within a polarity-separated, detector-jitter-sized gate, ambiguous
-  clusters solved exactly via the Hungarian algorithm, tracks retired after two
-  consecutive misses. Verified live on 2,177 real detections: matched through a
-  synthetic jittered frame in 16 ms at 100% continuity. What tracking does
-  *not* yet have is validation against a real reference: the per-frame
-  detector's accuracy against AVISO+'s Mesoscale Eddy Trajectory Atlas is
-  blocked on that dataset requiring a registered account, and the tracker's own
-  matcher is presently unit-tested on synthetic data only.
-- **Coastal upwelling and marine heatwave detection.** A Bakun wind-derived
-  upwelling index, corroborated by whether the water is actually cool against
-  an OISST-fitted climatology — two separate claims, reported separately,
-  including a control showing the correlation is real but weak. A parallel
-  attempt to fit that climatology against Copernicus reanalysis instead (to cut
-  OISST's multi-day lag) was built, measured, and shelved: it did not improve
-  the corroboration signal and is deliberately not wired into the live path.
-- **eDNA sampling coverage.** Where the ocean has been sampled *molecularly* —
-  not a biodiversity layer. Measured live: eDNA records cover a few hundredths
-  of a percent of the ocean at a meaningful grid resolution, so the map is
-  mostly blank on purpose, and that blankness is stated rather than left to
-  read as a failed load.
-- **A forecasting engine** (`backend/forecasting/`) — one framework for *every*
-  variable rather than one model per variable. Adding a variable is a YAML block
-  naming a code the download registry already serves, plus a training run; the
-  metric-intelligence page for it then exists with no frontend change. Models
-  are global (one per variable+horizon across configured points, with
-  lat/lon/depth/basin as features), regress on the *change* rather than the
-  level, and are validated rolling-origin with an embargo — never a random
-  split. A horizon ships only if it beats persistence **and** at most one of
-  five folds is negative.
-- **A forecast map.** The same engine rendered as a global raster layer, in
-  `absolute` and `change` modes — `change` (forecast minus the latest
-  observation) being the informative one, since the absolute field at +7d looks
-  almost exactly like today's. Where two grids hold the components of one
-  vector, they compose into a forecast *particle* field instead, drawn exactly
-  like its live counterpart so the two can be compared. Grids are built offline
-  and refreshed on a schedule.
-- **Voyage planning and safety tools — conversational only.** Reached
-  exclusively through the assistant; none of these has a REST endpoint or map
-  layer of its own. Hazard-aware route planning does an A* search over a live
-  grid that excludes land, the India–Sri Lanka maritime boundary and marine
-  protected areas outright, weighting the remaining edges by live wave height.
-  Geofencing checks a point against India's EEZ (mainland plus Andaman &
-  Nicobar), that same boundary line, and a curated protected-area list, using
-  real geometry from Marine Regions rather than hand-sketched polygons.
-  Potential-fishing-zone screening is an explicit heuristic (above-median
-  chlorophyll in a 24–30°C band) — stated as a screening aid, not the validated
-  model INCOIS ships, and independent of the trained fish-habitat model below.
-  Cyclone alerts come from GDACS (since India's IMD publishes no machine-
-  readable track feed); severe weather alerts come from IMD's own CAP feed —
-  and are a genuinely different signal, verified against five real cyclone
-  landfalls that IMD's feed reported only as "Heavy Rain," never "Cyclone."
-- **A point brief, and a comparison.** One coordinate rendered as a document
-  (on screen or as a PDF), and two coordinates aligned row by row. Both are
-  composition rather than computation — every number already has an endpoint —
-  and a row only one point has is kept and labelled rather than dropped, because
-  the asymmetry is often the most informative part.
-- **The Ocean Intelligence Dashboard.** Global KPIs, live provider health, and
-  threshold-based alerts that state their own basis rather than reading as an
-  issued warning — plus per-entity dossier pages (one trained model, one NDBC
-  buoy, one satellite product) reached by clicking through, not a separate
-  section to navigate to. Every KPI and provider distinguishes "still warming
-  up" from "unavailable" rather than looking alike.
-- **Universal Ocean Data Downloader.** 34 of 36 spec variables against real
-  data, across 14 providers with independently varying cadence and grid
-  spacing, reconciled correctly (aggregate before merge, not after) rather than
-  silently mixing an hourly field's instantaneous sample where a daily mean
-  belongs. Exports as CSV, JSON or PDF.
-- **Offline ML** (`machine_learning/`) — harmful algal bloom early warning and
-  fish habitat / potential fishing zones, on a shared Marine Data Fusion Layer.
-  It has its own environment and is **not imported by the backend**; its
-  exported prediction grids are served as map layers, so it is part of the
-  running product even though the import boundary holds.
-- **An ocean assistant** — a bounded tool-calling loop over the platform's own
-  services, not RAG. The top-level model holds five tools: four
-  `delegate_to_*` specialists (`ocean_analytics` for forecasts/HAB/habitat/PFZ,
-  `weather_safety` for live conditions/cyclones/IMD alerts, `geospatial_risk`
-  for geofencing/depth/routing, `web_research` for web search/webpage
-  reading/scientific literature — context beyond MarisAI's own live data)
-  plus a self-knowledge tool bound directly, since documentation lookup isn't
-  a live measurement the way the specialists' work is. Each specialist runs
-  its own bounded sub-loop over a shared ledger, which is also what the
-  grounding check reads. Streaming (SSE) and non-streaming endpoints share
-  one loop, and every answer is checked against what the tools actually
-  returned before it's shown as verified.
+- **Live observation layers** — SST, wind, currents, Stokes drift, a combined
+  drift field, bathymetry, vessel density, marine boundaries; vector fields via
+  a GPU particle engine (WebGL2). Exportable as a true ~4K PNG.
+- **Mesoscale eddy detection and tracking** — Okubo-Weiss detection plus
+  frame-to-frame tracking (Hungarian algorithm for ambiguous matches).
+  Verified live at 100% continuity on 2,177 real detections; not yet validated
+  against a reference atlas (AVISO+, account-gated).
+- **Coastal upwelling and marine heatwave detection** — a Bakun wind-derived
+  upwelling index, corroborated against an OISST-fitted climatology, reported
+  as two separate claims.
+- **eDNA sampling coverage** — where the ocean has been sampled molecularly,
+  not a biodiversity layer. Coverage is a few hundredths of a percent, and the
+  map states that rather than looking like a failed load.
+- **A forecasting engine** (`backend/forecasting/`) — one framework for every
+  variable. Adding a variable is a YAML block plus a training run. Global
+  models regress on *change*, validated rolling-origin with an embargo; a
+  horizon ships only if it beats persistence.
+- **A forecast map** — the same engine as a global raster layer (`absolute` /
+  `change` modes), or as a forecast particle field where two grids form a
+  vector. Built offline, refreshed on a schedule.
+- **Voyage planning and safety tools (conversational only)** — reached only
+  through the assistant. Hazard-aware A* route planning, EEZ/boundary/MPA
+  geofencing, a PFZ screening heuristic, GDACS cyclone alerts, and IMD CAP
+  severe-weather alerts.
+- **A point brief, and a comparison** — one coordinate as a document (screen or
+  PDF), or two coordinates aligned row by row.
+- **The Ocean Intelligence Dashboard** — global KPIs, live provider health,
+  threshold-based alerts, and per-entity dossier pages (model / buoy /
+  satellite product).
+- **Universal Ocean Data Downloader** — 34 of 36 spec variables, 14 providers,
+  correctly cadence-reconciled. Exports as CSV, JSON or PDF.
+- **Offline ML** (`machine_learning/`) — HAB early warning and fish habitat /
+  PFZ prediction, on a shared Marine Data Fusion Layer. Own environment, not
+  imported by the backend; its exported grids are served as map layers.
+- **An ocean assistant** — a bounded tool-calling loop (not RAG) over four
+  delegated specialists (analytics, weather/safety, geospatial risk, web
+  research) plus self-knowledge, with every answer checked against what the
+  tools actually returned before it's shown as verified.
 
 ## Architecture
 
@@ -167,73 +195,6 @@ Outside `features/dashboard/` and `features/assistant/` the frontend is
 hand-rolled: no UI kit, no CSS framework, no form or date-picker library. That
 is a convention, not an accident — match it rather than adding a dependency for
 one component.
-
-## Getting started
-
-### Prerequisites
-
-- Node.js 20+
-- Python 3.11
-- [uv](https://docs.astral.sh/uv/)
-- PostgreSQL — **optional.** Only chat-session history uses it; without a
-  `DATABASE_URL` the assistant still works and simply cannot reopen past
-  conversations.
-
-### Backend
-
-```bash
-cd backend
-uv sync
-# create .env with the variables below
-uv run uvicorn main:app --reload
-```
-
-Serves on `http://127.0.0.1:8000`. On boot it starts warming the global caches
-in the background and serves everything else immediately; layers that depend on
-a cold cache report themselves as warming until their first fetch lands.
-
-`backend/.env`:
-
-| Variable | Purpose |
-|---|---|
-| `COPERNICUS_USERNAME` / `COPERNICUS_PASSWORD` | Copernicus Marine — SST, wind, currents, waves, biogeochemistry. The one credential most of the product needs |
-| `GFW_TOKEN` | Global Fishing Watch (vessel density) |
-| `AISSTREAM_API_KEY` | Live AIS websocket feed. Without it the vessel layer serves an empty collection rather than failing |
-| `NASA_BEARER_TOKEN` | NASA Earthdata (GIBS-authenticated layers) |
-| `LLM_PROVIDER` / `LLM_API_KEY` / `LLM_MODEL` / `LLM_BASE_URL` | Assistant and insights provider (Gemini, OpenAI-compatible, or Ollama) |
-| `TAVILY_API_KEY` | The Ocean Assistant's `web_research` specialist (web search). Without it, `web_search` reports itself unavailable rather than failing the assistant; `fetch_webpage` and `search_scientific_literature` need no key |
-| `SMTP_USERNAME` / `SMTP_PASSWORD` | Gmail app password, for the feedback form |
-| `DATABASE_URL` | PostgreSQL. Optional — see above |
-| `LOG_LEVEL` / `LOG_JSON` | `INFO` by default; `LOG_JSON=true` emits one JSON object per line |
-| `FORECAST_GRID_REFRESH_ON_BOOT` | Set `false` on a small machine — a rebuild peaks around 3 GB per variable |
-
-No key is needed for the voyage-planning chat tools: GDACS, IMD's CAP feed and
-Marine Regions' WFS are all unauthenticated reads. Never commit real values;
-`backend/.env` is untracked.
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev        # http://localhost:5173, proxies /api to the backend
-npm run build      # tsc -b + production build
-npm run lint       # oxlint
-```
-
-### Tests
-
-```bash
-cd backend && uv run pytest tests/ -q
-
-# machine_learning/ has its own venv and requirements.txt — no pyproject,
-# so it is not a `uv run` project.
-cd machine_learning && .venv/bin/pytest        # leakage and methodology guards
-```
-
-The machine-learning suite is worth running deliberately: it enforces "only one
-forward shift exists", "never random K-fold", and "climatology fitted on
-training rows only" — the guardrails against silent methodology error.
 
 ## Offline pipelines
 
