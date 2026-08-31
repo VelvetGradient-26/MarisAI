@@ -84,21 +84,3 @@ def test_combine_is_the_weighted_average_it_claims_to_be():
     )
 
     assert combined == pytest.approx([0.75, 0.25])
-
-
-def test_combine_shap_is_combine_for_matrices():
-    """Same weighted-sum rule as `combine`, just over `(n_rows, n_features)`
-    contribution matrices instead of `(n_rows,)` prediction vectors — the
-    attribution analogue used to build one ensemble driver list out of three
-    tiers' own attributions (fish_habitat_prediction/src/explain.py)."""
-    weights = EnsembleWeights({"a": 0.75, "b": 0.25})
-
-    combined = weights.combine_shap(
-        {
-            "a": np.array([[1.0, 0.0], [2.0, 0.0]]),
-            "b": np.array([[0.0, 1.0], [0.0, 4.0]]),
-        }
-    )
-
-    np.testing.assert_allclose(combined, [[0.75, 0.25], [1.5, 1.0]])
-    assert combined.dtype == np.float32

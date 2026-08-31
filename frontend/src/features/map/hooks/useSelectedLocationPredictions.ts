@@ -20,8 +20,8 @@ export interface PredictionPointResult {
    * run, not a forecast issued today, so the layer's "+3d" name alone would
    * imply three days from now — the date says which +3d this actually is. */
   date: string | null;
-  /** Null for habitat (no per-cell attribution built yet) and for any hab
-   * point where the export predates this field or the cell has no value. */
+  /** Null when the export predates this field (either product) or the cell
+   * has no value (land / outside coverage). */
   drivers: PredictionDriver[] | null;
 }
 
@@ -90,7 +90,10 @@ export function useSelectedLocationPredictions(
               value: point.suitability,
               outsideCoverage: point.outside_coverage,
               valueLabel: point.value_label,
-              drivers: null,
+              // Guards a rolling-deploy window where the backend hasn't picked
+              // up this field yet, even though the type claims it's present —
+              // same guard the hab branch below already uses.
+              drivers: point.drivers ?? null,
             };
           }
           const point = await fetchHabPoint(

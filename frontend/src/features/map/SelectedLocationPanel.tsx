@@ -686,10 +686,12 @@ function RoutePointRow({
 }
 
 function PredictionRow({ prediction }: { prediction: PredictionPointResult }) {
-  const name =
-    prediction.source.kind === 'habitat'
-      ? `${prediction.source.label} habitat`
-      : prediction.source.label;
+  const isHabitat = prediction.source.kind === 'habitat';
+  const name = isHabitat ? `${prediction.source.label} habitat` : prediction.source.label;
+  // "risk" reads wrong for a suitability driver — raising habitat
+  // suitability is a good thing, not a hazard the way raising bloom risk is.
+  const raisesLabel = isHabitat ? '↑ raises suitability' : '↑ raises risk';
+  const lowersLabel = isHabitat ? '↓ lowers suitability' : '↓ lowers risk';
 
   return (
     <div className="selected-location-panel__prediction">
@@ -734,7 +736,7 @@ function PredictionRow({ prediction }: { prediction: PredictionPointResult }) {
               <span
                 className={`selected-location-panel__prediction-driver-direction selected-location-panel__prediction-driver-direction--${driver.direction}`}
               >
-                {driver.direction === 'increases' ? '↑ raises risk' : '↓ lowers risk'}
+                {driver.direction === 'increases' ? raisesLabel : lowersLabel}
               </span>
             </span>
           ))}

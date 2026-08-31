@@ -81,6 +81,93 @@ sihtodo.md items 7/10's `analyze_variable_correlation`/`assess_marine_risk`
 `test_webpage.py`) plus a new end-to-end grounding test in `test_chat.py`.
 Full backend suite 703/703 green after merging.
 
+---
+
+## SHAP explainability, Phase 2 — habitat suitability ensemble, shipped 2026-08-31
+
+Closes out TODO.md's "Explainability for the derived indices" item
+completely (HAB risk shipped as Phase 1, 2026-08-30; this is the habitat
+suitability half, explicitly deferred at the time as a genuinely different
+problem — see that entry below).
+
+**The real landmine, found before writing any export code**: SHAP's default
+output space differs by model family. Verified empirically against the real
+trained `fish_habitat.joblib` artifact — RandomForest's default TreeSHAP
+output already reconstructs `predict_proba` exactly (probability space,
+~1e-15), but LightGBM's default output reconstructs `logit(predict_proba)`
+(margin space) — the same finding Phase 1 made for a different LightGBM
+model — and MaxEnt's `LinearExplainer` also explains the logit. Summing
+these raw would not correctly decompose anything real, since
+`EnsembleWeights.combine` (`fish_habitat_prediction/src/models.py`) blends
+the three tiers' `predict_proba` outputs, not their logits. Fixed
+asymmetrically, not uniformly: RandomForest keeps its cheap default (also
+~6x cheaper than forcing it through the fix, per real measurement — a
+strictly worse trade for that tier); only LightGBM needed
+`model_output="probability"` + `feature_perturbation="interventional"`
+(verified to ~6e-9). MaxEnt needed a genuine design decision — an exact
+probability-space Shapley decomposition through its sigmoid link would need
+a permutation/kernel explainer, measured at ~1.4s/row on the real model
+(≈2 weeks at this export's real row count) — so its ~3.3%-weighted
+contribution uses a **secant-slope** linearisation instead
+(`marine_ml/shap_utils.py::linear_shap_matrix_probability`), checked against
+a real permutation-SHAP reference and against two cruder alternatives before
+picking it: it's the only one of the three that makes the row *total*
+exactly additive (not just approximately), and all three give identical
+top-k rankings regardless (they differ only by one positive per-row scalar).
+
+**A real operational lesson, learned the hard way**: the first full
+5-species run got killed by an external interruption after ~1h22m (species 1
+complete, correctly) with **zero output saved** — `export_habitat()`
+originally only wrote its NetCDF files after all 5 species finished. Added
+per-species checkpointing (`.npz` per species, loaded instead of recomputed
+on a re-run, deleted once the final files write successfully) and a
+`--species <key>` CLI filter so each species can run as its own ~80-minute
+job instead of one ~7-hour one. This was not a hypothetical robustness
+nice-to-have — it took **five actual attempts** to get all 5 species banked
+(two killed after surviving 1.5-3 hours despite an active anti-sleep
+assertion, two killed within minutes of starting, cause never conclusively
+identified from inside the sandbox), and without checkpointing every one of
+those kills would have cost the *entire* run rather than just the species in
+flight. Real per-species timing, remarkably consistent across all 5 despite
+the interruptions: bigeye_tuna 82.3min, indian_mackerel 81.7min, oil_sardine
+79.3min, skipjack_tuna 81.3min, yellowfin_tuna 80.6min — total compute
+≈6h45m across probably 3x that in real wall-clock time once the failed
+attempts are counted.
+
+**Verified against the complete real 5-species export, not a sample**:
+`habitat_suitability_shap.nc` (29.2 MB, matching the size computed from real
+dims before writing any code almost exactly), dims `(species=5, month=12,
+latitude=121, longitude=161, top_k=5)`. Checked NaN/land consistency across
+*all* 1,168,860 cells (not a spot check): every one of the 222,960
+NaN-suitability cells has `driver_index == -1` in every top-k slot, every one
+of the other 945,900 has a valid top driver. **The plausibility check is
+genuinely convincing, not just present**: the three tuna species (bigeye,
+skipjack, yellowfin — all pelagic, offshore predators) share nearly identical
+top drivers at their real highest-suitability cells (`distance_to_coast`,
+`depth`/`log_depth` — matching this model's own long-documented "depth and
+distance-to-coast dominate" global-importance finding), while indian_mackerel
+and oil_sardine (coastal, planktivorous) show a completely different, equally
+sensible pattern (`chl_trend_30d`, `thermal_distance` — productivity and
+thermal-niche indicators fitting a filter-feeder's biology) — real,
+ecologically coherent divergence the combination pipeline had no way to fake.
+Confirmed end-to-end through `predictions.habitat_point()` directly and
+through a real running `GET /api/predictions/habitat/point`; confirmed
+graceful degradation (SHAP file renamed away: `suitability` unchanged,
+`drivers: null`, no exception). 18 new `machine_learning` tests (114 total),
+full suites green throughout.
+
+**What's approximate vs. exact, stated plainly**: RandomForest and LightGBM's
+contributions are exact (probability-space, verified to float precision);
+MaxEnt's (~3.3% of the ensemble weight) is a linearised approximation of its
+own logistic link, not a true Shapley decomposition — stated in the shipped
+NetCDF attrs and manifest caveats, not hidden. A live-quality UI copy bug was
+also caught and fixed in the same pass: `SelectedLocationPanel.tsx`'s driver
+direction label was hardcoded to "raises/lowers risk" — dead code for habitat
+until this phase wired real drivers through it, at which point it would have
+mislabelled a positive suitability driver as a hazard.
+
+---
+
 ## sihtodo.md items 7 and 10 — shipped 2026-08-26
 
 `services/correlation.py` (cross-variable correlation, chat tool
@@ -1050,76 +1137,6 @@ not a bug.
 limitation as every other map-UI item in TODO.md's Blocked/Parked section
 ([[reference_cdp_raf_frozen]]), not attempted again expecting a different
 result.
-
----
-
-### Habitat suitability SHAP, Phase 2 — designed, implemented, unit-tested; not run end-to-end — 2026-08-30
-
-Phase 1's own docstring deferred this as "real design work of its own": a
-skill-weighted ensemble of three heterogeneous tiers (MaxEnt-as-logistic-
-regression, RandomForest, LightGBM) needs a combined-explainer design, not
-just TreeSHAP reused three times. Two genuinely hard sub-problems, both
-resolved by measuring against real fitted models rather than assuming a
-library default did the right thing:
-
-**Problem 1 — MaxEnt's tier operates in a different *feature space* than the
-two tree tiers.** `HingeQuadraticExpansion` (`models.py`) turns each
-pre-expansion column into `2 + n_hinges` derived columns
-(`[X, X**2, hinge_0(X), ..., hinge_{k-1}(X)]`, `np.hstack`'d in that fixed
-block order, never interleaved). `fish_habitat_prediction/src/explain.py::
-collapse_hinge_quadratic_shap` sums each original column's own block back
-together — verified two ways: a hand-derived 2-column/1-hinge example, and a
-round trip against a *real* fitted `HingeQuadraticExpansion` instance
-compared to an independently-computed expected sum
-(`test_collapse_matches_a_real_hinge_quadratic_expansion_round_trip`).
-
-**Problem 2 — the three tiers operate in different *units*, and only two of
-three can be reconciled cheaply.** `EnsembleWeights.combine` (the existing
-prediction-blending method) averages `predict_proba` outputs directly, so an
-attribution meant to explain that number needs every tier in probability
-space too — mixing margin-space and probability-space SHAP values in one
-weighted sum would silently misattribute the ensemble's actual output.
-Measured empirically on real fitted models (`test_shap_utils.py`), not
-assumed:
-
-| tier | default SHAP space | reconciled to probability space |
-| --- | --- | --- |
-| RandomForest | **already probability** (sklearn leaves store class-probability fractions) | free — `tree_shap_matrix` unchanged, error ~1e-16 |
-| LightGBM | margin/log-odds (leaves store raw scores) | `tree_shap_matrix_probability` (new): `model_output="probability"` + `feature_perturbation="interventional"` + a background sample — still tree-exact, not black-box; error ~1e-9 |
-| MaxEnt (LogisticRegression) | logit/decision-function | **not reconciled** — `shap.LinearExplainer`'s own `model_output="probability"` does not actually decompose `predict_proba` additively for a model behind a nonlinear (sigmoid) link (checked: off by several probability units on a real fit). A black-box/permutation explainer over the whole pipeline *can* get exact probability-space attribution (verified: 1e-16 error using `shap.Explainer` as a black box), but costs ~2–30 ms/row at a realistic ~28-feature scale against tree-exact's ~0.1–4 ms/row — at this problem's grid-export scale (tens of thousands of species-month-cell rows), minutes-to-hours rather than seconds. **Accepted as a stated approximation**: MaxEnt's collapsed contribution stays in logit space and is weighted into the combination anyway, `combine_shap` (new `EnsembleWeights` method, mirrors `combine`) applying the same skill weights the prediction itself uses. The resulting error is bounded by MaxEnt's own ensemble weight — small by construction under the shipped softmax config (`TSS_SOFTMAX_TEMPERATURE`'s own documented example: 0.008, under 1% of the vote), precisely because MaxEnt was the weakest tier on this problem's holdout. |
-
-New module `fish_habitat_prediction/src/explain.py`
-(`combined_feature_attribution`) orchestrates all three tiers per the table
-above and returns one `(n_rows, n_features)` matrix in the shared
-post-preprocessing feature space — verified that space is genuinely shared
-(`test_the_three_tiers_preprocessors_agree_on_feature_names`, against real
-fitted pipelines including a categorical column, not just numeric) and that
-the combination is the weighted sum it claims to be
-(`test_a_weight_of_one_reduces_to_that_tiers_own_contribution`: collapsing
-the ensemble to one tier's weight reproduces that tier's own attribution
-computed independently). 17 new tests across `test_shap_utils.py`,
-`test_ensemble_weights.py`, `test_explain.py`; full machine_learning suite
-113/113, full backend suite 856/856 (backend gained 5 new tests for
-`services/predictions.py::habitat_point`'s new `drivers` field — that module
-had *no* prior test coverage at all, HAB's own equivalent wiring having been
-verified only live per Phase 1's own entry above).
-
-`scripts/export_predictions.py::export_habitat()` gained the export wiring
-(`habitat_suitability_shap.nc`, dims `(species, month, latitude, longitude,
-top_k)`, mirroring `hab_risk_shap.nc`'s shape exactly) and
-`services/predictions.py::habitat_point()` gained the `drivers` field,
-mirroring `hab_point()`'s wiring line for line, including the same
-degrade-to-`None` behaviour for a missing companion file, a missing manifest
-feature-name list, or a cell with no `suitability` value.
-
-**What this entry does not claim, unlike Phase 1's**: Phase 1 ran the real
-HAB export end-to-end and inspected real cells. Phase 2 has not — no
-`fish_habitat.joblib` artifact exists in this environment (habitat's own
-training pipeline was never run here), so the export wiring is verified only
-by import/syntax checks and the unit tests above, which exercise the same
-code paths on synthetic data but not the real North Indian Ocean feature
-frame or a real trained ensemble. See TODO.md's updated entry for exactly
-what running it for real would need.
 
 ---
 

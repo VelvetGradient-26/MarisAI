@@ -16,6 +16,15 @@ Outputs land in ``machine_learning/exports/``:
 
 ``habitat_suitability.nc``
     dims (species, month, latitude, longitude) — one seasonal cycle.
+``habitat_suitability_shap.nc``
+    Companion to ``habitat_suitability.nc``: per-cell top-k SHAP driver
+    indices and contributions, dims (species, month, latitude, longitude,
+    top_k), combining all three ensemble tiers (MaxEnt + RandomForest +
+    LightGBM) in one shared probability space via the same skill weights
+    the suitability value itself uses. Indices resolve against
+    ``manifest.json``'s ``products.habitat.shap.feature_names``. Optional
+    from the backend's point of view — ``services/predictions.py`` degrades
+    to ``drivers: None`` if this file is absent.
 ``hab_risk.nc``
     dims (horizon, date, latitude, longitude) — recent daily bloom risk.
 ``hab_risk_shap.nc``
@@ -68,6 +77,19 @@ HAB_OUTPUT_DAYS = 30
 # *local*, per-cell ranking, and the two numbers do not need to match).
 HAB_SHAP_TOP_K = 5
 
+# Matches HAB_SHAP_TOP_K's own reasoning, independently -- the two
+# constants don't need to match each other, they happen to.
+HABITAT_SHAP_TOP_K = 5
+
+# Per-species SHAP background/reference sample size for the LightGBM
+# probability-mode explainer and the MaxEnt LinearExplainer. Drawn fresh
+# per species (never a cross-species pool): species_key and every
+# thermal-niche-derived feature are specific to the species currently being
+# scored, so a background built before species_key was set, or mixing
+# species, would reference an environment/niche combination that never
+# occurs for the species actually being explained.
+HABITAT_SHAP_BACKGROUND_SIZE = 200
+
 
 # --------------------------------------------------------------------------
 # Habitat suitability
@@ -112,14 +134,15 @@ def _habitat_feature_frame(region, start: date, end: date) -> pd.DataFrame:
     return frame
 
 
-# Same rationale and value as HAB_SHAP_TOP_K: matches ShapExplainer.explain_row's
-# own default, independent of _top_drivers' limit=8 (global mean-|SHAP| ranking
-# over the training sample, not this per-cell local ranking).
-HABITAT_SHAP_TOP_K = 5
-
-
-def export_habitat() -> dict:
-    from fish_habitat_prediction.src import explain
+def export_habitat(species_filter: str | None = None) -> dict | None:
+    """`species_filter`, when given, computes only that one species per
+    invocation (loading every other species from its checkpoint if one
+    exists, otherwise leaving it for a later run) -- caps how much a single
+    run risks to an external interruption, at the cost of needing one
+    invocation per species instead of one for all five. Returns `None`
+    (writing nothing) if any species still lacks a checkpoint afterward;
+    only writes the final NetCDF files once all five are accounted for.
+    """
     from fish_habitat_prediction.src import features as feature_lib
 
     artifact = joblib.load(config.MODELS_DIR / "fish_habitat.joblib")
@@ -127,6 +150,37 @@ def export_habitat() -> dict:
     niche = artifact["thermal_niche"]
     weights = artifact["ensemble_weights"]
     columns = artifact["feature_columns"]
+
+    rf_pipe, lgbm_pipe, maxent_pipe = models["random_forest"], models["lightgbm"], models["maxent"]
+    rf_prep, rf_booster = rf_pipe.named_steps["prep"], rf_pipe.named_steps["model"]
+    lgbm_prep, lgbm_booster = lgbm_pipe.named_steps["prep"], lgbm_pipe.named_steps["model"]
+    maxent_prep = maxent_pipe.named_steps["prep"]
+    maxent_expand = maxent_pipe.named_steps["expand"]
+    maxent_model = maxent_pipe.named_steps["model"]
+    n_hinges = maxent_expand.n_hinges
+
+    # All three tiers' fitted preprocessors must agree on their output
+    # feature space -- habitat_suitability_shap.nc has one shared feature
+    # axis, not one per tier. Verified true against the real fitted
+    # artifact; checked here so a future retrain that breaks it fails
+    # loudly instead of silently mislabelling drivers. "Same names" is not
+    # "same values": maxent's prep applies StandardScaler
+    # (_preprocessor(..., scale=True)), random_forest/lightgbm's does not
+    # -- each tier's own prep.transform output is used only with that
+    # tier's own explainer below, never shared across tiers.
+    habitat_shap_feature_names = [shap_utils.strip_transform_prefix(n) for n in rf_prep.get_feature_names_out()]
+    for tier_name, prep in (("lightgbm", lgbm_prep), ("maxent", maxent_prep)):
+        names = [shap_utils.strip_transform_prefix(n) for n in prep.get_feature_names_out()]
+        if names != habitat_shap_feature_names:
+            raise RuntimeError(
+                f"{tier_name}'s fitted preprocessor produced a different feature "
+                "space than random_forest's; habitat_suitability_shap.nc's shared "
+                "feature vocabulary (see manifest.json's products.habitat.shap."
+                "feature_names) assumes all three ensemble tiers share one "
+                "post-prep feature space. Re-check fish_habitat_prediction/src/"
+                "models.py::_preprocessor, or give habitat_suitability_shap.nc a "
+                "per-tier feature axis instead."
+            )
 
     region = config.NORTH_INDIAN_OCEAN
     runup_start = date(HABITAT_OUTPUT_YEAR - 1, 12 - HABITAT_RUNUP_MONTHS + 1, 1)
@@ -145,15 +199,44 @@ def export_habitat() -> dict:
                    np.nan, dtype="float32")
     driver_index_grid = np.full(
         (len(species_keys), len(months), len(latitudes), len(longitudes), HABITAT_SHAP_TOP_K),
-        -1, dtype="int16",
+        -1, dtype="int8",
     )
     driver_contribution_grid = np.full(
         (len(species_keys), len(months), len(latitudes), len(longitudes), HABITAT_SHAP_TOP_K),
         np.nan, dtype="float32",
     )
-    shap_feature_names: list[str] | None = None
+
+    # Per-species checkpoint: the SHAP pass below is slow enough (~80 min/
+    # species, measured) that losing the whole run to an external kill after
+    # 4 of 5 species finish is a real cost, not a hypothetical one -- it
+    # happened on the first real attempt at this export. Each species'
+    # already-computed grid slice is cached to disk as soon as it's done and
+    # reloaded (skipping recomputation entirely) on a subsequent run, so a
+    # resumed run only pays for the species it hadn't finished yet. Deleted
+    # once the final NetCDF files are written successfully -- these are
+    # resume state for one interrupted run, not a permanent cache, and go
+    # stale silently if the model artifact changes between a partial run and
+    # its resume (acceptable here: this script is run by hand, not as a
+    # service, and a resume happens within the same sitting).
+    checkpoint_paths = {
+        species_key: EXPORT_DIR / f"_habitat_checkpoint_{species_key}.npz" for species_key in species_keys
+    }
 
     for si, species_key in enumerate(tqdm(species_keys, desc="habitat species")):
+        checkpoint_path = checkpoint_paths[species_key]
+        if checkpoint_path.exists():
+            print(f"  {species_key}: resuming from checkpoint, skipping recomputation", flush=True)
+            cached = np.load(checkpoint_path)
+            grid[si] = cached["suitability"]
+            driver_index_grid[si] = cached["driver_index"]
+            driver_contribution_grid[si] = cached["driver_contribution"]
+            continue
+
+        if species_filter is not None and species_key != species_filter:
+            print(f"  {species_key}: no checkpoint yet and not the requested species -- "
+                  "leaving for a later run", flush=True)
+            continue
+
         scored = frame.copy()
         scored["species_key"] = species_key
         scored = feature_lib.apply_thermal_niche(scored, niche)
@@ -169,25 +252,33 @@ def export_habitat() -> dict:
             blended += weights.get(name, 0.0) * model.predict_proba(scored[columns])[:, 1]
         scored["suitability"] = blended
 
-        # Combined ensemble attribution — see fish_habitat_prediction/src/
-        # explain.py for why this needs its own reconciliation across the
-        # three tiers' feature spaces and units, unlike HAB's single model.
-        contributions, feature_names = explain.combined_feature_attribution(
-            models, weights, columns, scored
+        # Per-cell SHAP, in the ensemble's own probability space -- same
+        # background reasoning as HABITAT_SHAP_BACKGROUND_SIZE's own comment.
+        background = scored.sample(
+            min(HABITAT_SHAP_BACKGROUND_SIZE, len(scored)), random_state=config.RANDOM_SEED
         )
-        if shap_feature_names is None:
-            shap_feature_names = feature_names
-        elif feature_names != shap_feature_names:
-            raise RuntimeError(
-                f"{species_key}'s fitted preprocessors produced different "
-                f"feature names than an earlier species' — habitat_suitability_"
-                "shap.nc's shared feature vocabulary assumes every species "
-                "shares one feature space (true today since species only "
-                "changes species_key/thermal-niche columns, not the column "
-                "set itself; re-check if that ever stops holding)."
-            )
+
+        Xrf = rf_prep.transform(scored[columns])
+        Xlgbm = lgbm_prep.transform(scored[columns])
+        Xlgbm_bg = lgbm_prep.transform(background[columns])
+        Xmax = maxent_expand.transform(maxent_prep.transform(scored[columns]))
+        Xmax_bg = maxent_expand.transform(maxent_prep.transform(background[columns]))
+
+        contributions = {
+            # Default tree_path_dependent mode: already exact probability
+            # space for this tier and ~6x cheaper than forcing
+            # interventional/probability mode -- unlike LightGBM, this tier
+            # needs no fix, so it reuses tree_shap_matrix completely
+            # unmodified (same function HAB risk uses).
+            "random_forest": shap_utils.tree_shap_matrix(rf_booster, Xrf),
+            "lightgbm": shap_utils.tree_shap_matrix_probability(lgbm_booster, Xlgbm, Xlgbm_bg),
+            "maxent": shap_utils.linear_shap_matrix_probability(maxent_model, Xmax, Xmax_bg, n_hinges),
+        }
+        combined = np.zeros((len(scored), len(habitat_shap_feature_names)), dtype="float64")
+        for name, contribution in contributions.items():
+            combined += weights.get(name, 0.0) * contribution
         driver_index, driver_contribution = shap_utils.top_k_indices_and_values(
-            contributions, HABITAT_SHAP_TOP_K
+            combined, HABITAT_SHAP_TOP_K, index_dtype="int8"
         )
 
         for mi, month in enumerate(months):
@@ -198,6 +289,24 @@ def export_habitat() -> dict:
             grid[si, mi, lat_index, lon_index] = month_rows["suitability"].to_numpy()
             driver_index_grid[si, mi, lat_index, lon_index, :] = driver_index[month_mask]
             driver_contribution_grid[si, mi, lat_index, lon_index, :] = driver_contribution[month_mask]
+
+        np.savez(
+            checkpoint_path,
+            suitability=grid[si],
+            driver_index=driver_index_grid[si],
+            driver_contribution=driver_contribution_grid[si],
+        )
+
+    incomplete = [key for key in species_keys if not checkpoint_paths[key].exists()]
+    if incomplete:
+        print(
+            f"\nhabitat: {len(species_keys) - len(incomplete)}/{len(species_keys)} species "
+            f"checkpointed; still missing {incomplete}. Run again "
+            f"(optionally with --species <key>) to continue -- final NetCDF files not "
+            "written yet.",
+            flush=True,
+        )
+        return None
 
     dataset = xr.Dataset(
         {"suitability": (("species", "month", "latitude", "longitude"), grid)},
@@ -228,24 +337,38 @@ def export_habitat() -> dict:
                 "latitude": latitudes, "longitude": longitudes,
                 "top_k": np.arange(HABITAT_SHAP_TOP_K)},
         attrs={
-            "title": "Fish habitat suitability — per-cell combined-ensemble SHAP attribution",
-            "model": "MaxEnt + RandomForest + LightGBM, skill-weighted (see explain.py)",
+            "title": "Fish habitat suitability — per-cell SHAP attribution",
+            "model": ("MaxEnt (LinearSHAP, secant-slope probability approximation) + "
+                      "RandomForest (TreeSHAP) + LightGBM (TreeSHAP, probability mode), "
+                      "skill-weighted combination"),
             "region": region.name,
             "note": ("driver_index[..., k] indexes into manifest.json's "
                      "products.habitat.shap.feature_names for the k-th ranked "
                      "driver at that cell (k=0 strongest |contribution|); -1 "
-                     "means no value. driver_contribution is the ensemble's "
-                     "skill-weighted combined attribution: RandomForest and "
-                     "LightGBM in predict_proba (probability) space, MaxEnt "
-                     "collapsed from its hinge/quadratic expansion in logit "
-                     "space -- a stated, weight-bounded approximation, not an "
-                     "exact decomposition of `suitability` "
-                     "(fish_habitat_prediction/src/explain.py)."),
+                     "means no value, same convention as habitat_suitability.nc's "
+                     "suitability NaNs. driver_contribution is the signed "
+                     "contribution toward the ensemble's blended *probability* "
+                     "(0-1 suitability) -- the same space and the same "
+                     "ensemble_weights the served suitability value itself is "
+                     "combined in, so unlike hab_risk_shap.nc's margin-space "
+                     "values, these are directly comparable to the suitability "
+                     "grid, modulo one approximation: MaxEnt's ~3% ensemble-"
+                     "weight contribution to this attribution is a linearised "
+                     "approximation of its own logistic link (exact for the "
+                     "~97% carried by the two tree tiers), not an exact Shapley "
+                     "decomposition -- see marine_ml/shap_utils.py::"
+                     "linear_shap_matrix_probability."),
         },
     )
     shap_path = EXPORT_DIR / "habitat_suitability_shap.nc"
     shap_dataset.to_netcdf(shap_path)
     print(f"  wrote {shap_path} ({shap_path.stat().st_size / 1e6:.1f} MB)", flush=True)
+
+    # Both final files are safely on disk -- the per-species checkpoints have
+    # done their job for this run and would only be stale resume state for
+    # the next one.
+    for checkpoint_path in checkpoint_paths.values():
+        checkpoint_path.unlink(missing_ok=True)
 
     return {
         "species": species_keys,
@@ -253,7 +376,7 @@ def export_habitat() -> dict:
         "year": HABITAT_OUTPUT_YEAR,
         "missing_features": missing,
         "shap_top_k": HABITAT_SHAP_TOP_K,
-        "shap_feature_names": shap_feature_names,
+        "shap_feature_names": habitat_shap_feature_names,
     }
 
 
@@ -505,12 +628,10 @@ def build_manifest(habitat_meta: dict, hab_meta: dict) -> dict:
                     "'where should a boat go tomorrow'.",
                     "Suitability is relative, not a probability of catch.",
                     "Per-cell driver attribution (habitat_suitability_shap.nc) combines "
-                    "the three tiers' own SHAP with the same skill weights the "
-                    "suitability score uses, but MaxEnt's share is computed in a "
-                    "different unit (logit, not probability) than RandomForest/"
-                    "LightGBM's — a stated approximation bounded by MaxEnt's own "
-                    "(typically small) ensemble weight, not an exact decomposition "
-                    "of `suitability` (fish_habitat_prediction/src/explain.py).",
+                    "all three ensemble tiers in the same probability space the served "
+                    "suitability value uses. MaxEnt's ~3% of that combination is a "
+                    "linearised approximation of its logistic link, not an exact "
+                    "decomposition — the two tree tiers (~97% of the weight) are exact.",
                 ],
             },
             "hab": {
@@ -560,13 +681,27 @@ def build_manifest(habitat_meta: dict, hab_meta: dict) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--product", choices=("habitat", "hab", "both"), default="both")
+    parser.add_argument(
+        "--species", choices=sorted(config.TARGET_SPECIES), default=None,
+        help=("Compute only this one species' habitat SHAP this run (others load from "
+              "checkpoint if already done, or are left for a later run). Caps how much a "
+              "single run risks to an external interruption -- run once per species rather "
+              "than one ~7h run for all five. No effect on --product hab."),
+    )
     args = parser.parse_args(argv)
 
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-    habitat_meta = export_habitat() if args.product in ("habitat", "both") else {}
+    habitat_meta = export_habitat(species_filter=args.species) if args.product in ("habitat", "both") else {}
     hab_meta = export_hab() if args.product in ("hab", "both") else {}
 
     if args.product == "both":
+        if habitat_meta is None:
+            print(
+                "\nhabitat SHAP export is incomplete (see above) -- manifest.json not "
+                "refreshed. Run again once every species is checkpointed.",
+                flush=True,
+            )
+            return 0
         manifest = build_manifest(habitat_meta, hab_meta)
         path = EXPORT_DIR / "manifest.json"
         path.write_text(json.dumps(manifest, indent=2))
