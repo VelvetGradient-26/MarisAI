@@ -37,6 +37,9 @@ class FakeDataset:
     def __init__(self, array: FakeArray) -> None:
         self.eastward_wind = array
 
+    def close(self) -> None:
+        pass
+
 
 @pytest.fixture
 def opened(monkeypatch):

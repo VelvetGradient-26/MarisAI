@@ -19,15 +19,49 @@ split does not weaken grounding.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import Callable
 from typing import Any
 
+import httpx
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from services.chat.specialists import SPECIALISTS
 from services.chat.tools import Ledger, build_tools
+
+logger = logging.getLogger(__name__)
+
+# Measured live, repeatedly, against Ollama's cloud endpoint: a mid-response
+# connection drop (httpx.ReadError) is common enough to not be a theoretical
+# worry — several independent reproductions in one afternoon of real chat
+# turns, not a one-off. Retrying a *transport* failure a couple of times
+# before giving up the turn fixes most of them at the cost of a couple of
+# seconds; MODEL_RETRY_ATTEMPTS=3 means up to two retries.
+MODEL_RETRY_ATTEMPTS = 3
+MODEL_RETRY_BACKOFF_S = 1.5
+
+
+async def invoke_with_retry(model: Any, messages: list[BaseMessage]) -> Any:
+    """`model.ainvoke`, retrying only a transport-layer failure.
+
+    Anything other than `httpx.TransportError` (a dropped/reset/timed-out
+    connection) is a *response* the provider actually gave — a 400 rejecting
+    the request outright, for instance — and would fail identically on every
+    attempt, so it is raised immediately rather than retried.
+    """
+    last: Exception | None = None
+    for attempt in range(MODEL_RETRY_ATTEMPTS):
+        try:
+            return await model.ainvoke(messages)
+        except httpx.TransportError as exc:
+            last = exc
+            if attempt < MODEL_RETRY_ATTEMPTS - 1:
+                logger.warning(f"model call dropped (attempt {attempt + 1}/{MODEL_RETRY_ATTEMPTS}): {exc}")
+                await asyncio.sleep(MODEL_RETRY_BACKOFF_S * (attempt + 1))
+    raise last
 
 # Smaller than the top-level loop's MAX_ITERATIONS: a specialist answers one
 # narrow, delegated sub-task, not a whole multi-domain conversation turn.
@@ -71,7 +105,23 @@ async def run_specialist(
 
     truncated = False
     for _ in range(SUB_MAX_ITERATIONS):
-        reply = await model.ainvoke(messages)
+        # `tools.py`'s "a tool never raises" rule covers service tools below,
+        # not this call — a delegate tool (built in `build_delegate_tools`)
+        # is itself a tool from the top-level loop's perspective, so a
+        # provider hiccup here (a dropped stream, a timeout) must degrade to
+        # a ToolMessage the orchestrator can react to, not propagate up
+        # through `answer_stream`'s own `tool.ainvoke` and kill the turn.
+        try:
+            reply = await invoke_with_retry(model, messages)
+        except Exception:
+            logger.exception("specialist %r model call failed", name)
+            return SpecialistResult(
+                text=(
+                    "This specialist's connection to the AI model was "
+                    "interrupted before it could finish — try asking again."
+                ),
+                truncated=True,
+            )
         messages.append(reply)
         calls = getattr(reply, "tool_calls", None) or []
         if not calls:

@@ -227,11 +227,26 @@ def check(latitude: float, longitude: float) -> dict[str, Any]:
     inside_mainland = INDIA_EEZ_MAINLAND.covers(point)
     inside_andaman = INDIA_EEZ_ANDAMAN_NICOBAR.covers(point)
     if inside_mainland:
-        eez_zone = "mainland"
+        eez_zone, eez_distance_km, eez_nearest_zone = "mainland", 0.0, "mainland"
     elif inside_andaman:
-        eez_zone = "andaman_and_nicobar"
+        eez_zone, eez_distance_km, eez_nearest_zone = "andaman_and_nicobar", 0.0, "andaman_and_nicobar"
     else:
         eez_zone = None
+        # `.boundary` rather than `.exterior`: both zones carry interior
+        # holes (land/shoal exclusions, see the module docstring), and a
+        # point just outside one of those holes is nearer an interior ring
+        # than the outer coastline — `.exterior` alone would overstate the
+        # distance for exactly the nearshore points this is most asked
+        # about. The two zones are checked separately and the nearer one
+        # reported, mirroring `nearest_point` below for the IMBL.
+        mainland_pt = INDIA_EEZ_MAINLAND.boundary.interpolate(INDIA_EEZ_MAINLAND.boundary.project(point))
+        andaman_pt = INDIA_EEZ_ANDAMAN_NICOBAR.boundary.interpolate(INDIA_EEZ_ANDAMAN_NICOBAR.boundary.project(point))
+        mainland_km = _haversine_km(latitude, longitude, mainland_pt.y, mainland_pt.x)
+        andaman_km = _haversine_km(latitude, longitude, andaman_pt.y, andaman_pt.x)
+        if mainland_km <= andaman_km:
+            eez_distance_km, eez_nearest_zone = mainland_km, "mainland"
+        else:
+            eez_distance_km, eez_nearest_zone = andaman_km, "andaman_and_nicobar"
 
     nearest_on_imbl = IMBL_INDIA_SRI_LANKA.interpolate(IMBL_INDIA_SRI_LANKA.project(point))
     imbl_distance_km = _haversine_km(latitude, longitude, nearest_on_imbl.y, nearest_on_imbl.x)
@@ -267,6 +282,14 @@ def check(latitude: float, longitude: float) -> dict[str, Any]:
         "india_eez": {
             "inside": eez_zone is not None,
             "zone": eez_zone,
+            "distance_km": round(eez_distance_km, 1),
+            "near": eez_distance_km <= PROXIMITY_THRESHOLD_KM,
+            "proximity_threshold_km": PROXIMITY_THRESHOLD_KM,
+            # Which zone `distance_km` is measured to — always the zone
+            # itself when inside; the nearer of the two when outside, since
+            # they are geographically far apart (mainland/Lakshadweep vs.
+            # Andaman & Nicobar) and only one is ever the relevant one.
+            "nearest_zone": eez_nearest_zone,
             "coverage": (
                 "Mainland India (including Lakshadweep's surrounding waters, "
                 "which fall inside the mainland zone) and the Andaman & Nicobar "

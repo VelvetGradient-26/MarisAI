@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import httpx
 import pytest
 
 from services import argo
@@ -40,7 +41,7 @@ def _detail(
 
 
 def _install(monkeypatch, *, search_result: list[dict], detail_by_id: dict[str, dict]):
-    async def fake_get(client, params):
+    async def fake_get(client, params, **kwargs):
         if "id" in params:
             return [detail_by_id[params["id"]]]
         return search_result
@@ -133,15 +134,37 @@ class TestNearestProfile:
 
     @pytest.mark.asyncio
     async def test_a_fetch_failure_raises_argo_error(self, monkeypatch):
-        import httpx
-
-        async def fake_get(client, params):
+        async def fake_get(client, params, **kwargs):
             raise httpx.ConnectError("boom")
 
         monkeypatch.setattr(argo, "_get", fake_get)
 
         with pytest.raises(argo.ArgoError):
             await argo.nearest_profile(15.0, 65.0)
+
+    @pytest.mark.asyncio
+    async def test_a_404_search_response_is_treated_as_no_candidates(self, monkeypatch):
+        """Found live: Argovis's search endpoint returns HTTP 404 — not `200`
+        with `[]` — for a polygon/date query matching no profiles, which is
+        the common case given ARGO's sparse ~10-day-cycle coverage. Before
+        `not_found_is_empty` existed, `_get` retried a query that could never
+        succeed on retry three times, then raised `ArgoError` — so a real,
+        narrow-window "no float nearby" case was reported as a fetch failure
+        instead of the graceful `available: false` answer this class's first
+        test pins. This exercises the real `argo._get`, mocking only the
+        httpx client beneath it, so it pins the actual status-code branch."""
+
+        class FakeResponse:
+            status_code = 404
+
+            def raise_for_status(self):
+                raise httpx.HTTPStatusError("404", request=None, response=self)
+
+        class FakeClient:
+            async def get(self, url, params):
+                return FakeResponse()
+
+        assert await argo._get(FakeClient(), {}, not_found_is_empty=True) == []
 
 
 class TestBboxPolygon:

@@ -118,21 +118,28 @@ surface is added rather than assuming this pass covers it forever.
 
 ### ConvLSTM / U-Net for spatial forecasting
 
-**The argument is architectural, not decorative.** `grid_predictor` scores
-every cell **independently** — deliberately, to avoid train/serve skew — so
-the model cannot see spatial structure at all: not an eddy, not a front, not
-the shape of a bloom. A gradient-boosted tree over per-cell features is
-structurally blind to the neighbourhood, and that is a real gap a
-convolutional model fills.
+**Phase 1 tried and measured 2026-08-31 — spatial context did not help.**
+The argument for this item was architectural: `grid_predictor`/HAB's
+per-cell LightGBM scores every cell independently, so it cannot see spatial
+structure at all — not an eddy, not a front, not the shape of a bloom. A
+single-frame U-Net forecasting HAB's t+3 bloom probability from a 7-channel
+field (chlorophyll, SST, mixed-layer depth, gradients, Okubo-Weiss,
+upwelling index) tested that directly and lost clearly to the existing
+per-cell LightGBM model on identical held-out rows (PR-AUC 0.544 vs.
+**0.668**, LightGBM reloaded and rescored on the same 575,064 test rows, not
+just cited from the README) — see DONE.md's "Phase 1 of 'ConvLSTM / U-Net
+for spatial forecasting'" for the full comparison table and how it was made
+rigorous.
 
-- Baseline to beat is strong and measured: delta-target LightGBM at skill
-  +0.20 vs persistence. **Trees beating neural nets on tabular data is the
-  norm** — the claim to make is "DL where trees are provably blind (fields),
-  trees where they win (points)", not "DL is better".
-- **Start with U-Net segmentation of HAB bloom extent** over chlorophyll
-  fields: contained, and 3.9M labelled rows already exist.
-- The gridded training data is the expensive prerequisite. The climatology
-  build is the same fetch shape and its cached years are a starting point.
+**What's actually still open, and it's smaller than before**: the plan that
+scoped Phase 1 deliberately put U-Net (spatial-only) before ConvLSTM
+(spatial + temporal recurrence) *because* a negative single-frame result
+argues against temporal stacking fixing it, not just because it's simpler.
+So this is no longer "try ConvLSTM next" by default — that ordering's own
+logic now points the other way. Revisit only with a new, specific reason to
+believe temporal recurrence, a different channel set, or a different HAB
+region would change the outcome, not merely because the architecture is
+still unimplemented.
 
 ### PFZ validation against real catch data / INCOIS advisories
 
@@ -153,11 +160,13 @@ make an anomaly out of, so "nutrient-rich water reached the surface *and*
 something ate it" cannot be said. `services/climatology/build.py` is
 variable-agnostic and would fit it — what's missing is a long daily
 chlorophyll record to fit on, the same source problem as the anomaly
-explorer below. Worth doing *after* the rolling-wind-history item above,
-since it inherits whatever that settles about scoring one product against
-another's climatology — a chlorophyll baseline fitted on one sensor and
-applied to another would repeat the same mistake in a field with a far worse
-dynamic range.
+explorer below. Inherits what DONE.md's "A rolling wind history —
+`services/wind_history.py`" already settled about scoring one product
+against another's climatology (closing a latency gap, matching the baseline
+to the product being scored, and integrating over time all failed to widen
+the contrast) — a chlorophyll baseline fitted on one sensor and applied to
+another would repeat the same mistake in a field with a far worse dynamic
+range.
 
 ### Anomaly explorer
 

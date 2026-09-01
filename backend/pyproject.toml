@@ -77,10 +77,10 @@ dependencies = [
     # loop here is explicit (see services/chat/agent.py for why).
     #
     # Provider adapters are imported lazily so an install only needs the one
-    # matching LLM_PROVIDER. `langchain-openai` covers Ollama too, via its
-    # OpenAI-compatible endpoint, which is why there is no separate adapter.
+    # matching LLM_PROVIDER.
     "langchain-core>=0.3.0",
     "langchain-openai>=0.2.0",
+    "langchain-ollama>=0.2.0",
     "langchain-google-genai>=2.0.0",
     # HTML text extraction for the web_research specialist's fetch_webpage
     # tool (services/webpage.py). Already present transitively via
@@ -100,6 +100,7 @@ dependencies = [
     "pytest-cov>=4.1.0",
     "httpx>=0.27.0",
     "greenlet>=3.5.4",
+    "langchain-ollama>=0.2.0",
 ]
 
 [build-system]

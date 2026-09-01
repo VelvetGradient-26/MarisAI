@@ -16,12 +16,13 @@ the specialist's own model that emits the tool call).
 
 from __future__ import annotations
 
+import httpx
 import pytest
 from langchain_core.messages import AIMessage, AIMessageChunk
 from pydantic import ValidationError
 
 from services.chat import agent
-from services.chat.tools import Ledger, build_tools
+from services.chat.tools import Ledger, _list_variables, build_tools
 
 
 class ScriptedModel:
@@ -133,6 +134,145 @@ async def test_a_tool_result_reaches_the_answer(patched, depth):
     # The tool result must actually have been fed back to the specialist that
     # called it, not merely recorded.
     assert any("1234.5" in str(m.content) for m in specialist.seen[-1])
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_specialist_connection_does_not_kill_the_turn(patched):
+    """A provider hiccup mid-specialist (a dropped stream, a timeout) must
+    degrade to a tool result the orchestrator can react to — not propagate
+    out of `answer_stream`'s `tool.ainvoke` and crash the whole turn, which
+    is exactly the failure `tools.py`'s "a tool never raises" rule exists to
+    prevent for every other tool."""
+
+    class RaisingModel:
+        def bind_tools(self, tools):
+            return self
+
+        async def ainvoke(self, messages):
+            raise ConnectionError("boom")
+
+    top = ScriptedModel(
+        [
+            _delegate_call("geospatial_risk", "How deep is it?"),
+            AIMessage(content="The specialist could not reach the model."),
+        ]
+    )
+    patched(top, RaisingModel())
+
+    result = await agent.answer("How deep is it?")
+
+    assert "could not reach the model" in result["answer"]
+
+
+class FlakyModel:
+    """Raises a transport error on its first `fail_times` calls, then
+    answers with `reply` — the shape a real dropped Ollama-cloud connection
+    takes (multiple live reproductions this session), used to pin
+    `invoke_with_retry`'s behaviour without a real network."""
+
+    def __init__(self, exc: Exception, fail_times: int, reply: AIMessage):
+        self.exc = exc
+        self.fail_times = fail_times
+        self.reply = reply
+        self.calls = 0
+
+    def bind_tools(self, tools):
+        return self
+
+    async def ainvoke(self, messages):
+        self.calls += 1
+        if self.calls <= self.fail_times:
+            raise self.exc
+        return self.reply
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_top_level_connection_retries_and_succeeds(patched, monkeypatch):
+    """`invoke_with_retry` (services.chat.orchestrator), not just the
+    specialist-level degradation above, must cover the top-level call too —
+    the same live Ollama-cloud drop reproduces there just as often."""
+    from services.chat import orchestrator
+
+    monkeypatch.setattr(orchestrator, "MODEL_RETRY_BACKOFF_S", 0)
+
+    model = FlakyModel(
+        httpx.ReadError("dropped"), fail_times=2, reply=AIMessage(content="It's calm today.")
+    )
+    patched(model)
+
+    result = await agent.answer("How's the weather?")
+
+    assert result["answer"] == "It's calm today."
+    assert model.calls == 3
+
+
+@pytest.mark.asyncio
+async def test_exhausting_retries_raises_a_clean_provider_error(patched, monkeypatch):
+    from services.chat import orchestrator
+
+    monkeypatch.setattr(orchestrator, "MODEL_RETRY_BACKOFF_S", 0)
+
+    model = FlakyModel(httpx.ReadError("dropped"), fail_times=99, reply=AIMessage(content="unused"))
+    patched(model)
+
+    with pytest.raises(agent.ChatError, match="could not be reached"):
+        await agent.answer("How's the weather?")
+
+    assert model.calls == orchestrator.MODEL_RETRY_ATTEMPTS
+
+
+@pytest.mark.asyncio
+async def test_a_non_transport_error_is_not_retried(patched, monkeypatch):
+    """A 400 rejecting the request outright (e.g. an unsupported-modality
+    error) would fail identically on every attempt — retrying it would only
+    triple the latency before the same permanent failure, so it must raise
+    on the first call."""
+    from services.chat import orchestrator
+
+    monkeypatch.setattr(orchestrator, "MODEL_RETRY_BACKOFF_S", 0)
+
+    model = FlakyModel(ValueError("this model does not support image input"), fail_times=99, reply=AIMessage(content="unused"))
+    patched(model)
+
+    with pytest.raises(agent.ChatError, match="rejected the request"):
+        await agent.answer("What's in this image?")
+
+    assert model.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_stream_resets_and_retries(patched, monkeypatch):
+    """The streaming path can't reuse `invoke_with_retry` as-is: a dropped
+    *stream* has usually already sent the client some prose, so a retry must
+    emit `reset` first — otherwise the client is left holding a fragment
+    from an attempt that never finished, silently glued to the retry's
+    text."""
+    monkeypatch.setattr(agent, "MODEL_RETRY_BACKOFF_S", 0)
+
+    class FlakyStreamModel:
+        def __init__(self):
+            self.calls = 0
+
+        def bind_tools(self, tools):
+            return self
+
+        async def astream(self, messages):
+            self.calls += 1
+            if self.calls == 1:
+                yield AIMessageChunk(content="partial garbage")
+                raise httpx.ReadError("dropped")
+            for word in ["It's", " calm", " today."]:
+                yield AIMessageChunk(content=word)
+
+    model = FlakyStreamModel()
+    patched(model)
+
+    events = await _collect("How's the weather?")
+
+    assert {"type": "reset"} in events
+    meta = events[-1]
+    assert meta["answer"] == "It's calm today."
+    assert model.calls == 2
 
 
 @pytest.mark.asyncio
@@ -386,6 +526,125 @@ async def test_get_documentation_is_called_directly_not_delegated(patched, monke
     # this one is top-level, so it must not.
     assert "agent" not in result["observations"][0]
     assert "/docs?c=map-reading" in result["answer"]
+
+
+@pytest.mark.asyncio
+async def test_a_documentation_examples_invented_figure_is_not_flagged(patched, monkeypatch):
+    """Found live: asked how to read the map colours, the model correctly
+    answered from get_documentation and illustrated a legend with an
+    invented example ("e.g., a tooltip showing 18C-30C") — a UI-explanation
+    habit, not a claimed measurement. No ocean-data tool ran this turn, so
+    there is no live reading the figure could be a fabrication of; flagging
+    it taught the same cry-wolf lesson `_ungrounded_numbers`'s other two
+    documented false positives exist to prevent."""
+    from services import docs
+
+    monkeypatch.setattr(
+        docs,
+        "search",
+        lambda query, limit=3: [
+            {
+                "chapter": "Reading the map",
+                "group": "Using the platform",
+                "url": "/docs?c=map-reading",
+                "snippet": "Hover a layer to see its legend range.",
+            }
+        ],
+    )
+
+    top = ScriptedModel(
+        [
+            _tool_call("get_documentation", {"query": "how do I read the map colours"}),
+            AIMessage(
+                content=(
+                    "Hover over the colour bar and a tooltip shows the exact "
+                    "range (e.g., 18C-30C). See /docs?c=map-reading for more."
+                )
+            ),
+        ]
+    )
+    patched(top)
+
+    result = await agent.answer("How do I read the map colours?")
+
+    assert result["grounded"] is True
+    assert result["unsupported_numbers"] == []
+
+
+def test_a_percentile_named_only_in_a_tool_result_key_is_not_flagged():
+    """Found live: `plan_drift_trajectory` always returns its spread as
+    `search_radius_90th_percentile_km_at_horizon` — a fixed field *name*,
+    every single call. `_QUANTITY`'s identifier guard correctly refuses to
+    credit the "90" inside that key as a shown quantity (the same guard that
+    stops a product code laundering numbers in), which meant a model
+    explaining the figure as "a 90% confidence radius" — exactly what the
+    geospatial_risk prompt tells it to do — was flagged deterministically on
+    every drift-trajectory answer, not just an occasional bad draw. Fixed by
+    also returning the 90 as a plain value (`search_radius_percentile`), not
+    by weakening the identifier guard itself."""
+    from services.chat.agent import _ungrounded_numbers
+    from services.chat.tools import Ledger
+
+    ledger = Ledger()
+    ledger.record(
+        "plan_drift_trajectory",
+        {"latitude": 14.0, "longitude": 82.0},
+        {
+            "search_radius_90th_percentile_km_at_horizon": 96.1,
+            "search_radius_percentile": 90,
+        },
+        agent="geospatial_risk",
+    )
+
+    unsupported = _ungrounded_numbers(
+        "The 90% confidence search radius is about 96 km.", ledger
+    )
+
+    assert unsupported == []
+
+
+def test_a_large_value_rounded_to_a_round_magnitude_is_not_flagged():
+    """Found live: a real -2323.0 m depth reported as "about 2,300 m" was
+    flagged — "2300" never renders from 2323 at any fixed decimal precision,
+    only at a rounded significant-figure magnitude. A small value must NOT
+    get the same latitude (a 28.4C reading rounded to "30" is a materially
+    different-sounding claim, not an obvious restatement), so this also
+    pins that guard."""
+    from services.chat.agent import _ungrounded_numbers
+    from services.chat.tools import Ledger
+
+    ledger = Ledger()
+    ledger.record("get_seafloor_depth", {"latitude": 11.0, "longitude": 96.0}, {"elevation_m": -2323.0})
+    assert _ungrounded_numbers("About 2,300 m deep.", ledger) == []
+
+    ledger2 = Ledger()
+    ledger2.record("get_current_conditions", {}, {"sea_surface_temperature_c": 28.4})
+    assert _ungrounded_numbers("The water is about 30 C today.", ledger2) == ["30"]
+
+
+def test_an_isos_timestamp_hour_is_not_flagged():
+    """Found live: relaying a tool's own `"t": "2026-08-31T23:00"` as "23:00
+    UTC" flagged "23" as unsupported. The identifier guard in `_QUANTITY`
+    correctly refuses to credit a digit preceded by a letter (it is what
+    stops a product code like `GEBCO_2021` laundering numbers in) — an
+    ISO-8601 timestamp's "T" separator collides with that same rule, so the
+    *hour* of any tool-returned timestamp was silently never added to the
+    allowed set, while its year/month/day (separated by "-") were."""
+    from services.chat.agent import _ungrounded_numbers
+    from services.chat.tools import Ledger
+
+    ledger = Ledger()
+    ledger.record(
+        "get_tide_level",
+        {"latitude": 0.0, "longitude": 0.0},
+        {"observed_at": "2026-08-31T23:00:00+00:00", "value_m": -0.64},
+    )
+
+    unsupported = _ungrounded_numbers(
+        "The reading was -0.64 m as of 23:00 UTC on 31 Aug 2026.", ledger
+    )
+
+    assert unsupported == []
 
 
 @pytest.mark.asyncio
@@ -970,11 +1229,34 @@ def test_every_specialist_tool_name_is_real():
 
 
 @pytest.mark.asyncio
+async def test_list_variables_matches_the_real_forecast_catalog():
+    """Found live, not by reading the code: `forecasting.registry.catalog()`
+    returns `VariableEntry` dataclass instances, and this tool used to call
+    `.get(...)` on each one as if it were still a dict — a leftover from
+    before that dataclass existed. `build_tools`' own "a tool never raises"
+    wrapper caught the `AttributeError` so a real chat turn survived it, but
+    `list_available_variables` returned nothing but an error to the model on
+    every single call. Deliberately unmocked — a mocked catalog would have
+    hidden the exact shape mismatch that broke this."""
+    result = await _list_variables()
+
+    assert result["variables"], "expected at least one configured variable"
+    for entry in result["variables"]:
+        assert isinstance(entry["key"], str) and entry["key"]
+        assert isinstance(entry["forecast_available"], bool)
+        assert isinstance(entry["trained_horizons"], list)
+
+
+@pytest.mark.asyncio
 async def test_an_attached_image_reaches_the_model_as_a_multimodal_message(patched):
     """`image` becomes a multimodal `HumanMessage` content list — the shape
-    LangChain standardised across `ChatOpenAI`/`ChatGoogleGenerativeAI` (and
-    thus the OpenAI-compatible Ollama path too, see `agent._model`) — rather
-    than being silently dropped or concatenated into the text."""
+    LangChain standardises across chat model adapters — rather than being
+    silently dropped or concatenated into the text. This only pins the
+    message *shape* MarisAI constructs, provider-agnostically; whether a
+    specific configured model actually accepts an image is a separate,
+    per-model question this cannot cover (`ChatOllama`'s own native client
+    raises `this model does not support image input` for at least one real
+    cloud model, confirmed live — see agent._model's provider table)."""
     model = ScriptedModel([AIMessage(content="That looks like a bloom patch.")])
     patched(model)
 

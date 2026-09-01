@@ -37,6 +37,24 @@ def test_a_point_far_offshore_is_outside_the_india_eez():
     result = geofencing.check(12.0, 60.0)
     assert result["india_eez"]["inside"] is False
     assert result["india_eez"]["zone"] is None
+    assert result["india_eez"]["distance_km"] > geofencing.PROXIMITY_THRESHOLD_KM
+    assert result["india_eez"]["near"] is False
+
+
+def test_a_point_just_outside_the_eez_gets_a_real_distance():
+    """Found live: asked "how far is 8.5N 76.9E (Thiruvananthapuram's own
+    coordinate) from the EEZ", `check()` used to report only `inside: False`
+    with no distance at all for the EEZ — unlike `india_sri_lanka_imbl` and
+    `nearby_protected_areas`, which already computed one the same way. The
+    specialist correctly refused to invent a number rather than hallucinate
+    one, but told the user to go run their own GIS calculation for a
+    question this tool exists to answer. A point sitting right on the coast
+    should be a couple of km out, not "uncomputable"."""
+    result = geofencing.check(8.5, 76.9)
+    assert result["india_eez"]["inside"] is False
+    assert 0 < result["india_eez"]["distance_km"] < 10
+    assert result["india_eez"]["near"] is True
+    assert result["india_eez"]["nearest_zone"] == "mainland"
 
 
 def test_a_real_local_exclusion_near_rameswaram_reads_as_outside_the_eez():

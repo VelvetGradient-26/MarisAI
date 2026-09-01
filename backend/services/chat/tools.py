@@ -281,26 +281,27 @@ class DriftTrajectoryArgs(PointArgs):
 
 async def _list_variables() -> dict[str, Any]:
     from forecasting.config import get_config
-    from forecasting.model_store import list_trained
     from forecasting.registry import catalog as forecast_catalog
 
     config = get_config()
-    trained = list_trained()
-    entries = []
-    for entry in forecast_catalog(config):
-        key = entry.get("key") or entry.get("variable")
-        entries.append(
-            {
-                "key": key,
-                "label": entry.get("label"),
-                "unit": entry.get("unit"),
-                # The distinction the model must not blur: a variable can be
-                # configured and downloadable while having no trained model, in
-                # which case it can be charted but not forecast.
-                "forecast_available": key in trained,
-                "trained_horizons": sorted(trained.get(key, [])),
-            }
-        )
+    entries = [
+        {
+            "key": entry.key,
+            "label": entry.label,
+            "unit": entry.unit,
+            # The distinction the model must not blur: a variable can be
+            # configured and downloadable while having no trained model, in
+            # which case it can be charted but not forecast. `catalog()` is
+            # the source of truth for this (it also handles derived
+            # variables, trained from two component models rather than one)
+            # — re-deriving it here from a bare `list_trained()` lookup, as
+            # this tool used to, drifted out of sync with that logic and
+            # crashed outright once VariableEntry stopped being a dict.
+            "forecast_available": entry.available,
+            "trained_horizons": sorted(entry.trained_horizons),
+        }
+        for entry in forecast_catalog(config)
+    ]
     return {
         "variables": entries,
         "note": (
@@ -529,6 +530,14 @@ async def _drift_trajectory(
         "leeway_alpha": result["leeway_alpha"],
         "median_track": [p for p in median if p["hour"] % 12 == 0 or p["hour"] == final_hour],
         "search_radius_90th_percentile_km_at_horizon": round(distances_km[p90_index], 1),
+        # A plain value, not just the number above's field *name* — found
+        # live: the grounding checker's own identifier guard (a digit run
+        # preceded by a letter/underscore is a serial, not a quantity — see
+        # agent._QUANTITY) means "90" inside "_90th_percentile" is never
+        # credited as shown, so a model explaining the figure as "a 90%
+        # confidence radius" got flagged on every single drift-trajectory
+        # answer, deterministically, since this field name never changes.
+        "search_radius_percentile": 90,
         "provenance": result["provenance"],
         "degraded_terms": result["degraded_terms"],
         "note": result["note"],

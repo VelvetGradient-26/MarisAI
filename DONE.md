@@ -2471,6 +2471,85 @@ surface. Not exercised in this pass. See TODO.md's Blocked/parked section.
 
 ---
 
+## Phase 1 of "ConvLSTM / U-Net for spatial forecasting" — measured, and spatial context did not help — 2026-08-31
+
+TODO.md's Hard section argued that `grid_predictor`/HAB's per-cell LightGBM
+is structurally blind to spatial structure (an eddy, a front, the shape of
+a bloom) and proposed starting with a U-Net over HAB's own chlorophyll
+fields to test whether spatial context helps. Built and measured; it
+doesn't, at least not this way.
+
+**What shipped**: a third access shape on the shared fusion layer,
+`marine_ml/fusion.py::build_dense_cube(frame, channels, region, resolution)`
+— pivots any tidy fusion-layer frame back into a dense `(date, latitude,
+longitude)` cube, indexed by rounding to grid cell rather than exact float
+match (the frame may have round-tripped through the feature store's float32
+columns by the time this runs) — plus a small PyTorch U-Net
+(`hab_early_warning/src/spatial_{dataset,model,train}.py`) trained to
+forecast `bloom_t3` — the *existing*, already forward-shifted, already
+train-only-fitted target — from a single current-day 7-channel field (`chl,
+thetao, mlotst, chl_gradient, sst_gradient, okubo_weiss, upwelling_index`),
+deliberately no temporal stacking. Same `chronological_split
+(config.TRAIN_FRACTION, config.VALIDATION_FRACTION)` cutoffs the tabular
+model uses, so the test period is identical by construction, not by
+coincidence.
+
+**The comparison was done rigorously, not by citing the README's number**:
+the existing trained LightGBM artifact (`models/hab_early_warning.joblib`)
+was reloaded and rescored, and persistence recomputed, both on the *exact
+same* 575,064 test rows the spatial model was scored on
+(`gather_predictions_at_rows` is the inverse of the cube pivot — reads the
+dense prediction array back at precisely the tidy rows a fair comparison
+needs, dropping the land/off-record cells the tabular model never saw
+either). All three scored through the same `metrics.evaluate_classification`:
+
+| model | PR-AUC | ROC-AUC | Brier | TSS |
+| --- | --- | --- | --- | --- |
+| spatial U-Net | 0.544 | 0.897 | 0.058 | 0.655 |
+| LightGBM (reloaded, rescored) | **0.668** | 0.942 | 0.039 | 0.752 |
+| persistence | 0.518 | 0.901 | 0.186 | 0.658 |
+
+The reloaded LightGBM's 0.668 sits close to `hab_early_warning/readme.md`'s
+documented 0.661 (the small gap is real and expected — that number's row set
+passed `drop_unusable_rows_all_horizons`'s multi-horizon coverage filter,
+this run's is t+3-only), which is itself a useful check: the comparison
+pipeline is measuring the actual shipped model, not something subtly
+different. Reproduced identically to 4 decimals across two independent
+training runs.
+
+**The finding**: the U-Net edges persistence (+0.026 PR-AUC) but loses
+clearly to the existing per-cell LightGBM model (−0.124 PR-AUC). Spatial
+context, added this way, did not help forecast t+3 bloom probability more
+than treating every cell independently already does. A real, measured
+negative result, not a bug to chase — training took 19 epochs (~64s on
+Apple Silicon MPS, early-stopped, nowhere near compute-bound), and the
+pipeline's own agreement with the README number rules out "scored on the
+wrong rows" as the explanation.
+
+**What this changes for the item's other half**: the plan that scoped this
+work deliberately ordered U-Net (spatial-only) before ConvLSTM (spatial +
+temporal recurrence) *because* if a full spatial neighbourhood doesn't help,
+adding a temporal dimension on top of it is unlikely to be the fix — that
+was the stated reason for the ordering, not just "simpler first." The
+negative result here is therefore evidence against reaching for ConvLSTM
+next, not a reason to reach for it. See TODO.md's Hard section for the
+item's shrunk scope.
+
+**Also produced, not wired up**: `exports/hab_bloom_forecast_spatial.nc` (a
+standalone export, land correctly masked to NaN — 62.4% finite matches the
+~63% real ocean-cell fraction measured against `hab_gridded.parquet`) and a
+saved checkpoint (`models/hab_early_warning_spatial.pt`). Neither touches
+`exports/manifest.json` nor anything in `backend/`/`frontend/` — this stays
+a `machine_learning/`-only artifact unless a future spatial attempt actually
+beats the point model and earns the integration work already mapped out
+(the companion-grid seam via `_hab_drivers()`/`_load_optional_grid()` in
+`backend/services/predictions.py`, same shape SHAP used).
+
+126/126 `machine_learning` tests pass (`tests/test_dense_cube.py`,
+`tests/test_spatial_dataset.py` new), 0 regressions.
+
+---
+
 ## Hazards that will bite the next person
 
 - **Partial success is the more dangerous failure mode.** Training the full
@@ -2500,6 +2579,19 @@ surface. Not exercised in this pass. See TODO.md's Blocked/parked section.
   unknown LFS objects` (`pre-receive hook declined`) after the pre-push hook
   failed to register them. The symptom looks like a slow upload. `git lfs push
   --all origin main` uploads them, after which the ref push succeeds.
+- **`torch` + `joblib.load` of a LightGBM artifact segfaults in the same
+  process.** Measured directly, reproduced 3x, building the spatial HAB
+  model (see "Phase 1 of 'ConvLSTM / U-Net for spatial forecasting'"
+  above): import `torch` anywhere earlier in a process, then `joblib.load`
+  a LightGBM pipeline, and the process dies with SIGSEGV and no Python
+  traceback — silent in a redirected log, easy to mistake for a hang.
+  `KMP_DUPLICATE_LIB_OK=TRUE` does not fix it. Reverse order (LightGBM
+  first, torch after) is fine, but a training script that needs torch first
+  has no ordering that avoids this — `hab_early_warning/src/
+  spatial_lightgbm_subprocess.py` runs the LightGBM/persistence side in a
+  genuinely separate process for exactly this reason. Anything that needs
+  both in one logical run: subprocess-isolate one of them, don't fight the
+  import order.
 
 ---
 

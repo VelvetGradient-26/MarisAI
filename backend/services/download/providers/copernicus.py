@@ -185,7 +185,12 @@ def _fetch_sync(
     ds = _open(
         dataset_id, fields, west, south, east, north, start_date, end_date, depth_mode, depth_m
     )
-    return _resolve_depth(ds[fields], depth_mode, depth_m).load()
+    try:
+        return _resolve_depth(ds[fields], depth_mode, depth_m).load()
+    finally:
+        # See the matching comment in services/copernicus_sst.py — never left
+        # open by copernicusmarine.open_dataset() (called inside `_open`).
+        ds.close()
 
 
 async def fetch(
@@ -319,8 +324,12 @@ def _fetch_global_sync(
         end_datetime=f"{end_date.isoformat()}T23:59:59",
         **kwargs,
     )
-    subset = _resolve_depth(dataset[fields], DEPTH_SURFACE, None)
-    return _bounded_load(_coarsen(subset, stride))
+    try:
+        subset = _resolve_depth(dataset[fields], DEPTH_SURFACE, None)
+        return _bounded_load(_coarsen(subset, stride))
+    finally:
+        # See the matching comment in services/copernicus_sst.py — never left open.
+        dataset.close()
 
 
 async def fetch_global(

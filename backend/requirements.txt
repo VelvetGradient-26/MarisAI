@@ -134,6 +134,7 @@ httpx==0.28.1
     #   google-genai
     #   langsmith
     #   marisai-backend
+    #   ollama
     #   openai
 idna==3.18
     # via
@@ -163,9 +164,12 @@ kiwisolver==1.5.0
 langchain-core==1.5.3
     # via
     #   langchain-google-genai
+    #   langchain-ollama
     #   langchain-openai
     #   marisai-backend
 langchain-google-genai==4.3.2
+    # via marisai-backend
+langchain-ollama==1.1.0
     # via marisai-backend
 langchain-openai==1.4.1
     # via marisai-backend
@@ -225,6 +229,8 @@ numpy==2.4.6
     #   shapely
     #   xarray
     #   zarr
+ollama==0.6.2
+    # via langchain-ollama
 openai==2.53.0
     # via langchain-openai
 orjson==3.11.9 ; platform_python_implementation != 'PyPy'
@@ -283,6 +289,7 @@ pydantic==2.13.4
     #   langchain-google-genai
     #   langsmith
     #   marisai-backend
+    #   ollama
     #   openai
     #   pydantic-settings
 pydantic-core==2.46.4

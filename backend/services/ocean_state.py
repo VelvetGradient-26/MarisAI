@@ -194,31 +194,34 @@ def _load_field(spec: FieldSpec) -> dict[str, Any]:
         kwargs["maximum_depth"] = _SURFACE_MAX
 
     dataset = copernicusmarine.open_dataset(**kwargs)
+    try:
+        # Never label a forecast step as "current" — same rule as copernicus_sst.
+        past = dataset.sel(time=slice(None, now.replace(tzinfo=None)))
+        if past.sizes.get("time", 0) == 0:
+            raise OceanStateError(f"{spec.key}: no timestep at or before now")
 
-    # Never label a forecast step as "current" — same rule as copernicus_sst.
-    past = dataset.sel(time=slice(None, now.replace(tzinfo=None)))
-    if past.sizes.get("time", 0) == 0:
-        raise OceanStateError(f"{spec.key}: no timestep at or before now")
+        arrays: dict[str, np.ndarray] = {}
+        timestamp: datetime | None = None
+        for name in spec.variables:
+            selected = past[name].isel(time=-1)
+            if "depth" in selected.dims:
+                selected = selected.isel(depth=0)
+            loaded = selected.load()
+            if timestamp is None:
+                timestamp = datetime.fromisoformat(
+                    str(loaded.time.values)[:19]
+                ).replace(tzinfo=timezone.utc)
+            arrays[name] = loaded.values.astype(np.float64)
+            latitudes = loaded.latitude.values.astype(np.float64)
 
-    arrays: dict[str, np.ndarray] = {}
-    timestamp: datetime | None = None
-    for name in spec.variables:
-        selected = past[name].isel(time=-1)
-        if "depth" in selected.dims:
-            selected = selected.isel(depth=0)
-        loaded = selected.load()
-        if timestamp is None:
-            timestamp = datetime.fromisoformat(
-                str(loaded.time.values)[:19]
-            ).replace(tzinfo=timezone.utc)
-        arrays[name] = loaded.values.astype(np.float64)
-        latitudes = loaded.latitude.values.astype(np.float64)
-
-    values = spec.reduce(arrays)
-    stats = _area_weighted_stats(values, latitudes, spec)
-    stats["timestamp"] = timestamp.isoformat() if timestamp else None
-    stats["dataset_id"] = spec.dataset_id
-    return stats
+        values = spec.reduce(arrays)
+        stats = _area_weighted_stats(values, latitudes, spec)
+        stats["timestamp"] = timestamp.isoformat() if timestamp else None
+        stats["dataset_id"] = spec.dataset_id
+        return stats
+    finally:
+        # See the matching comment in copernicus_sst.py — never left open.
+        dataset.close()
 
 
 @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=2, min=4, max=20))

@@ -264,41 +264,45 @@ def _load_series(
         kwargs["maximum_depth"] = spec.maximum_depth
 
     dataset = copernicusmarine.open_dataset(**kwargs)
-    field = dataset[spec.variables[0]]
+    try:
+        field = dataset[spec.variables[0]]
 
-    # Nearest grid cell to the requested point, rather than the corner of the
-    # padded window.
-    field = field.sel(latitude=latitude, longitude=longitude, method="nearest")
+        # Nearest grid cell to the requested point, rather than the corner of the
+        # padded window.
+        field = field.sel(latitude=latitude, longitude=longitude, method="nearest")
 
-    times = [str(value)[:10] for value in np.atleast_1d(field.time.values)]
+        times = [str(value)[:10] for value in np.atleast_1d(field.time.values)]
 
-    if spec.mode == "ohc":
-        depths = np.asarray(dataset.depth.values, dtype=float)
-        values_2d = np.atleast_2d(field.load().values)
-        # Guard the axis order: a single-timestep request can come back
-        # transposed relative to the many-timestep case.
-        if values_2d.shape[0] != len(times) and values_2d.shape[-1] == len(times):
-            values_2d = values_2d.T
-        series = [_integrate_heat_content(row, depths) for row in values_2d]
-    else:
-        if "depth" in field.dims:
-            field = field.isel(depth=0)
-        series = [
-            float(value) if np.isfinite(value) else None
-            for value in np.atleast_1d(field.load().values)
+        if spec.mode == "ohc":
+            depths = np.asarray(dataset.depth.values, dtype=float)
+            values_2d = np.atleast_2d(field.load().values)
+            # Guard the axis order: a single-timestep request can come back
+            # transposed relative to the many-timestep case.
+            if values_2d.shape[0] != len(times) and values_2d.shape[-1] == len(times):
+                values_2d = values_2d.T
+            series = [_integrate_heat_content(row, depths) for row in values_2d]
+        else:
+            if "depth" in field.dims:
+                field = field.isel(depth=0)
+            series = [
+                float(value) if np.isfinite(value) else None
+                for value in np.atleast_1d(field.load().values)
+            ]
+
+        points = [
+            {"t": time, "v": round(value, spec.decimals)}
+            for time, value in zip(times, series)
+            if value is not None and np.isfinite(value)
         ]
-
-    points = [
-        {"t": time, "v": round(value, spec.decimals)}
-        for time, value in zip(times, series)
-        if value is not None and np.isfinite(value)
-    ]
-    if not points:
-        raise CopernicusSeriesError(
-            "The model has no valid values at this location — it may be land, "
-            "or below the seafloor for the requested depth range."
-        )
-    return points
+        if not points:
+            raise CopernicusSeriesError(
+                "The model has no valid values at this location — it may be land, "
+                "or below the seafloor for the requested depth range."
+            )
+        return points
+    finally:
+        # See the matching comment in copernicus_sst.py — never left open.
+        dataset.close()
 
 
 async def series(

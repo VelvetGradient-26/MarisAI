@@ -176,49 +176,53 @@ class VectorSource:
                 service="arco-geo-series",
                 **bounds,
             )
-            past = dataset.sel(time=slice(None, now.replace(tzinfo=None)))
+            try:
+                past = dataset.sel(time=slice(None, now.replace(tzinfo=None)))
 
-            for step in range(1, self.spec.max_lookback_steps + 1):
-                u_da = past[self.spec.u_field].isel(time=-step)
-                v_da = past[self.spec.v_field].isel(time=-step)
-                selected_depth: float | None = None
-                if "depth" in u_da.dims:
-                    index = 0 if depth is None else int(
-                        np.abs(u_da["depth"].values - depth).argmin()
+                for step in range(1, self.spec.max_lookback_steps + 1):
+                    u_da = past[self.spec.u_field].isel(time=-step)
+                    v_da = past[self.spec.v_field].isel(time=-step)
+                    selected_depth: float | None = None
+                    if "depth" in u_da.dims:
+                        index = 0 if depth is None else int(
+                            np.abs(u_da["depth"].values - depth).argmin()
+                        )
+                        u_da = u_da.isel(depth=index)
+                        v_da = v_da.isel(depth=index)
+                        selected_depth = float(u_da["depth"].values)
+                    elif "depth" in u_da.coords:
+                        selected_depth = float(u_da["depth"].values)
+
+                    u_da = u_da.load()
+                    valid_fraction = float(np.isfinite(u_da.values).mean())
+                    if valid_fraction < _MIN_VALID_FRACTION:
+                        logger.warning(
+                            f"{self.spec.key} timestep {str(u_da.time.values)[:19]} is only "
+                            f"{valid_fraction:.1%} valid — trying an earlier timestep"
+                        )
+                        continue
+
+                    v_da = v_da.load()
+                    timestamp = datetime.fromisoformat(str(u_da.time.values)[:19]).replace(
+                        tzinfo=UTC
                     )
-                    u_da = u_da.isel(depth=index)
-                    v_da = v_da.isel(depth=index)
-                    selected_depth = float(u_da["depth"].values)
-                elif "depth" in u_da.coords:
-                    selected_depth = float(u_da["depth"].values)
-
-                u_da = u_da.load()
-                valid_fraction = float(np.isfinite(u_da.values).mean())
-                if valid_fraction < _MIN_VALID_FRACTION:
-                    logger.warning(
-                        f"{self.spec.key} timestep {str(u_da.time.values)[:19]} is only "
-                        f"{valid_fraction:.1%} valid — trying an earlier timestep"
+                    return (
+                        u_da.latitude.values.astype(np.float64),
+                        u_da.longitude.values.astype(np.float64),
+                        u_da.values.astype(np.float64),
+                        v_da.values.astype(np.float64),
+                        timestamp,
+                        selected_depth,
                     )
-                    continue
 
-                v_da = v_da.load()
-                timestamp = datetime.fromisoformat(str(u_da.time.values)[:19]).replace(
-                    tzinfo=UTC
+                raise self.spec.error_type(
+                    f"No usable {self.spec.key} timestep in the last "
+                    f"{self.spec.max_lookback_steps} steps — all appear to still be "
+                    "backfilling upstream"
                 )
-                return (
-                    u_da.latitude.values.astype(np.float64),
-                    u_da.longitude.values.astype(np.float64),
-                    u_da.values.astype(np.float64),
-                    v_da.values.astype(np.float64),
-                    timestamp,
-                    selected_depth,
-                )
-
-            raise self.spec.error_type(
-                f"No usable {self.spec.key} timestep in the last "
-                f"{self.spec.max_lookback_steps} steps — all appear to still be "
-                "backfilling upstream"
-            )
+            finally:
+                # See the matching comment in copernicus_sst.py — never left open.
+                dataset.close()
 
         return _attempt()
 

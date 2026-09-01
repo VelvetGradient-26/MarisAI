@@ -115,21 +115,34 @@ def _fetch_latest_grid() -> tuple[np.ndarray, np.ndarray, np.ndarray, datetime]:
         # single timestep in ~12s.
         service="arco-geo-series",
     )
-    # Nearest timestep at/before now — never pick a forecast step and label it
-    # as "current".
-    past = ds.sel(time=slice(None, now.replace(tzinfo=None)))
-    da = past.thetao.isel(time=-1, depth=0).load()
+    try:
+        # Nearest timestep at/before now — never pick a forecast step and
+        # label it as "current".
+        past = ds.sel(time=slice(None, now.replace(tzinfo=None)))
+        da = past.thetao.isel(time=-1, depth=0).load()
 
-    timestamp = datetime.fromisoformat(str(da.time.values)[:19]).replace(tzinfo=timezone.utc)
-    # float32 for the field, float64 for the axes. The field is a temperature
-    # in degrees C carrying ~0.01 of real precision, so float64 stores nothing
-    # the product actually measured and doubles ~35MB of resident cache. The
-    # lat/lon axes stay float64: they are a few thousand values (tens of KB,
-    # not worth halving) and they set the interpolator's coordinate precision.
-    lat = da.latitude.values.astype(np.float64)
-    lon = da.longitude.values.astype(np.float64)
-    grid = da.values.astype(np.float32)
-    return lat, lon, grid, timestamp
+        timestamp = datetime.fromisoformat(str(da.time.values)[:19]).replace(tzinfo=timezone.utc)
+        # float32 for the field, float64 for the axes. The field is a temperature
+        # in degrees C carrying ~0.01 of real precision, so float64 stores nothing
+        # the product actually measured and doubles ~35MB of resident cache. The
+        # lat/lon axes stay float64: they are a few thousand values (tens of KB,
+        # not worth halving) and they set the interpolator's coordinate precision.
+        lat = da.latitude.values.astype(np.float64)
+        lon = da.longitude.values.astype(np.float64)
+        grid = da.values.astype(np.float32)
+        return lat, lon, grid, timestamp
+    finally:
+        # copernicusmarine.open_dataset() never gets a `with` here — unlike
+        # every local xr.open_dataset() in this codebase, it isn't a context
+        # manager call site by convention, so nothing closed it. Measured live
+        # (2026-08-31): a single round of the ~9 scheduled Copernicus refresh
+        # jobs left ~2GB of zarr chunk buffers still traced and reachable
+        # after every fetch had returned, because `.load()` detaches the
+        # *data* from the lazy backend but leaves the backend's own zarr/S3
+        # handles (and their buffer cache) open on `ds` until something calls
+        # `.close()`. That repeats every refresh cycle, forever, which is what
+        # turns an idle ~300MB process into tens of GB over a day of uptime.
+        ds.close()
 
 
 async def refresh_sst_cache() -> None:

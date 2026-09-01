@@ -116,19 +116,23 @@ def stride_for(resolution_deg: float) -> int:
 
 def _fetch_sync(start: date, end: date, resolution_deg: float) -> xr.Dataset:
     try:
-        dataset = _open_lazy(start, end)
+        opened = _open_lazy(start, end)
     except Exception as exc:  # noqa: BLE001 - copernicusmarine raises widely
         raise CopernicusReanalysisError(f"GLORYS reanalysis request failed: {exc}") from exc
 
-    dataset = _resolve_depth(dataset[[VARIABLE]])
-    dataset = _coarsen(dataset, resolution_deg)
-    loaded = dataset.load()
-    if "time" not in loaded.sizes or int(loaded.sizes["time"]) == 0:
-        raise CopernicusReanalysisError(
-            f"GLORYS reanalysis returned no daily fields for "
-            f"{start.isoformat()}..{end.isoformat()}"
-        )
-    return loaded
+    try:
+        dataset = _resolve_depth(opened[[VARIABLE]])
+        dataset = _coarsen(dataset, resolution_deg)
+        loaded = dataset.load()
+        if "time" not in loaded.sizes or int(loaded.sizes["time"]) == 0:
+            raise CopernicusReanalysisError(
+                f"GLORYS reanalysis returned no daily fields for "
+                f"{start.isoformat()}..{end.isoformat()}"
+            )
+        return loaded
+    finally:
+        # See the matching comment in copernicus_sst.py — never left open.
+        opened.close()
 
 
 async def fetch_range(start: date, end: date, *, resolution_deg: float = 1.0) -> xr.Dataset:
@@ -155,16 +159,20 @@ def _fetch_currents_sync(day: date, resolution_deg: float) -> xr.Dataset:
     fetch of the same product, not a second integration.
     """
     try:
-        dataset = _open_lazy(day, day, CURRENT_VARIABLES)
+        opened = _open_lazy(day, day, CURRENT_VARIABLES)
     except Exception as exc:  # noqa: BLE001 - copernicusmarine raises widely
         raise CopernicusReanalysisError(f"GLORYS reanalysis request failed: {exc}") from exc
 
-    dataset = _resolve_depth(dataset[CURRENT_VARIABLES])
-    dataset = _coarsen(dataset, resolution_deg)
-    loaded = dataset.load()
-    if "time" not in loaded.sizes or int(loaded.sizes["time"]) == 0:
-        raise CopernicusReanalysisError(f"GLORYS reanalysis returned no currents for {day.isoformat()}")
-    return loaded
+    try:
+        dataset = _resolve_depth(opened[CURRENT_VARIABLES])
+        dataset = _coarsen(dataset, resolution_deg)
+        loaded = dataset.load()
+        if "time" not in loaded.sizes or int(loaded.sizes["time"]) == 0:
+            raise CopernicusReanalysisError(f"GLORYS reanalysis returned no currents for {day.isoformat()}")
+        return loaded
+    finally:
+        # See the matching comment in copernicus_sst.py — never left open.
+        opened.close()
 
 
 async def fetch_currents_day(day: date, *, resolution_deg: float = 0.25) -> xr.Dataset:

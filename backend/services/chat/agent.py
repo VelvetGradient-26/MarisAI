@@ -37,6 +37,7 @@ discarded answer cannot.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -44,6 +45,7 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
+import httpx
 from langchain_core.messages import (
     AIMessage,
     BaseMessage,
@@ -54,7 +56,12 @@ from langchain_core.messages import (
 
 from app.core.config import settings
 from services.chat import catalog_context, store
-from services.chat.orchestrator import build_delegate_tools
+from services.chat.orchestrator import (
+    MODEL_RETRY_ATTEMPTS,
+    MODEL_RETRY_BACKOFF_S,
+    build_delegate_tools,
+    invoke_with_retry,
+)
 from services.chat.tools import ALL_TOOL_NAMES, Ledger, build_tools
 
 logger = logging.getLogger(__name__)
@@ -77,9 +84,11 @@ You do not hold ocean data yourself. You coordinate four specialists, each an \
 expert with its own tools, and you delegate to them:
 
 - delegate_to_ocean_analytics — forecasts, a *worldwide aggregate* ocean-state \
-summary (no single coordinate), harmful algal bloom risk, fish habitat \
-suitability, potential fishing zones, historical/past trends, and whether \
-two or more variables are correlated over time.
+summary (no single coordinate) — mean sea-surface temperature, heat-stress \
+extent, coral bleaching risk, and related indicators — plus harmful algal \
+bloom risk, fish habitat suitability, potential fishing zones, \
+historical/past trends, and whether two or more variables are correlated \
+over time.
 - delegate_to_weather_safety — the *right-now* reading at one coordinate: \
 current sea surface temperature, wind, waves, tide-gauge sea level, and \
 other present-day sea/weather conditions, plus active hazard alerts and \
@@ -105,7 +114,11 @@ You also have get_documentation, your own tool rather than a delegate, for \
 questions about MarisAI itself — how to use a feature, where a page lives, \
 what a term or badge means. Call it directly; it is not ocean data, so it \
 never needs a specialist. It returns a real /docs?c=... link — use that link \
-verbatim rather than inventing a path.
+verbatim rather than inventing a path. When explaining what a UI element \
+shows (a tooltip, a legend, a badge), describe it qualitatively rather than \
+inventing an example figure — "a tooltip shows the exact value" rather than \
+"e.g., a tooltip showing 22°C" — since a made-up number reads as a real \
+reading and is not something get_documentation actually returned.
 
 A question can span more than one specialist ("is it safe to fish near Kochi \
 today, and where's the nearest good zone" needs both weather_safety and \
@@ -114,6 +127,12 @@ answer from what they reported. Give each delegate the coordinates, dates and \
 any other detail it needs in its own question text; it does not see the rest \
 of this conversation. The dataset catalog below is static knowledge you may \
 answer directly, without delegating, since it is not a live measurement.
+
+Delegate to a given specialist at most once per question. If what it reports \
+back feels incomplete, work with what it gave you and say what is missing — \
+re-asking the same specialist the same thing with different wording burns \
+time and calls without changing its answer, since it has no new tool result \
+to draw on the second time.
 
 A "why is [place] unusually [warm/rough/...] right now" question usually \
 needs two delegates in sequence, not one: first ocean_analytics or \
@@ -133,8 +152,12 @@ location earlier, do not make them repeat it.
 - If a question is vague, make a sensible assumption, say what you assumed, and \
 answer. Only ask a clarifying question when you genuinely cannot proceed.
 - Offer a natural next step when there is an obvious one, but do not badger.
-- If a question is not about the ocean, answer it briefly and warmly, then \
-steer back to what you are good at.
+- If a question is not about the ocean, do not answer it — say warmly and \
+briefly that it is outside what you help with, and steer back to what you \
+are good at. A passing pleasantry ("how are you", "thanks!") is fine to \
+acknowledge in a word or two; a real off-topic question (trivia, pop \
+culture, coding help, anything not the ocean) gets redirected, not \
+answered, no matter how small or harmless it seems.
 - Detect the language the question was asked in and answer in that same \
 language, including Indian regional languages (Hindi, Tamil, Telugu, Bengali, \
 Malayalam, Kannada, Marathi, Gujarati, Odia, Punjabi, and others). Units and \
@@ -167,7 +190,14 @@ reference. Outside those, say so rather than extrapolating.
 paper), never a MarisAI measurement — always name the source when relaying \
 one, and never present a single result as established fact the way you would \
 a number from any other specialist.
-7. Keep it tight — a few sentences unless more is asked for. Always name units."""
+7. Never invent a coordinate the user did not give you (nor "guess" their \
+location) in order to answer a location-specific question — ask for one \
+instead. This holds even when a question explicitly asks you to guess: \
+running a real, correctly-fetched safety brief against a made-up point and \
+presenting it as an answer is not softened by a one-line disclaimer buried \
+above it — someone skimming a confident "low risk, safe to go out" verdict \
+can act on it. Global/location-free questions are unaffected.
+8. Keep it tight — a few sentences unless more is asked for. Always name units."""
 
 
 # The dataset catalog is appended to the prompt rather than served by a tenth
@@ -184,13 +214,29 @@ class ChatError(RuntimeError):
     pass
 
 
+def _provider_error(exc: Exception) -> ChatError:
+    """Tell "we could not reach it" apart from "it answered and said no".
+
+    A transport-layer failure (a dropped connection, a timeout) is transient
+    and "could not be reached" is an honest, retry-friendly message for it.
+    Anything else the provider client raises is a *response* the provider
+    actually gave — a 400 rejecting the request outright, for instance — and
+    mislabelling that as unreachable sends a user down the wrong
+    troubleshooting path entirely. Found live: attaching an image against a
+    configured model with no vision support raised `ollama.ResponseError`
+    ("this model does not support image input") from a live, fully reachable
+    endpoint, and the blanket catch this replaces reported it as down.
+    """
+    if isinstance(exc, httpx.TransportError):
+        return ChatError("The AI provider could not be reached.")
+    return ChatError(f"The AI provider rejected the request: {exc}")
+
+
 def _model() -> Any:
     """Resolve LLM_PROVIDER to a tool-calling chat model.
 
     Adapters are imported lazily so an install only needs the package matching
-    the configured provider. Ollama is served through the OpenAI adapter
-    against its OpenAI-compatible endpoint rather than a fourth dependency —
-    the tool-call wire format is identical.
+    the configured provider.
     """
     provider = (settings.LLM_PROVIDER or "gemini").strip().lower()
 
@@ -210,15 +256,29 @@ def _model() -> Any:
                 temperature=0,
             )
 
-        from langchain_openai import ChatOpenAI
-
         if provider == "ollama":
-            return ChatOpenAI(
+            from langchain_ollama import ChatOllama
+
+            # Ollama's own wire format, via its native client — not the
+            # OpenAI-compatible endpoint. Cloud models (api.ollama.com,
+            # served under LLM_BASE_URL) authenticate with a bearer token
+            # rather than the local server's no-auth default, so the key is
+            # passed as a header explicitly instead of relying on the
+            # OLLAMA_API_KEY env var the client would otherwise read.
+            client_kwargs: dict[str, Any] = (
+                {"headers": {"Authorization": f"Bearer {settings.LLM_API_KEY}"}}
+                if settings.LLM_API_KEY
+                else {}
+            )
+            return ChatOllama(
                 model=settings.LLM_MODEL or "llama3.1",
-                base_url=(settings.LLM_BASE_URL or "http://localhost:11434") + "/v1",
-                api_key=settings.LLM_API_KEY or "ollama",
+                base_url=settings.LLM_BASE_URL or "http://localhost:11434",
+                client_kwargs=client_kwargs,
                 temperature=0,
             )
+
+        from langchain_openai import ChatOpenAI
+
         if provider == "openai":
             return ChatOpenAI(
                 model=settings.LLM_MODEL or "gpt-4o-mini",
@@ -274,6 +334,20 @@ _NUMBER = re.compile(r"-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?")
 # inventing "028" when it correctly quotes a dataset id back.
 _QUANTITY = re.compile(rf"(?<![\w.])(?:{_NUMBER.pattern})")
 
+# An ISO-8601 timestamp's date/time separator is a letter immediately before
+# a digit — `2026-08-31T23:00` — which is indistinguishable, to the
+# identifier guard above, from a real identifier's letter-prefix (`T90`
+# scanned the same way `_001_028` does). That guard is doing its job
+# correctly in general; it just means the *hour* of any tool-returned
+# timestamp is silently never added to the allowed set, while the same
+# timestamp's year/month/day (separated by "-", not a letter) are. Found
+# live: relaying a tool's own `"last": {"t": "...T23:00", ...}` as "23:00
+# UTC" flagged "23" as unsupported. Fixed by normalising the one separator
+# this collides with before quantity extraction, on the allowed-set side
+# only — not on the answer being checked, so a genuinely invented "23"
+# elsewhere is still caught.
+_ISO_DATE_TIME_SEP = re.compile(r"(?<=\d{4}-\d{2}-\d{2})T(?=\d{2}:\d{2})")
+
 
 def _quantities(text: str) -> list[str]:
     return [match.group(0) for match in _QUANTITY.finditer(text)]
@@ -294,10 +368,51 @@ _IGNORED = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12", "24", 
 
 
 def _renderings(value: float) -> set[str]:
-    return {
+    """Every prose form a real figure legitimately takes.
+
+    Decimal-precision roundings (2323 -> "2323.0") were already covered;
+    found live: a real -2323.0 m depth reported as "about 2,300 m" (rounded
+    to a round *magnitude* — fewer significant digits, not fewer decimal
+    places) was flagged as unsupported, since "2300" never renders from
+    2323 at any fixed decimal precision. Guarded to a magnitude at least 5x
+    smaller than the value, so a small figure (a 28.4C reading) is never
+    laundered into a wildly different round number — only large figures
+    (depths, distances, radii) where "about 2,300" is obviously the same
+    fact as 2323, just said less precisely, gain a rounded form.
+    """
+    out = {
         f"{value:.0f}", f"{value:.1f}", f"{value:.2f}",
         f"{abs(value):.0f}", f"{abs(value):.1f}", f"{abs(value):.2f}",
     }
+    for magnitude in (100, 1000, 10000):
+        if abs(value) >= magnitude * 5:
+            rounded = round(value / magnitude) * magnitude
+            out.add(f"{rounded:.0f}")
+            out.add(f"{abs(rounded):.0f}")
+            out.add(f"{rounded:,.0f}")
+            out.add(f"{abs(rounded):,.0f}")
+    return out
+
+
+def _documentation_only_turn(ledger: Ledger) -> bool:
+    """True when every tool call this turn was get_documentation, and at
+    least one ran.
+
+    Found live: asked "how do I read the map colours", the model correctly
+    gave a documentation answer and illustrated a legend with an invented
+    example ("e.g., a tooltip showing 18C-30C") — a UI-explanation habit, not
+    a claimed measurement, since no ocean-data tool ran to have measured
+    anything. `_ungrounded_numbers` cannot tell "example" from "measurement"
+    apart from what tools actually ran, so a documentation-only turn is
+    structurally the one case where an unrecognised figure cannot be a faked
+    *ocean* reading — there is no live reading in play to fake. Scoped this
+    narrowly to that structural fact rather than to "e.g." phrasing, which a
+    specialist could otherwise borrow to dress up a real fabricated number
+    and dodge the check that matters.
+    """
+    return bool(ledger.observations) and all(
+        o["tool"] == "get_documentation" for o in ledger.observations
+    )
 
 
 def _ungrounded_numbers(text: str, ledger: Ledger, said: str = "") -> list[str]:
@@ -330,7 +445,7 @@ def _ungrounded_numbers(text: str, ledger: Ledger, said: str = "") -> list[str]:
     these values in prose, and "18.7" for 18.7043 is a rendering, not an
     invention.
     """
-    block = ledger.as_text() + "\n" + said
+    block = _ISO_DATE_TIME_SEP.sub(" ", ledger.as_text() + "\n" + said)
     allowed: set[str] = set(_IGNORED)
     for match in _quantities(block):
         allowed.add(match)
@@ -682,10 +797,10 @@ async def answer(
     truncated = False
     for _ in range(MAX_ITERATIONS):
         try:
-            reply = await model.ainvoke(messages)
+            reply = await invoke_with_retry(model, messages)
         except Exception as exc:  # noqa: BLE001 - provider clients raise widely
             logger.exception("chat model call failed")
-            raise ChatError("The AI provider could not be reached.") from exc
+            raise _provider_error(exc) from exc
 
         messages.append(reply)
         calls = getattr(reply, "tool_calls", None) or []
@@ -732,6 +847,8 @@ async def answer(
         ]
     )
     unsupported = _ungrounded_numbers(text, ledger, shown)
+    if unsupported and _documentation_only_turn(ledger):
+        unsupported = []
     if unsupported:
         logger.warning(f"chat answer carried ungrounded numbers: {unsupported}")
 
@@ -842,16 +959,33 @@ async def answer_stream(
     for _ in range(MAX_ITERATIONS):
         streamed = ""
         accumulated: Any = None
-        try:
-            async for chunk in model.astream(messages):
-                accumulated = chunk if accumulated is None else accumulated + chunk
-                piece = chunk.content if isinstance(chunk.content, str) else ""
-                if piece:
-                    streamed += piece
-                    yield {"type": "delta", "text": piece}
-        except Exception as exc:  # noqa: BLE001 - provider clients raise widely
-            logger.exception("chat model stream failed")
-            raise ChatError("The AI provider could not be reached.") from exc
+        # A retry loop, not just `invoke_with_retry` reused, because a
+        # dropped *stream* has usually already sent the client some prose —
+        # unlike a plain `ainvoke` retry, restarting here must first tell
+        # the client to discard the partial attempt via the same `reset`
+        # event a tool-call turn uses for "that text was preamble".
+        for attempt in range(MODEL_RETRY_ATTEMPTS):
+            streamed = ""
+            accumulated = None
+            try:
+                async for chunk in model.astream(messages):
+                    accumulated = chunk if accumulated is None else accumulated + chunk
+                    piece = chunk.content if isinstance(chunk.content, str) else ""
+                    if piece:
+                        streamed += piece
+                        yield {"type": "delta", "text": piece}
+                break
+            except httpx.TransportError as exc:
+                if attempt >= MODEL_RETRY_ATTEMPTS - 1:
+                    logger.exception("chat model stream failed")
+                    raise _provider_error(exc) from exc
+                logger.warning(f"chat model stream dropped (attempt {attempt + 1}/{MODEL_RETRY_ATTEMPTS}): {exc}")
+                if streamed.strip():
+                    yield {"type": "reset"}
+                await asyncio.sleep(MODEL_RETRY_BACKOFF_S * (attempt + 1))
+            except Exception as exc:  # noqa: BLE001 - provider clients raise widely
+                logger.exception("chat model stream failed")
+                raise _provider_error(exc) from exc
 
         if accumulated is None:
             break
@@ -925,6 +1059,8 @@ async def answer_stream(
         ]
     )
     unsupported = _ungrounded_numbers(text, ledger, shown)
+    if unsupported and _documentation_only_turn(ledger):
+        unsupported = []
     if unsupported:
         logger.warning(f"chat answer carried ungrounded numbers: {unsupported}")
 

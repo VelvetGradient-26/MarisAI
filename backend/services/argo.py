@@ -157,8 +157,24 @@ def _bbox_polygon(latitude: float, longitude: float, radius_km: float) -> list[l
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=2, min=2, max=15),
 )
-async def _get(client: httpx.AsyncClient, params: dict[str, Any]) -> Any:
+async def _get(client: httpx.AsyncClient, params: dict[str, Any], *, not_found_is_empty: bool = False) -> Any:
+    """`not_found_is_empty` covers a real Argovis behaviour, found live: the
+    *search* endpoint returns HTTP 404 — not `200` with `[]` — for a
+    polygon/date query that simply matches no profiles, which is the common
+    case for a narrow, recent window given ARGO's sparse ~10-day-cycle
+    coverage. Confirmed by re-running an identical query with a wider date
+    range, which returned real profiles with `200`. Without this, a
+    genuinely empty search was indistinguishable from a real failure: it
+    retried three times against a query that could never succeed (the
+    result does not change on retry) and then raised `ArgoError`, so
+    `nearest_profile`'s own "no float nearby" response — the whole reason
+    it never raises for that case — was never reached. The *detail* fetch
+    by a known `_id` does not set this: a 404 there means a real profile
+    vanished between calls, which is worth surfacing as an error.
+    """
     response = await client.get(ARGOVIS_BASE_URL, params=params)
+    if not_found_is_empty and response.status_code == 404:
+        return []
     response.raise_for_status()
     return response.json()
 
@@ -192,6 +208,7 @@ async def nearest_profile(
                     "endDate": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
                     "polygon": str(polygon).replace(" ", ""),
                 },
+                not_found_is_empty=True,
             )
     except httpx.HTTPStatusError as exc:
         raise ArgoError(f"Argovis returned {exc.response.status_code} for the profile search") from exc

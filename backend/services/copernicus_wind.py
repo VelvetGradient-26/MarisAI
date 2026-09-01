@@ -162,14 +162,18 @@ def _candidate_times(now: datetime) -> list[Any]:
             password=settings.COPERNICUS_PASSWORD,
             service="arco-time-series",
         )
-        window = probe.eastward_wind.sel(time=slice(None, now.replace(tzinfo=None))).isel(
-            time=slice(-_MAX_LOOKBACK_STEPS, None)
-        )
-        block = window.load()
-        fractions = np.isfinite(block.values).reshape(block.shape[0], -1).mean(axis=1)
-        for stamp, fraction in zip(block.time.values, fractions, strict=True):
-            # Best score across boxes: valid in *either* basin is a candidate.
-            seen[stamp] = max(seen.get(stamp, 0.0), float(fraction))
+        try:
+            window = probe.eastward_wind.sel(time=slice(None, now.replace(tzinfo=None))).isel(
+                time=slice(-_MAX_LOOKBACK_STEPS, None)
+            )
+            block = window.load()
+            fractions = np.isfinite(block.values).reshape(block.shape[0], -1).mean(axis=1)
+            for stamp, fraction in zip(block.time.values, fractions, strict=True):
+                # Best score across boxes: valid in *either* basin is a candidate.
+                seen[stamp] = max(seen.get(stamp, 0.0), float(fraction))
+        finally:
+            # See the matching comment in copernicus_sst.py — never left open.
+            probe.close()
 
     candidates = [stamp for stamp, fraction in seen.items() if fraction > 0.0]
     candidates.sort(reverse=True)
@@ -204,37 +208,41 @@ def _fetch_latest_grid() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray
         # load take ~27s instead of many minutes.
         service="arco-geo-series",
     )
-    past = ds.sel(time=slice(None, now.replace(tzinfo=None)))
+    try:
+        past = ds.sel(time=slice(None, now.replace(tzinfo=None)))
 
-    candidates = _candidate_times(now)
-    if not candidates:
+        candidates = _candidate_times(now)
+        if not candidates:
+            raise CopernicusWindError(
+                f"No usable wind timestep found in the last {_MAX_LOOKBACK_STEPS} hours "
+                "— all appear to still be backfilling upstream"
+            )
+
+        for stamp in candidates:
+            u_da = past.eastward_wind.sel(time=stamp).load()
+            # The screen only says "some data somewhere". This is the real
+            # criterion, on the actual field being cached.
+            valid_fraction = float(np.isfinite(u_da.values).mean())
+            if valid_fraction >= _MIN_VALID_FRACTION:
+                v_da = past.northward_wind.sel(time=stamp).load()
+                timestamp = datetime.fromisoformat(str(u_da.time.values)[:19]).replace(tzinfo=UTC)
+                lat = u_da.latitude.values.astype(np.float64)
+                lon = u_da.longitude.values.astype(np.float64)
+                u = u_da.values.astype(np.float64)
+                v = v_da.values.astype(np.float64)
+                return lat, lon, u, v, timestamp
+            logger.warning(
+                f"Wind timestep {str(u_da.time.values)[:19]} passed the probe but is "
+                f"only {valid_fraction:.1%} valid globally — trying an earlier timestep"
+            )
+
         raise CopernicusWindError(
             f"No usable wind timestep found in the last {_MAX_LOOKBACK_STEPS} hours "
             "— all appear to still be backfilling upstream"
         )
-
-    for stamp in candidates:
-        u_da = past.eastward_wind.sel(time=stamp).load()
-        # The screen only says "some data somewhere". This is the real
-        # criterion, on the actual field being cached.
-        valid_fraction = float(np.isfinite(u_da.values).mean())
-        if valid_fraction >= _MIN_VALID_FRACTION:
-            v_da = past.northward_wind.sel(time=stamp).load()
-            timestamp = datetime.fromisoformat(str(u_da.time.values)[:19]).replace(tzinfo=UTC)
-            lat = u_da.latitude.values.astype(np.float64)
-            lon = u_da.longitude.values.astype(np.float64)
-            u = u_da.values.astype(np.float64)
-            v = v_da.values.astype(np.float64)
-            return lat, lon, u, v, timestamp
-        logger.warning(
-            f"Wind timestep {str(u_da.time.values)[:19]} passed the probe but is "
-            f"only {valid_fraction:.1%} valid globally — trying an earlier timestep"
-        )
-
-    raise CopernicusWindError(
-        f"No usable wind timestep found in the last {_MAX_LOOKBACK_STEPS} hours "
-        "— all appear to still be backfilling upstream"
-    )
+    finally:
+        # See the matching comment in copernicus_sst.py — never left open.
+        ds.close()
 
 
 async def refresh_wind_cache() -> None:

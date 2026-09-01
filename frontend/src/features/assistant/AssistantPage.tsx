@@ -129,6 +129,13 @@ export function AssistantPage() {
         // that type is a discriminated union whose assistant branch requires a
         // full metadata record, and constructing it by hand both fails to
         // narrow and would have to be corrected every time the shape moves.
+        //
+        // `parentId` chains each message to the one before it (`null` only
+        // for the first) — a stored transcript is linear, never branching.
+        // Every message sharing `parentId: null` here used to mean every
+        // turn was its own root-level sibling, so assistant-ui's
+        // `BranchPicker` showed the thread as N one-message branches (the
+        // "‹ 1/N ›" arrow control) instead of a single scrollable list.
         runtime.threads.main.import({
           messages: stored.map((message, index) => ({
             message: fromThreadMessageLike(
@@ -139,7 +146,7 @@ export function AssistantPage() {
               `${id}-${index}`,
               { type: 'complete', reason: 'stop' }
             ),
-            parentId: null,
+            parentId: index === 0 ? null : `${id}-${index - 1}`,
           })),
         });
         sessionRef.current = id;

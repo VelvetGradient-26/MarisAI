@@ -22,11 +22,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+# The "check your own tool list" sentence was added after live testing (not
+# a hypothetical): asked for an ARGO profile and, separately, a historical
+# SST average, a specialist claimed the data was unavailable — in both
+# cases with the exact matching tool (get_argo_profile, get_historical_series)
+# sitting unused in its own tool list the whole time. `_SHARED_RULES` already
+# said "call tools rather than guessing", which covers guessing a *value*;
+# it did not cover asserting a *capability gap* without having tried the
+# tool that closes it, which is the same failure wearing no number for the
+# grounding checker to catch.
 _SHARED_RULES = """\
 Never state a number you did not get from a tool. If a tool fails or returns \
 nothing, say so plainly. Call tools rather than guessing; if unsure of a \
-variable's key, call list_available_variables first. Keep it tight and \
-always name units."""
+variable's key, call list_available_variables first. Before telling the user \
+something is not possible or not available, check your own tool list above \
+— if one of them plausibly answers the question, call it and let it fail \
+with a specific reason if it must, rather than declaring a gap from memory. \
+Keep it tight and always name units."""
 
 
 @dataclass(frozen=True)
@@ -166,7 +178,14 @@ SPECIALISTS: dict[str, Specialist] = {
             "shallow to cross; speed and fuel range only annotate the result "
             "with an estimated duration and whether the route fits the range, "
             "they never change the route itself). Do not invent a vessel "
-            f"figure the user did not give you. {_SHARED_RULES}"
+            "figure the user did not give you. Never assert that a route is "
+            "infeasible, or describe which specific constraint blocks it, "
+            "without having actually called plan_safe_route and had it "
+            "report exactly that — reasoning from the map in your head "
+            "about which corridor 'must' be blocked is exactly the kind of "
+            "specific-sounding claim this rule exists to stop, whether it "
+            "names a number or not. "
+            f"{_SHARED_RULES}"
         ),
         tool_names=(
             "check_geofence",

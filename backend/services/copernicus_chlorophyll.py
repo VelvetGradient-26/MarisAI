@@ -84,23 +84,27 @@ def _fetch_latest_grid() -> tuple[np.ndarray, np.ndarray, np.ndarray, datetime]:
         password=settings.COPERNICUS_PASSWORD,
         service="arco-geo-series",
     )
-    past = ds.sel(time=slice(None, now.replace(tzinfo=None)))
-    times = past.time.values
+    try:
+        past = ds.sel(time=slice(None, now.replace(tzinfo=None)))
+        times = past.time.values
 
-    for offset in range(_MAX_LOOKBACK_DAYS):
-        if offset >= len(times):
-            break
-        da = past.chl.isel(time=-1 - offset, depth=0).load()
-        if np.isfinite(da.values).any():
-            timestamp = datetime.fromisoformat(str(da.time.values)[:19]).replace(tzinfo=timezone.utc)
-            lat = da.latitude.values.astype(np.float64)
-            lon = da.longitude.values.astype(np.float64)
-            grid = da.values.astype(np.float32)
-            return lat, lon, grid, timestamp
+        for offset in range(_MAX_LOOKBACK_DAYS):
+            if offset >= len(times):
+                break
+            da = past.chl.isel(time=-1 - offset, depth=0).load()
+            if np.isfinite(da.values).any():
+                timestamp = datetime.fromisoformat(str(da.time.values)[:19]).replace(tzinfo=timezone.utc)
+                lat = da.latitude.values.astype(np.float64)
+                lon = da.longitude.values.astype(np.float64)
+                grid = da.values.astype(np.float32)
+                return lat, lon, grid, timestamp
 
-    raise CopernicusChlorophyllError(
-        f"No populated chlorophyll timestep in the last {_MAX_LOOKBACK_DAYS} days"
-    )
+        raise CopernicusChlorophyllError(
+            f"No populated chlorophyll timestep in the last {_MAX_LOOKBACK_DAYS} days"
+        )
+    finally:
+        # See the matching comment in copernicus_sst.py — never left open.
+        ds.close()
 
 
 async def refresh_chlorophyll_cache() -> None:

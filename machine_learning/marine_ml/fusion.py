@@ -6,7 +6,7 @@ different grids — physics at 1/12 degree, biogeochemistry at 1/4, bathymetry
 at 15 arc-seconds — and are brought onto one common grid here, once, rather
 than in each problem's notebook.
 
-Two access shapes are supported, because the two problems genuinely need
+Three access shapes are supported, because the problems genuinely need
 different ones:
 
 ``build_gridded_frame``
@@ -16,9 +16,14 @@ different ones:
     Ocean state at scattered observation points. What the habitat SDM needs,
     since occurrence records are points, not a grid — materialising the whole
     cube to read 8,000 cells from it would be wasteful.
+``build_dense_cube``
+    The same cube back as dense arrays rather than a tidy frame — what a
+    spatial (convolutional) model trains on. Takes any tidy frame built from
+    this module, tabular feature engineering included, so it composes with
+    `build_gridded_frame`'s output rather than re-deriving it.
 
-Both paths share the same regridding and QC code, so a feature means the same
-thing whichever way it was obtained. That is the "train/serve parity" the doc
+All three paths share the same regridding and QC code, so a feature means the
+same thing whichever way it was obtained. That is the "train/serve parity" the doc
 asks for, enforced by construction rather than by discipline.
 """
 
@@ -273,6 +278,71 @@ def build_gridded_frame(
         ["depth"] if "depth" in frame.columns else []
     )
     return frame[keep].reset_index(drop=True)
+
+
+def build_dense_cube(
+    frame: pd.DataFrame,
+    channels: Sequence[str],
+    region: config.Region = config.DEFAULT_REGION,
+    resolution: float = config.GRID_RESOLUTION,
+) -> xr.Dataset:
+    """Pivot a tidy fusion-layer frame into a dense ``(date, lat, lon)`` cube.
+
+    `build_gridded_frame` melts the regridded cube to a tidy frame (and by
+    default drops land) for the tabular per-cell models. A spatial model
+    needs the cube back, complete: every ``(date, latitude, longitude)``
+    combination present, land and no-data cells as NaN rather than absent
+    rows — a conv net over a ragged frame is not meaningful, and a missing
+    row (dropped land, a cloud-gap day) must not be silently squeezed out of
+    the grid the way a `groupby` would.
+
+    Cell placement is by **integer grid index**, not by matching the frame's
+    own float latitude/longitude against a freshly computed `common_grid` —
+    the frame may have round-tripped through the feature store's float32
+    columns by the time this runs, and relying on exact float equality
+    across that boundary is not something to build on even where today's
+    0.25 degree resolution happens to keep it exact (multiples of 0.25 are
+    exactly representable in both float32 and float64). Rounding to the
+    nearest grid index is exact for any resolution and any dtype.
+    """
+    latitudes, longitudes = common_grid(region, resolution)
+
+    missing = [c for c in channels if c not in frame.columns]
+    if missing:
+        raise FusionError(f"frame has no column(s) {missing!r}")
+
+    dates = np.sort(pd.to_datetime(frame["date"]).dt.normalize().unique())
+    date_index = pd.Index(dates, name="date")
+
+    lat_idx = np.rint((frame["latitude"].to_numpy(dtype="float64") - latitudes[0]) / resolution)
+    lon_idx = np.rint((frame["longitude"].to_numpy(dtype="float64") - longitudes[0]) / resolution)
+    lat_idx = lat_idx.astype("int64")
+    lon_idx = lon_idx.astype("int64")
+    date_idx = date_index.get_indexer(pd.to_datetime(frame["date"]).dt.normalize())
+
+    in_bounds = (
+        (lat_idx >= 0) & (lat_idx < latitudes.size)
+        & (lon_idx >= 0) & (lon_idx < longitudes.size)
+        & (date_idx >= 0)
+    )
+    if not in_bounds.all():
+        raise FusionError(
+            f"{int((~in_bounds).sum())} row(s) fall outside the {region.name} "
+            f"common grid at {resolution} deg — was this frame built for a "
+            "different region or resolution?"
+        )
+
+    shape = (date_index.size, latitudes.size, longitudes.size)
+    arrays: dict[str, np.ndarray] = {}
+    for channel in channels:
+        grid = np.full(shape, np.nan, dtype="float32")
+        grid[date_idx, lat_idx, lon_idx] = frame[channel].to_numpy(dtype="float32")
+        arrays[channel] = grid
+
+    return xr.Dataset(
+        {name: (("date", "latitude", "longitude"), array) for name, array in arrays.items()},
+        coords={"date": date_index, "latitude": latitudes, "longitude": longitudes},
+    )
 
 
 # --------------------------------------------------------------------------

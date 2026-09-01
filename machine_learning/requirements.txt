@@ -4,8 +4,10 @@
 #
 # Deliberately narrower than the original list. Dropped because nothing
 # imports them, and each was a real install cost or platform-wheel risk:
-#   tensorflow      — Tier 3 deep models are not implemented yet. Pinning a
-#                     framework the pipeline never imports is not free.
+#   tensorflow      — superseded by torch below for the Tier 3 pilot (see
+#                     hab_early_warning/src/spatial_*.py): only one DL
+#                     framework should be a dependency, and nothing here
+#                     needs TensorFlow specifically.
 #   geopandas,      — the one geospatial need (nearest-coast distance) is a
 #   rasterio,         scipy cKDTree query in marine_ml/features/geometry.py,
 #   pyproj            matching the repo's minimal-dependency convention.
@@ -35,6 +37,13 @@ scikit-learn==1.9.0
 lightgbm==4.7.0
 shap==0.51.0
 joblib==1.5.3
+
+# --- deep learning (Tier 3 pilot: hab_early_warning/src/spatial_*.py) ------
+# CPU/MPS wheel only — no torchvision/torchaudio, neither is imported. Uses
+# Apple Silicon MPS automatically when available (torch.backends.mps), CPU
+# otherwise; the grid this trains on is small enough (~70x40 px) that neither
+# needs a discrete GPU.
+torch==2.13.0
 
 # --- experiment tracking ---------------------------------------------------
 # mlflow-skinny, NOT mlflow. The full package pins pandas<3 and pyarrow<23,
