@@ -113,6 +113,26 @@ class ForecastArgs(PointArgs):
     )
 
 
+class ForecastTrendArgs(PointArgs):
+    variable: str = Field(
+        ...,
+        description=(
+            "Variable key to forecast, e.g. 'sea_surface_temperature'. "
+            "Call list_available_variables first if unsure."
+        ),
+    )
+    horizons: list[int] | None = Field(
+        None,
+        description=(
+            "Horizons in days ahead to plot. Only a fixed set is actually trained "
+            "per variable — check list_available_variables' trained_horizons if "
+            "unsure; an untrained horizon here is silently dropped rather than "
+            "failing the call. Omit entirely to use every horizon this variable "
+            "has a trained model for."
+        ),
+    )
+
+
 class SeriesArgs(PointArgs):
     variable: str = Field(..., description="Variable key, e.g. 'sst' or 'wave_height'.")
     range_key: str = Field(
@@ -328,6 +348,69 @@ async def _point_forecast(variable: str, latitude: float, longitude: float, hori
         "prediction": round(float(forecast.prediction), 3),
         "interval_low": round(float(forecast.interval.lower), 3),
         "interval_high": round(float(forecast.interval.upper), 3),
+    }
+
+
+async def _forecast_trend(
+    variable: str, latitude: float, longitude: float, horizons: list[int] | None
+) -> dict[str, Any]:
+    """Several horizons plus recent history — the one place in this file the
+    `_history` tool's own trimming reasoning inverts: there, the full series
+    is thrown away because "the model is answering a question, not drawing
+    the chart"; here, the array *is* what gets drawn, so it is kept rather
+    than collapsed to first/last/statistics.
+    """
+    from forecasting.config import get_config
+    from forecasting.registry import catalog as forecast_catalog
+    from forecasting.predictor import predict_many
+
+    config = get_config()
+    entry = next((e for e in forecast_catalog(config) if e.key == variable), None)
+    trained = sorted(entry.trained_horizons) if entry and entry.trained_horizons else None
+
+    # A model asking for "the next week" naturally reaches for daily
+    # horizons (1, 2, 3, ...), most of which are not trained — only a fixed
+    # set is (e.g. 1/3/7/14/30/90/365). predict_many fails the *entire* call
+    # on the first untrained horizon it hits, which would otherwise throw
+    # away every valid horizon the model also asked for along with the
+    # invalid ones. Silently keep only the trained subset of what was asked
+    # for, and fall back to every trained horizon if none of them were.
+    if trained is not None:
+        if horizons:
+            horizons = [h for h in horizons if h in trained] or trained
+        else:
+            horizons = trained
+    elif not horizons:
+        horizons = [1, 3, 7, 30]
+
+    # Sequential inside predict_many, reusing the first call's history-fetch
+    # cache for every later horizon — the same reason get_historical_series's
+    # caller doesn't need to worry about N separate upstream fetches here.
+    forecasts = await predict_many(variable, latitude, longitude, horizons, history_window=30)
+    first = forecasts[0]
+    return {
+        "variable": first.variable,
+        "label": first.label,
+        "unit": first.unit,
+        "latitude": first.latitude,
+        "longitude": first.longitude,
+        "history": first.history,
+        "points": [
+            {
+                "horizon_days": f.horizon,
+                # .isoformat() explicitly (unlike _point_forecast's bare
+                # valid_at, left to json.dumps's default=str) — the frontend
+                # chart parses this with Date.parse, and history[].t is
+                # already pd.Timestamp(...).isoformat() a few lines up in
+                # this same file, so this keeps both timestamps in the one
+                # format that's actually proven to parse correctly.
+                "target_time": f.target_time.isoformat(),
+                "prediction": round(float(f.prediction), 3),
+                "interval_low": round(float(f.interval.lower), 3),
+                "interval_high": round(float(f.interval.upper), 3),
+            }
+            for f in forecasts
+        ],
     }
 
 
@@ -563,6 +646,16 @@ _SPECS: list[tuple[str, str, type[BaseModel], Any]] = [
         "is true.",
         ForecastArgs,
         _point_forecast,
+    ),
+    (
+        "get_forecast_trend",
+        "Forecast one variable at one coordinate across multiple horizons, with "
+        "recent observed history, so the trend can be plotted as a chart. Use "
+        "this instead of get_point_forecast when the user wants to see how a "
+        "value changes over time, a trend, a trajectory, or asks for a graph. "
+        "Only works for variables whose forecast_available is true.",
+        ForecastTrendArgs,
+        _forecast_trend,
     ),
     (
         "get_current_conditions",

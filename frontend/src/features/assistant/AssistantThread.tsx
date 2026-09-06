@@ -29,6 +29,7 @@ import { Markdown } from '../../components/Markdown';
 import ShinyText from '../../components/reactbits/ShinyText/ShinyText';
 import type { ChatObservation } from '../map/api/chat';
 import type { TurnProvenance } from './runtime';
+import { ForecastChart } from './ForecastChart';
 
 const ProvenanceContext = createContext<Record<string, TurnProvenance>>({});
 export const ProvenanceProvider = ProvenanceContext.Provider;
@@ -538,6 +539,7 @@ function AssistantMessage() {
           <div className="chat-answer">
             <MessagePrimitive.Parts components={{ Text: MarkdownText }} />
           </div>
+          <ForecastCharts provenance={provenance} />
           <Provenance provenance={provenance} />
           {/* Gated on `pending` for the same reason Provenance is: while this
               branch is still streaming, `BranchPickerPrimitive` (unlike
@@ -569,6 +571,29 @@ function PlainText({ text }: { text: string }) {
 
 function MarkdownText({ text }: { text: string }) {
   return <Markdown text={text} />;
+}
+
+/**
+ * One chart per `get_forecast_trend` call this turn made, rendered
+ * prominently — a sibling of `.chat-answer`, not nested inside the
+ * collapsed `Provenance` disclosure below. Same `pending` gate as
+ * `Provenance`, and for the same reason: the raw tool result only exists on
+ * the terminal `meta` event, not mid-stream.
+ */
+function ForecastCharts({ provenance }: { provenance: TurnProvenance | undefined }) {
+  if (!provenance?.meta) return null;
+  const trends = provenance.meta.observations.filter(
+    (observation) => observation.tool === 'get_forecast_trend'
+  );
+  if (trends.length === 0) return null;
+
+  return (
+    <>
+      {trends.map((observation, index) => (
+        <ForecastChart key={index} result={observation.result} />
+      ))}
+    </>
+  );
 }
 
 /**

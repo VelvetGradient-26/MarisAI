@@ -704,6 +704,118 @@
   line-height: 1.5;
 }
 
+/* --- Forecast chart ------------------------------------------------------
+ * A `get_forecast_trend` tool call's chart, prominent below the answer
+ * (see ForecastCharts in AssistantThread.tsx) — not the collapsed JSON in
+ * .chat-call__result above, which every other tool result still gets.
+ * Same raised-surface convention as --chat-code-bg for that reason: this is
+ * the other place a tool's own output gets a distinct surface from the
+ * bubble. uPlot's own ResizeObserver (in ForecastChart.tsx) handles the
+ * container's width from here, the same rule .md-table-wrap follows: wide
+ * content scrolls or resizes inside its own box, the page never does. */
+
+.chat-forecast-chart {
+  margin-top: 12px;
+  padding: 12px 14px 10px;
+  border: 1px solid var(--chat-border-soft);
+  border-radius: 12px;
+  background: var(--chat-code-bg);
+}
+
+.chat-forecast-chart__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-bottom: 8px;
+}
+
+.chat-forecast-chart__title {
+  color: var(--chat-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.chat-forecast-chart__hover {
+  color: var(--chat-faint);
+  font-size: 0.72rem;
+  font-family: var(--ma-font-mono, monospace);
+}
+
+.chat-forecast-chart__canvas-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.chat-forecast-chart__reset-zoom {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 3px 7px;
+  border: 1px solid var(--chat-border);
+  border-radius: 6px;
+  background: var(--chat-panel);
+  color: var(--chat-faint);
+  font-size: 0.68rem;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.chat-forecast-chart__reset-zoom:hover {
+  color: var(--chat-primary);
+}
+
+.chat-forecast-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin-top: 8px;
+  color: var(--chat-muted);
+  font-size: 0.72rem;
+}
+
+.chat-forecast-chart__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-forecast-chart__swatch {
+  display: inline-block;
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--chat-primary);
+}
+
+.chat-forecast-chart__swatch--observed {
+  background: var(--chat-primary);
+}
+
+.chat-forecast-chart__swatch--forecast {
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--chat-primary) 0 4px,
+    transparent 4px 7px
+  );
+}
+
+.chat-forecast-chart__swatch--band {
+  height: 8px;
+  border-radius: 2px;
+  background: var(--chat-primary);
+  opacity: 0.22;
+}
+
+.chat-forecast-chart__note {
+  margin: 8px 0 0;
+  color: var(--chat-faint);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
 /* --- Composer ----------------------------------------------------------- */
 
 .chat-error {

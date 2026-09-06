@@ -70,11 +70,24 @@ SPECIALISTS: dict[str, Specialist] = {
             "rather than eyeballing two separate get_historical_series "
             "results yourself — and always relay its correlation-is-not-"
             "causation note; never say one variable caused a change in "
-            f"another. {_SHARED_RULES}"
+            "another. For a forecast *trend*, *trajectory*, or a graph/chart "
+            "over time, call get_forecast_trend instead of get_point_forecast "
+            "— get_point_forecast is for a single day's value only. "
+            "get_forecast_trend's horizons are not necessarily consecutive "
+            "days (e.g. 1/3/7/30) — relay each point's own target_time "
+            "verbatim, never relabel them as evenly-spaced consecutive dates. "
+            "The app renders the chart itself automatically from this tool's "
+            "result, with no URL or image file involved anywhere — never write "
+            "markdown image syntax (![...](...)) after calling this tool, not "
+            "even a plausible-looking or placeholder one; there is no such "
+            "image or endpoint, and inventing a URL is exactly the fabrication "
+            "rule below forbids. Just describe the numbers in words/a table."
+            f" {_SHARED_RULES}"
         ),
         tool_names=(
             "list_available_variables",
             "get_point_forecast",
+            "get_forecast_trend",
             "get_global_ocean_summary",
             "get_bloom_risk",
             "get_fishing_habitat",
