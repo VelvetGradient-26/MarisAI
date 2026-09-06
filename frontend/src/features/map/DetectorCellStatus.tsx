@@ -1,5 +1,6 @@
 import type { DetectorCellsState } from './hooks/useDetectorCells';
 import type { HeatwaveResponse, UpwellingResponse } from './api/detectors';
+import type { OceanHeatContentCellsResponse } from './api/oceanHeatContent';
 
 /**
  * Readouts for the two cell detectors.
@@ -123,6 +124,58 @@ export function UpwellingStatus({
         {stamp} · wind-derived index, not observed upwelling
       </span>
       <span className="eddy-status__meta">{corroborationLine(corroboration)}</span>
+    </div>
+  );
+}
+
+/**
+ * Ocean heat content's readout. Unlike the two detectors above, a mostly-full
+ * grid is the *expected* result — this is a coverage field over a fixed
+ * regional box, not a conditional detection — so the message leads with the
+ * build date and coverage rather than framing a full map as a finding. The
+ * "not live" framing matters here specifically because every other chip in
+ * this file describes something recomputed on a timer.
+ */
+export function OceanHeatContentStatus({
+  state,
+}: {
+  state: DetectorCellsState<OceanHeatContentCellsResponse>;
+}) {
+  const { active, payload, unavailableReason } = state;
+  if (!active) return null;
+
+  if (unavailableReason) {
+    return (
+      <div className="eddy-status eddy-status--unavailable">
+        <span className="eddy-status__dot" />
+        {unavailableReason}
+      </div>
+    );
+  }
+
+  if (!payload) {
+    return (
+      <div className="eddy-status eddy-status--unavailable">
+        <span className="eddy-status__dot" />
+        Loading ocean heat content…
+      </div>
+    );
+  }
+
+  const builtStamp = payload.built_at.slice(0, 10);
+
+  return (
+    <div className="eddy-status">
+      <span className="eddy-status__dot" />
+      <span>
+        {payload.cells.length.toLocaleString()} cells at {payload.layer_m}m over{' '}
+        {payload.region.west}-{payload.region.east}°E,{' '}
+        {payload.region.south < 0 ? `${-payload.region.south}°S` : `${payload.region.south}°N`}-
+        {payload.region.north}°N
+      </span>
+      <span className="eddy-status__meta">
+        built {builtStamp} · offline regional grid, not a live field
+      </span>
     </div>
   );
 }

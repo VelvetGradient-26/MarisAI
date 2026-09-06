@@ -19,6 +19,11 @@ import {
   heatwaveResponseToGeoJson,
   upwellingResponseToGeoJson,
 } from './api/detectors';
+import {
+  fetchOceanHeatContentMapCells,
+  oceanHeatContentResponseToGeoJson,
+  OCEAN_HEAT_CONTENT_LAYER_ID,
+} from './api/oceanHeatContent';
 import { useForecastGridLayers } from './hooks/useForecastGridLayers';
 import { useForecastVectorLayers } from './hooks/useForecastVectorLayers';
 import { VesselTooltip } from './VesselTooltip';
@@ -30,7 +35,7 @@ import { CycloneStatus } from './CycloneStatus';
 import { PfzTooltip } from './PfzTooltip';
 import { EdnaTooltip } from './EdnaTooltip';
 import { EdnaCoverageStatus } from './EdnaCoverageStatus';
-import { MarineHeatwaveStatus, UpwellingStatus } from './DetectorCellStatus';
+import { MarineHeatwaveStatus, UpwellingStatus, OceanHeatContentStatus } from './DetectorCellStatus';
 
 interface MapProps {
   children?: ReactNode;
@@ -79,6 +84,15 @@ export function Map({ children }: MapProps) {
     refreshIntervalMs: 30 * 60 * 1000,
     fallbackMessage: 'Upwelling detection unavailable',
   });
+  // A scheduled offline build, not a live field (see the layer's own
+  // attribution) — 6h matches the heatwave cadence above, not upwelling's.
+  const oceanHeatContent = useDetectorCells(manager, ready, {
+    layerId: OCEAN_HEAT_CONTENT_LAYER_ID,
+    fetcher: fetchOceanHeatContentMapCells,
+    toGeoJson: oceanHeatContentResponseToGeoJson,
+    refreshIntervalMs: 6 * 60 * 60 * 1000,
+    fallbackMessage: 'Ocean heat content unavailable',
+  });
   // Registered at runtime rather than from `layerRegistry`: a forecast layer
   // exists only where a model has been trained and its grid built.
   useForecastGridLayers(manager, ready);
@@ -100,6 +114,7 @@ export function Map({ children }: MapProps) {
       {ready && pfz.hovered && <PfzTooltip hovered={pfz.hovered} />}
       {ready && <MarineHeatwaveStatus state={heatwaves} />}
       {ready && <UpwellingStatus state={upwelling} />}
+      {ready && <OceanHeatContentStatus state={oceanHeatContent} />}
       {ready && <EdnaCoverageStatus state={edna} />}
       {ready && edna.hovered && <EdnaTooltip hovered={edna.hovered} />}
     </div>

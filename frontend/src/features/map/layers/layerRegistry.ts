@@ -719,6 +719,94 @@ function upwellingLayer(): GeoJsonLayerDescriptor {
 }
 
 /**
+ * Ocean heat content, 0-700m (the reference-depth layer — see
+ * `api/oceanHeatContent.ts` for why this depth was picked over 50/100/200m
+ * for the map, and why the point card shows all four anyway). Same cell
+ * shape as marine heatwaves/upwelling above, by the backend's own design.
+ *
+ * A fresh sequential ramp, not reused from a neighbour: SST already owns
+ * blue-to-red for *temperature*, heatwaves own amber-to-purple for
+ * *anomaly*, upwelling/eddies own teal/amber for a *sign*. This is none of
+ * those — a physical stock, not a derived index or a categorical sign — so
+ * it gets its own slate-blue-to-gold path. Stops are placed from a live
+ * probe of `/api/ocean/ocean-heat-content/cells?depth_m=700` (2026-09-06):
+ * values run 0.5-46.3 GJ/m^2, but the bulk of the region (10th-100th
+ * percentile) sits in a narrow 35.4-46.3 band — a handful of shallow-column
+ * cells near the coast pull the minimum down to 0.5. Four stops therefore
+ * cover 35-46 and one covers the rare low tail, rather than five stops
+ * evenly spanning 0-46 (which would paint 90% of the ocean the same colour).
+ * Every stop clears 3:1 against the Abyss basemap's #030f1e (weakest is the
+ * low-tail stop at 3.43:1), measured the same way every other ramp in this
+ * file states its floor.
+ */
+const OHC_STOPS: Array<[number, string]> = [
+  [0, '#3d6b96'],
+  [35, '#4a93a0'],
+  [38, '#4fb0a5'],
+  [41, '#e0b34a'],
+  [46, '#f4e04d'],
+];
+
+function oceanHeatContentLayer(): GeoJsonLayerDescriptor {
+  return {
+    id: 'ocean-heat-content',
+    name: 'Ocean Heat Content (0-700m)',
+    category: 'flow',
+    type: 'geojson',
+    attribution:
+      'Ocean heat content: heat energy stored in the water column from the surface to 700m, ' +
+      'the depth climate science treats as the standard reference for heat *storage* rather ' +
+      'than any one weather-relevant layer. Built offline from Copernicus Marine Service ' +
+      'temperature/salinity profiles over a fixed regional box (55-95°E, 5S-25N) — not a live ' +
+      'field, rebuilt on a schedule. THIS IS NOT THE MOST OPERATIONALLY RELEVANT DEPTH FOR ' +
+      'MOST QUESTIONS: cyclone intensification draws on the heat available to mix upward ' +
+      'within days (the top ~100m), a marine heatwave is a near-surface phenomenon, and the ' +
+      'mixed layer is where the biology is — those signals are real in the shallow layers and ' +
+      'largely averaged away by the ~600m of near-constant deep water beneath them. The point ' +
+      'panel for a clicked location shows all four built depths (50/100/200/700m); this map ' +
+      'layer shows only the 700m reference depth, which was chosen for having the most spatial ' +
+      'contrast in this region — the shallower layers are each nearly flat across the whole box.',
+    defaultOpacity: 0.85,
+    defaultVisible: false,
+    interactiveLayerIndices: [0],
+    paintLayers: (opacity: number) => [
+      {
+        type: 'fill',
+        paint: {
+          'fill-color': [
+            'interpolate',
+            ['linear'],
+            ['get', 'value'],
+            ...OHC_STOPS.flatMap(([value, color]) => [value, color]),
+          ],
+          'fill-opacity': 0.6 * opacity,
+        },
+      },
+      {
+        type: 'line',
+        paint: {
+          'line-color': [
+            'interpolate',
+            ['linear'],
+            ['get', 'value'],
+            ...OHC_STOPS.flatMap(([value, color]) => [value, color]),
+          ],
+          'line-width': 0.4,
+          'line-opacity': 0.5 * opacity,
+        },
+      },
+    ],
+    legend: {
+      type: 'gradient' as const,
+      unit: ' GJ/m²',
+      min: 0,
+      max: 46,
+      stops: OHC_STOPS.map(([value, color]) => ({ offset: value / 46, color })),
+    },
+  };
+}
+
+/**
  * Potential-fishing-zone screening candidates near the clicked point
  * (`services/pfz.py`), fed by `usePfzZones` — a diagnostic composed from two
  * observed fields (chlorophyll, SST), same reasoning that puts eddies in
@@ -1591,6 +1679,7 @@ export const layerRegistry: LayerDescriptor[] = [
   // ocean was observed, not a property of the water.
   marineHeatwaveLayer(),
   upwellingLayer(),
+  oceanHeatContentLayer(),
   ednaCoverageLayer(),
   geofenceStatusLayer(),
   plannedRouteLayer(),

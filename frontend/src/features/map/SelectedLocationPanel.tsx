@@ -11,6 +11,8 @@ import type { WindPointResponse } from './api/wind';
 import { fetchCurrentsPoint } from './api/currents';
 import { downloadBriefPdf } from './api/brief';
 import type { CurrentsPointResponse } from './api/currents';
+import { fetchOceanHeatContentPoint } from './api/oceanHeatContent';
+import type { OceanHeatContentPointResponse } from './api/oceanHeatContent';
 import { useSelectedLocationPredictions } from './hooks/useSelectedLocationPredictions';
 import type { PredictionPointResult } from './hooks/useSelectedLocationPredictions';
 import { useToolsStore } from '../../store/toolsStore';
@@ -122,6 +124,37 @@ export function SelectedLocationPanel() {
 
     return () => controller.abort();
   }, [currentsLayerActive, selectedLocation]);
+
+  const oceanHeatContentLayerActive = useMapStore(
+    (s) => s.layers.get('ocean-heat-content')?.active ?? false
+  );
+  const [oceanHeatContentPoint, setOceanHeatContentPoint] =
+    useState<OceanHeatContentPointResponse | null>(null);
+  const [oceanHeatContentStatus, setOceanHeatContentStatus] = useState<
+    'idle' | 'loading' | 'error' | 'success'
+  >('idle');
+
+  useEffect(() => {
+    if (!oceanHeatContentLayerActive || !selectedLocation) {
+      setOceanHeatContentPoint(null);
+      setOceanHeatContentStatus('idle');
+      return;
+    }
+
+    const controller = new AbortController();
+    setOceanHeatContentStatus('loading');
+    fetchOceanHeatContentPoint(selectedLocation, controller.signal)
+      .then((response) => {
+        setOceanHeatContentPoint(response);
+        setOceanHeatContentStatus('success');
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setOceanHeatContentStatus('error');
+      });
+
+    return () => controller.abort();
+  }, [oceanHeatContentLayerActive, selectedLocation]);
 
   const predictions = useSelectedLocationPredictions(selectedLocation);
   const pfz = useToolsStore((s) => s.pfz);
@@ -310,6 +343,31 @@ export function SelectedLocationPanel() {
                       mode="towards"
                     />
                   </>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {oceanHeatContentLayerActive && selectedLocation && (
+          <div className="selected-location-panel__wind-point">
+            <span className="selected-location-panel__wind-point-label">
+              Ocean Heat Content (cursor)
+            </span>
+            {oceanHeatContentStatus === 'loading' && <span>Loading…</span>}
+            {oceanHeatContentStatus === 'error' && (
+              <span className="selected-location-panel__state--error">
+                Ocean heat content unavailable
+              </span>
+            )}
+            {oceanHeatContentStatus === 'success' && oceanHeatContentPoint && (
+              <>
+                {!oceanHeatContentPoint.available ? (
+                  <span className="selected-location-panel__wind-point-value">
+                    {oceanHeatContentPoint.unavailable_reason ?? 'No data'}
+                  </span>
+                ) : (
+                  <OceanHeatContentRows point={oceanHeatContentPoint} />
                 )}
               </>
             )}
@@ -611,6 +669,37 @@ export function SelectedLocationPanel() {
         )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * All four built depths, not just the map layer's 700m — the point endpoint
+ * returns all of them in one response, and the shallower ones are the
+ * operationally relevant layers this map layer's own attribution says 700m
+ * is not (cyclone intensification, marine heatwaves, mixed-layer biology).
+ * A depth with no data at this cell (below the model's own bottom there)
+ * renders as a dash rather than being omitted, so four rows always mean four
+ * depths were checked.
+ */
+function OceanHeatContentRows({ point }: { point: OceanHeatContentPointResponse }) {
+  const rows: Array<[string, number | null | undefined]> = [
+    ['50m', point.ocean_heat_content_50m],
+    ['100m', point.ocean_heat_content_100m],
+    ['200m', point.ocean_heat_content_200m],
+    ['700m', point.ocean_heat_content],
+  ];
+  // Fragment, not a wrapper div: the parent `.selected-location-panel__wind-
+  // point` lays its children out with `flex-wrap` + `gap` directly (the same
+  // way wind's speed/direction/beaufort siblings do), and a wrapper div would
+  // become one un-wrapped flex item instead of four.
+  return (
+    <>
+      {rows.map(([label, value]) => (
+        <span key={label} className="selected-location-panel__wind-point-value">
+          {label}: {value == null ? '—' : `${value.toFixed(1)} GJ/m²`}
+        </span>
+      ))}
+    </>
   );
 }
 
