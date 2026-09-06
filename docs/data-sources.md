@@ -4,10 +4,13 @@
 
 ## Fisheries / biodiversity data sources (probed 2026-08-05)
 
-Only `marine_ml/sources/obis.py` is implemented today. This is the survey of
-candidates to widen it. **Every endpoint below was probed live on 2026-08-05**;
-re-probe before relying on a "works" verdict months later. Sort order is
-"worth wiring up next" first.
+`marine_ml/sources/obis.py` was the only implemented source when this survey
+was written (2026-08-05). Since then `marine_ml/sources/gbif.py` was built as
+a second source, unioned with OBIS for `fish_habitat_prediction` — see
+`DONE.md` ("Union GBIF with OBIS") for the retrain numbers. This file remains
+the survey of *further* candidates beyond those two. **Every endpoint below
+was probed live on 2026-08-05**; re-probe before relying on a "works" verdict
+months later. Sort order is "worth wiring up next" first.
 
 ### Tier 1 — open REST/JSON, no key, occurrence-shaped (drop-in beside OBIS)
 

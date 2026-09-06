@@ -7,10 +7,16 @@
   **detector**: it turns a field into named things with a position, a size, a
   polarity and an intensity. Okubo-Weiss (`W = Sn² + Ss² − ζ² < −0.2σ`) over the
   live surface-current cache.
-  - **It detects; it does not track.** Nothing holds state between refreshes,
-    deliberately. Age and trajectory are a frame-to-frame assignment problem, and
-    a matcher that flickers identity produces tracks that are artefacts presented
-    as observations. See TODO.md.
+  - **Detection is still stateless, but tracking now exists as a separate
+    module**: `services/eddy_tracking.py` (KD-tree + connected-components
+    matching, in-process lifecycle state) backs `GET /api/ocean/eddies/tracks`
+    and `GET /api/ocean/eddies/tracks/{id}` in `routers/marine.py` — see
+    `DONE.md` (search "eddy_tracking") for how the flicker-identity problem
+    this bullet used to warn about was actually solved. What's still a real,
+    open gap: **no map layer or chat tool visualizes a track yet** — the
+    endpoints are live and tested, but nothing in the frontend or the
+    assistant's tool list surfaces them. That's the gap to close next here,
+    not "add tracking."
   - **It reads the currents cache rather than fetching.** `detect()` is pure —
     snapshot in, features out — and `_current_detection()` keys its cache on the
     snapshot's own timestamp, so the hourly refresh invalidates it with no wiring
