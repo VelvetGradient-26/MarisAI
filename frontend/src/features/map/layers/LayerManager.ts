@@ -152,21 +152,43 @@ export class LayerManager {
         }
         if (!this.map.getLayer(layerId)) {
           const rasterPaint = descriptor.rasterPaint;
+          const fadeInMs = rasterPaint?.opacityTransitionMs;
           this.map.addLayer(
             {
               id: layerId,
               type: 'raster',
               source: sourceId,
               paint: {
-                'raster-opacity': current.opacity,
+                // Starts at 0 when a fade-in is requested: the transition
+                // below has nothing to ease *from* if both the start and
+                // target opacity land in the same tick.
+                'raster-opacity': fadeInMs !== undefined ? 0 : current.opacity,
                 ...(rasterPaint?.contrast !== undefined && { 'raster-contrast': rasterPaint.contrast }),
                 ...(rasterPaint?.saturation !== undefined && {
                   'raster-saturation': rasterPaint.saturation,
+                }),
+                ...(rasterPaint?.resampling !== undefined && {
+                  'raster-resampling': rasterPaint.resampling,
+                }),
+                ...(fadeInMs !== undefined && {
+                  'raster-opacity-transition': { duration: fadeInMs, delay: 0 },
                 }),
               },
             },
             beforeId
           );
+          if (fadeInMs !== undefined) {
+            // One frame late on purpose — see the comment above the initial
+            // opacity: 0 paint. An exclusive-category swap (forecast horizon
+            // scrubbing) removes the previous layer synchronously and adds
+            // this one in the same call, so without the delay the new field
+            // still hard-cuts in; with it, the field dissolves in instead.
+            requestAnimationFrame(() => {
+              if (this.map.getLayer(layerId)) {
+                this.map.setPaintProperty(layerId, 'raster-opacity', current.opacity);
+              }
+            });
+          }
         }
       });
     }

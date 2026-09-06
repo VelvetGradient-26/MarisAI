@@ -36,6 +36,15 @@
   --ocean-accent-soft: rgba(79, 209, 255, 0.12);
   --ocean-accent-strong: rgba(79, 209, 255, 0.2);
   --ocean-accent-line: rgba(79, 209, 255, 0.55);
+  /* A second accent, used only by forecast-specific chrome (the horizon
+     scrubber) — modelled output, not measurement, and the new forecast
+     colour ramps (plasma/PRGn, see forecastLayers.ts) are violet-leaning
+     where every observed layer stays in the app's cyan/teal family. Giving
+     the one UI control that is *only ever about a forecast* a matching
+     violet means a reader learns "this control governs the violet-flavoured
+     layers" without it touching the shared cyan accent everywhere else. */
+  --ocean-forecast-accent: #c77dff;
+  --ocean-forecast-accent-soft: rgba(199, 125, 255, 0.14);
   --ocean-error: #fca5a5;
   --ocean-warn: #f59e0b;
   --ocean-good: var(--ma-good);
@@ -76,6 +85,10 @@
   --ocean-accent-soft: rgba(15, 118, 110, 0.1);
   --ocean-accent-strong: rgba(15, 118, 110, 0.18);
   --ocean-accent-line: rgba(15, 118, 110, 0.5);
+  /* Same hue family as the dark value above, darkened until it clears 3:1 on
+     a white panel (computed): #c77dff -> #6d28d9. */
+  --ocean-forecast-accent: #6d28d9;
+  --ocean-forecast-accent-soft: rgba(109, 40, 217, 0.1);
   --ocean-error: #b91c1c;
   --ocean-warn: #b45309;
   /* Same hue as the dark-mode values above, darkened in HSL space until each
@@ -1838,17 +1851,24 @@ body,
   padding: 5px 8px;
   cursor: pointer;
   white-space: nowrap;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.horizon-control__play[aria-pressed='true'] {
+  border-color: var(--ocean-forecast-accent);
+  color: var(--ocean-forecast-accent);
+  background: var(--ocean-forecast-accent-soft);
 }
 
 .horizon-control__play:hover {
-  border-color: var(--ocean-accent);
-  color: var(--ocean-accent);
+  border-color: var(--ocean-forecast-accent);
+  color: var(--ocean-forecast-accent);
 }
 
 .horizon-control__scrubber {
   width: 100%;
   margin: 0;
-  accent-color: var(--ocean-accent);
+  accent-color: var(--ocean-forecast-accent);
   cursor: pointer;
 }
 
@@ -1868,6 +1888,7 @@ body,
   border-radius: 5px;
   padding: 4px 2px;
   cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .horizon-control__tick:hover {
@@ -1875,8 +1896,9 @@ body,
 }
 
 .horizon-control__tick--current {
-  color: var(--ocean-accent);
-  border-color: var(--ocean-border);
+  color: var(--ocean-forecast-accent);
+  border-color: var(--ocean-forecast-accent-soft);
+  background: var(--ocean-forecast-accent-soft);
 }
 
 /* Point brief trigger, in the location panel's header area rather than its

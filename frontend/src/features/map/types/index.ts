@@ -167,6 +167,25 @@ export interface RasterLayerDescriptor extends LayerDescriptorBase {
     contrast?: number;
     /** MapLibre `raster-saturation`, range -1 to 1. */
     saturation?: number;
+    /**
+     * MapLibre `raster-resampling`. 'linear' (the default) blends
+     * neighbouring source pixels on the GPU rather than showing hard pixel
+     * edges — worth setting explicitly, rather than relying on the default,
+     * for a source whose native tiles run out before the map does (the
+     * forecast grid's tiles stop at `maxzoom: 5`, so every zoom past that is
+     * the GPU upscaling a 1-degree-cell source, which is exactly where a
+     * silent 'nearest' would show as a blocky grid).
+     */
+    resampling?: 'linear' | 'nearest';
+    /**
+     * Cross-fades `raster-opacity` in over this many ms when the layer is
+     * added, instead of snapping straight to its target opacity. Layers in
+     * an exclusive category (forecast rasters, via `setExclusive`) are
+     * removed-then-added rather than merely re-opacified when the user
+     * switches between them, so without this a horizon scrub or mode switch
+     * hard-cuts from one field's colours to the next.
+     */
+    opacityTransitionMs?: number;
   };
 }
 

@@ -86,27 +86,32 @@ const SST_STOPS = [
   { offset: 1, color: '#DC2626' },
 ];
 
-/** Matches SEQUENTIAL_STOPS in backend/services/colormaps.py (viridis). */
+/** Matches SEQUENTIAL_STOPS in backend/services/colormaps.py (plasma) — the
+ *  forecast map's own sequential ramp, deliberately not the viridis every
+ *  observed layer uses, so a modelled field never looks like the same kind
+ *  of thing as a measured one. */
 const SEQUENTIAL_STOPS = [
-  { offset: 0, color: '#440154' },
-  { offset: 0.25, color: '#3B528B' },
-  { offset: 0.5, color: '#21918C' },
-  { offset: 0.75, color: '#5EC962' },
-  { offset: 1, color: '#FDE725' },
+  { offset: 0, color: '#0D0887' },
+  { offset: 0.25, color: '#7E03A8' },
+  { offset: 0.5, color: '#CC4778' },
+  { offset: 0.75, color: '#F89540' },
+  { offset: 1, color: '#F0F921' },
 ];
 
-/** Matches DIVERGING_STOPS in backend/services/colormaps.py. Zero sits at the
- *  near-white centre, which is why the scale must stay symmetric. */
+/** Matches DIVERGING_STOPS in backend/services/colormaps.py (PRGn). Zero
+ *  sits at the near-white centre, which is why the scale must stay
+ *  symmetric — purple/green rather than blue/red, so a forecast *change*
+ *  never reads as the same quantity as an observed anomaly layer would. */
 const DIVERGING_STOPS = [
-  { offset: 0, color: '#053061' },
-  { offset: 0.2, color: '#2166AC' },
-  { offset: 0.375, color: '#67A9CF' },
-  { offset: 0.475, color: '#D1E5F0' },
+  { offset: 0, color: '#40004B' },
+  { offset: 0.2, color: '#762A83' },
+  { offset: 0.375, color: '#9970AB' },
+  { offset: 0.475, color: '#E7D4E8' },
   { offset: 0.5, color: '#F7F7F7' },
-  { offset: 0.525, color: '#FDDBC7' },
-  { offset: 0.625, color: '#EF8A62' },
-  { offset: 0.8, color: '#B2182B' },
-  { offset: 1, color: '#67001F' },
+  { offset: 0.525, color: '#D9F0D3' },
+  { offset: 0.625, color: '#A6DBA0' },
+  { offset: 0.8, color: '#5AAE61' },
+  { offset: 1, color: '#1B7837' },
 ];
 
 /**
@@ -116,15 +121,15 @@ const DIVERGING_STOPS = [
  * ends of the scale.
  */
 const CYCLIC_STOPS = [
-  { offset: 0, color: '#f24444' },
-  { offset: 0.125, color: '#f2c744' },
-  { offset: 0.25, color: '#9bf244' },
-  { offset: 0.375, color: '#44f26f' },
-  { offset: 0.5, color: '#44f2f2' },
-  { offset: 0.625, color: '#446ff2' },
-  { offset: 0.75, color: '#9b44f2' },
-  { offset: 0.875, color: '#f244c7' },
-  { offset: 1, color: '#f24444' },
+  { offset: 0, color: '#44f2f2' },
+  { offset: 0.125, color: '#446ff2' },
+  { offset: 0.25, color: '#9b44f2' },
+  { offset: 0.375, color: '#f244c7' },
+  { offset: 0.5, color: '#f24444' },
+  { offset: 0.625, color: '#f2c744' },
+  { offset: 0.75, color: '#9bf244' },
+  { offset: 0.875, color: '#44f26f' },
+  { offset: 1, color: '#44f2f2' },
 ];
 
 /** The one variable colour-matched to an existing observation layer. Mirrors
@@ -208,7 +213,20 @@ export function forecastLayers(entry: ForecastGridEntry): RasterLayerDescriptor[
       attribution: attributionFor(entry, horizon, mode),
       defaultOpacity: 0.7,
       defaultVisible: false,
-      rasterPaint: { contrast: 0.15, saturation: 0.2 },
+      rasterPaint: {
+        contrast: 0.15,
+        saturation: 0.2,
+        // The grid is 1°, coarser than any observation layer's, and its
+        // tiles stop at maxzoom 5 — past that this is the one raster type
+        // here where the GPU is genuinely upscaling, so 'linear' (rather than
+        // leaving it to the default) is stated as load-bearing, not assumed.
+        resampling: 'linear',
+        // Horizons live in the exclusive `ocean` category, so scrubbing one
+        // removes the old layer and adds the new rather than re-opacifying
+        // it — this is what makes that swap read as one field dissolving
+        // into the next instead of a hard cut.
+        opacityTransitionMs: 280,
+      },
       sources: [
         {
           type: 'raster' as const,

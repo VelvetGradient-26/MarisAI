@@ -568,10 +568,11 @@ def test_change_tile_separates_warming_from_cooling(tmp_path):
         forecast_tiles.tile_or_placeholder(VARIABLE, HORIZON, "change", 0, 0, 0, cool_dir)
     ).mean(axis=0)
 
-    # Warming runs red, cooling runs blue: the red channel must dominate one and
-    # the blue channel the other.
-    assert warm[0] > warm[2], f"warming did not render red: {warm}"
-    assert cool[2] > cool[0], f"cooling did not render blue: {cool}"
+    # Forecast change is drawn on PRGn: warming runs green, cooling runs purple
+    # (both red and blue elevated over green) — the green channel must
+    # dominate one and recede in the other.
+    assert warm[1] > warm[0] and warm[1] > warm[2], f"warming did not render green: {warm}"
+    assert cool[1] < cool[0] and cool[1] < cool[2], f"cooling did not render purple: {cool}"
 
 
 def test_unforecastable_water_does_not_render_as_an_extreme_value(tmp_path):
