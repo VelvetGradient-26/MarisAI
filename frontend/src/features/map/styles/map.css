@@ -305,6 +305,15 @@ body,
     padding 0.32s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.prediction-freshness-note {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--ocean-border);
+  color: var(--ocean-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .map-controls.collapsed .map-controls__body {
   /* `flex: 0 0 0` alongside the max-height: a flex child would otherwise keep
      its basis and refuse to animate away. */
@@ -799,6 +808,67 @@ body,
 
 .selected-location-panel__watch-input:disabled {
   opacity: 0.6;
+}
+
+/* Shared by the four click-triggered point tools (risk/tide/argo/
+   literature) — one result container, one list, per usePointFetch's
+   idle/loading/error/success shape. */
+.selected-location-panel__point-tool-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.selected-location-panel__point-tool-list {
+  margin: 0;
+  padding-left: 16px;
+  font: 12px/1.5 var(--ocean-font-mono);
+}
+
+.selected-location-panel__point-tool-list li {
+  margin: 2px 0;
+}
+
+.selected-location-panel__literature-item a {
+  color: var(--ocean-accent);
+  text-decoration: none;
+}
+
+.selected-location-panel__literature-item a:hover {
+  text-decoration: underline;
+}
+
+/* Same four-tier severity scale route-hazard/severe-weather badges already
+   use — low reuses the "calm" teal rather than a fifth colour. */
+.selected-location-panel__risk-badge {
+  display: inline-block;
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.selected-location-panel__risk-badge--low {
+  color: var(--ocean-route-calm);
+  background: color-mix(in srgb, var(--ocean-route-calm) 16%, transparent);
+}
+
+.selected-location-panel__risk-badge--moderate {
+  color: var(--ocean-severity-moderate);
+  background: color-mix(in srgb, var(--ocean-severity-moderate) 16%, transparent);
+}
+
+.selected-location-panel__risk-badge--high {
+  color: var(--ocean-severity-severe);
+  background: color-mix(in srgb, var(--ocean-severity-severe) 16%, transparent);
+}
+
+.selected-location-panel__risk-badge--extreme {
+  color: var(--ocean-severity-critical);
+  background: color-mix(in srgb, var(--ocean-severity-critical) 16%, transparent);
 }
 
 .map-controls h3 {
@@ -2091,6 +2161,158 @@ body,
   color: var(--ocean-muted);
   border-top: 1px solid var(--ocean-border);
   padding-top: 8px;
+}
+
+/* --- My alerts panel/badge -----------------------------------------------
+   Same shape and rail placement as the severe-weather panel above —
+   collapsed to a badge by default, most visits have nothing to report
+   (no watches created yet). Confirmed/pending reuses the same semantic
+   colours as elsewhere rather than inventing a third scale: confirmed is
+   `--ocean-good`, pending is `--ocean-warn`. */
+.my-alerts-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100vw - 32px));
+  box-sizing: border-box;
+}
+
+.my-alerts-panel__badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--ocean-text);
+  font: 12px/1.4 var(--ocean-font-mono);
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  text-align: left;
+}
+
+.my-alerts-panel__badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ocean-muted);
+  flex-shrink: 0;
+}
+
+.my-alerts-panel__badge-loading {
+  color: var(--ocean-accent);
+  margin-left: auto;
+}
+
+.my-alerts-panel__body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--ocean-panel-bg);
+  border: 1px solid var(--ocean-border);
+  border-radius: 10px;
+  padding: 14px;
+  color: var(--ocean-text);
+  backdrop-filter: blur(6px);
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.my-alerts-panel__header h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.my-alerts-panel__subtitle {
+  color: var(--ocean-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.my-alerts-panel__state {
+  font-size: 12px;
+  color: var(--ocean-muted);
+  margin: 0;
+}
+
+.my-alerts-panel__state--error {
+  color: var(--ocean-error);
+  font-size: 11px;
+}
+
+.my-alerts-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.my-alerts-panel__watch {
+  background: transparent;
+  border-left: 3px solid var(--ocean-border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.my-alerts-panel__watch-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.my-alerts-panel__watch-status {
+  font-weight: 400;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.my-alerts-panel__watch-status--confirmed {
+  color: var(--ocean-good);
+}
+
+.my-alerts-panel__watch-status--pending {
+  color: var(--ocean-warn);
+}
+
+.my-alerts-panel__watch-meta {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ocean-muted);
+  line-height: 1.4;
+}
+
+.my-alerts-panel__remove-button {
+  align-self: flex-start;
+  margin-top: 2px;
+  background: none;
+  border: 1px solid var(--ocean-border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  color: var(--ocean-muted);
+  font-size: 10px;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.my-alerts-panel__remove-button:hover:not(:disabled) {
+  color: var(--ocean-error);
+  border-color: var(--ocean-error);
+}
+
+.my-alerts-panel__remove-button:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* --- Boundary watch panel/badge -----------------------------------------

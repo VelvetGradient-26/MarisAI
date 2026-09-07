@@ -21,6 +21,19 @@ import { useDriftTrajectoryPlanner } from './hooks/useDriftTrajectoryPlanner';
 import { fetchLeewayPresets } from './api/drift';
 import type { LeewayPreset } from './api/drift';
 import { subscribeWatch } from './api/watch';
+import { usePointFetch } from './hooks/usePointFetch';
+import {
+  fetchArgoProfile,
+  fetchLiterature,
+  fetchMarineRisk,
+  fetchTideLevel,
+} from './api/pointTools';
+import type {
+  ArgoProfileResponse,
+  LiteratureResponse,
+  MarineRiskResponse,
+  TideLevelResponse,
+} from './api/pointTools';
 import type { NearestPort, RealtimeOceanConditions, RealtimeOceanUnits } from './types';
 
 const METRICS: Array<{
@@ -205,6 +218,17 @@ export function SelectedLocationPanel() {
   const [watchEmail, setWatchEmail] = useState('');
   const [watchStatus, setWatchStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [watchError, setWatchError] = useState<string | null>(null);
+
+  // Four point tools with no corresponding map layer (unlike SST/wind/
+  // currents/OHC above) — click-triggered via usePointFetch, not an
+  // auto-fetch effect, so selecting a point never fires four extra live
+  // fetches (risk alone fans out to three upstreams) the reader may not
+  // have asked for.
+  const risk = usePointFetch<MarineRiskResponse>();
+  const tide = usePointFetch<TideLevelResponse>();
+  const argo = usePointFetch<ArgoProfileResponse>();
+  const literature = usePointFetch<LiteratureResponse>();
+  const [literatureQuery, setLiteratureQuery] = useState('');
 
   return (
     <aside className={`selected-location-panel ${panelOpen ? 'open' : 'collapsed'}`}>
@@ -598,6 +622,179 @@ export function SelectedLocationPanel() {
                   </span>
                 )}
               </>
+            )}
+          </div>
+        )}
+
+        {selectedLocation && (
+          <div className="selected-location-panel__watch">
+            <span className="selected-location-panel__predictions-label">Marine Risk</span>
+            <span className="selected-location-panel__predictions-note">
+              A deterministic &quot;safe to venture out&quot; verdict from live wind, wave,
+              cyclone and severe-weather checks — not a freeform guess.
+            </span>
+            <button
+              type="button"
+              className="selected-location-panel__brief-button"
+              disabled={risk.status === 'loading'}
+              onClick={() =>
+                risk.run((signal) => fetchMarineRisk(selectedLocation.lat, selectedLocation.lng, signal))
+              }
+            >
+              {risk.status === 'loading' ? 'Checking…' : 'Check risk here'}
+            </button>
+            {risk.status === 'error' && (
+              <span className="selected-location-panel__state--error">{risk.error}</span>
+            )}
+            {risk.status === 'success' && risk.data && (
+              <div className="selected-location-panel__point-tool-result">
+                <span
+                  className={`selected-location-panel__risk-badge selected-location-panel__risk-badge--${risk.data.risk_level}`}
+                >
+                  {risk.data.risk_level}
+                </span>
+                {risk.data.reasons.length > 0 && (
+                  <ul className="selected-location-panel__point-tool-list">
+                    {risk.data.reasons.map((reason, index) => (
+                      <li key={index}>{reason}</li>
+                    ))}
+                  </ul>
+                )}
+                {risk.data.could_not_verify.length > 0 && (
+                  <span className="selected-location-panel__state">
+                    Could not verify: {risk.data.could_not_verify.join(', ')}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {selectedLocation && (
+          <div className="selected-location-panel__watch">
+            <span className="selected-location-panel__predictions-label">Tide Level</span>
+            <button
+              type="button"
+              className="selected-location-panel__brief-button"
+              disabled={tide.status === 'loading'}
+              onClick={() =>
+                tide.run((signal) => fetchTideLevel(selectedLocation.lat, selectedLocation.lng, signal))
+              }
+            >
+              {tide.status === 'loading' ? 'Checking…' : 'Nearest tide station'}
+            </button>
+            {tide.status === 'error' && (
+              <span className="selected-location-panel__state--error">{tide.error}</span>
+            )}
+            {tide.status === 'success' && tide.data && (
+              <div className="selected-location-panel__point-tool-result">
+                {tide.data.available ? (
+                  <>
+                    <span className="selected-location-panel__wind-point-value">
+                      {tide.data.water_level_m.toFixed(2)} m ({tide.data.trend})
+                    </span>
+                    <span className="selected-location-panel__state">
+                      {tide.data.station} · {tide.data.distance_km.toFixed(0)} km away
+                      {tide.data.stale ? ' · reading is stale' : ''}
+                    </span>
+                  </>
+                ) : (
+                  <span className="selected-location-panel__state">{tide.data.reason}</span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {selectedLocation && (
+          <div className="selected-location-panel__watch">
+            <span className="selected-location-panel__predictions-label">ARGO Float Profile</span>
+            <button
+              type="button"
+              className="selected-location-panel__brief-button"
+              disabled={argo.status === 'loading'}
+              onClick={() =>
+                argo.run((signal) => fetchArgoProfile(selectedLocation.lat, selectedLocation.lng, signal))
+              }
+            >
+              {argo.status === 'loading' ? 'Searching…' : 'Nearest ARGO float'}
+            </button>
+            {argo.status === 'error' && (
+              <span className="selected-location-panel__state--error">{argo.error}</span>
+            )}
+            {argo.status === 'success' && argo.data && (
+              <div className="selected-location-panel__point-tool-result">
+                {argo.data.available ? (
+                  <>
+                    <span className="selected-location-panel__wind-point-value">
+                      Float {argo.data.profile.float_id}
+                    </span>
+                    <span className="selected-location-panel__state">
+                      {argo.data.profile.distance_km.toFixed(0)} km away ·{' '}
+                      {argo.data.profile.level_count} depth levels ·{' '}
+                      {new Date(argo.data.profile.timestamp).toISOString().slice(0, 10)}
+                    </span>
+                  </>
+                ) : (
+                  <span className="selected-location-panel__state">{argo.data.unavailable_reason}</span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {selectedLocation && (
+          <div className="selected-location-panel__watch">
+            <span className="selected-location-panel__predictions-label">Literature Search</span>
+            <div className="selected-location-panel__watch-form">
+              <input
+                type="text"
+                className="selected-location-panel__watch-input"
+                placeholder="e.g. oil sardine habitat"
+                value={literatureQuery}
+                disabled={literature.status === 'loading'}
+                onChange={(e) => setLiteratureQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && literatureQuery.trim()) {
+                    literature.run((signal) => fetchLiterature(literatureQuery.trim(), signal));
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="selected-location-panel__brief-button"
+                disabled={!literatureQuery.trim() || literature.status === 'loading'}
+                onClick={() => literature.run((signal) => fetchLiterature(literatureQuery.trim(), signal))}
+              >
+                {literature.status === 'loading' ? 'Searching…' : 'Search'}
+              </button>
+            </div>
+            {literature.status === 'error' && (
+              <span className="selected-location-panel__state--error">{literature.error}</span>
+            )}
+            {literature.status === 'success' && literature.data && (
+              <div className="selected-location-panel__point-tool-result">
+                {literature.data.result_count === 0 ? (
+                  <span className="selected-location-panel__state">No results.</span>
+                ) : (
+                  <ul className="selected-location-panel__point-tool-list">
+                    {literature.data.results.map((result, index) => (
+                      <li key={index} className="selected-location-panel__literature-item">
+                        {result.url ? (
+                          <a href={result.url} target="_blank" rel="noreferrer">
+                            {result.title}
+                          </a>
+                        ) : (
+                          result.title
+                        )}
+                        {result.journal && (
+                          <span className="selected-location-panel__state"> — {result.journal}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             )}
           </div>
         )}
