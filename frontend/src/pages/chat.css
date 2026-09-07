@@ -816,6 +816,62 @@
   line-height: 1.5;
 }
 
+/* --- Chat map preview ---------------------------------------------------- */
+
+.chat-map-preview {
+  margin-top: 12px;
+  padding: 10px 10px 10px;
+  border: 1px solid var(--chat-border-soft);
+  border-radius: 12px;
+  background: var(--chat-code-bg);
+  overflow: hidden;
+}
+
+.chat-map-preview__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 0 2px;
+}
+
+.chat-map-preview__title {
+  color: var(--chat-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.chat-map-preview__open-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--chat-faint);
+  font-size: 0.7rem;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.chat-map-preview__open-link:hover {
+  color: var(--chat-primary);
+}
+
+.chat-map-preview__canvas {
+  position: relative;
+  width: 100%;
+  height: 220px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.chat-map-preview__note {
+  margin: 8px 0 0;
+  padding: 0 2px;
+  color: var(--chat-faint);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
 /* --- Composer ----------------------------------------------------------- */
 
 .chat-error {

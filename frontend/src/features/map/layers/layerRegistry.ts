@@ -868,6 +868,76 @@ function oceanHeatContentLayer(): GeoJsonLayerDescriptor {
 }
 
 /**
+ * What the Ocean Assistant found, drawn on the small map embedded in a chat
+ * turn (`features/assistant/ChatMapPreview.tsx`) — a route, a drift
+ * trajectory's median track, a geofence check's nearest boundary point and
+ * nearby MPA boxes, or a set of candidate fishing zones. One flat colour
+ * for everything, deliberately not reusing `ROUTE_HAZARD_COLOR`/
+ * `DRIFT_TRAJECTORY_MEDIAN_COLOR`/etc.: this is a lightweight preview of a
+ * chat answer, not the live interactive planning tools those colours
+ * belong to on the full `/map` page, and giving it its own identity avoids
+ * implying it is one of those (e.g. that a route drawn here is still
+ * hazard-colour-coded when only the full planner's live result is).
+ */
+const CHAT_GEOMETRY_COLOR = '#38bdf8';
+
+function chatGeometryLayer(): GeoJsonLayerDescriptor {
+  return {
+    id: 'chat-geometry',
+    name: 'Assistant Result',
+    category: 'reference',
+    type: 'geojson',
+    attribution:
+      'Geometry from the Ocean Assistant\'s own tool results in this conversation — a ' +
+      'planned route, a drift-trajectory median track (the full ensemble is not sent to ' +
+      'chat, only the median), a geofence check\'s nearest boundary point and nearby ' +
+      'protected-area boxes, or candidate fishing zones. A preview of that answer, not a ' +
+      'live planning tool — use the full map for that.',
+    defaultOpacity: 1,
+    // Explicitly `.add()`-ed by `ChatMapPreview.tsx` itself — false here
+    // (matching `plannedRouteLayer`/`driftTrajectoryLayer`) so the full
+    // `/map` page's own layer panel doesn't show an "Assistant Result"
+    // toggle sitting on by default with nothing to draw; that page never
+    // populates this layer's data at all.
+    defaultVisible: false,
+    interactiveLayerIndices: [2],
+    paintLayers: (opacity: number) => [
+      {
+        type: 'fill',
+        filter: ['==', ['geometry-type'], 'Polygon'],
+        paint: { 'fill-color': CHAT_GEOMETRY_COLOR, 'fill-opacity': 0.16 * opacity },
+      },
+      {
+        type: 'line',
+        filter: ['==', ['geometry-type'], 'Polygon'],
+        paint: { 'line-color': CHAT_GEOMETRY_COLOR, 'line-width': 1.2, 'line-opacity': 0.8 * opacity },
+      },
+      {
+        type: 'line',
+        filter: ['==', ['geometry-type'], 'LineString'],
+        paint: { 'line-color': CHAT_GEOMETRY_COLOR, 'line-width': 3, 'line-opacity': opacity },
+      },
+      {
+        type: 'circle',
+        filter: ['==', ['geometry-type'], 'Point'],
+        paint: {
+          'circle-color': CHAT_GEOMETRY_COLOR,
+          'circle-radius': 6,
+          'circle-opacity': opacity,
+          'circle-stroke-width': 1.2,
+          'circle-stroke-color': 'rgba(2,12,27,0.85)',
+          'circle-stroke-opacity': opacity,
+        },
+      },
+    ],
+    legend: {
+      type: 'note',
+      text: 'What the assistant found this turn — a preview, not a live planning result.',
+    },
+  };
+}
+
+/**
  * Potential-fishing-zone screening candidates near the clicked point
  * (`services/pfz.py`), fed by `usePfzZones` — a diagnostic composed from two
  * observed fields (chlorophyll, SST), same reasoning that puts eddies in
@@ -1746,4 +1816,5 @@ export const layerRegistry: LayerDescriptor[] = [
   geofenceStatusLayer(),
   plannedRouteLayer(),
   driftTrajectoryLayer(),
+  chatGeometryLayer(),
 ];

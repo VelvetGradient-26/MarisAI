@@ -30,6 +30,7 @@ import ShinyText from '../../components/reactbits/ShinyText/ShinyText';
 import type { ChatObservation } from '../map/api/chat';
 import type { TurnProvenance } from './runtime';
 import { ForecastChart } from './ForecastChart';
+import { ChatMapPreview } from './ChatMapPreview';
 
 const ProvenanceContext = createContext<Record<string, TurnProvenance>>({});
 export const ProvenanceProvider = ProvenanceContext.Provider;
@@ -540,6 +541,7 @@ function AssistantMessage() {
             <MessagePrimitive.Parts components={{ Text: MarkdownText }} />
           </div>
           <ForecastCharts provenance={provenance} />
+          <ChatMapPreviewSlot provenance={provenance} />
           <Provenance provenance={provenance} />
           {/* Gated on `pending` for the same reason Provenance is: while this
               branch is still streaming, `BranchPickerPrimitive` (unlike
@@ -594,6 +596,16 @@ function ForecastCharts({ provenance }: { provenance: TurnProvenance | undefined
       ))}
     </>
   );
+}
+
+/**
+ * The embedded mini-map for this turn, if its tool calls produced any
+ * drawable geometry. Same `pending` gate as `ForecastCharts` and
+ * `Provenance` — `observations` only exists on the terminal `meta` event.
+ */
+function ChatMapPreviewSlot({ provenance }: { provenance: TurnProvenance | undefined }) {
+  if (!provenance?.meta) return null;
+  return <ChatMapPreview observations={provenance.meta.observations} />;
 }
 
 /**
