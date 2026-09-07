@@ -18,6 +18,7 @@ import type {
   MetricSeries,
   MetricStatistics,
   ModelDetail,
+  ModelRegistryResponse,
   OceanStory,
 } from './types';
 
@@ -155,6 +156,14 @@ export function fetchBatchForecast(
       history_window: params.historyWindow ?? 90,
     }),
   });
+}
+
+/** The plain registry list — headline metrics across every trained
+ * variable/horizon, not one model's full diagnostics (that's
+ * `fetchModelDetail`, per variable+horizon). Was unconsumed anywhere in the
+ * frontend before this — see `MetricsIndexPage.tsx`'s model-registry table. */
+export function fetchModelRegistry(signal?: AbortSignal): Promise<ModelRegistryResponse> {
+  return request<ModelRegistryResponse>(url('/api/v1/forecast/models'), { signal });
 }
 
 export function fetchModelDetail(

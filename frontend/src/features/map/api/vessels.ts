@@ -49,6 +49,23 @@ export interface VesselCollection {
   connected: boolean;
 }
 
+/** The feed's own state, independent of any bbox — `connected` here is the
+ * same flag `fetchVessels` already piggybacks per-request, but `configured`
+ * (whether an AIS key exists at all) is new: without it, "not configured"
+ * and "configured but briefly disconnected" render identically. */
+export interface VesselFeedStatusResponse {
+  connected: boolean;
+  configured: boolean;
+  tracked_vessels: number;
+  messages_seen: number;
+}
+
+export async function fetchVesselFeedStatus(signal?: AbortSignal): Promise<VesselFeedStatusResponse> {
+  const response = await fetch(url('/api/vessels/status'), { signal });
+  if (!response.ok) throw new Error(`Vessel feed status lookup failed (${response.status})`);
+  return response.json();
+}
+
 export async function fetchVessels(
   bounds: { west: number; south: number; east: number; north: number },
   limit: number,

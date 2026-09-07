@@ -4,6 +4,7 @@ import { useMapStore } from '../../store/mapStore';
 import { useMapPreferencesStore } from '../../store/mapPreferencesStore';
 import { useUiStore } from '../../store/uiStore';
 import { GradientBar } from './GradientBar';
+import { PredictionFreshnessNote } from './PredictionFreshnessNote';
 import type { MapManager } from './managers/MapManager';
 import type { LayerManager, LayerState } from './layers/LayerManager';
 import type {
@@ -86,6 +87,8 @@ export function MapControls() {
             </section>
           );
         })}
+
+        <PredictionFreshnessNote />
       </div>
     </div>
   );

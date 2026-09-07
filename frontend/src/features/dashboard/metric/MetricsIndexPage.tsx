@@ -17,8 +17,9 @@ import { Link } from '../../../app/router';
 import { useAppRouter } from '../../../app/routerContext';
 import { useMapStore } from '../../../store/mapStore';
 import { useThemeStore } from '../../../store/themeStore';
-import type { CatalogVariable } from './api/types';
-import { useForecastCatalog } from './hooks/useMetricData';
+import type { CatalogVariable, ModelRegistryEntry } from './api/types';
+import { isModelRegistryError } from './api/types';
+import { useForecastCatalog, useModelRegistry } from './hooks/useMetricData';
 import { Panel, PanelEmpty, PanelSkeleton } from '../components/Panel';
 import { cn } from '../lib/cn';
 import '../styles/tailwind.css';
@@ -78,6 +79,107 @@ function VariableCard({
         </Panel>
       </Link>
     </motion.div>
+  );
+}
+
+/**
+ * Headline registry metrics across every trained variable×horizon —
+ * `GET /api/v1/forecast/models`, unconsumed anywhere in the frontend before
+ * this. A user previously had to already know a `{variable, horizon}` pair
+ * to reach `ModelDossierPage.tsx`'s full diagnostics; this is the index that
+ * was missing. Collapsed by default so it doesn't compete with the primary
+ * variable-browsing grid below it.
+ */
+function ModelRegistryTable() {
+  const [open, setOpen] = useState(false);
+  const { data, isPending, isError, error } = useModelRegistry();
+
+  const rows = (data?.models ?? [])
+    .filter((entry): entry is Exclude<ModelRegistryEntry, { error: string }> => !isModelRegistryError(entry))
+    .sort((a, b) => a.variable.localeCompare(b.variable) || a.horizon - b.horizon);
+  const errorCount = (data?.models ?? []).filter(isModelRegistryError).length;
+
+  return (
+    <Panel className="mb-5">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center justify-between gap-2 p-3.5 text-left"
+        aria-expanded={open}
+      >
+        <span className="text-[length:var(--oid-text-sm)] font-medium text-[color:var(--oid-text-strong)]">
+          Model registry
+          {data && (
+            <span className="ml-2 font-normal text-[color:var(--oid-text-faint)]">
+              {rows.length} trained model{rows.length === 1 ? '' : 's'}
+              {errorCount > 0 ? `, ${errorCount} unreadable` : ''}
+            </span>
+          )}
+        </span>
+        <ChevronRight
+          size={14}
+          className={cn(
+            'shrink-0 text-[color:var(--oid-text-ghost)] transition-transform',
+            open && 'rotate-90'
+          )}
+        />
+      </button>
+
+      {open && (
+        <div className="border-t border-[color:var(--oid-border)] px-3.5 pb-3.5">
+          {isPending && <PanelSkeleton rows={4} />}
+          {isError && (
+            <PanelEmpty
+              title="Could not load the model registry"
+              reason={error instanceof Error ? error.message : undefined}
+            />
+          )}
+          {data && rows.length === 0 && (
+            <PanelEmpty title="No trained models yet" />
+          )}
+          {rows.length > 0 && (
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full text-left text-[length:var(--oid-text-xs)]">
+                <thead>
+                  <tr className="text-[color:var(--oid-text-ghost)]">
+                    <th className="pb-1.5 pr-3 font-medium">Variable</th>
+                    <th className="pb-1.5 pr-3 font-medium">Horizon</th>
+                    <th className="pb-1.5 pr-3 font-medium">Skill score</th>
+                    <th className="pb-1.5 pr-3 font-medium">RMSE</th>
+                    <th className="pb-1.5 font-medium">Trained</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((entry) => (
+                    <tr
+                      key={`${entry.variable}-${entry.horizon}`}
+                      className="border-t border-[color:var(--oid-border)]"
+                    >
+                      <td className="py-1.5 pr-3">
+                        <Link
+                          to={`/dashboard/model?variable=${entry.variable}&horizon=${entry.horizon}`}
+                          className="text-[color:var(--oid-text)] no-underline hover:text-[color:var(--oid-accent)]"
+                        >
+                          {entry.variable}
+                        </Link>
+                      </td>
+                      <td className="py-1.5 pr-3 text-[color:var(--oid-text-muted)]">{entry.horizon}d</td>
+                      <td className="py-1.5 pr-3 text-[color:var(--oid-text-muted)]">
+                        {entry.skill_score.toFixed(2)}
+                      </td>
+                      <td className="py-1.5 pr-3 text-[color:var(--oid-text-muted)]">{entry.rmse.toFixed(3)}</td>
+                      <td className="py-1.5 text-[color:var(--oid-text-ghost)]">
+                        {entry.trained_at.slice(0, 10)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </Panel>
   );
 }
 
@@ -167,6 +269,8 @@ export function MetricsIndexPage() {
             />
           </label>
         </header>
+
+        <ModelRegistryTable />
 
         {isPending && (
           <Panel>

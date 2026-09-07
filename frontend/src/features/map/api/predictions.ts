@@ -8,10 +8,12 @@
  * "outside the model's region" from "no value here" — the UI is expected to
  * state what exists rather than render nothing and let the user guess.
  *
- * Only point lookups live here. Tile URLs are built inline in
- * `layers/layerRegistry.ts`, alongside the layer that uses them, and the
- * export manifest is no longer read by the frontend at all — the model's
- * skill, drivers and caveats are documented at /docs.
+ * Point lookups live here, and so does one manifest read: `fetchPredictionManifest`,
+ * for a "last exported" freshness note on the habitat/HAB layer toggles —
+ * nothing else in this file's shape needed the manifest, since the model's
+ * full skill/drivers/caveats stay documented at /docs, hand-authored rather
+ * than rendered live from this endpoint. Tile URLs are built inline in
+ * `layers/layerRegistry.ts`, alongside the layer that uses them.
  */
 
 import { API_BASE_URL } from '../../../utils/apiBase';
@@ -50,6 +52,21 @@ export interface HabPoint {
    * predates this field, the manifest's feature-name lookup is missing, or
    * the cell has no risk value (land / outside coverage). */
   drivers: PredictionDriver[] | null;
+}
+
+/** Only the fields a freshness note needs — the manifest also carries full
+ * per-product metrics/holdout/drivers/SHAP config, deliberately untyped
+ * here since nothing in the frontend reads them (they're hand-authored at
+ * /docs instead; see this file's header comment). */
+export interface PredictionManifest {
+  generated: string;
+  products: Record<string, { title: string }>;
+}
+
+export async function fetchPredictionManifest(signal?: AbortSignal): Promise<PredictionManifest> {
+  const response = await fetch(url('/api/predictions/manifest'), { signal });
+  if (!response.ok) throw new Error(`Prediction manifest lookup failed (${response.status})`);
+  return response.json();
 }
 
 export async function fetchHabitatPoint(

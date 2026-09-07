@@ -167,6 +167,37 @@ export interface FeatureImportance {
   importance: number;
 }
 
+/** One row of `GET /api/v1/forecast/models` — headline registry metrics
+ * only (no folds/SHAP/diagnostics; that's `ModelDetail`, one fetch per
+ * variable+horizon). A corrupt/version-mismatched artifact reports as
+ * `error` rather than being silently omitted from the list. */
+export type ModelRegistryEntry =
+  | {
+      variable: string;
+      horizon: number;
+      version: string;
+      trained_at: string;
+      training_rows: number;
+      n_features: number;
+      mae: number;
+      rmse: number;
+      r2: number;
+      skill_score: number;
+      n_folds: number;
+      negative_folds: number;
+    }
+  | { variable: string; horizon: number; error: string };
+
+export function isModelRegistryError(
+  entry: ModelRegistryEntry
+): entry is { variable: string; horizon: number; error: string } {
+  return 'error' in entry;
+}
+
+export interface ModelRegistryResponse {
+  models: ModelRegistryEntry[];
+}
+
 export interface ModelDetail {
   variable: string;
   horizon: number;

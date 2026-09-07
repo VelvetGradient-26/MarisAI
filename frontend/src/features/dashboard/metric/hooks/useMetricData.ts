@@ -16,6 +16,7 @@ import {
   fetchBatchForecast,
   fetchCatalog,
   fetchModelDetail,
+  fetchModelRegistry,
   fetchSeries,
   fetchStatistics,
   fetchStory,
@@ -36,6 +37,17 @@ export function useForecastCatalog() {
   return useQuery({
     queryKey: ['forecast', 'catalog'],
     queryFn: ({ signal }) => fetchCatalog(signal),
+    staleTime: 30 * MINUTE,
+    gcTime: 60 * MINUTE,
+  });
+}
+
+/** The plain registry list, same cadence reasoning as the catalog above —
+ * it only changes on an offline retrain. */
+export function useModelRegistry() {
+  return useQuery({
+    queryKey: ['forecast', 'models'],
+    queryFn: ({ signal }) => fetchModelRegistry(signal),
     staleTime: 30 * MINUTE,
     gcTime: 60 * MINUTE,
   });
