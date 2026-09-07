@@ -207,6 +207,17 @@ def test_get_tracks_filters_by_polarity_bbox_and_age():
     assert aged_out == []
 
 
+def test_get_tracks_include_path_is_opt_in():
+    eddy_tracking.update(_detection([_eddy(10.0, 60.0)], timestamp=T0))
+    eddy_tracking.update(_detection([_eddy(10.0, 60.01)], timestamp=T0 + HOUR))
+
+    without_path = eddy_tracking.get_tracks()["tracks"]
+    assert "path" not in without_path[0]
+
+    with_path = eddy_tracking.get_tracks(include_path=True)["tracks"]
+    assert len(with_path[0]["path"]) == 2
+
+
 def test_get_track_returns_full_path_or_none():
     eddy_tracking.update(_detection([_eddy(10.0, 60.0)], timestamp=T0))
     tracks = eddy_tracking.get_tracks()["tracks"]

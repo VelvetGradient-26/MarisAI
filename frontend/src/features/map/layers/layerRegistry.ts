@@ -482,6 +482,67 @@ function eddyLayer(): GeoJsonLayerDescriptor {
 }
 
 /**
+ * Frame-to-frame eddy identity — `services/eddy_tracking.py`, via
+ * `GET /api/ocean/eddies/tracks?include_path=true`. A separate layer from
+ * `eddyLayer()` above, not a toggle on it: that layer's own attribution and
+ * tooltip explicitly say "no age or track" as a stated scope line, and
+ * rewriting that copy to fit a flag felt like the wrong fix for what is
+ * genuinely a different question ("where has this eddy been" vs "what is
+ * detected right now"). Same `kind`-discriminated line+point shape
+ * `driftTrajectoryLayer()` already uses. Reuses `EDDY_COLOR`'s polarity
+ * pairing (teal cyclonic, amber anticyclonic) since a track is still the
+ * same eddy, just followed across refreshes.
+ */
+function eddyTrackLayer(): GeoJsonLayerDescriptor {
+  return {
+    id: 'eddy-tracks',
+    name: 'Eddy Tracks',
+    category: 'flow',
+    type: 'geojson',
+    attribution:
+      'Frame-to-frame eddy identity over the same hourly detection passes eddyLayer draws ' +
+      '(services/eddy_tracking.py): nearest-neighbour matching, gated and polarity-separated, ' +
+      'solved exactly within each locally ambiguous cluster. A track survives up to 2 ' +
+      'consecutive missed detections before it is retired, and carries up to 3 days of hourly ' +
+      'position history (older fixes age out of a rolling buffer). NOT VALIDATED AGAINST A ' +
+      'PUBLISHED EDDY ATLAS (AVISO+ META needs a registered account) — treat a track as this ' +
+      "detector's own consistent identity assignment, not a verified eddy census. State does " +
+      'not survive a server restart, so a freshly restarted backend starts every track over ' +
+      'at age zero.',
+    defaultOpacity: 0.85,
+    defaultVisible: false,
+    interactiveLayerIndices: [1],
+    paintLayers: (opacity: number) => [
+      {
+        type: 'line',
+        filter: ['==', ['get', 'kind'], 'path'],
+        paint: {
+          'line-color': EDDY_COLOR,
+          'line-width': 1.6,
+          'line-opacity': 0.65 * opacity,
+        },
+      },
+      {
+        type: 'circle',
+        filter: ['==', ['get', 'kind'], 'latest'],
+        paint: {
+          'circle-color': EDDY_COLOR,
+          'circle-radius': 4,
+          'circle-opacity': opacity,
+          'circle-stroke-width': 1,
+          'circle-stroke-color': 'rgba(2,12,27,0.85)',
+          'circle-stroke-opacity': opacity,
+        },
+      },
+    ],
+    legend: {
+      type: 'note',
+      text: 'Line: 3-day position history. Dot: latest fix. Not validated against a published eddy atlas.',
+    },
+  };
+}
+
+/**
  * Where the ocean has been sampled for environmental DNA.
  *
  * THE EMPTY MAP IS THE DATA. Every other layer in this registry is a field —
@@ -1674,6 +1735,7 @@ export const layerRegistry: LayerDescriptor[] = [
   // Filed with the flow layers rather than with the AI ones — see the
   // descriptor. It sits here in source order only because it is the newest.
   eddyLayer(),
+  eddyTrackLayer(),
   pfzZonesLayer(),
   // Filed with the reference layers: sampling effort is context about how the
   // ocean was observed, not a property of the water.

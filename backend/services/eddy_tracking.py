@@ -379,6 +379,7 @@ def get_tracks(
     polarity: str | None = None,
     min_age_hours: float | None = None,
     limit: int = DEFAULT_LIMIT,
+    include_path: bool = False,
 ) -> dict[str, Any]:
     """Every currently active track, filtered — mirrors `eddies.get_eddies`'s
     shape so a caller already reading that endpoint recognises this one.
@@ -420,7 +421,7 @@ def get_tracks(
             "(AVISO+ META needs a registered account) — see the module "
             "docstring. State does not survive a server restart."
         ),
-        "tracks": [track.as_dict(include_path=False) for track in selected],
+        "tracks": [track.as_dict(include_path=include_path) for track in selected],
     }
 
 

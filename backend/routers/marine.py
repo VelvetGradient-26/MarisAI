@@ -206,6 +206,10 @@ async def get_eddy_tracks(
     polarity: str | None = Query(None, description="cyclonic | anticyclonic"),
     min_age_hours: float | None = Query(None, ge=0),
     limit: int = Query(eddy_tracking.DEFAULT_LIMIT, ge=1, le=eddy_tracking.MAX_LIMIT),
+    include_path: bool = Query(
+        False,
+        description="Include each track's position history (for drawing a path), not just its latest fix.",
+    ),
 ):
     """Frame-to-frame identity over `/eddies`' own hourly detection passes.
 
@@ -239,7 +243,11 @@ async def get_eddy_tracks(
         parsed = (south, west, north, east)
 
     return eddy_tracking.get_tracks(
-        bbox=parsed, polarity=polarity, min_age_hours=min_age_hours, limit=limit
+        bbox=parsed,
+        polarity=polarity,
+        min_age_hours=min_age_hours,
+        limit=limit,
+        include_path=include_path,
     )
 
 

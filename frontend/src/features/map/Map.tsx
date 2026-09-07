@@ -7,6 +7,7 @@ import { useSelectedLocationFocus } from './hooks/useSelectedLocationFocus';
 import { useClickDive } from './hooks/useClickDive';
 import { useLiveVessels } from './hooks/useLiveVessels';
 import { useEddies } from './hooks/useEddies';
+import { useEddyTracks } from './hooks/useEddyTracks';
 import { useCyclones } from './hooks/useCyclones';
 import { usePfzZones } from './hooks/usePfzZones';
 import { useGeofenceStatus } from './hooks/useGeofenceStatus';
@@ -19,6 +20,7 @@ import {
   heatwaveResponseToGeoJson,
   upwellingResponseToGeoJson,
 } from './api/detectors';
+import type { HeatwaveCell, HeatwaveResponse } from './api/detectors';
 import {
   fetchOceanHeatContentMapCells,
   oceanHeatContentResponseToGeoJson,
@@ -30,6 +32,9 @@ import { VesselTooltip } from './VesselTooltip';
 import { VesselFeedStatus } from './VesselFeedStatus';
 import { EddyTooltip } from './EddyTooltip';
 import { EddyDetectionStatus } from './EddyDetectionStatus';
+import { EddyTrackTooltip } from './EddyTrackTooltip';
+import { EddyTrackStatus } from './EddyTrackStatus';
+import { HeatwaveTooltip } from './HeatwaveTooltip';
 import { CycloneTooltip } from './CycloneTooltip';
 import { CycloneStatus } from './CycloneStatus';
 import { PfzTooltip } from './PfzTooltip';
@@ -58,6 +63,7 @@ export function Map({ children }: MapProps) {
   useClickDive(manager, ready);
   const vessels = useLiveVessels(manager, ready);
   const eddies = useEddies(manager, ready);
+  const eddyTracks = useEddyTracks(manager, ready);
   const cyclones = useCyclones(manager, ready);
   const edna = useEdnaCoverage(manager, ready);
   // Click-triggered, unlike every other layer above: they read the shared
@@ -70,12 +76,13 @@ export function Map({ children }: MapProps) {
   // thousand cells, so a bbox would make every pan a request for data already
   // in memory. The cadences match how fast each backend cache can change —
   // OISST is daily, the wind blend hourly.
-  const heatwaves = useDetectorCells(manager, ready, {
+  const heatwaves = useDetectorCells<HeatwaveResponse, HeatwaveCell>(manager, ready, {
     layerId: 'marine-heatwaves',
     fetcher: fetchHeatwaveCells,
     toGeoJson: heatwaveResponseToGeoJson,
     refreshIntervalMs: 6 * 60 * 60 * 1000,
     fallbackMessage: 'Marine heatwave detection unavailable',
+    interactive: true,
   });
   const upwelling = useDetectorCells(manager, ready, {
     layerId: 'upwelling',
@@ -109,10 +116,13 @@ export function Map({ children }: MapProps) {
       {ready && vessels.hovered && <VesselTooltip hovered={vessels.hovered} />}
       {ready && <EddyDetectionStatus state={eddies} />}
       {ready && eddies.hovered && <EddyTooltip hovered={eddies.hovered} />}
+      {ready && <EddyTrackStatus state={eddyTracks} />}
+      {ready && eddyTracks.hovered && <EddyTrackTooltip hovered={eddyTracks.hovered} />}
       {ready && <CycloneStatus state={cyclones} />}
       {ready && cyclones.hovered && <CycloneTooltip hovered={cyclones.hovered} />}
       {ready && pfz.hovered && <PfzTooltip hovered={pfz.hovered} />}
       {ready && <MarineHeatwaveStatus state={heatwaves} />}
+      {ready && heatwaves.hovered && <HeatwaveTooltip hovered={heatwaves.hovered} />}
       {ready && <UpwellingStatus state={upwelling} />}
       {ready && <OceanHeatContentStatus state={oceanHeatContent} />}
       {ready && <EdnaCoverageStatus state={edna} />}
