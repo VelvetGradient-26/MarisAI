@@ -7,6 +7,7 @@
 
 import type {
   AlertsResponse,
+  CorrelationResponse,
   DataQualityResponse,
   HealthResponse,
   LiveResponse,
@@ -116,4 +117,18 @@ export function fetchTrendsMulti(
   target.searchParams.set('longitude', String(params.longitude));
   target.searchParams.set('range', params.range);
   return getJson<MultiTrendsResponse>(target, signal);
+}
+
+/** 2-4 variables only, and `range` must be daily-or-coarser (the backend
+ * rejects `24h`/`7d` outright — correlation needs a shared daily clock). */
+export function fetchCorrelation(
+  params: { variables: string[]; latitude: number; longitude: number; range: string },
+  signal?: AbortSignal
+): Promise<CorrelationResponse> {
+  const target = url('/api/dashboard/trends/correlation');
+  target.searchParams.set('variables', params.variables.join(','));
+  target.searchParams.set('latitude', String(params.latitude));
+  target.searchParams.set('longitude', String(params.longitude));
+  target.searchParams.set('range', params.range);
+  return getJson<CorrelationResponse>(target, signal);
 }

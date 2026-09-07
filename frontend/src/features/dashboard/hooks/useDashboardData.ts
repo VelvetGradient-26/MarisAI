@@ -17,6 +17,7 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchAlerts,
+  fetchCorrelation,
   fetchDataQuality,
   fetchHealth,
   fetchLive,
@@ -172,6 +173,26 @@ export function useTrendsMulti(params: {
     queryKey: ['dashboard', 'trends', variables.join(','), latitude, longitude, range],
     queryFn: ({ signal }) => fetchTrendsMulti({ variables, latitude, longitude, range }, signal),
     enabled: enabled && variables.length > 0,
+    staleTime: 10 * MINUTE,
+    retry: false,
+  });
+}
+
+/** `retry: false` for the same reason `useTrendsMulti` gives: a 400 here
+ * means a malformed request (wrong variable count, an hourly range) that
+ * retrying identically won't fix. */
+export function useCorrelation(params: {
+  variables: string[];
+  latitude: number;
+  longitude: number;
+  range: string;
+  enabled?: boolean;
+}) {
+  const { variables, latitude, longitude, range, enabled = true } = params;
+  return useQuery({
+    queryKey: ['dashboard', 'correlation', variables.join(','), latitude, longitude, range],
+    queryFn: ({ signal }) => fetchCorrelation({ variables, latitude, longitude, range }, signal),
+    enabled: enabled && variables.length >= 2 && variables.length <= 4,
     staleTime: 10 * MINUTE,
     retry: false,
   });

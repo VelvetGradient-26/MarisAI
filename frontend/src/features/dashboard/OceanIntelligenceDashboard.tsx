@@ -21,6 +21,7 @@ import { useTimezoneStore } from '../../store/timezoneStore';
 import { formatClockDate, formatClockTime } from '../../utils/formatTime';
 import { AiInsights } from './components/AiInsights';
 import { AlertsPanel } from './components/AlertsPanel';
+import { CorrelationPanel } from './components/CorrelationPanel';
 import { DashboardMap } from './components/DashboardMap';
 import { DataQualityPanel } from './components/DataQualityPanel';
 import { HealthPanel } from './components/HealthPanel';
@@ -343,6 +344,11 @@ export function OceanIntelligenceDashboard() {
           >
             <AnalyticsGrid latitude={location.latitude} longitude={location.longitude} />
           </Suspense>
+        </div>
+
+        {/* --- Section 5: correlation --- */}
+        <div className="mb-4">
+          <CorrelationPanel latitude={location.latitude} longitude={location.longitude} />
         </div>
 
         {/* --- Sections 7 & 8: provenance --- */}

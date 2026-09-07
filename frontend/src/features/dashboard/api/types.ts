@@ -318,6 +318,44 @@ export interface MultiTrendsResponse {
   series: Record<string, TrendSeries>;
 }
 
+/** `/api/dashboard/trends/correlation` — per-pair Pearson r, not a scatter
+ * of paired points. `services/correlation.py` discards the underlying daily
+ * values once `r` is computed, so there is no (x, y) series to plot here —
+ * a stat card per pair is the shape this data actually supports. */
+export type CorrelationPair =
+  | {
+      variable_a: string;
+      variable_b: string;
+      available: true;
+      correlation_r: number;
+      p_value: number;
+      strength: 'strong' | 'moderate' | 'weak' | 'negligible';
+      direction: 'positive' | 'negative' | 'none';
+      statistically_significant: boolean;
+      overlapping_days: number;
+      window: { start: string; end: string };
+    }
+  | { variable_a: string; variable_b: string; available: false; reason: string };
+
+export function isCorrelationPairAvailable(
+  pair: CorrelationPair
+): pair is Extract<CorrelationPair, { available: true }> {
+  return pair.available;
+}
+
+export interface CorrelationResponse {
+  latitude: number;
+  longitude: number;
+  range: string;
+  variables_requested: string[];
+  variables_unavailable: Record<string, string>;
+  pairs: CorrelationPair[];
+  /** A fixed, always-present disclaimer — rendered verbatim, never replaced
+   * with paraphrased copy (see `services/correlation.py`'s own docstring on
+   * why the correlation-is-not-causation wording matters here). */
+  note: string;
+}
+
 /** `/api/dashboard/data-quality` — what the platform holds and how good it is.
  *
  * The standing companion to `HealthResponse`: that one is "is the feed up
