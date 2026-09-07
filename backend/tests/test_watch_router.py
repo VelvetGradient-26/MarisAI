@@ -151,6 +151,33 @@ def test_list_endpoint_returns_the_service_payload(monkeypatch, client):
     assert response.json() == {"watches": [{"id": "x", "label": "Near Kochi", "confirmed": True}]}
 
 
+def test_delete_endpoint_returns_deleted_on_success(monkeypatch, client):
+    async def fake_remove(watch_id, client_id):
+        return True
+
+    monkeypatch.setattr(watch_router, "remove_for_client", fake_remove)
+
+    response = client.delete(
+        "/api/v1/watch/some-watch-id", params={"client_id": "test-client-00000001"}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"deleted": "some-watch-id"}
+
+
+def test_delete_endpoint_returns_404_when_not_found_or_not_owned(monkeypatch, client):
+    async def fake_remove(watch_id, client_id):
+        return False
+
+    monkeypatch.setattr(watch_router, "remove_for_client", fake_remove)
+
+    response = client.delete(
+        "/api/v1/watch/some-watch-id", params={"client_id": "test-client-00000001"}
+    )
+
+    assert response.status_code == 404
+
+
 def test_create_endpoint_is_rate_limited(monkeypatch, client):
     async def fake_create(client_id, email, label, lat, lon, radius_km):
         return {"status": "pending_confirmation"}

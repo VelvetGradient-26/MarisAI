@@ -175,6 +175,45 @@ async def unsubscribe(token: str) -> bool:
         return False
 
 
+async def remove_for_client(watch_id: str, client_id: str) -> bool:
+    """Delete one of *this browser's own* watches — the id-scoped counterpart
+    to `unsubscribe(token)`'s email-link deletion, for the "My Alerts" list's
+    remove button. Same shape as `services/chat/store.py`'s session delete:
+    scoped by `client_id` rather than a verified token, since this only ever
+    deletes the caller's own row and sends no email — a materially lower-
+    stakes operation than creating a watch, which is why creation alone
+    needed double opt-in.
+    """
+    if not enabled():
+        return False
+
+    import uuid
+
+    from sqlalchemy import delete
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.models.alerts import AlertSubscription
+
+    try:
+        candidate = uuid.UUID(watch_id)
+    except ValueError:
+        return False
+
+    try:
+        async with _session_factory()() as db:
+            result = await db.execute(
+                delete(AlertSubscription).where(
+                    AlertSubscription.id == candidate,
+                    AlertSubscription.client_id == client_id,
+                )
+            )
+            await db.commit()
+            return bool(result.rowcount)
+    except SQLAlchemyError:
+        logger.exception("could not remove an alert watch for a client")
+        return False
+
+
 async def list_for_client(client_id: str) -> list[dict[str, Any]]:
     if not enabled():
         return []

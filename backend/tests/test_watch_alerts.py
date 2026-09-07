@@ -311,6 +311,33 @@ async def test_a_confirm_token_does_not_unsubscribe_and_vice_versa(monkeypatch):
 
 @pytestmark_db
 @pytest.mark.asyncio
+async def test_remove_for_client_deletes_only_the_owning_clients_watch(monkeypatch):
+    async def no_email(*args, **kwargs):
+        pass
+
+    monkeypatch.setattr(watch_alerts, "_send_confirmation_email", no_email)
+    owner = _client_id()
+    other = _client_id()
+    await watch_alerts.create(owner, "watcher@example.org", "Mine", 9.0, 76.0, 200.0)
+    watch_id = (await watch_alerts.list_for_client(owner))[0]["id"]
+
+    # A different client_id must not be able to delete someone else's watch.
+    assert await watch_alerts.remove_for_client(watch_id, other) is False
+    assert len(await watch_alerts.list_for_client(owner)) == 1
+
+    # A malformed id must not crash — it just doesn't match anything.
+    assert await watch_alerts.remove_for_client("not-a-uuid", owner) is False
+
+    # The owner can delete their own watch.
+    assert await watch_alerts.remove_for_client(watch_id, owner) is True
+    assert await watch_alerts.list_for_client(owner) == []
+
+    # Deleting an already-deleted (or never-existing) watch reports False.
+    assert await watch_alerts.remove_for_client(watch_id, owner) is False
+
+
+@pytestmark_db
+@pytest.mark.asyncio
 async def test_evaluate_and_notify_dedups_an_unchanged_alert_signature(monkeypatch):
     """The core dedup rule: an email is sent on a signature *change*, never
     every tick for an ongoing, unchanged alert."""

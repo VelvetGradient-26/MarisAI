@@ -11,7 +11,14 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from services.rate_limit import RateLimiter, enforce
-from services.watch_alerts import WatchError, confirm, create, list_for_client, unsubscribe
+from services.watch_alerts import (
+    WatchError,
+    confirm,
+    create,
+    list_for_client,
+    remove_for_client,
+    unsubscribe,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["watch"])
 
@@ -82,3 +89,12 @@ async def unsubscribe_watch(token: str = Query(..., min_length=1)) -> dict[str, 
 @router.get("/watch")
 async def get_watches(client_id: str = Query(..., min_length=8, max_length=64)) -> dict[str, list]:
     return {"watches": await list_for_client(client_id)}
+
+
+@router.delete("/watch/{watch_id}")
+async def delete_watch(
+    watch_id: str, client_id: str = Query(..., min_length=8, max_length=64)
+) -> dict[str, str]:
+    if not await remove_for_client(watch_id, client_id):
+        raise HTTPException(status_code=404, detail="No such watch.")
+    return {"deleted": watch_id}

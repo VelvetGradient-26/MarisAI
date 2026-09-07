@@ -8,6 +8,7 @@ import { CoordinateDisplay } from './CoordinateDisplay';
 import { SelectedLocationPanel } from './SelectedLocationPanel';
 import { SevereWeatherPanel } from './SevereWeatherPanel';
 import { BoundaryWatchPanel } from './BoundaryWatchPanel';
+import { MyAlertsPanel } from './MyAlertsPanel';
 import { ForecastHorizonControl } from './ForecastHorizonControl';
 import { StoryMode } from './story/StoryMode';
 import './styles/map.css';
@@ -49,6 +50,7 @@ export function MapView() {
         <div className="map-rail__bottom-group">
           <SevereWeatherPanel />
           <BoundaryWatchPanel />
+          <MyAlertsPanel />
           <SelectedLocationPanel />
         </div>
       </div>

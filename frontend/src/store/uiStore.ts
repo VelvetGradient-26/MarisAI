@@ -9,6 +9,8 @@ interface UiStore {
   toggleHazardsPanel: () => void;
   boundaryWatchPanelOpen: boolean;
   toggleBoundaryWatchPanel: () => void;
+  myAlertsPanelOpen: boolean;
+  toggleMyAlertsPanel: () => void;
 }
 
 /** UI chrome state that has nothing to do with the map itself, kept in its
@@ -29,4 +31,8 @@ export const useUiStore = create<UiStore>((set) => ({
   // nothing to report, so it starts collapsed to a badge.
   boundaryWatchPanelOpen: false,
   toggleBoundaryWatchPanel: () => set((s) => ({ boundaryWatchPanelOpen: !s.boundaryWatchPanelOpen })),
+  // Same reasoning again: appears unprompted, most visits have nothing to
+  // report (no watches created yet), so it starts collapsed to a badge.
+  myAlertsPanelOpen: false,
+  toggleMyAlertsPanel: () => set((s) => ({ myAlertsPanelOpen: !s.myAlertsPanelOpen })),
 }));
