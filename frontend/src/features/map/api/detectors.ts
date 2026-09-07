@@ -11,6 +11,23 @@ import { fetchJson } from '../../../utils/apiBase';
  * cheaper and clickable.
  */
 
+/** The true onset/duration/intensity held across refreshes, distinct from
+ * this cell's own `run_days` (censored at the snapshot's own baseline
+ * window — see `services/heatwaves.py`'s field-level comment). `null` when
+ * the tracker itself has never seen heat at this cell (a real state: "no
+ * ocean data" vs "not currently in a heatwave" vs "in a heatwave" are three
+ * different answers). */
+export interface HeatwaveTracked {
+  in_heatwave: boolean;
+  run_days: number;
+  onset_date: string | null;
+  peak_category?: HeatwaveCell['category'];
+  cumulative_intensity_c_days?: number;
+  /** True when the onset date is the day tracking itself started, i.e. this
+   * run may genuinely be older than its recorded onset says. */
+  possibly_started_earlier?: boolean;
+}
+
 export interface HeatwaveCell {
   west: number;
   south: number;
@@ -20,6 +37,7 @@ export interface HeatwaveCell {
   category_index: number;
   exceedance_c: number;
   run_days: number;
+  tracked: HeatwaveTracked | null;
 }
 
 export interface HeatwaveResponse {
