@@ -26,12 +26,14 @@ import {
   fetchArgoProfile,
   fetchLiterature,
   fetchMarineRisk,
+  fetchSstAnomaly,
   fetchTideLevel,
 } from './api/pointTools';
 import type {
   ArgoProfileResponse,
   LiteratureResponse,
   MarineRiskResponse,
+  SstAnomalyResponse,
   TideLevelResponse,
 } from './api/pointTools';
 import type { NearestPort, RealtimeOceanConditions, RealtimeOceanUnits } from './types';
@@ -229,6 +231,7 @@ export function SelectedLocationPanel() {
   const argo = usePointFetch<ArgoProfileResponse>();
   const literature = usePointFetch<LiteratureResponse>();
   const [literatureQuery, setLiteratureQuery] = useState('');
+  const sstAnomaly = usePointFetch<SstAnomalyResponse>();
 
   return (
     <aside className={`selected-location-panel ${panelOpen ? 'open' : 'collapsed'}`}>
@@ -700,6 +703,51 @@ export function SelectedLocationPanel() {
                   </>
                 ) : (
                   <span className="selected-location-panel__state">{tide.data.reason}</span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {selectedLocation && (
+          <div className="selected-location-panel__watch">
+            <span className="selected-location-panel__predictions-label">SST Anomaly</span>
+            <span className="selected-location-panel__predictions-note">
+              Sea-surface temperature here against its own seasonal baseline — a
+              &quot;warmer/cooler than usual&quot; reading, not the current temperature itself.
+            </span>
+            <button
+              type="button"
+              className="selected-location-panel__brief-button"
+              disabled={sstAnomaly.status === 'loading'}
+              onClick={() =>
+                sstAnomaly.run((signal) =>
+                  fetchSstAnomaly(selectedLocation.lat, selectedLocation.lng, signal)
+                )
+              }
+            >
+              {sstAnomaly.status === 'loading' ? 'Checking…' : 'Check SST anomaly here'}
+            </button>
+            {sstAnomaly.status === 'error' && (
+              <span className="selected-location-panel__state--error">{sstAnomaly.error}</span>
+            )}
+            {sstAnomaly.status === 'success' && sstAnomaly.data && (
+              <div className="selected-location-panel__point-tool-result">
+                {sstAnomaly.data.available ? (
+                  <>
+                    <span className="selected-location-panel__wind-point-value">
+                      {sstAnomaly.data.anomaly_c > 0 ? '+' : ''}
+                      {sstAnomaly.data.anomaly_c.toFixed(2)} °C vs. seasonal mean
+                    </span>
+                    <span className="selected-location-panel__state">
+                      {sstAnomaly.data.baseline.start}–{sstAnomaly.data.baseline.end} baseline ·{' '}
+                      {sstAnomaly.data.timestamp.slice(0, 10)}
+                    </span>
+                  </>
+                ) : (
+                  <span className="selected-location-panel__state">
+                    {sstAnomaly.data.unavailable_reason}
+                  </span>
                 )}
               </div>
             )}

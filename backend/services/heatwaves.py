@@ -392,6 +392,22 @@ def sst_anomaly_field() -> SstAnomalyField | None:
     )
 
 
+def sst_anomaly_at_point(latitude: float, longitude: float) -> dict[str, Any]:
+    """SST anomaly against its seasonal baseline at one coordinate — the
+    point counterpart to `sst_anomaly_field()`. Raises where that function
+    would return `None`: every other caller of `sst_anomaly_field()` folds
+    an absent field into its own uncorroborated result, but a direct query
+    for the anomaly itself has nothing to degrade to.
+    """
+    field = sst_anomaly_field()
+    if field is None:
+        raise HeatwaveError(
+            "no marine heatwave field has been computed yet — the climatology "
+            "or the recent SST record is not loaded"
+        )
+    return sst_anomaly.at_point(field, latitude, longitude)
+
+
 def is_available() -> bool:
     """Whether a field is loaded. Drives the three-way ready/warming/unavailable
     the dashboard uses, rather than letting a cold start look like a failure."""

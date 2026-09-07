@@ -157,3 +157,38 @@ export async function fetchLiterature(
   }
   return response.json();
 }
+
+// --- SST anomaly ----------------------------------------------------------
+
+interface SstAnomalySource {
+  source: string;
+  timestamp: string;
+  baseline: { start: number; end: number };
+}
+
+export type SstAnomalyResponse =
+  | ({ available: false; unavailable_reason: string } & SstAnomalySource)
+  | ({
+      available: true;
+      anomaly_c: number;
+      cold_exceedance_c: number | null;
+      note: string;
+    } & SstAnomalySource);
+
+/** Nested under /heatwaves on the backend (same OISST-plus-climatology
+ * cache /heatwaves/point reads, not the live Copernicus product /sst/point
+ * serves) — see routers/marine.py's own comment on why. */
+export async function fetchSstAnomaly(
+  lat: number,
+  lon: number,
+  signal?: AbortSignal
+): Promise<SstAnomalyResponse> {
+  const u = url('/api/ocean/heatwaves/anomaly');
+  u.searchParams.set('lat', String(lat));
+  u.searchParams.set('lon', String(lon));
+  const response = await fetch(u, { signal });
+  if (!response.ok) {
+    throw new Error(await extractErrorMessage(response, `SST anomaly lookup failed (${response.status})`));
+  }
+  return response.json();
+}

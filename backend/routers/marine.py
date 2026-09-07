@@ -322,6 +322,27 @@ async def get_heatwave_point(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@router.get("/heatwaves/anomaly")
+async def get_sst_anomaly_point(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+):
+    """SST anomaly against its seasonal baseline at one coordinate.
+
+    Nested under /heatwaves, not /sst, deliberately: this reads the same
+    cached OISST-plus-climatology field `/heatwaves/point` does, not the
+    live Copernicus product `/sst/point` serves — a different source with
+    its own measured reasons for not substituting (see
+    services/sst_anomaly.py's module docstring). `anomaly_c` is signed SST
+    minus the seasonal mean, not the heatwave threshold exceedance
+    `/heatwaves/point` reports.
+    """
+    try:
+        return heatwaves.sst_anomaly_at_point(lat, lon)
+    except heatwaves.HeatwaveError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.get("/upwelling")
 async def get_upwelling():
     """Coastal upwelling favourability from Ekman transport.

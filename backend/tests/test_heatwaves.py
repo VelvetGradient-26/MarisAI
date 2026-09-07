@@ -356,3 +356,55 @@ class TestSstAnomaly:
             assert exported.baseline == (1991, 2020)
         finally:
             heatwaves._cache = None
+
+
+class TestSstAnomalyAtPoint:
+    """`sst_anomaly.at_point()`, reached through `heatwaves.sst_anomaly_at_point`
+    — the point counterpart to `TestAtPoint` above, over the anomaly field
+    instead of the heatwave field.
+    """
+
+    def test_anomaly_and_cold_exceedance_at_a_real_cell(self):
+        lats, lons = (0.0,), (0.0,)
+        values = np.full((10, 1, 1), 19.0)
+        values[-1] = 17.5
+        field = heatwaves.detect(_record(values, lats, lons), _climatology(lats, lons))
+        heatwaves._cached_field(field)
+        try:
+            point = heatwaves.sst_anomaly_at_point(0.0, 0.0)
+        finally:
+            heatwaves._cache = None
+        assert point["available"] is True
+        assert point["anomaly_c"] == pytest.approx(-2.5)
+        assert point["cold_exceedance_c"] < 0
+
+    def test_land_is_unavailable_not_a_zero_anomaly(self):
+        lats, lons = (0.0,), (0.0,)
+        values = np.full((10, 1, 1), np.nan)
+        field = heatwaves.detect(_record(values, lats, lons), _climatology(lats, lons))
+        heatwaves._cached_field(field)
+        try:
+            point = heatwaves.sst_anomaly_at_point(0.0, 0.0)
+        finally:
+            heatwaves._cache = None
+        assert point["available"] is False
+        assert "land" in point["unavailable_reason"]
+
+    def test_longitude_is_matched_on_the_circle(self):
+        lats = (0.0,)
+        lons = (0.0, 179.5)
+        values = np.full((10, 1, 2), 19.0)
+        values[-1, 0, 1] = 15.0  # a distinctly different cell at +179.5
+        field = heatwaves.detect(_record(values, lats, lons), _climatology(lats, lons))
+        heatwaves._cached_field(field)
+        try:
+            point = heatwaves.sst_anomaly_at_point(0.0, -179.9)
+        finally:
+            heatwaves._cache = None
+        assert point["longitude"] == 179.5
+        assert point["anomaly_c"] == pytest.approx(-5.0)
+
+    def test_refuses_without_a_cached_field(self):
+        heatwaves._cache = None
+        with pytest.raises(heatwaves.HeatwaveError, match="no marine heatwave field"):
+            heatwaves.sst_anomaly_at_point(0.0, 0.0)

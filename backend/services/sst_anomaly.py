@@ -159,3 +159,51 @@ class SstAnomalyField:
             "timestamp": self.timestamp.isoformat(),
             "baseline": {"start": self.baseline[0], "end": self.baseline[1]},
         }
+
+
+def at_point(field: SstAnomalyField, latitude: float, longitude: float) -> dict[str, Any]:
+    """The anomaly at one coordinate — nearest-cell, same circular-longitude
+    technique `services/heatwaves.py::at_point` already uses over this same
+    grid, kept here rather than duplicated there per this module's own
+    docstring: producers must not drift into two definitions of an anomaly,
+    and that now includes how a point is sampled from one, not just the
+    field's own values.
+    """
+    row = int(np.abs(field.latitude - latitude).argmin())
+    # Longitudes are compared on the circle: a point at 179.9 is next to
+    # -179.9, and a plain argmin over the difference puts it half a planet
+    # away.
+    delta = np.abs((field.longitude - longitude + 180.0) % 360.0 - 180.0)
+    column = int(delta.argmin())
+
+    anomaly = float(field.anomaly[row, column])
+    if not np.isfinite(anomaly):
+        return {
+            "latitude": float(field.latitude[row]),
+            "longitude": float(field.longitude[column]),
+            "available": False,
+            "unavailable_reason": (
+                "no sea-surface temperature at this cell — it is land, ice, or "
+                "outside the record's coverage"
+            ),
+            **field.describe(),
+        }
+
+    cold_exceedance = float(field.cold_exceedance[row, column])
+    return {
+        "latitude": float(field.latitude[row]),
+        "longitude": float(field.longitude[column]),
+        "available": True,
+        "anomaly_c": round(anomaly, 3),
+        "cold_exceedance_c": round(cold_exceedance, 3) if np.isfinite(cold_exceedance) else None,
+        **field.describe(),
+        "note": (
+            "Sea-surface temperature minus its own daily climatological mean "
+            "at this cell. Positive is warmer than the seasonal average, "
+            "negative is cooler. cold_exceedance_c is SST minus the seasonal "
+            "10th percentile at this cell — negative means the water is "
+            "below that percentile, the strong cold claim; positive just "
+            "means it is not unusually cold, whatever the plain anomaly "
+            "above says. Null when the baseline has no p10 at this cell."
+        ),
+    }
