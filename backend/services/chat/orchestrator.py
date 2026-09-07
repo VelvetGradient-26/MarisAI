@@ -30,7 +30,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from services.chat.specialists import SPECIALISTS
-from services.chat.tools import Ledger, build_tools
+from services.chat.tools import Ledger, build_tools, invoke_safely
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +131,7 @@ async def run_specialist(
             output = (
                 f"No such tool: {call['name']}"
                 if tool is None
-                else await tool.ainvoke(call["args"])
+                else await invoke_safely(tool, call["args"])
             )
             messages.append(ToolMessage(content=output, tool_call_id=call["id"]))
     else:

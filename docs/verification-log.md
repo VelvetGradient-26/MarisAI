@@ -226,3 +226,176 @@ platform-docs-vs-live-data split both route and synthesise correctly.
   falsely "shown" figure elsewhere. A single low-frequency false positive
   did not justify that trade-off.
 
+## Live verification pass (2026-09-07) — the ARGO/cyclone limitation, retested
+
+Same environment as the two passes above (`ollama` / `gpt-oss:120b-cloud`,
+`TAVILY_API_KEY` still absent). Two things differ from both prior passes:
+every prompt went through `POST /api/v1/chat` against the real running
+`uvicorn --reload` process (not a direct module import and not SSE), so
+`get_global_ocean_summary`/`find_fishing_zones` saw a genuinely warm
+background cache this time; and this pass followed a fix with an immediate,
+targeted re-run against the *same* prompts rather than moving on, which is
+what surfaced two of the four bugs below — they were invisible until the
+first fix started letting the model actually reach the tool.
+
+A first sweep of 20 prompts (covering every tool never live-tested before,
+plus this session's two new features — `get_forecast_trend`'s chart and
+`get_sst_anomaly`) found real bugs; a second, 6-prompt targeted sweep after
+the fixes confirmed which ones actually resolved.
+
+**Real bugs found and fixed:**
+
+- **The 2026-08-27 pass's "genuine tool-selection reliability limit" was
+  actually an enumeration gap, and enumeration fixed it.** ARGO, GDACS
+  tropical-cyclone alerts and IMD severe-weather alerts were the *only*
+  three weather_safety capabilities never named in the orchestrator's own
+  `delegate_to_weather_safety` bullet (`services/chat/agent.py`) — every
+  other capability that *is* named there (forecast, global summary, HAB,
+  habitat, PFZ, historical, correlation, current conditions, tide, risk
+  verdict, geofence, depth, route, drift, active alerts, literature/web
+  search) routed correctly on the first live attempt, 13 for 13. Live
+  proof of the mechanism before the fix: "Are there any active tropical
+  cyclones right now?" made the orchestrator refuse with **no delegation
+  at all** (`I don't have a way to pull a live, worldwide list...`); the
+  same question with the tool named explicitly
+  (`Use get_cyclone_alerts to check...`) delegated and succeeded
+  immediately. Fixed by adding ARGO/cyclone/severe-weather by name to the
+  bullet. Re-verified live, all three: `get_argo_profile`,
+  `get_cyclone_alerts` and `get_severe_weather_alerts` were each called on
+  the first attempt, with no tool named in the question.
+- **A tool-argument validation error crashed the entire HTTP request with
+  a raw 500** — found immediately once the fix above let a model actually
+  attempt `get_cyclone_alerts` for a point-free "worldwide" question: it
+  reached for `radius_km=20000` (a reasonable way to approximate "no
+  limit"), `CycloneArgs`' own `le=2000` bound raised `pydantic.
+  ValidationError`, and nothing caught it. `tools.py`'s `run()` wrapper
+  ("a tool never raises") only wraps a tool's own function body —
+  LangChain validates `call["args"]` against the tool's schema *before*
+  `run()` is ever called, so a bad argument from the model bypassed that
+  convention entirely and propagated out of `agent.py`/`orchestrator.py`'s
+  tool-call loop, killing the whole turn instead of becoming a ToolMessage
+  the model could react to. This is a structural gap, not specific to
+  cyclones — any tool, any out-of-schema argument, would have crashed the
+  same way. Fixed with a new `services/chat/tools.py::invoke_safely()`
+  wrapping `tool.ainvoke()` at both call sites (`agent.py`'s top-level
+  loop, `orchestrator.py`'s specialist loop), degrading any exception to
+  the same error-JSON shape `run()` already produces. Added
+  `test_a_bad_tool_argument_does_not_crash_the_turn` (`test_chat.py`) as a
+  permanent regression test — a bad first argument, a corrected retry, and
+  an assertion the invalid call never entered the ledger.
+- **`CycloneArgs.radius_km`'s `le=2000` bound didn't fit its own tool's
+  semantics.** `services/cyclones.py::check_point` always fetches *every*
+  currently-active cyclone worldwide regardless of the radius passed —
+  `radius_km` only sets the `within_watch_radius` threshold on the nearest
+  one, never which storms are considered. A genuinely point-free "are
+  there any active cyclones" question has no natural radius, and 2000 km
+  actively worked against the "worldwide" framing the tool's own
+  description already promises. Widened to `le=20000` (Earth's antipodal
+  distance) and reworded the field description to say plainly that
+  `active_cyclones_worldwide`/`nearest` already cover the globe regardless
+  of what point/radius is passed. Re-verified live: the same question that
+  previously crashed now succeeds on the first call with `radius_km=10000`
+  or `20000`, no retry needed.
+- **A true number was flagged as ungrounded, because it was never in the
+  tool's own result** — `get_forecast_trend`/`get_point_forecast`'s
+  uncertainty interval genuinely is a 95% confidence interval
+  (`forecasting/config.py`'s `ForecastConfig.confidence_level` defaults to
+  `0.95`), and a model correctly said "95% CI" — but `confidence_level`
+  was never included in either tool's returned dict, only
+  `interval_low`/`interval_high` were, so the grounding checker had no way
+  to credit a real, correctly-stated number. Not a fabrication; a
+  documentation gap in the tool's own result, the same shape as the
+  `get_sst_anomaly` baseline-years fix earlier this session. Fixed by
+  adding `confidence_pct` to both tools' results. Re-verified live:
+  `grounded: True`, `unsupported_numbers: []`.
+- **`get_sst_anomaly` didn't fire for "is this warm/cold for this time of
+  year" phrasing** — asked exactly that about a real point, `ocean_analytics`
+  called `get_historical_series` instead, found no matching data, and
+  falsely told the user MarisAI has no climatology for the spot ("I don't
+  have a built-in climatology... you'd need to consult an external climate
+  dataset") — even though `get_sst_anomaly` (built earlier this session
+  specifically for this question) already computes exactly that. The
+  specialist's trigger phrasing only covered "why is it unusually
+  warm/cold" and "is this warmer than normal," not "for this time of
+  year"/"for the season" framing. Widened the trigger phrase. Re-verified
+  live: `get_sst_anomaly` called directly, `grounded: True`.
+
+**Confirmed working, no fix needed — the grounding checker catching a real
+gap correctly, not a false positive:**
+
+- `get_active_alerts` takes no coordinate at all (`services/dashboard/
+  alerts.py::build()` is a global digest) and reports no pre-computed
+  distance from an arbitrary point. Asked about alerts "near 10N, 75E," the
+  model correctly used the real lat/lon inside a HAB alert entry to eyeball
+  a distance ("≈670 km") — its own uncontrolled arithmetic on real data,
+  not a value the tool ever returned, and correctly flagged as
+  unsupported. There is no clean tool-level fix (adding a distance field
+  would mean turning a coordinate-free global digest into a point-query
+  tool, a larger change out of scope here) — this is the checker working
+  as designed.
+- Post-fix, `argo_direct` ("What does the nearest ARGO float show...")
+  correctly reported no float within the search radius/lookback window — a
+  real, honest null result (a large improvement over the pre-fix flat
+  refusal) — and separately offered "a 500 km radius" as a suggested next
+  step, which the checker flagged since it's a suggested parameter value,
+  not a claimed reading. Cosmetic, not chased.
+- Every capability already named in the orchestrator's delegate bullets
+  routed correctly on the first attempt (see the enumeration finding
+  above) — recorded here as the positive control that made the
+  enumeration diagnosis possible, not a bug.
+- This session's two other Epic 4 features got their own live checks
+  alongside this sweep: the embedded chat-to-map mini-map preview
+  (`features/assistant/ChatMapPreview.tsx`) rendered correct geometry for
+  all four target tools (`plan_safe_route`, `plan_drift_trajectory`,
+  `check_geofence`, `find_fishing_zones`) in one real conversation, with
+  four independent MapLibre instances live at once and zero console
+  errors; `get_sst_anomaly`'s REST card on `/map`'s point-tools panel and
+  its chat tool both returned real OISST-derived anomalies matching
+  between the two paths.
+
+**Known, accepted limitations — not fixed this pass:**
+
+- **The single most concerning finding of this pass, deliberately left
+  unfixed**: asked to fetch and summarize a real Wikipedia URL,
+  `external_research` never called `fetch_webpage` at all and answered "I
+  wasn't able to retrieve the... page... (the request was blocked)" — a
+  specific, false claim about an attempt that never happened, not a plain
+  "I can't do that." `grounded` stayed `True` (a refusal states no
+  numbers) and `possible_false_refusal` stayed `False`, because
+  `_false_refusal` only compares the answer against the ledger's own
+  numbers when the ledger already holds this-turn results — there is
+  nothing to compare against when no tool was called at all. A fix was
+  drafted and then reverted: extending `_false_refusal` to also flag any
+  refusal-shaped answer with zero tool calls directly regresses
+  `test_a_genuine_refusal_with_no_data_is_not_flagged`, an existing,
+  deliberately-tested case where a genuinely off-topic question ("what is
+  the meaning of life?") is correctly allowed to refuse with no tool call
+  and no nudge banner. Refusal text plus an empty ledger cannot by itself
+  distinguish "should have delegated but didn't" from "correctly declined,
+  out of scope" — that would need a different signal than this pass found
+  time to build. Worth returning to.
+- **`historical_safety`**: asked "how have wave heights at 10N, 75E
+  changed over the past month," `ocean_analytics` called
+  `list_available_variables` three times — redundant on its own, and each
+  call's own result already listed `significant_wave_height` with
+  `forecast_available: true` (confirmed independently via
+  `forecasting.registry.catalog()`) — then gave up and falsely claimed no
+  historical wave-height data exists. The correct key was sitting in its
+  own tool output three times over and it never called
+  `get_historical_series` at all. Not a catalog-scope or prompt-clarity
+  gap (the right answer was right there); reads as the same class of
+  tool-selection execution failure the 2026-08-27 pass already documented
+  for ARGO/IMD-cyclone before this pass's enumeration fix — except
+  enumeration doesn't apply here, since `get_historical_series` was
+  already named and available. Not chased further.
+- **`argo_indirect`, post-fix**: "is there subsurface temperature/salinity
+  data available" resolved via a forecast-model depth reading rather than
+  a live ARGO check — both are real, sourced, honestly-labelled subsurface
+  readings, so this is a defensible interpretation rather than a
+  fabrication, but not necessarily what someone picturing a specific float
+  wanted. The phrasing is genuinely ambiguous between "does MarisAI have
+  subsurface data at all" (yes, more than one way) and "is there a real
+  float nearby" (a narrower, different question) — steering every
+  "subsurface" mention toward ARGO specifically risks the opposite
+  problem for someone who only wanted a general depth reading. Left alone.
+

@@ -62,7 +62,7 @@ from services.chat.orchestrator import (
     build_delegate_tools,
     invoke_with_retry,
 )
-from services.chat.tools import ALL_TOOL_NAMES, Ledger, build_tools
+from services.chat.tools import ALL_TOOL_NAMES, Ledger, build_tools, invoke_safely
 
 logger = logging.getLogger(__name__)
 
@@ -90,12 +90,19 @@ separately, a *worldwide aggregate* ocean-state summary with no single \
 coordinate (mean sea-surface temperature, heat-stress extent, coral \
 bleaching risk, and related indicators), harmful algal bloom risk, fish \
 habitat suitability, potential fishing zones, historical/past trends at a \
-coordinate, and whether two or more variables are correlated over time.
+coordinate, whether two or more variables are correlated over time, and \
+whether the water at a coordinate is unusually warm or cold for the season \
+(a baseline comparison, distinct from weather_safety's right-now reading).
 - delegate_to_weather_safety — the *right-now* reading at one coordinate: \
 current sea surface temperature, wind, waves, tide-gauge sea level, and \
-other present-day sea/weather conditions, plus active hazard alerts and \
-"is it safe to go out" questions (answered with a fixed, deterministic risk \
-verdict, not a freeform guess).
+other present-day sea/weather conditions; a real ARGO float's measured \
+subsurface temperature/salinity profile near a point; active tropical \
+cyclones (position, category) from the GDACS feed; IMD severe-weather \
+warnings for the Indian coast; and "is it safe to go out" questions \
+(answered with a fixed, deterministic risk verdict, not a freeform guess). \
+Delegate to it for these even when you are not sure MarisAI has the data — \
+it has a real, working tool for every one of them, so let it try rather \
+than declaring a gap yourself.
 
 A "what is the SST/wind/wave/tide right now at this point" question is \
 always weather_safety, never ocean_analytics — ocean_analytics's "global \
@@ -815,7 +822,7 @@ async def answer(
             if tool is None:
                 output = f"No such tool: {call['name']}"
             else:
-                output = await tool.ainvoke(call["args"])
+                output = await invoke_safely(tool, call["args"])
             messages.append(ToolMessage(content=output, tool_call_id=call["id"]))
     else:
         # Fell out of the loop still wanting tools. Answer from what was
@@ -1016,7 +1023,7 @@ async def answer_stream(
             if tool is None:
                 output = f"No such tool: {call['name']}"
             else:
-                output = await tool.ainvoke(call["args"])
+                output = await invoke_safely(tool, call["args"])
             messages.append(ToolMessage(content=output, tool_call_id=call["id"]))
             # The delegate call itself is orchestration plumbing, not a data
             # observation — what the client should see is the specialist's own

@@ -55,8 +55,9 @@ SPECIALISTS: dict[str, Specialist] = {
         description=(
             "Ocean science questions: forecasts, global ocean state, harmful "
             "algal bloom risk, fishing habitat suitability, potential fishing "
-            "zones, historical trends in an ocean variable, and whether two "
-            "or more variables are correlated over time."
+            "zones, historical trends in an ocean variable, whether two or "
+            "more variables are correlated over time, and whether the water "
+            "at a coordinate is unusually warm or cold for the season."
         ),
         system_prompt=(
             "You are the Ocean Analytics specialist inside MarisAI's ocean "
@@ -81,7 +82,20 @@ SPECIALISTS: dict[str, Specialist] = {
             "markdown image syntax (![...](...)) after calling this tool, not "
             "even a plausible-looking or placeholder one; there is no such "
             "image or endpoint, and inventing a URL is exactly the fabrication "
-            "rule below forbids. Just describe the numbers in words/a table."
+            "rule below forbids. Just describe the numbers in words/a table. "
+            "For 'why is it unusually warm/cold here', 'is this warmer than "
+            "normal', or 'is this unusual/normal for this time of year/the "
+            "season' — any question comparing the water to its own seasonal "
+            "baseline — call get_sst_anomaly; it already computes that "
+            "climatology, so never say you lack one or ask the user to find "
+            "one. It is a baseline comparison, not "
+            "the present-day reading get_current_conditions (a different "
+            "specialist's tool) answers. Lead with anomaly_c for warm/cold "
+            "framing; cold_exceedance_c is only evidence of anything when "
+            "negative (below the seasonal 10th percentile, a strong cold "
+            "claim) — a positive cold_exceedance_c just means 'not "
+            "classified as cold', not itself evidence of warmth, so never "
+            "cite it as support for a warm reading."
             f" {_SHARED_RULES}"
         ),
         tool_names=(
@@ -94,6 +108,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "find_fishing_zones",
             "get_historical_series",
             "analyze_variable_correlation",
+            "get_sst_anomaly",
         ),
     ),
     "weather_safety": Specialist(

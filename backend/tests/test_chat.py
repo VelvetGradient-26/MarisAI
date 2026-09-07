@@ -430,6 +430,54 @@ async def test_a_failing_tool_does_not_end_the_turn(patched, depth):
 
 
 @pytest.mark.asyncio
+async def test_a_bad_tool_argument_does_not_crash_the_turn(patched, depth):
+    """The gap `invoke_safely` closes, sibling to the test above: a schema
+    violation on the model's own tool-call *arguments* is raised by
+    LangChain's argument parsing before a tool's `run()` (tools.py's "a
+    tool never raises" wrapper) ever executes, so it used to propagate
+    straight out of the loop and turn the whole HTTP request into a 500
+    instead of a recoverable ToolMessage the specialist could react to.
+
+    Found live 2026-09-07: asked about active cyclones with no coordinate
+    given, a model reached for get_cyclone_alerts with radius_km=20000 —
+    outside CycloneArgs' then-500... then le=2000 bound (since widened) —
+    and the ValidationError crashed the turn rather than letting the model
+    retry with a corrected argument, which is what this test's second
+    scripted call stands in for.
+    """
+    depth({"elevation_m": -1234.5, "source": "GEBCO_2021 via Ifremer ERDDAP"})
+
+    top = ScriptedModel(
+        [
+            _delegate_call("geospatial_risk", "How deep is it at 10N 400E?"),
+            AIMessage(content="The seafloor there is about 1234.5 m deep."),
+        ]
+    )
+    specialist = ScriptedModel(
+        [
+            _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 400.0}),
+            _tool_call("get_seafloor_depth", {"latitude": 10.0, "longitude": 10.0}),
+            AIMessage(content="The seafloor there is about 1234.5 m deep."),
+        ]
+    )
+    patched(top, specialist)
+
+    result = await agent.answer("How deep is it at 10N 400E?")
+
+    assert "1234.5" in result["answer"], "the turn must recover, not crash, on the retry"
+    assert result["observations"] == [
+        {
+            "tool": "get_seafloor_depth",
+            "arguments": {"latitude": 10.0, "longitude": 10.0},
+            "result": {"elevation_m": -1234.5, "source": "GEBCO_2021 via Ifremer ERDDAP"},
+            "agent": "geospatial_risk",
+        }
+    ], "the invalid first call must not enter the ledger, only the corrected retry"
+    first_tool_message = specialist.seen[-2][-1]
+    assert "error" in str(first_tool_message.content).lower()
+
+
+@pytest.mark.asyncio
 async def test_tool_arguments_are_validated_before_a_provider_is_touched(monkeypatch):
     """The schema bounds are a guard, not documentation.
 
@@ -1197,7 +1245,7 @@ def test_every_tool_declares_a_description_and_schema():
     """The description is the only thing the model reads to choose a tool.
 
     An undescribed tool is invisible in practice, and the failure is silent —
-    the model simply never calls it. 24 = the original 9, the three PS2
+    the model simply never calls it. 25 = the original 9, the three PS2
     additions (find_fishing_zones, check_geofence, plan_safe_route), the
     two cyclone/severe-weather additions (get_cyclone_alerts,
     get_severe_weather_alerts), get_documentation (platform self-knowledge,
@@ -1207,11 +1255,13 @@ def test_every_tool_declares_a_description_and_schema():
     fetch_webpage, search_scientific_literature), the sihtodo.md item 6
     addition (get_tide_level), the ARGO float profile addition
     (get_argo_profile), the drift trajectory addition
-    (plan_drift_trajectory), and get_forecast_trend (multi-horizon forecast
-    plus recent history, for a chat-drawn chart — see predict_many).
+    (plan_drift_trajectory), get_forecast_trend (multi-horizon forecast
+    plus recent history, for a chat-drawn chart — see predict_many), and
+    get_sst_anomaly (SST vs. its seasonal baseline at a point — see
+    services/sst_anomaly.py::at_point).
     """
     tools = build_tools(Ledger())
-    assert len(tools) == 24
+    assert len(tools) == 25
     for tool in tools:
         assert tool.description and len(tool.description) > 30, tool.name
         assert tool.args_schema is not None, tool.name

@@ -176,8 +176,23 @@ class CycloneArgs(PointArgs):
     radius_km: float = Field(
         500.0,
         ge=50,
-        le=2000,
-        description="How far from the point counts as 'nearby' for a tropical cyclone, in km.",
+        # Earth's antipodal distance is ~20015 km — this only sets the
+        # 'nearby' threshold on the result's within_watch_radius flag, not
+        # which storms are considered: active_cyclones_worldwide/nearest
+        # always cover every currently-active cyclone regardless of this
+        # value (services/cyclones.py::check_point fetches globally every
+        # time). Found live 2026-09-07: a point-free "are there any active
+        # cyclones" question reasonably reached for a very large radius to
+        # approximate "worldwide", and the old le=2000 turned that into a
+        # crash rather than the no-op it should have been.
+        le=20000,
+        description=(
+            "How far from the point counts as 'nearby' for a tropical cyclone, in km — "
+            "only affects the within_watch_radius flag, not which storms are reported. "
+            "For a point-free 'are there any active cyclones' question, latitude/"
+            "longitude/radius_km barely matter: active_cyclones_worldwide and nearest "
+            "in the result already cover the whole globe regardless of what you pass."
+        ),
     )
 
 
@@ -348,6 +363,13 @@ async def _point_forecast(variable: str, latitude: float, longitude: float, hori
         "prediction": round(float(forecast.prediction), 3),
         "interval_low": round(float(forecast.interval.lower), 3),
         "interval_high": round(float(forecast.interval.upper), 3),
+        # Found live: a model correctly described this as a "95% CI" (true —
+        # forecasting/config.py's ForecastConfig.confidence_level defaults to
+        # 0.95) and the grounding checker flagged "95" anyway, since nothing
+        # in the result or schema ever said so — a real number the checker
+        # had no way to credit, not a fabrication. Relaying the field itself
+        # closes that gap the same way get_sst_anomaly's baseline years do.
+        "confidence_pct": round(forecast.interval.confidence_level * 100),
     }
 
 
@@ -395,6 +417,10 @@ async def _forecast_trend(
         "latitude": first.latitude,
         "longitude": first.longitude,
         "history": first.history,
+        # Same interval width for every horizon (forecasting/config.py's
+        # ForecastConfig.confidence_level) — reported once here rather than
+        # repeated per point, mirroring _point_forecast's own field.
+        "confidence_pct": round(first.interval.confidence_level * 100),
         "points": [
             {
                 "horizon_days": f.horizon,
@@ -424,6 +450,12 @@ async def _seafloor_depth(latitude: float, longitude: float) -> dict[str, Any]:
     from services.bathymetry import get_elevation
 
     return await get_elevation(latitude=latitude, longitude=longitude)
+
+
+async def _sst_anomaly(latitude: float, longitude: float) -> dict[str, Any]:
+    from services.heatwaves import sst_anomaly_at_point
+
+    return sst_anomaly_at_point(latitude, longitude)
 
 
 async def _global_summary() -> dict[str, Any]:
@@ -711,6 +743,17 @@ _SPECS: list[tuple[str, str, type[BaseModel], Any]] = [
         _history,
     ),
     (
+        "get_sst_anomaly",
+        "Sea-surface temperature at a coordinate minus its seasonal "
+        "climatological mean, plus how far below the seasonal 10th "
+        "percentile it is. The result names its own baseline years. Use "
+        "for 'why is it unusually warm/cold here' or 'is this warmer than "
+        "normal' — a baseline comparison, not a present-day reading (use "
+        "get_current_conditions for that).",
+        PointArgs,
+        _sst_anomaly,
+    ),
+    (
         "get_fishing_habitat",
         "Habitat suitability (potential fishing zone) for one of five species in "
         "a given month. Covers the North Indian Ocean only.",
@@ -913,3 +956,37 @@ def build_tools(
         )
 
     return tools
+
+
+async def invoke_safely(tool: StructuredTool, args: dict[str, Any]) -> str:
+    """`tool.ainvoke(args)`, degraded to an error string on failure instead
+    of propagating — the same "a tool never raises" convention `run()`
+    above enforces for a tool's own body, extended to the one step upstream
+    of it that convention cannot reach.
+
+    Found live 2026-09-07: asked about active cyclones with no coordinate
+    given, a model reached for get_cyclone_alerts with radius_km=20000 —
+    outside CycloneArgs' own <=2000 bound. LangChain validates `args`
+    against the tool's schema *before* calling `run()`, so the
+    `pydantic.ValidationError` raised there never reaches `run()`'s own
+    try/except — it came straight out of `agent.py`/`orchestrator.py`'s
+    tool-call loop and turned the whole chat turn into a raw 500 instead of
+    a recoverable tool error the model could see and retry with a
+    corrected argument.
+    """
+    try:
+        return await tool.ainvoke(args)
+    except Exception as exc:  # noqa: BLE001 - must degrade, never crash the turn
+        logger.warning(f"tool call {tool.name} could not be parsed or run: {exc}")
+        return json.dumps(
+            {
+                "error": str(exc)[:400],
+                "tool": tool.name,
+                "hint": (
+                    "The arguments for this call were invalid against the tool's own "
+                    "schema. Check the limits/allowed values described there and retry "
+                    "with corrected arguments, or say plainly that this could not be "
+                    "answered if none would work."
+                ),
+            }
+        )
