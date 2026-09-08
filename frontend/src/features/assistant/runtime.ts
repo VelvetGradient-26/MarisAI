@@ -139,6 +139,15 @@ export function useMarisChatRuntime() {
             }));
             yield { content: [{ type: 'text', text: meta.answer }] };
           } else if (event.type === 'error') {
+            // Must clear `pending` here, not just throw: `RunIndicator` finds
+            // this turn by scanning provenance for any `pending: true` entry,
+            // so a thrown error alone leaves the "thinking" spinner running
+            // forever — nothing else ever sets this turn's flag to false.
+            setProvenance((prior) => ({
+              ...prior,
+              [id]: { ...(prior[id] ?? EMPTY), pending: false, tools, delegations },
+            }));
+            setError(event.message);
             throw new Error(event.message);
           }
         }
