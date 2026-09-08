@@ -320,6 +320,64 @@ the fixes confirmed which ones actually resolved.
   year"/"for the season" framing. Widened the trigger phrase. Re-verified
   live: `get_sst_anomaly` called directly, `grounded: True`.
 
+**Follow-up, same day**: the two items left as known limitations above were
+picked back up and both turned out fixable — the second search surfaced a
+third, more serious bug neither original finding had exposed.
+
+- **The `fetch_webpage` false-excuse refusal**: `_false_refusal` now also
+  fires when the orchestrator delegated to a specialist at all this turn
+  (proof the question was judged in scope) and that specialist still
+  refused with an empty ledger — not just when real results already existed
+  and were ignored, the only shape it covered before. A genuinely
+  undelegated refusal ("what is the meaning of life?") is untouched, since
+  nothing there ever asserted the question was in scope; the existing test
+  for that case needed no change. Re-verified live: the model still
+  fabricates a specific excuse for the un-made attempt (this time "the
+  request returned a 403 access-denied error," a more specific invention
+  than "blocked" the first time) — a genuine model-reliability limit this
+  pass could not remove — but `possible_false_refusal` now correctly fires
+  alongside `grounded: False`, giving the user two converging warnings
+  instead of a silent, confident-looking wrong answer.
+- **`historical_safety`'s root cause was a second, undocumented variable
+  catalog**: `get_historical_series`/`analyze_variable_correlation` read
+  `services/dashboard/trends.py::TRENDS` (13 keys), a genuinely different
+  namespace from `list_available_variables`' forecast catalog (34 keys) —
+  confirmed by diffing the two directly: only 4 keys overlap at all, and
+  the two disagree on the very variable that broke ("wave_height" vs.
+  "significant_wave_height"). `SeriesArgs`/`CorrelationArgs`' own
+  descriptions told the model to consult `list_available_variables` for an
+  unfamiliar key — actively wrong advice for these two tools most of the
+  time. Fixed by enumerating the real 13 `TRENDS` keys directly in
+  `SeriesArgs.variable`'s description (mirroring the existing
+  `HabitatArgs.species` convention) and removing the wrong pointer from
+  both. Re-verified live: `get_historical_series` called directly, no more
+  `list_available_variables` dead end.
+- **A third, more serious bug the fix above exposed**: re-verifying the
+  wave-height question, the model still fabricated a full 31-row daily
+  table — `get_historical_series` only ever returns min/max/mean plus the
+  two real endpoints, never a daily series, and the model interpolated the
+  middle smoothly between them. None of the 29 invented values were
+  flagged. Root cause: `_renderings()`'s unconditional 0-decimal-place
+  rounding — for small numbers (here, five real readings spanning
+  1.34-2.58 m) collapses nearly the entire plausible range into just a
+  couple of integer buckets ("1"/"2"/"3"), so a fabricated *nearby* decimal
+  collides with a real *unrelated* one's rounded form. Confirmed by
+  direct reproduction (`2.51` fabricated, `2.58` real, both round to `3`
+  at 0dp). This is not specific to wave height — any small-magnitude
+  variable's summary statistics are equally exposed. Fixed two ways: (1)
+  gated the bare `.0f` rendering to values ≥10 in magnitude, matching the
+  existing large-value magnitude-rounding guard's own reasoning (`.1f`/
+  `.2f` keep enough precision that they were not the problem and stay
+  unconditional); (2) added a `note` to `get_historical_series`' own result
+  stating plainly it is a summary, not a daily series, and must not be
+  used to invent per-day values — closing the cause, not just catching the
+  symptom. Re-verified live, same question: the model now writes "…
+  (intermediate days) …" instead of inventing values, reports only the two
+  real endpoints and the real statistics, and the answer is fully
+  `grounded: True` with zero unsupported numbers — a better outcome than
+  either fix alone, and the grounding-checker fix remains as a real
+  backstop for any tool this pattern reaches next.
+
 **Confirmed working, no fix needed — the grounding checker catching a real
 gap correctly, not a false positive:**
 
@@ -355,39 +413,6 @@ gap correctly, not a false positive:**
 
 **Known, accepted limitations — not fixed this pass:**
 
-- **The single most concerning finding of this pass, deliberately left
-  unfixed**: asked to fetch and summarize a real Wikipedia URL,
-  `external_research` never called `fetch_webpage` at all and answered "I
-  wasn't able to retrieve the... page... (the request was blocked)" — a
-  specific, false claim about an attempt that never happened, not a plain
-  "I can't do that." `grounded` stayed `True` (a refusal states no
-  numbers) and `possible_false_refusal` stayed `False`, because
-  `_false_refusal` only compares the answer against the ledger's own
-  numbers when the ledger already holds this-turn results — there is
-  nothing to compare against when no tool was called at all. A fix was
-  drafted and then reverted: extending `_false_refusal` to also flag any
-  refusal-shaped answer with zero tool calls directly regresses
-  `test_a_genuine_refusal_with_no_data_is_not_flagged`, an existing,
-  deliberately-tested case where a genuinely off-topic question ("what is
-  the meaning of life?") is correctly allowed to refuse with no tool call
-  and no nudge banner. Refusal text plus an empty ledger cannot by itself
-  distinguish "should have delegated but didn't" from "correctly declined,
-  out of scope" — that would need a different signal than this pass found
-  time to build. Worth returning to.
-- **`historical_safety`**: asked "how have wave heights at 10N, 75E
-  changed over the past month," `ocean_analytics` called
-  `list_available_variables` three times — redundant on its own, and each
-  call's own result already listed `significant_wave_height` with
-  `forecast_available: true` (confirmed independently via
-  `forecasting.registry.catalog()`) — then gave up and falsely claimed no
-  historical wave-height data exists. The correct key was sitting in its
-  own tool output three times over and it never called
-  `get_historical_series` at all. Not a catalog-scope or prompt-clarity
-  gap (the right answer was right there); reads as the same class of
-  tool-selection execution failure the 2026-08-27 pass already documented
-  for ARGO/IMD-cyclone before this pass's enumeration fix — except
-  enumeration doesn't apply here, since `get_historical_series` was
-  already named and available. Not chased further.
 - **`argo_indirect`, post-fix**: "is there subsurface temperature/salinity
   data available" resolved via a forecast-model depth reading rather than
   a live ARGO check — both are real, sourced, honestly-labelled subsurface

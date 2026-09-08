@@ -134,7 +134,23 @@ class ForecastTrendArgs(PointArgs):
 
 
 class SeriesArgs(PointArgs):
-    variable: str = Field(..., description="Variable key, e.g. 'sst' or 'wave_height'.")
+    variable: str = Field(
+        ...,
+        description=(
+            "One of: sea_surface_temperature, wave_height, ocean_current_velocity, "
+            "sea_level_height_msl, wind_speed_10m, air_temperature, surface_pressure, "
+            "chlorophyll_a, sea_surface_salinity, ocean_heat_content_50m, "
+            "ocean_heat_content_100m, ocean_heat_content_200m, and plain "
+            "ocean_heat_content (its deepest layer). This is a separate, smaller "
+            "catalog from "
+            "list_available_variables' forecast catalog — most forecast keys (e.g. "
+            "significant_wave_height, water_temperature) are not valid here, so "
+            "list_available_variables cannot be used to find a key for this tool. "
+            "If genuinely unsure which of the keys above fits, call this tool with "
+            "your best guess anyway rather than declaring the data unavailable — a "
+            "wrong key's own error response names every real one."
+        ),
+    )
     range_key: str = Field(
         "7d",
         description=(
@@ -213,12 +229,15 @@ class CorrelationArgs(PointArgs):
         min_length=2,
         max_length=4,
         description=(
-            "2-4 variable keys to correlate at this point, e.g. "
-            "['sea_surface_temperature', 'chlorophyll_a']. Call "
-            "list_available_variables or get_historical_series first if unsure "
-            "of a key. Not every ocean variable is available here — only ones "
-            "with a point historical series (fishing effort and the upwelling "
-            "index have none in this codebase and cannot be requested)."
+            "2-4 variable keys to correlate at this point, from the exact same "
+            "catalog get_historical_series uses — see that tool's own variable "
+            "field for the full key list, e.g. ['sea_surface_temperature', "
+            "'chlorophyll_a']. Not list_available_variables' forecast catalog, "
+            "which mostly uses different key names for the same quantities and "
+            "cannot be used to find a key here. Not every ocean variable is "
+            "available here — only ones with a point historical series (fishing "
+            "effort and the upwelling index have none in this codebase and cannot "
+            "be requested)."
         ),
     )
     range_key: str = Field(
@@ -500,6 +519,18 @@ async def _history(variable: str, latitude: float, longitude: float, range_key: 
         "first": points[0] if points else None,
         "last": points[-1] if points else None,
         "source": payload.get("source"),
+        # Found live: a model presented a full daily table smoothly
+        # interpolated between "first" and "last", as if it were the real
+        # point_count-length series this result deliberately never sends.
+        # The grounding checker now catches every value that collides with
+        # nothing real, but the honest answer never needed inventing in the
+        # first place.
+        "note": (
+            f"This is a summary over {len(points)} real readings — min/max/mean plus "
+            "the two real endpoints ('first', 'last') only, never a daily series. "
+            "Describe the statistics and the two real readings; never invent a value "
+            "for a date between them."
+        ),
     }
 
 

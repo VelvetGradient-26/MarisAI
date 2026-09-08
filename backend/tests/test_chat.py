@@ -372,6 +372,33 @@ async def test_schema_bounds_do_not_launder_a_fabricated_reading(patched):
 
 
 @pytest.mark.asyncio
+async def test_variable_key_suffixes_do_not_launder_a_fabricated_depth(patched):
+    """The same lesson as the test above, for a different laundering path:
+    `SeriesArgs.variable`'s own description enumerates keys like
+    `ocean_heat_content_50m`/`_100m`/`_200m` and `wind_speed_10m` — real
+    catalog entries, not illustrative numbers, but the digits still sit in
+    schema prose the grounding check's allowed set is built from. The
+    identifier guard (`agent._QUANTITY`'s negative lookbehind on `\\w`) is
+    what keeps them out — a digit preceded by `_` reads as part of an
+    identifier, not a quantity — and this is what actually proves it: a
+    fabricated "the water is 200 meters deep" must still be flagged.
+
+    200 specifically, not 50: 50 already appears as a genuine free-standing
+    quantity elsewhere in the system prompt (weather_safety's own "~50
+    Indian tide-gauge stations"), so it was already in the allowed set for
+    an unrelated, legitimate reason and could not tell these two guards
+    apart — found by running this test rather than assuming the number was
+    clean.
+    """
+    patched(ScriptedModel([AIMessage(content="The heat content layer there is 200 meters deep.")]))
+
+    result = await agent.answer("how deep is the heat content layer?")
+
+    assert result["grounded"] is False
+    assert "200" in result["unsupported_numbers"]
+
+
+@pytest.mark.asyncio
 async def test_the_loop_is_bounded(patched):
     """A model that keeps delegating must not run forever.
 
@@ -670,6 +697,39 @@ def test_a_large_value_rounded_to_a_round_magnitude_is_not_flagged():
     assert _ungrounded_numbers("The water is about 30 C today.", ledger2) == ["30"]
 
 
+def test_nearby_small_values_do_not_launder_a_fabricated_series():
+    """Found live 2026-09-07, worse than the false refusals this same pass
+    fixed elsewhere: get_historical_series reports only min/max/mean/first/
+    last, never a daily series, but a model fabricated a full 31-row table
+    smoothly interpolating between the two real endpoints (2.58 m -> 1.34
+    m) and presented it as real data. None of the 29 invented values were
+    caught, because `_renderings`' old unconditional `.0f` rounded all five
+    real numbers (1.34/2.58/1.97 mean/2.58 first/1.34 last) down to just
+    "1"/"2"/"3" between them — nearly every integer bucket a nearby
+    fabricated decimal could also round to. Pins the fix: a wave height a
+    real reading was never near must still be flagged, even though its own
+    0-decimal-place rounding coincides with a real one's."""
+    from services.chat.agent import _ungrounded_numbers
+    from services.chat.tools import Ledger
+
+    ledger = Ledger()
+    ledger.record(
+        "get_historical_series",
+        {"variable": "wave_height", "latitude": 10.0, "longitude": 75.0, "range_key": "30d"},
+        {
+            "statistics": {"min": 1.34, "max": 2.58, "mean": 1.9723},
+            "first": {"t": "2026-08-08", "v": 2.58},
+            "last": {"t": "2026-09-07", "v": 1.34},
+        },
+    )
+
+    # 2.51 rounds to "3" at 0dp, same as the real 2.58 — exactly the
+    # collision that let the live fabrication through.
+    unsupported = _ungrounded_numbers("The wave height that day was 2.51 m.", ledger)
+
+    assert "2.51" in unsupported
+
+
 def test_an_isos_timestamp_hour_is_not_flagged():
     """Found live: relaying a tool's own `"t": "2026-08-31T23:00"` as "23:00
     UTC" flagged "23" as unsupported. The identifier guard in `_QUANTITY`
@@ -826,13 +886,57 @@ async def test_a_curly_apostrophe_refusal_is_still_caught(patched, depth):
 @pytest.mark.asyncio
 async def test_a_genuine_refusal_with_no_data_is_not_flagged(patched):
     """An empty ledger means there was nothing to ignore — this is an honest
-    "I don't have that", not the failure the check exists to catch."""
+    "I don't have that", not the failure the check exists to catch. Never
+    delegated (no specialist judged the question in scope), which is what
+    keeps this apart from the delegated case below."""
     top = ScriptedModel([AIMessage(content="I'm sorry, I couldn't find that information.")])
     patched(top)
 
     result = await agent.answer("What is the meaning of life?")
 
     assert result["possible_false_refusal"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_after_delegating_with_no_tool_call_is_flagged(patched):
+    """The shape the ledger-based check above cannot see at all: an empty
+    ledger, but a real delegation happened first. Found live 2026-09-07,
+    asked to fetch and summarize a real webpage, external_research never
+    called fetch_webpage — its only tool for the job — and answered "I
+    wasn't able to retrieve the page... (the request was blocked)": a
+    specific false excuse for an attempt that never happened, not merely a
+    declined one. There is no ledger to compare numbers against in that
+    shape, so this is judged on delegation (the orchestrator already
+    treated the question as in scope for a specialist) plus refusal
+    phrasing alone — contrast the undelegated "meaning of life" case above,
+    which stays unflagged."""
+    top = ScriptedModel(
+        [
+            _delegate_call("external_research", "Fetch and summarize https://example.com"),
+            AIMessage(
+                content=(
+                    "I wasn't able to retrieve that page — the request was blocked, "
+                    "so I can't summarize it."
+                )
+            ),
+        ]
+    )
+    specialist = ScriptedModel(
+        [
+            AIMessage(
+                content=(
+                    "I wasn't able to retrieve that page — the request was blocked, "
+                    "so I can't summarize it."
+                )
+            )
+        ]
+    )
+    patched(top, specialist)
+
+    result = await agent.answer("Fetch and summarize https://example.com")
+
+    assert result["observations"] == [], "nothing was ever called, so nothing should be recorded"
+    assert result["possible_false_refusal"] is True
 
 
 @pytest.mark.asyncio

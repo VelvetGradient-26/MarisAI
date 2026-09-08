@@ -388,11 +388,30 @@ def _renderings(value: float) -> set[str]:
     laundered into a wildly different round number — only large figures
     (depths, distances, radii) where "about 2,300" is obviously the same
     fact as 2323, just said less precisely, gain a rounded form.
+
+    **The bare `.0f` rendering needs the identical guard, and used not to
+    have one.** Found live 2026-09-07: asked for a month of wave heights,
+    `get_historical_series` reported only the real min/max/mean/first/last
+    (1.34/2.58/1.97/2.58/1.34 m) — never a daily series — and a model
+    fabricated a full 31-row table interpolating smoothly between the two
+    real endpoints. Every real value in that small range rounds to "1",
+    "2" or "3" at zero decimal places, so between five real numbers they
+    covered nearly every integer a fabricated *nearby* decimal could also
+    round to — 29 invented readings passed ungrounded-unflagged this way,
+    entirely separately from the day-of-month digits sitting beside them in
+    the same table (a real but different false-negative). The `.0f` form is
+    only a faithful, low-information-loss rendering of the same fact when
+    the value is large enough that dropping to an integer barely moves it
+    — "about 1234" for 1234.5 is that; "3" for 2.58 is a materially
+    different, smaller-sounding claim, the same reasoning the magnitude
+    guard below already applies to whole orders of magnitude. `.1f`/`.2f`
+    keep enough precision that this collision is far less likely and are
+    left unconditional.
     """
-    out = {
-        f"{value:.0f}", f"{value:.1f}", f"{value:.2f}",
-        f"{abs(value):.0f}", f"{abs(value):.1f}", f"{abs(value):.2f}",
-    }
+    out = {f"{value:.1f}", f"{value:.2f}", f"{abs(value):.1f}", f"{abs(value):.2f}"}
+    if abs(value) >= 10:
+        out.add(f"{value:.0f}")
+        out.add(f"{abs(value):.0f}")
     for magnitude in (100, 1000, 10000):
         if abs(value) >= magnitude * 5:
             rounded = round(value / magnitude) * magnitude
@@ -515,9 +534,12 @@ def _allowed_set(source_text: str) -> set[str]:
     return allowed
 
 
-def _false_refusal(text: str, ledger: Ledger) -> bool:
-    """True when the answer reads as "I couldn't get that" despite the ledger
-    already holding real tool results from this same turn.
+def _false_refusal(text: str, ledger: Ledger, delegated: bool = False) -> bool:
+    """True when the answer reads as "I couldn't get that" and either the
+    ledger already holds real tool results from this same turn that the
+    answer never quotes, or — found live 2026-09-07 — the orchestrator
+    delegated to a specialist at all this turn and that specialist still
+    refused without ever calling a tool.
 
     `_ungrounded_numbers` checks the opposite direction: a number in the
     answer that no tool reported. Nothing checked this one, and a live run
@@ -543,10 +565,30 @@ def _false_refusal(text: str, ledger: Ledger) -> bool:
       coordinates ("I asked to route from 10.02°N, 76.96°E...") — present in
       every call's recorded `arguments`, not evidence a single result value
       was ever used. Matching is therefore against `result` fields only.
+
+    **The `delegated` branch, added later, covers a different shape the
+    checks above cannot see at all: an empty ledger.** Asked to fetch and
+    summarize a real webpage, `external_research` never called
+    `fetch_webpage` — its only tool for the job — and answered "I wasn't
+    able to retrieve the page... (the request was blocked)": a specific,
+    false excuse for an attempt that never happened, not merely a declined
+    one. There is no ledger to compare numbers against in that shape, so it
+    is judged on delegation plus refusal phrasing alone: `delegated` is only
+    true when the orchestrator handed the question to some specialist this
+    turn, which is itself a judgment that the question was in scope. A
+    genuinely off-topic refusal ("what is the meaning of life?") never
+    delegates at all and stays unflagged — `delegated=False` there falls
+    straight through to the pre-existing `False`, unchanged from before this
+    branch existed.
     """
-    if not ledger.observations:
-        return False
     if not _REFUSAL_PATTERN.search(text):
+        return False
+    if not ledger.observations:
+        return delegated
+
+    results_text = json.dumps([entry.get("result") for entry in ledger.observations], default=str)
+    ledger_numbers = _allowed_set(results_text)
+    if not ledger_numbers:
         return False
 
     results_text = json.dumps([entry.get("result") for entry in ledger.observations], default=str)
@@ -861,11 +903,11 @@ async def answer(
     if unsupported:
         logger.warning(f"chat answer carried ungrounded numbers: {unsupported}")
 
-    possible_false_refusal = _false_refusal(text, ledger)
+    possible_false_refusal = _false_refusal(text, ledger, delegated=bool(delegations))
     if possible_false_refusal:
         logger.warning(
             f"chat answer read as a refusal despite {len(ledger.observations)} "
-            "successful tool call(s) this turn"
+            f"successful tool call(s) and {len(delegations)} delegation(s) this turn"
         )
 
     glossary_gaps = _untranslated_glossary_terms(text, ledger)
@@ -1073,11 +1115,11 @@ async def answer_stream(
     if unsupported:
         logger.warning(f"chat answer carried ungrounded numbers: {unsupported}")
 
-    possible_false_refusal = _false_refusal(text, ledger)
+    possible_false_refusal = _false_refusal(text, ledger, delegated=bool(delegations))
     if possible_false_refusal:
         logger.warning(
             f"chat answer read as a refusal despite {len(ledger.observations)} "
-            "successful tool call(s) this turn"
+            f"successful tool call(s) and {len(delegations)} delegation(s) this turn"
         )
 
     glossary_gaps = _untranslated_glossary_terms(text, ledger)

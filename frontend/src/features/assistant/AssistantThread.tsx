@@ -649,8 +649,8 @@ function Provenance({ provenance }: { provenance: TurnProvenance | undefined }) 
           >
             <TriangleAlert size={14} aria-hidden />
             <span>
-              This reads like a refusal, but the assistant did retrieve data this turn — it
-              may be worth asking again.
+              This reads like a refusal on a question the assistant judged in scope — it may
+              be worth asking again, or naming the specific data you want.
             </span>
           </motion.p>
         ) : meta.glossary_gaps.length > 0 ? (
