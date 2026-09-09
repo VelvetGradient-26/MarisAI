@@ -3,7 +3,7 @@ import * as maplibregl from 'maplibre-gl';
 import type { GeoJSONSource, Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl';
 import type { Feature, Polygon } from 'geojson';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { darkMarine } from './basemaps/darkMarine';
+import { esriSatellite } from './basemaps/esri';
 
 export interface DrawnBbox {
   west: number;
@@ -41,7 +41,7 @@ export function DrawableAreaMap({ bbox, onDraw }: DrawableAreaMapProps) {
       container: containerRef.current,
       style: {
         version: 8,
-        sources: { basemap: darkMarine.source },
+        sources: { basemap: esriSatellite.source },
         layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
       },
       center: [75, 12],

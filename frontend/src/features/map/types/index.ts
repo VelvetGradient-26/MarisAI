@@ -6,12 +6,7 @@ import type {
   SourceSpecification,
 } from 'maplibre-gl';
 
-export type BasemapId =
-  | 'satellite'
-  | 'blueMarble'
-  | 'darkMarine'
-  | 'abyss'
-  | 'bathymetry';
+export type BasemapId = 'satellite' | 'blueMarble' | 'abyss' | 'bathymetry';
 
 /**
  * The two shapes the world can be drawn in. Both are MapLibre's own

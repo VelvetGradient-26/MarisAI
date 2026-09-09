@@ -78,7 +78,7 @@ export function MapReading() {
           ],
           [
             <strong>Raster</strong>,
-            'Satellite, Blue Marble, Dark Marine',
+            'Satellite, Blue Marble',
             'Bitmap tiles. Zooming scales the current image until the next level loads, so there is a blur-then-pop no amount of tuning removes. Blue Marble stops at zoom 8 and is upscaled blur past that — it is a whole-planet image, not a street map.',
           ],
         ]}
