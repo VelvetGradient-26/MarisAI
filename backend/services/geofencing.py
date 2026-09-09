@@ -226,6 +226,7 @@ def check(latitude: float, longitude: float) -> dict[str, Any]:
     # leaves on its own edge.
     inside_mainland = INDIA_EEZ_MAINLAND.covers(point)
     inside_andaman = INDIA_EEZ_ANDAMAN_NICOBAR.covers(point)
+    eez_nearest_point = None
     if inside_mainland:
         eez_zone, eez_distance_km, eez_nearest_zone = "mainland", 0.0, "mainland"
     elif inside_andaman:
@@ -244,9 +245,9 @@ def check(latitude: float, longitude: float) -> dict[str, Any]:
         mainland_km = _haversine_km(latitude, longitude, mainland_pt.y, mainland_pt.x)
         andaman_km = _haversine_km(latitude, longitude, andaman_pt.y, andaman_pt.x)
         if mainland_km <= andaman_km:
-            eez_distance_km, eez_nearest_zone = mainland_km, "mainland"
+            eez_distance_km, eez_nearest_zone, eez_nearest_point = mainland_km, "mainland", mainland_pt
         else:
-            eez_distance_km, eez_nearest_zone = andaman_km, "andaman_and_nicobar"
+            eez_distance_km, eez_nearest_zone, eez_nearest_point = andaman_km, "andaman_and_nicobar", andaman_pt
 
     nearest_on_imbl = IMBL_INDIA_SRI_LANKA.interpolate(IMBL_INDIA_SRI_LANKA.project(point))
     imbl_distance_km = _haversine_km(latitude, longitude, nearest_on_imbl.y, nearest_on_imbl.x)
@@ -290,6 +291,17 @@ def check(latitude: float, longitude: float) -> dict[str, Any]:
             # they are geographically far apart (mainland/Lakshadweep vs.
             # Andaman & Nicobar) and only one is ever the relevant one.
             "nearest_zone": eez_nearest_zone,
+            # Only set when outside both zones — mirrors india_sri_lanka_imbl's
+            # own nearest_point below, added for the same reason: so a caller
+            # can draw the segment from the query point to the boundary
+            # rather than only stating a number. `None` when inside, since
+            # there is no "nearest point on the boundary you're inside of"
+            # that means anything to draw.
+            "nearest_point": (
+                {"latitude": round(eez_nearest_point.y, 4), "longitude": round(eez_nearest_point.x, 4)}
+                if eez_nearest_point is not None
+                else None
+            ),
             "coverage": (
                 "Mainland India (including Lakshadweep's surrounding waters, "
                 "which fall inside the mainland zone) and the Andaman & Nicobar "

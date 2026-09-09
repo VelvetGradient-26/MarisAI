@@ -378,7 +378,13 @@ async def _point_forecast(variable: str, latitude: float, longitude: float, hori
         "latitude": forecast.latitude,
         "longitude": forecast.longitude,
         "horizon_days": forecast.horizon,
-        "valid_at": forecast.target_time,
+        # .isoformat() is load-bearing, not cosmetic: run()'s own json.dumps
+        # has default=str and would survive a bare datetime, but the SSE
+        # frame builder (routers/chat.py's _sse()) json.dumps's the raw tool
+        # result with no such fallback — a bare datetime here crashed the
+        # stream with "Object of type datetime is not JSON serializable"
+        # for any real get_point_forecast call, live-verified 2026-09-09.
+        "valid_at": forecast.target_time.isoformat(),
         "prediction": round(float(forecast.prediction), 3),
         "interval_low": round(float(forecast.interval.lower), 3),
         "interval_high": round(float(forecast.interval.upper), 3),
@@ -443,12 +449,12 @@ async def _forecast_trend(
         "points": [
             {
                 "horizon_days": f.horizon,
-                # .isoformat() explicitly (unlike _point_forecast's bare
-                # valid_at, left to json.dumps's default=str) — the frontend
-                # chart parses this with Date.parse, and history[].t is
-                # already pd.Timestamp(...).isoformat() a few lines up in
-                # this same file, so this keeps both timestamps in the one
-                # format that's actually proven to parse correctly.
+                # .isoformat() explicitly — the SSE stream needs it (see
+                # _point_forecast's valid_at for why) and the frontend chart
+                # also parses this with Date.parse, matching history[].t's
+                # own pd.Timestamp(...).isoformat() a few lines up in this
+                # same file, so both timestamps use the one format that's
+                # actually proven to parse correctly.
                 "target_time": f.target_time.isoformat(),
                 "prediction": round(float(f.prediction), 3),
                 "interval_low": round(float(f.interval.lower), 3),

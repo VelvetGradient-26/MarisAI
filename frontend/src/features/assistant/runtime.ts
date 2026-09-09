@@ -73,10 +73,24 @@ export function useMarisChatRuntime() {
   // assigned by the *first* reply, and a stale capture would start every later
   // turn a new conversation.
   const sessionRef = useRef<string | null>(null);
+  // Bumped at the start of every `run()`, so a turn's own async work (its SSE
+  // read loop, its retry/backoff on a dropped connection — agent.py's own
+  // comments document these as common against the cloud provider) can be told
+  // apart from whatever the *latest* turn is. Nothing else serializes calls
+  // into `setError`/`setProvenance`: if an old turn's stream is still
+  // draining (or its terminal `error` frame is simply slow to arrive) after a
+  // newer turn has already started and cleared this state, the old turn's
+  // late `setError`/`setProvenance` call would otherwise land last and win,
+  // showing a stale failure banner (or stale provenance) against a turn it
+  // has nothing to do with. Guarding every write with "am I still the
+  // current run?" makes a superseded turn's leftover events inert instead.
+  const runIdRef = useRef(0);
 
   const adapter = useMemo<ChatModelAdapter>(
     () => ({
       async *run({ messages, abortSignal, unstable_assistantMessageId }) {
+        const runId = ++runIdRef.current;
+        const isCurrent = () => runIdRef.current === runId;
         const id = unstable_assistantMessageId ?? 'pending';
         const lastMessage = messages[messages.length - 1];
         const question = textOf(lastMessage);
@@ -115,17 +129,21 @@ export function useMarisChatRuntime() {
             yield { content: [{ type: 'text', text }] };
           } else if (event.type === 'delegate') {
             delegations = [...delegations, { agent: event.agent, question: event.question }];
-            setProvenance((prior) => ({
-              ...prior,
-              [id]: { ...(prior[id] ?? EMPTY), delegations },
-            }));
+            if (isCurrent()) {
+              setProvenance((prior) => ({
+                ...prior,
+                [id]: { ...(prior[id] ?? EMPTY), delegations },
+              }));
+            }
             yield { content: [{ type: 'text', text }] };
           } else if (event.type === 'tool') {
             tools = [...tools, { tool: event.tool, arguments: event.arguments, agent: event.agent }];
-            setProvenance((prior) => ({
-              ...prior,
-              [id]: { ...(prior[id] ?? EMPTY), tools },
-            }));
+            if (isCurrent()) {
+              setProvenance((prior) => ({
+                ...prior,
+                [id]: { ...(prior[id] ?? EMPTY), tools },
+              }));
+            }
             // Yielding the unchanged text keeps the run alive while the tool
             // panel updates, so the user sees data calls land during the long
             // silence before the first token.
@@ -133,21 +151,30 @@ export function useMarisChatRuntime() {
           } else if (event.type === 'meta') {
             const { type: _type, ...meta } = event;
             if (meta.session_id) sessionRef.current = meta.session_id;
-            setProvenance((prior) => ({
-              ...prior,
-              [id]: { pending: false, tools, delegations, meta },
-            }));
+            if (isCurrent()) {
+              setProvenance((prior) => ({
+                ...prior,
+                [id]: { pending: false, tools, delegations, meta },
+              }));
+            }
             yield { content: [{ type: 'text', text: meta.answer }] };
           } else if (event.type === 'error') {
             // Must clear `pending` here, not just throw: `RunIndicator` finds
             // this turn by scanning provenance for any `pending: true` entry,
             // so a thrown error alone leaves the "thinking" spinner running
             // forever — nothing else ever sets this turn's flag to false.
-            setProvenance((prior) => ({
-              ...prior,
-              [id]: { ...(prior[id] ?? EMPTY), pending: false, tools, delegations },
-            }));
-            setError(event.message);
+            // Both writes are guarded by `isCurrent()` — a superseded run
+            // (a prior turn's connection still retrying/draining in the
+            // background after a newer turn already started) must not be
+            // able to paint a failure banner or a stuck spinner against
+            // whatever turn is actually on screen now.
+            if (isCurrent()) {
+              setProvenance((prior) => ({
+                ...prior,
+                [id]: { ...(prior[id] ?? EMPTY), pending: false, tools, delegations },
+              }));
+              setError(event.message);
+            }
             throw new Error(event.message);
           }
         }

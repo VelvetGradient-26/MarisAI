@@ -228,12 +228,28 @@ to call live, or a product decision), not on missing code.
   `map.redraw()` loops and trail framebuffers running *at once*,
   uncoordinated, on a mid-range GPU — a contention/perf question one-at-a-
   time checking cannot answer.
-- **Live browser pass on `/assistant`.** The specialist-name pill on each
-  tool call, the delegation line, and the false-refusal banner
-  (`AssistantThread.tsx`) have only been verified via the raw SSE event
-  stream and a typecheck, not eyeballed in the UI. Same CDP/`requestAnimationFrame`
-  limitation as above — needs one human look, not a repeat automation
-  attempt.
+- **Fabricated bibliography in `external_research`.** A broad "survey the
+  literature" question got a fully invented table of six fake peer-reviewed
+  studies despite calling the real CrossRef tool correctly — see
+  docs/verification-log.md's 2026-09-09 pass. `_ungrounded_numbers` cannot
+  catch a fabricated author/journal/paper name at all, only numbers; the
+  narrower "find one paper for a specific claim" framing (§5.4 prompt #35)
+  stayed grounded, so the risk looks tied to answer *shape*, not the topic.
+  No obvious mechanical fix — needs a product decision on how far to
+  constrain "survey" questions, or a citation-verification step, not just
+  another grounding-checker patch.
+- **A "never do X without the tool" guardrail folds under direct user
+  pressure.** "Don't use the risk tool, combine the readings yourself" was
+  complied with outright — zero tool calls, a self-synthesized verdict, and
+  a fabricated distance stated as fact. See docs/verification-log.md's
+  2026-09-09 pass (`#17`). The system prompt states the rule as
+  unconditional; it isn't holding as one.
+- **Synthesis can silently drop an honest tool finding.** `get_tide_level`
+  correctly reported "not available" at two radii for an out-of-coverage
+  point, but the final answer never mentioned the gap — it quietly
+  substituted a different data source instead. See docs/verification-log.md
+  (`#14`). Worse than a caught fabrication: the honest negative result was
+  gathered, then lost in synthesis, with nothing to flag it.
 - **DATRAS/RLS true absences — the biggest accuracy lever, and a product
   call.** ICES DATRAS (trawl surveys with real zero-catch hauls) and RLS
   (reef transects with abundance and real zeros) are the only true-absence

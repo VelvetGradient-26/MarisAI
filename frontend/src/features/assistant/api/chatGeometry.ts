@@ -116,6 +116,11 @@ interface ProtectedAreaEntry {
 }
 
 interface GeofenceResult {
+  india_eez: {
+    inside: boolean;
+    near: boolean;
+    nearest_point: { latitude: number; longitude: number } | null;
+  };
   india_sri_lanka_imbl: {
     near: boolean;
     nearest_point: { latitude: number; longitude: number };
@@ -126,20 +131,55 @@ interface GeofenceResult {
 function isGeofenceResult(value: unknown): value is GeofenceResult {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Record<string, unknown>;
+  const eez = candidate.india_eez as Record<string, unknown> | undefined;
   const imbl = candidate.india_sri_lanka_imbl as Record<string, unknown> | undefined;
   return (
+    typeof eez?.inside === 'boolean' &&
+    typeof eez?.near === 'boolean' &&
     typeof imbl?.near === 'boolean' &&
     typeof (imbl?.nearest_point as Record<string, unknown> | undefined)?.latitude === 'number' &&
     Array.isArray(candidate.nearby_protected_areas)
   );
 }
 
-/** Mirrors `useGeofenceStatus.ts`'s own `toGeoJson` exactly (MPA boxes as
- * real polygons, the IMBL distance only drawn when `near`) — the query
- * point isn't in the result itself, only in this call's own `arguments`
- * (every geofence-producing tool takes `PointArgs`). */
+/** Mirrors `useGeofenceStatus.ts`'s own `toGeoJson`, with one deliberate
+ * difference: that hook skips the EEZ boundary entirely because the main
+ * `/map` page already has a standing "Exclusive Economic Zones" reference
+ * layer showing it (see that hook's own docstring) — a chat preview has no
+ * such standing layer to fall back on, and without *some* EEZ affordance
+ * here, asking "is this inside India's EEZ, show me on a map" got a real,
+ * correct `check_geofence` answer but genuinely nothing to draw, which is
+ * what surfaced this gap live (2026-09-09: the model told the user to go
+ * overlay an EEZ shapefile in QGIS themselves). Only a cheap two-point line
+ * to the nearest boundary point is added here, the same lightweight shape
+ * already used for the IMBL — never the multi-hundred-vertex EEZ polygon
+ * itself, which is exactly the payload-bloat `useGeofenceStatus.ts` was
+ * right to avoid duplicating into every point-check response. */
 function geofenceFeatures(result: GeofenceResult, args: Record<string, unknown>): Feature[] {
   const features: Feature[] = [];
+
+  const queryLat = args.latitude;
+  const queryLon = args.longitude;
+  if (
+    !result.india_eez.inside &&
+    result.india_eez.near &&
+    result.india_eez.nearest_point &&
+    typeof queryLat === 'number' &&
+    typeof queryLon === 'number'
+  ) {
+    const nearest = result.india_eez.nearest_point;
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [queryLon, queryLat],
+          [nearest.longitude, nearest.latitude],
+        ],
+      },
+      properties: { tool: 'check_geofence', kind: 'eez_distance' },
+    });
+  }
 
   for (const area of result.nearby_protected_areas) {
     const { south, west, north, east } = area.bounds;
@@ -161,8 +201,6 @@ function geofenceFeatures(result: GeofenceResult, args: Record<string, unknown>)
     });
   }
 
-  const queryLat = args.latitude;
-  const queryLon = args.longitude;
   if (result.india_sri_lanka_imbl.near && typeof queryLat === 'number' && typeof queryLon === 'number') {
     const nearest = result.india_sri_lanka_imbl.nearest_point;
     features.push({

@@ -102,6 +102,17 @@ async def run_specialist(
         *history,
         HumanMessage(content=question),
     ]
+    # The text-extraction loop below must never search earlier than this: a
+    # tool-calling AIMessage carries empty string content by convention, so
+    # searching all of `messages` for the last non-empty one can walk straight
+    # past this turn's own (empty-content) replies, past the ToolMessages and
+    # the HumanMessage above, into `history` — and return a *previous turn's*
+    # real answer as if it were this one. Live-verified 2026-09-09: a
+    # check_geofence question, asked right after an unrelated turn whose own
+    # specialist call had run out of SUB_MAX_ITERATIONS with no closing prose,
+    # got back that unrelated prior turn's sign-off text ("Glad we could clear
+    # that up!...") instead of an answer to the question actually asked.
+    turn_start = len(messages)
 
     truncated = False
     for _ in range(SUB_MAX_ITERATIONS):
@@ -138,7 +149,7 @@ async def run_specialist(
         truncated = True
 
     text = ""
-    for message in reversed(messages):
+    for message in reversed(messages[turn_start:]):
         if isinstance(message, AIMessage) and isinstance(message.content, str) and message.content.strip():
             text = message.content.strip()
             break

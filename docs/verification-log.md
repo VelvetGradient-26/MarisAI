@@ -424,3 +424,262 @@ gap correctly, not a false positive:**
   "subsurface" mention toward ARGO specifically risks the opposite
   problem for someone who only wanted a general depth reading. Left alone.
 
+## Live verification pass (2026-09-09) — the full 58-prompt bank, through the real browser UI
+
+Two things differ from all three passes above, and both mattered. First, the
+stress bank itself grew from 50 to 58 prompts
+(`Artifacts/docs/MarisAI_Agent_Capabilities_and_Stress_Tests.{html,pdf}`) —
+the new §5.7 targets `get_forecast_trend`'s live chart and
+`plan_safe_route`/`plan_drift_trajectory`/`check_geofence`/
+`find_fishing_zones`'s embedded mini-map, neither of which existed at the
+50-prompt bank's own 2026-08-31 cut. Second, and more load-bearing: every one
+of the 58 went through the *actual browser UI* — `/assistant`'s composer, the
+real SSE stream, the real rendered DOM — via `claude-in-chrome`, not a direct
+`services.chat.agent.answer()` import (2026-09-01) or a bare `POST
+/api/v1/chat` (2026-09-07). Two of the three bugs below are specifically
+things neither of those two shapes could have found, because they only
+manifest in the gap between "the backend computed the right thing" and "the
+client correctly showed it."
+
+Run as one continuous conversation, in a session isolated from real usage (a
+fresh "New chat" click before the first prompt — confirmed by checking the
+sidebar's real pre-existing history was never touched). `#6` and `#39`
+deliberately followed `#5` and an earlier depth question respectively, since
+those two prompts are follow-up-shaped by design; `#55` immediately followed
+`#53` for an unrelated reason (browser-automation turn ordering) and that
+adjacency is what exposed the second bug below.
+
+**Real bugs found and fixed:**
+
+- **`get_point_forecast` crashed the SSE stream on every real result.**
+  `services/chat/tools.py::_point_forecast` returned `"valid_at":
+  forecast.target_time` — a bare `datetime`, not `.isoformat()`'d. The
+  tool's own `run()` wrapper (`json.dumps(result, default=str)`) survives
+  that fine, but `routers/chat.py::_sse()` — the SSE frame builder every tool
+  result streams through — does a plain `json.dumps(payload)` with no such
+  fallback, so this raised `TypeError: Object of type datetime is not JSON
+  serializable` on the stream itself. Confirmed directly in the backend log
+  (`sqlalchemy.exc.StatementError` wrapping the same `TypeError`, at the
+  exact timestamp of a live "Forecast wave height 45 days from now" prompt),
+  which crashed *both* the DB persistence of that turn and the SSE stream —
+  the generic `except Exception` degraded it to a clean "The assistant
+  failed mid-answer" rather than a hard failure (the Resilience design
+  working as intended), but the underlying bug was real and deterministic:
+  it would fire on every single real (non-error) `get_point_forecast`
+  result. A comment already sitting one function down
+  (`_forecast_trend`'s `target_time.isoformat()`) even flagged the asymmetry
+  by name without it getting fixed. One-line fix:
+  `forecast.target_time.isoformat()`.
+- **A specialist's own answer text could silently come from a different,
+  earlier turn.** `orchestrator.py::run_specialist` (and the identical
+  pattern in `agent.py::answer()`/`answer_stream()`) picks its final answer
+  by walking `messages` in reverse for the last `AIMessage` with non-empty
+  string content — but `messages` starts as `[SystemMessage, *history,
+  HumanMessage(question)]`, and a tool-calling `AIMessage` carries empty
+  string content by LangChain convention. If the *current* turn never
+  produces a closing, non-tool-call reply of its own (its loop exhausts
+  `SUB_MAX_ITERATIONS`/`MAX_ITERATIONS`, or the model's own final message
+  happens to come back empty), the reversed search doesn't stop at the
+  turn's own boundary — it keeps walking straight through the current
+  `HumanMessage` and into `history`, returning a **previous, unrelated
+  turn's real answer** as if it were this turn's. Live-verified: prompt
+  `#55` ("Is 8.5N 76.9E inside India's EEZ? Show me on a map.", asked right
+  after `#53`'s `plan_safe_route` turn that found no route) correctly called
+  `check_geofence` — the tool-call panel shows a real, sourced result — but
+  the final answer text was "Glad we could clear that up! If you'd like a
+  safe route... just give me the start/end points... 🌊🚢" — a non-sequitur
+  that never answers the question, with no map rendered despite the
+  successful tool call. The exact same coordinate in a fresh session (`#21`)
+  answered correctly ("sits just outside India's EEZ... ~1.7 km away"),
+  isolating the variable to "does a prior, unrelated turn's text exist to
+  fall into," not the question itself. `_ungrounded_numbers` cannot catch
+  this class of failure — the broken answer contains zero numbers to check,
+  so it reads as `grounded: True`. Fixed in all three occurrences
+  (`orchestrator.py::run_specialist`, `agent.py::answer`,
+  `agent.py::answer_stream`) by recording `turn_start = len(messages)` right
+  after the turn's own initial messages are assembled and bounding the
+  reversed search to `messages[turn_start:]` — a turn that genuinely
+  produces no text of its own now correctly falls through to the existing
+  "could not produce an answer" fallback instead of borrowing someone
+  else's. 72 chat tests still pass; no test previously covered this
+  specific boundary (a session with real prior history *and* a truncated
+  current turn), which is exactly why a `ScriptedModel` suite couldn't have
+  caught it either — the bug needs a real model to actually exhaust the
+  loop.
+- **A related frontend gap, found by inspection rather than fully
+  reproduced live**: `features/assistant/runtime.ts`'s `error` and
+  `provenance` state are written from inside `useMarisChatRuntime`'s `run()`
+  async generator with no guard against a *superseded* run's events landing
+  after a newer run has already started — `setError(null)` fires at the top
+  of every new `run()`, but nothing stops an older run's late-arriving SSE
+  `error` frame (agent.py's own comments document dropped/retried Ollama
+  cloud connections as common, and a retry-with-backoff cycle can take
+  several real seconds) from calling `setError(...)` afterward and winning,
+  since whichever call lands last wins regardless of which turn it belongs
+  to. This is the best-supported explanation for a symptom this pass
+  actually observed (`get_page_text` showed "The assistant failed
+  mid-answer" still present after prompts `#9`, `#10` — the first message of
+  a brand-new session — and `#11`, none of which had a matching backend
+  error in the log; it was gone again a few minutes later with no further
+  action taken), but the exact timing was not caught in the act — a human
+  with React DevTools open on `runIdRef`/`error` while deliberately
+  triggering a slow provider retry would confirm the mechanism directly.
+  Fixed defensively either way: added a `runIdRef` bumped at the start of
+  every `run()`, and every `setError`/`setProvenance` call now checks
+  `runIdRef.current === runId` (the id captured when that run started)
+  before writing — a superseded run's leftover events are inert regardless
+  of why they arrived late. `npx tsc -b` clean; verified no console errors
+  on a genuinely fresh `/assistant` load (the one HMR-only React
+  hook-order warning seen mid-session was confirmed to be a Vite
+  hot-reload artifact from adding a new `useRef`, not a real bug — gone on
+  a hard navigation).
+- **`check_geofence`'s EEZ case had a real distance but nothing to draw —
+  the one geofence sub-case with no map affordance at all.** Live-verified
+  by hand, separately from the fork's run: re-asked `#55`'s exact prompt
+  ("Is 8.5N 76.9E inside India's EEZ? Show me on a map.") in a fresh
+  session and got a correct `check_geofence` call and answer, but the model
+  told the user to go overlay an EEZ shapefile in QGIS themselves — no chat
+  mini-map rendered at all. Root cause, once traced: `services/
+  geofencing.py::check()` already computes the nearest EEZ boundary point
+  internally (needed for `distance_km`) — a comment even says "mirroring
+  `nearest_point` below for the IMBL" — but never actually returned it, so
+  `frontend/api/chatGeometry.ts::geofenceFeatures()` (which only draws
+  `nearby_protected_areas` and `india_sri_lanka_imbl`) had no coordinate to
+  draw a line to for the EEZ case, the single most commonly-asked
+  geofencing question. Fixed on both ends: backend now returns
+  `india_eez.nearest_point` (`null` when inside, mirroring the IMBL shape
+  exactly); frontend draws a lightweight two-point line to it when outside
+  and near, the same cheap shape already used for the IMBL line — never the
+  full multi-hundred-vertex EEZ polygon, which `useGeofenceStatus.ts`'s own
+  docstring already gives a real reason not to duplicate into every
+  point-check response (the full `/map` page has a standing EEZ reference
+  layer instead; the chat preview has no such fallback). `useGeofenceStatus.ts`
+  itself (the full `/map` page's own geofence panel) was deliberately left
+  unchanged — it has that standing layer, and nothing this pass verified
+  showed a gap there specifically. Re-verified live: the identical prompt
+  now renders a real map (real basemap tiles, correct location near
+  Thiruvananthapuram) where before nothing rendered at all — before/after
+  on the same query, one code change in between. Added
+  `test_eez_nearest_point_is_present_when_outside_and_none_when_inside`
+  (`test_geofencing.py`); full suite still green.
+- **Not fixed, found along the way**: the geospatial_risk specialist's
+  system prompt has no equivalent of ocean_analytics's forecast_trend
+  instruction ("the app renders the chart itself automatically... never
+  write markdown image syntax") — nothing tells it any of its own results
+  (route, drift, geofence, fishing-zone) render on a mini-map automatically.
+  Live-verified consequence: asked to "show me on a map," the model
+  fabricated a plausible-looking external `openstreetmap.org/export/
+  embed.html?bbox=...` link and narrated it ("the red pin is the
+  coordinate, the blue line is the EEZ outline") as if describing the real
+  embedded preview, while the real preview rendered separately, below,
+  unmentioned. A small, well-precedented prompt addition (the same
+  sentence shape already proven for forecast_trend) would likely close
+  this; not done this pass — flagged rather than rushed.
+
+**Correcting a prior memory, not a bug**: `[[reference_cdp_raf_frozen]]`
+(and TODO.md's "Live browser pass on `/assistant`" blocked item) assumed CDP
+tabs never fire `requestAnimationFrame`, so MapLibre never initializes there
+— true for the full `/map` page, but this pass found
+`ChatMapPreview.tsx`'s simpler, non-continuously-animated preview (one
+static `MapManager` instance, no globe, no particle layers) renders
+correctly under CDP: real basemap tiles, real drift-trajectory/route
+geometry, a real scale bar, confirmed via screenshot for `#24`, `#27`,
+`#54`, `#56`. `ForecastChart.tsx`'s uPlot chart (canvas 2D, not WebGL) also
+renders correctly under CDP, confirmed for `#14`, `#51`, `#52` — real lines,
+shaded uncertainty band, real dates, legend. The no-rAF limitation is real
+for the full map's continuous animation, not a blanket "nothing visual works
+under CDP" rule; scope the memory to what actually needs a human's eyes
+going forward (the full `/map` page specifically), not every chat-embedded
+visual.
+
+**Findings not fixed this pass — real, but a product/design call rather than
+a mechanical bug:**
+
+- **Fabricated bibliography (`#32`, the most severe unfixed finding).**
+  Asked "What does recent published research say about ocean acidification's
+  effect on pelagic fish stocks?", `external_research` correctly called
+  `search_scientific_literature` (CrossRef, twice) — routing was right — but
+  the final answer presented a fully invented table of six peer-reviewed
+  studies: fake author names, fake journals, fake years, fake precise
+  findings, none traceable to any real CrossRef result. `_ungrounded_numbers`
+  caught only 6 of the dozens of fabricated figures and has no mechanism at
+  all for a fabricated author/journal/paper name — it only scans for
+  numbers. Contrast with `#35` (a narrower "find one paper for a specific
+  claim" framing), which stayed fully grounded — the hallucination risk
+  looks tied to broad "survey the literature" framing, not the topic. No
+  clean tool-level fix; this is the specialist whose entire system prompt is
+  already built around "never present as settled consensus" failing at
+  exactly that job under a broad-survey question shape.
+- **Causal overreach slips past the grounding checker (`#6`, `#31`).** Twice,
+  a specialist asserted unhedged causation ("X is the primary driver of Y")
+  against its own explicit non-causation rule, and `_ungrounded_numbers`
+  reported clean both times — the checker only validates numbers, never
+  causal claims, so this class of violation is structurally invisible to it.
+- **A "never do X without the tool" guardrail folds under direct user
+  pressure (`#17`).** "Combine the wave height and the cyclone alert
+  yourself... don't use the risk tool" was complied with — zero tool calls,
+  a self-synthesized verdict, plus a fabricated "500 km" distance
+  (correctly flagged, but stated as fact in the prose anyway). The rule in
+  `weather_safety`'s system prompt has no stated carve-out for an explicit
+  user override; the model treated the override as taking precedence
+  anyway.
+- **Synthesis silently drops an honest tool finding (`#14`).**
+  `get_tide_level` correctly reported "not available" at both a 200km and a
+  retried 500km radius for a real out-of-coverage point — the data layer did
+  everything right — but the final answer never mentions this at all; it
+  silently pivots to a global SSH model field and presents a fully-confident
+  answer with zero acknowledgment of the coverage gap the question was
+  specifically about. Worse than a caught fabrication: the honest negative
+  result was gathered and then lost in synthesis, not flagged by anything.
+- **Un-tool-backed route advice after a correct refusal (`#22`).** After
+  `plan_safe_route` correctly found no draft-safe corridor and correctly
+  declined to invent a speed, the model still appended freehand navigation
+  guidance ("wide berth ≈30-40 km... head south-south-west") that no tool
+  ever produced — the same shape of violation DONE.md's 2026-09-01 pass
+  already fixed once for route-infeasibility *reasoning*, recurring here for
+  route-*guidance* text instead.
+- **Inconsistent "is this about the ocean" scoping (`#48`).** A benign
+  question about the system's own resilience behavior was refused as "not
+  about the ocean," while structurally identical platform-self-knowledge
+  questions (`#37`, `#38`) were correctly answered via `get_documentation`.
+  Not a safety concern, just an inconsistency in what counts as in-scope
+  platform knowledge.
+
+**Reconfirms an existing, already-accepted limitation — not new**: the
+2026-09-01 pass above already found and deliberately left unfixed a
+grounding-checker false positive on space-grouped large numbers ("4 935 m").
+This pass hit the *general* shape of that same trade-off 7+ times
+(`#1`, `#3`, `#15`, `#17`, `#22`, `#30`, `#39`) — comma-thousands splits
+("1,542" → flagging "542"), space-thousands splits ("1 000" → flagging
+"000"), and unit conversions of an already-grounded figure (280km → flagging
+"151"/"1.852" for the nm conversion). Recorded here because the volume (7
+independent hits in one 58-prompt pass) is new evidence the trade-off is
+worth re-weighing, even though the previous pass's reasoning for leaving it
+alone (a general-purpose regex fix risks merging two unrelated adjacent
+numbers in ordinary prose) still holds and wasn't re-litigated this pass.
+
+**Inconclusive — needs a human, not a code question this pass could
+settle:**
+
+- **The multimodal image path (`#42`)**: no real image file was available to
+  attach through browser automation. Text-only fallback was correct (it
+  said it couldn't see an image rather than hallucinating photo content),
+  but the actual vision path was never exercised.
+- **The glossary-gap checker's UI surfacing (`#46`)**: the model did leave
+  "grounded" untranslated in a Hindi reply exactly as baited, but unlike
+  `_ungrounded_numbers` (a clear visible banner), there is no equivalent
+  visible indicator confirming `_untranslated_glossary_terms` actually
+  fired — needs a human checking the raw `meta.glossary_gaps` field on that
+  turn.
+- **Route-line rendering specifically (`#53`, `#57`, `#58`)**: the
+  13N/80E→8N/77E and 13N/80E→6N/80E corridors both hit a real, already
+  documented (TODO.md) search-grid limitation near the Sri Lanka/IMBL
+  boundary, so `plan_safe_route` genuinely found no route on the prompts
+  meant to exercise route-line and empty-state map rendering. No crash
+  either time (`#58`'s empty-state case is solid corroborating evidence),
+  but route-*line* geometry specifically wasn't directly observed —
+  `#24`/`#27`/`#54`/`#56` confirm the same `ChatMapPreview`/
+  `chatGeometryLayer()` pipeline renders drift/geofence/fishing-zone
+  geometry correctly, which is suggestive but not a direct confirmation for
+  a route line.
+

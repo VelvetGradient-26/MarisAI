@@ -843,6 +843,12 @@ async def answer(
     messages: list[BaseMessage] = [SystemMessage(content=_SYSTEM_PROMPT)]
     messages.extend(history_messages)
     messages.append(_question_message(question, image))
+    # See orchestrator.py's run_specialist for why this boundary is
+    # load-bearing: a tool-calling AIMessage carries empty string content by
+    # convention, so the text-extraction loop below must never search earlier
+    # than this turn's own messages, or a truncated turn (no closing prose of
+    # its own) can silently return a *previous turn's* real answer instead.
+    turn_start = len(messages)
 
     delegations: list[dict[str, Any]] = []
     truncated = False
@@ -873,7 +879,7 @@ async def answer(
         truncated = True
 
     text = ""
-    for message in reversed(messages):
+    for message in reversed(messages[turn_start:]):
         if isinstance(message, AIMessage) and isinstance(message.content, str) and message.content.strip():
             text = message.content.strip()
             break
@@ -1004,6 +1010,12 @@ async def answer_stream(
     messages: list[BaseMessage] = [SystemMessage(content=_SYSTEM_PROMPT)]
     messages.extend(history_messages)
     messages.append(_question_message(question, image))
+    # See orchestrator.py's run_specialist for why this boundary is
+    # load-bearing: a tool-calling AIMessage carries empty string content by
+    # convention, so the text-extraction loop below must never search earlier
+    # than this turn's own messages, or a truncated turn (no closing prose of
+    # its own) can silently return a *previous turn's* real answer instead.
+    turn_start = len(messages)
 
     delegations: list[dict[str, Any]] = []
     truncated = False
@@ -1085,7 +1097,7 @@ async def answer_stream(
         truncated = True
 
     text = ""
-    for message in reversed(messages):
+    for message in reversed(messages[turn_start:]):
         if isinstance(message, AIMessage) and isinstance(message.content, str) and message.content.strip():
             text = message.content.strip()
             break

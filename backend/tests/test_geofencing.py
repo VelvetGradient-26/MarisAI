@@ -57,6 +57,26 @@ def test_a_point_just_outside_the_eez_gets_a_real_distance():
     assert result["india_eez"]["nearest_zone"] == "mainland"
 
 
+def test_eez_nearest_point_is_present_when_outside_and_none_when_inside():
+    """The distance fix above still left the map blind: live-verified
+    2026-09-09, asking to plot this exact point on a map got "the current
+    toolset can't produce a ready-made map for you — open Google Maps..."
+    even though `india_sri_lanka_imbl`/`nearby_protected_areas` have drawn
+    their own geometry on the chat mini-map for a while
+    (`frontend/api/chatGeometry.ts::geofenceFeatures`) — `india_eez` was the
+    one case in `check_geofence` with a real distance but no point to draw a
+    line to. `nearest_point` is only meaningful outside the EEZ; inside, the
+    coordinate isn't near a boundary in the sense this field means."""
+    outside = geofencing.check(8.5, 76.9)
+    point = outside["india_eez"]["nearest_point"]
+    assert point is not None
+    assert 7 < point["latitude"] < 9
+    assert 76 < point["longitude"] < 78
+
+    inside = geofencing.check(13.1, 81.2)
+    assert inside["india_eez"]["nearest_point"] is None
+
+
 def test_a_real_local_exclusion_near_rameswaram_reads_as_outside_the_eez():
     """Marine Regions' `eez` layer cuts a real interior exclusion (land/shoal,
     the same kind it cuts for every river delta and near-shore island along
