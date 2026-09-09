@@ -2550,6 +2550,43 @@ beats the point model and earns the integration work already mapped out
 
 ---
 
+## Eddy track map layer — 2026-09-07
+
+TODO.md's eddy-atlas item said "no map layer or chat tool yet" for eddy
+tracks; stale by the time this file's own maintenance pass cross-checked it
+against `git log` rather than trusting the doc — `65376b8` had already
+shipped the map-layer half. `GET /api/ocean/eddies/tracks` and
+`/tracks/{id}` (`services/eddy_tracking.py`) existed and were tested, but
+nothing in the frontend called either. The list endpoint hardcoded
+`Track.as_dict(include_path=False)`, so drawing every visible track's path
+needed either N+1 detail fetches or a bulk toggle — added `include_path` as
+a parameter instead, unit-tested for both states.
+
+**A new layer, not a flag on the existing `eddyLayer()`**: that layer's own
+tooltip/attribution explicitly say "no age or track" as a stated scope
+line, and bending that copy to fit a flag was the wrong fix for what is
+really a different question ("where has this eddy been" vs. "what is
+detected right now"). Shape mirrors existing patterns rather than inventing
+one: `driftTrajectoryLayer()`'s kind-discriminated line+point rendering,
+`useEddies`' bbox-filtered/hoverable hook. New: `EddyTrackTooltip.tsx`,
+`EddyTrackStatus.tsx`, `useEddyTracks.ts`, `api/eddyTracks.ts`, plus
+`eddyTrackLayer()` registered in `layerRegistry.ts`.
+
+**Verified live**: the layer toggles correctly, and the status chip reports
+an honest "not yet processed" for a freshly-restarted tracker
+(`active_tracks: 0` right after restart and a genuinely quiet ocean are the
+same real answer by the endpoint's own design — not a bug, the same
+cold-detector-vs-quiet-ocean distinction `useEddies` already makes).
+
+This shipped ahead of TODO.md's own stated gate ("do this once the atlas
+comparison says the tracks are trustworthy enough to show") — the commit
+verified the *plumbing* (toggle, status chip, live endpoint), not track
+*accuracy*, which is still exactly what the unfinished AVISO+ atlas
+comparison above is for. Still open: a chat-tool equivalent for eddy
+tracks.
+
+---
+
 ## Hazards that will bite the next person
 
 - **Partial success is the more dangerous failure mode.** Training the full

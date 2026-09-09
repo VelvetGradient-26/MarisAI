@@ -72,10 +72,13 @@ running the script — not writing any more code.
   internals (not a renamed symbol — a real structural change). Revisit only
   with a dedicated legacy-pinned environment, not as an addition to this
   backend's own dependencies.
-- **No map layer or chat tool yet** for eddy tracks — `GET
-  /api/ocean/eddies/tracks` exists and is tested, but nothing visualises a
-  track's path the way `/eddies` itself is drawn. Do this once the atlas
-  comparison above says the tracks are trustworthy enough to show.
+- **Map layer shipped, chat tool still doesn't exist.** `GET
+  /api/ocean/eddies/tracks` exists and is tested; a map layer drawing a
+  track's path shipped 2026-09-07 (`65376b8`) — see DONE.md's "Eddy track
+  map layer." That landed ahead of the atlas-validation gate this section
+  originally set for it, so this doc no longer treats that gate as binding
+  on a chat tool either. What's still missing is a chat-tool equivalent
+  (ask about a specific eddy's track by id).
 
 ### The visual standard — a standard, not a task
 
