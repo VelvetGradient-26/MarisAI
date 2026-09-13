@@ -26,8 +26,12 @@ export function Panel({
         // Hover is safe because nothing measures during it.
         'oid-panel',
         'relative overflow-hidden rounded-[var(--radius-panel)]',
-        'border border-[color:var(--oid-border)]',
-        'bg-[color:var(--oid-panel)] backdrop-blur-xl',
+        // No border and no blur: the panel edge is `--oid-shadow`'s neumorphic
+        // pair now, and a 1px line drawn across a sculpted edge reads as an
+        // outline sitting on top of the relief rather than as the edge itself.
+        // The blur went with the translucency — see the `--oid-panel` note in
+        // styles/tailwind.css for why glass and this material are exclusive.
+        'bg-[color:var(--oid-panel)]',
         'shadow-[var(--oid-shadow)]',
         className
       )}

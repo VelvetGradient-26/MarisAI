@@ -83,25 +83,28 @@ export const TrendChart = memo(function TrendChart({
         // These mirror the --oid-* dark set in styles/tailwind.css by hand —
         // there is no way to read a custom property from a Recharts prop, so
         // retuning the palette there means retuning it here too or the chart
-        // keeps painting the old navy inside a near-black panel.
+        // keeps painting the old palette inside a retuned panel. Moved again
+        // with the neumorphic ground: the tooltip surfaces in particular were
+        // #0e0e11 / #ffffff, which on a #2e3035 / #e4e7ec page read as a hole
+        // and a glare respectively rather than as a raised chip.
         stroke: '#4fd1ff',
-        grid: '#26262d',
-        tick: '#75757d',
-        tooltipBg: '#0e0e11',
+        grid: '#3f424a',
+        tick: '#9ba0a9',
+        tooltipBg: '#2e3035',
         tooltipBorder: 'rgba(79,209,255,0.22)',
         tooltipText: '#e4e4e6',
-        tooltipLabel: '#9a9aa2',
-        exportBg: '#0e0e11',
+        tooltipLabel: '#b4b7bf',
+        exportBg: '#2e3035',
       }
     : {
-        stroke: '#0f766e',
-        grid: '#cfdde6',
-        tick: '#64798a',
-        tooltipBg: '#ffffff',
-        tooltipBorder: 'rgba(15,118,110,0.28)',
-        tooltipText: '#0f2231',
-        tooltipLabel: '#47616f',
-        exportBg: '#ffffff',
+        stroke: '#0e6a63',
+        grid: '#c8cdd6',
+        tick: '#5a666c',
+        tooltipBg: '#e4e7ec',
+        tooltipBorder: 'rgba(14,106,99,0.28)',
+        tooltipText: '#12201f',
+        tooltipLabel: '#4e5c5d',
+        exportBg: '#e4e7ec',
       };
 
   const supported = variable.supported_ranges;

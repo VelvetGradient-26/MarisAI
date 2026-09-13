@@ -12,8 +12,16 @@
  * panels, legends and tooltips floating over that map, the same way a light
  * UI sits over satellite imagery elsewhere.
  *
- * `--ocean-panel-bg` is translucent in both themes because every panel here
- * is a floating overlay with `backdrop-filter` behind it.
+ * `--ocean-panel-bg` used to be translucent in both themes, because every
+ * panel here is a floating overlay with `backdrop-filter` behind it. Under the
+ * neumorphic model it is opaque: a sculpted panel needs its face to be the
+ * same colour as the highlight and shadow describing it, and glass shows the
+ * globe straight through the material those shadows are pretending to carve.
+ * The `backdrop-filter` declarations further down are now inert and harmless,
+ * and are left in place rather than chased through thirty rules.
+ *
+ * The panels are the one part of this page that changed. The *basemap* did
+ * not, for the reason in the paragraph above it.
  */
 :root {
   --ocean-bg: var(--ma-bg);
@@ -23,12 +31,16 @@
      and the comment above is the reason the distinction matters, since the
      map itself is a data surface and its colours are an explicit choice. A
      panel is page furniture and follows the theme. */
-  --ocean-panel: #101013;
-  --ocean-panel-bg: rgba(16, 16, 19, 0.92);
-  --ocean-panel-solid: rgba(16, 16, 19, 0.96);
-  --ocean-border: #2b2b33;
+  --ocean-panel: var(--ma-surface);
+  --ocean-panel-bg: var(--ma-surface);
+  --ocean-panel-solid: var(--ma-surface);
+  /* Demoted to a divider, like --ma-border and --oid-border: this file has
+     ~30 `border: 1px solid var(--ocean-border)` uses and most are internal
+     rules — a legend's row separators, a panel header's underline. Panel
+     edges are --ocean-shadow now. */
+  --ocean-border: var(--ma-border);
   --ocean-text: #e4e4e6;
-  --ocean-muted: #9a9aa2;
+  --ocean-muted: #b4b7bf;
   /* Was #22d3ee — the one place in the app the accent disagreed with the
      shared cyan, which showed on the legends the moment you compared the map
      against the dashboard's charts of the same field. */
@@ -64,24 +76,24 @@
   --ocean-severity-moderate: #eab308;
   --ocean-route-calm: #5eead4;
   --ocean-route-caution: #facc15;
-  --ocean-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --ocean-shadow: var(--ma-raised);
   /* A heavier blur surface than --ocean-panel-bg, and more transparent: the
      story overlay is meant to read as one scene with the map behind it, not
      as a panel sitting on top of it (see story.css). */
-  --ocean-scrim: rgba(8, 8, 10, 0.82);
-  --ocean-scrim-strong: rgba(14, 14, 17, 0.9);
+  --ocean-scrim: rgba(46, 48, 53, 0.82);
+  --ocean-scrim-strong: rgba(46, 48, 53, 0.92);
   --ocean-scrim-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
   --ocean-font-ui: var(--ma-font-ui);
   --ocean-font-mono: var(--ma-font-mono);
 }
 
 :root[data-theme='light'] {
-  --ocean-panel: #ffffff;
-  --ocean-panel-bg: rgba(255, 255, 255, 0.94);
-  --ocean-panel-solid: rgba(255, 255, 255, 0.98);
-  --ocean-border: rgba(15, 30, 30, 0.16);
+  --ocean-panel: var(--ma-surface);
+  --ocean-panel-bg: var(--ma-surface);
+  --ocean-panel-solid: var(--ma-surface);
+  --ocean-border: var(--ma-border);
   --ocean-text: #12201f;
-  --ocean-muted: #5c6b6c;
+  --ocean-muted: #4e5c5d;
   --ocean-accent-soft: rgba(15, 118, 110, 0.1);
   --ocean-accent-strong: rgba(15, 118, 110, 0.18);
   --ocean-accent-line: rgba(15, 118, 110, 0.5);
@@ -101,10 +113,12 @@
   --ocean-route-calm: #149b86;
   --ocean-route-caution: #a58504;
   /* A panel over a dark basemap needs a real shadow in light mode too, or it
-     reads as a hole punched in the map rather than as something floating. */
-  --ocean-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  --ocean-scrim: rgba(252, 253, 253, 0.88);
-  --ocean-scrim-strong: rgba(255, 255, 255, 0.94);
+     reads as a hole punched in the map rather than as something floating —
+     and the neumorphic pair does that job as well as the old drop shadow did,
+     because its dark half is still a genuine cast shadow. */
+  --ocean-shadow: var(--ma-raised);
+  --ocean-scrim: rgba(228, 231, 236, 0.88);
+  --ocean-scrim-strong: rgba(228, 231, 236, 0.95);
   --ocean-scrim-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
 }
 
@@ -264,8 +278,9 @@ body,
   display: flex;
   flex-direction: column;
   background: var(--ocean-panel-bg);
-  border: 1px solid var(--ocean-border);
-  border-radius: 10px;
+  border: 0;
+  box-shadow: var(--ocean-shadow);
+  border-radius: 18px;
   width: 248px;
   color: var(--ocean-text);
   font-size: 13px;
@@ -334,11 +349,11 @@ body,
   flex-direction: column;
   width: min(320px, calc(100vw - 32px));
   background: var(--ocean-panel-bg);
-  border: 1px solid var(--ocean-border);
-  border-radius: 10px;
-  padding: 14px;
+  border: 0;
+  border-radius: 18px;
+  box-shadow: var(--ocean-shadow);
+  padding: 15px;
   color: var(--ocean-text);
-  backdrop-filter: blur(6px);
   box-sizing: border-box;
 }
 
@@ -470,7 +485,7 @@ body,
 
 .selected-location-panel__more-link:hover {
   background: var(--ocean-accent-strong);
-  border-color: var(--ocean-accent);
+  box-shadow: var(--ma-inset-sm);
 }
 
 /* "More info" carries the emphasis; Save sits beside it at its natural width
@@ -490,7 +505,8 @@ body,
   align-items: center;
   gap: 6px;
   margin-top: 14px;
-  border: 1px solid var(--ocean-border);
+  border: 0;
+  box-shadow: var(--ma-raised-sm);
   border-radius: 8px;
   padding: 10px 12px;
   background: transparent;
@@ -506,7 +522,7 @@ body,
 }
 
 .selected-location-panel__save:hover:not(:disabled) {
-  border-color: var(--ocean-accent);
+  box-shadow: var(--ma-inset-sm);
   color: var(--ocean-accent);
 }
 
@@ -725,7 +741,7 @@ body,
 }
 
 .selected-location-panel__route-set-button:hover {
-  border-color: var(--ocean-accent);
+  box-shadow: var(--ma-inset-sm);
   color: var(--ocean-accent);
 }
 
@@ -794,7 +810,8 @@ body,
   flex: 1;
   min-width: 0;
   background: var(--ocean-panel-solid);
-  border: 1px solid var(--ocean-border);
+  border: 0;
+  box-shadow: var(--ma-inset-sm);
   border-radius: 6px;
   padding: 6px 9px;
   color: var(--ocean-text);
@@ -803,7 +820,7 @@ body,
 
 .selected-location-panel__watch-input:focus {
   outline: none;
-  border-color: var(--ocean-accent);
+  box-shadow: var(--ma-inset);
 }
 
 .selected-location-panel__watch-input:disabled {
@@ -915,50 +932,50 @@ body,
 }
 
 .basemap-grid button {
-  background: var(--ocean-bg);
-  border: 1px solid var(--ocean-border);
+  background: var(--ocean-panel);
+  border: 0;
   color: var(--ocean-text);
-  border-radius: 6px;
-  padding: 6px 8px;
+  border-radius: 10px;
+  padding: 7px 9px;
   font-size: 12px;
+  box-shadow: var(--ma-raised-sm);
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition: box-shadow 0.15s ease, color 0.15s ease;
 }
 
+/* Held down, like every other selected control in the app. */
 .basemap-grid button.active {
-  border-color: var(--ocean-accent);
+  box-shadow: var(--ma-inset-sm);
   color: var(--ocean-accent);
 }
 
 .map-exclusive-select {
   width: 100%;
-  background: var(--ocean-bg);
-  border: 1px solid var(--ocean-border);
+  background: var(--ocean-panel);
+  border: 0;
   color: var(--ocean-text);
-  border-radius: 6px;
-  padding: 7px 8px;
+  border-radius: 10px;
+  box-shadow: var(--ma-inset-sm);
+  padding: 8px 9px;
   font-size: 12px;
   cursor: pointer;
-}
-
-.map-exclusive-select:focus-visible {
-  border-color: var(--ocean-accent);
 }
 
 .map-export-button {
   width: 100%;
-  background: var(--ocean-bg);
-  border: 1px solid var(--ocean-border);
+  background: var(--ocean-panel);
+  border: 0;
   color: var(--ocean-text);
-  border-radius: 6px;
-  padding: 7px 8px;
+  border-radius: 10px;
+  box-shadow: var(--ma-raised-sm);
+  padding: 8px 9px;
   font-size: 12px;
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition: box-shadow 0.15s ease, color 0.15s ease;
 }
 
 .map-export-button:hover:not(:disabled) {
-  border-color: var(--ocean-accent);
+  box-shadow: var(--ma-inset-sm);
   color: var(--ocean-accent);
 }
 
@@ -984,7 +1001,8 @@ body,
   justify-content: space-between;
   gap: 8px;
   background: var(--ocean-bg);
-  border: 1px solid var(--ocean-border);
+  border: 0;
+  box-shadow: var(--ma-raised-sm);
   color: var(--ocean-text);
   border-radius: 6px;
   padding: 7px 8px;
@@ -996,7 +1014,8 @@ body,
 .layer-dropdown__trigger:hover,
 .layer-dropdown__trigger:focus-visible,
 .layer-dropdown__trigger.open {
-  border-color: var(--ocean-accent);
+  box-shadow: var(--ma-inset-sm);
+  color: var(--ocean-accent);
 }
 
 .layer-dropdown__summary {
@@ -1063,7 +1082,8 @@ body,
   flex-direction: column;
   gap: 7px;
   background: var(--ocean-bg);
-  border: 1px solid var(--ocean-border);
+  border: 0;
+  box-shadow: var(--ocean-shadow);
   border-radius: 6px;
 }
 
@@ -1083,7 +1103,8 @@ body,
 .layer-dropdown__menu .badge {
   font-size: 10px;
   color: var(--ocean-muted);
-  border: 1px solid var(--ocean-border);
+  border: 0;
+  box-shadow: var(--ma-inset-sm);
   border-radius: 4px;
   padding: 1px 5px;
 }
@@ -1120,7 +1141,8 @@ body,
 .layer-list .badge {
   font-size: 10px;
   color: var(--ocean-muted);
-  border: 1px solid var(--ocean-border);
+  border: 0;
+  box-shadow: var(--ma-inset-sm);
   border-radius: 4px;
   padding: 1px 5px;
 }
@@ -1203,7 +1225,8 @@ body,
 
 .vector-field-controls select {
   background: var(--ocean-bg);
-  border: 1px solid var(--ocean-border);
+  border: 0;
+  box-shadow: var(--ma-inset-sm);
   color: var(--ocean-text);
   border-radius: 4px;
   padding: 3px 4px;
@@ -1277,7 +1300,8 @@ body,
   display: flex;
   gap: 12px;
   background: var(--ocean-panel-bg);
-  border: 1px solid var(--ocean-border);
+  border: 0;
+  box-shadow: var(--ocean-shadow);
   border-radius: 8px;
   padding: 6px 12px;
   color: var(--ocean-accent);
@@ -1425,7 +1449,8 @@ body,
   z-index: 7;
   pointer-events: none;
   background: var(--ocean-panel-solid);
-  border: 1px solid var(--ocean-border);
+  border: 0;
+  box-shadow: var(--ocean-shadow);
   border-radius: 8px;
   padding: 10px 12px;
   color: var(--ocean-text);
@@ -1505,7 +1530,8 @@ body,
   align-items: center;
   gap: 8px;
   background: var(--ocean-panel-bg);
-  border: 1px solid var(--ocean-border);
+  border: 0;
+  box-shadow: var(--ocean-shadow);
   border-radius: 8px;
   padding: 6px 12px;
   color: var(--ocean-text);
@@ -1564,7 +1590,8 @@ body,
   align-items: center;
   gap: 8px;
   background: var(--ocean-panel-bg);
-  border: 1px solid var(--ocean-border);
+  border: 0;
+  box-shadow: var(--ocean-shadow);
   border-radius: 8px;
   padding: 6px 12px;
   color: var(--ocean-text);
@@ -1616,7 +1643,8 @@ body,
   align-items: center;
   gap: 8px;
   background: var(--ocean-panel-bg);
-  border: 1px solid var(--ocean-border);
+  border: 0;
+  box-shadow: var(--ocean-shadow);
   border-radius: 8px;
   padding: 6px 12px;
   color: var(--ocean-text);
@@ -1656,7 +1684,8 @@ body,
 
 .maplibregl-ctrl-group {
   background: var(--ocean-panel-bg);
-  border: 1px solid var(--ocean-border);
+  border: 0;
+  box-shadow: var(--ocean-shadow);
   box-shadow: none;
 }
 
@@ -1848,7 +1877,7 @@ body,
 
 .layer-dropdown__trigger:hover,
 .map-exclusive-select:hover {
-  border-color: var(--ocean-accent);
+  color: var(--ocean-accent);
 }
 
 /* The disclosure caret turns rather than swapping glyph. */
@@ -1889,8 +1918,9 @@ body,
 .horizon-control {
   width: 220px;
   background: var(--ocean-panel-bg);
-  border: 1px solid var(--ocean-border);
-  border-radius: 10px;
+  border: 0;
+  box-shadow: var(--ocean-shadow);
+  border-radius: 18px;
   padding: 12px 14px;
   color: var(--ocean-text);
   backdrop-filter: blur(6px);
@@ -1916,7 +1946,8 @@ body,
   font: 10px/1 var(--ocean-font-mono);
   color: var(--ocean-text);
   background: transparent;
-  border: 1px solid var(--ocean-border);
+  border: 0;
+  box-shadow: var(--ma-raised-sm);
   border-radius: 6px;
   padding: 5px 8px;
   cursor: pointer;
@@ -1985,7 +2016,8 @@ body,
   font: 11px/1 var(--ocean-font-mono);
   color: var(--ocean-text);
   background: transparent;
-  border: 1px solid var(--ocean-border);
+  border: 0;
+  box-shadow: var(--ma-raised-sm);
   border-radius: 6px;
   padding: 8px 10px;
   cursor: pointer;
@@ -1993,7 +2025,7 @@ body,
 }
 
 .selected-location-panel__brief-button:hover:not(:disabled) {
-  border-color: var(--ocean-accent);
+  box-shadow: var(--ma-inset-sm);
   color: var(--ocean-accent);
 }
 
@@ -2021,8 +2053,9 @@ body,
   gap: 8px;
   width: 100%;
   background: var(--ocean-panel-bg);
-  border: 1px solid var(--ocean-border);
-  border-radius: 10px;
+  border: 0;
+  box-shadow: var(--ocean-shadow);
+  border-radius: 18px;
   padding: 10px 14px;
   color: var(--ocean-text);
   font: 12px/1.4 var(--ocean-font-mono);
@@ -2088,8 +2121,9 @@ body,
   flex-direction: column;
   gap: 10px;
   background: var(--ocean-panel-bg);
-  border: 1px solid var(--ocean-border);
-  border-radius: 10px;
+  border: 0;
+  box-shadow: var(--ocean-shadow);
+  border-radius: 18px;
   padding: 14px;
   color: var(--ocean-text);
   backdrop-filter: blur(6px);
@@ -2182,8 +2216,9 @@ body,
   gap: 8px;
   width: 100%;
   background: var(--ocean-panel-bg);
-  border: 1px solid var(--ocean-border);
-  border-radius: 10px;
+  border: 0;
+  box-shadow: var(--ocean-shadow);
+  border-radius: 18px;
   padding: 10px 14px;
   color: var(--ocean-text);
   font: 12px/1.4 var(--ocean-font-mono);
@@ -2211,8 +2246,9 @@ body,
   flex-direction: column;
   gap: 10px;
   background: var(--ocean-panel-bg);
-  border: 1px solid var(--ocean-border);
-  border-radius: 10px;
+  border: 0;
+  box-shadow: var(--ocean-shadow);
+  border-radius: 18px;
   padding: 14px;
   color: var(--ocean-text);
   backdrop-filter: blur(6px);
@@ -2296,7 +2332,8 @@ body,
   align-self: flex-start;
   margin-top: 2px;
   background: none;
-  border: 1px solid var(--ocean-border);
+  border: 0;
+  box-shadow: var(--ma-raised-sm);
   border-radius: 6px;
   padding: 3px 8px;
   color: var(--ocean-muted);
@@ -2332,8 +2369,9 @@ body,
   gap: 8px;
   width: 100%;
   background: var(--ocean-panel-bg);
-  border: 1px solid var(--ocean-border);
-  border-radius: 10px;
+  border: 0;
+  box-shadow: var(--ocean-shadow);
+  border-radius: 18px;
   padding: 10px 14px;
   color: var(--ocean-text);
   font: 12px/1.4 var(--ocean-font-mono);
@@ -2364,8 +2402,9 @@ body,
   flex-direction: column;
   gap: 10px;
   background: var(--ocean-panel-bg);
-  border: 1px solid var(--ocean-border);
-  border-radius: 10px;
+  border: 0;
+  box-shadow: var(--ocean-shadow);
+  border-radius: 18px;
   padding: 14px;
   color: var(--ocean-text);
   backdrop-filter: blur(6px);

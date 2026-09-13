@@ -63,18 +63,18 @@ function palette(isDark: boolean) {
         // mirror of the --oid-* dark set rather than a read of it.
         stroke: '#4fd1ff',
         stroke2: '#38e0d0',
-        band: 'rgba(79,209,255,0.14)',
-        grid: 'rgba(56,56,64,0.6)',
-        axis: '#75757d',
-        marker: 'rgba(154,154,162,0.5)',
+        band: 'rgba(79,209,255,0.16)',
+        grid: 'rgba(63,66,74,0.85)',
+        axis: '#9ba0a9',
+        marker: 'rgba(180,183,191,0.5)',
       }
     : {
-        stroke: '#0f766e',
+        stroke: '#0e6a63',
         stroke2: '#0369a1',
-        band: 'rgba(15,118,110,0.13)',
-        grid: 'rgba(203,213,225,0.85)',
-        axis: '#64798a',
-        marker: 'rgba(100,116,139,0.5)',
+        band: 'rgba(14,106,99,0.13)',
+        grid: 'rgba(200,205,214,0.9)',
+        axis: '#5a666c',
+        marker: 'rgba(90,102,108,0.5)',
       };
 }
 

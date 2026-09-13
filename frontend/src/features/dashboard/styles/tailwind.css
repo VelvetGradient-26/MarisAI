@@ -145,35 +145,40 @@
     --oid-accent-wash: color-mix(in oklab, var(--ma-accent) 16%, transparent);
     --oid-accent-wash-strong: color-mix(in oklab, var(--ma-accent) 26%, transparent);
 
-    /* Neutral near-black, retuned with the rest of the app's dark theme. The
-       *material* this block describes is unchanged — translucent glass on a
-       gradient wash — but its hue is not: this page was the single most
-       saturated navy surface in the product (#0d1c30 panels, #1a3552 grid
-       lines, #e2f1ff ink), so leaving it while every other page went
-       near-black would have made /dashboard look like a different
-       application. The greys below are the shared --ma-* ink values, so the
-       two palettes now agree on what "muted" means. */
-    --oid-panel: color-mix(in oklab, #131316 78%, transparent);
-    --oid-panel-strong: color-mix(in oklab, #0e0e11 88%, transparent);
-    --oid-elevated: #0e0e11;
-    --oid-hover: #1a1a1f;
-    /* Still mixed from the accent, not from a blue-grey — these are the one
-       place the page's chrome is allowed to carry the brand hue. */
-    --oid-border: color-mix(in oklab, #4fd1ff 14%, transparent);
-    --oid-border-hover: color-mix(in oklab, #4fd1ff 28%, transparent);
-    --oid-track: #1a1a1f;
-    --oid-grid: #26262d;
+    /* The material changed with the rest of the app: this page was
+       translucent glass on a gradient wash, and neumorphism cannot be either.
+       Glass is out because a see-through panel shows the shadows that are
+       supposed to be lighting its face; the gradient is out because a panel's
+       highlight has to match the ground immediately around it, and on a wash
+       that ground is a different colour at the top of the page than at the
+       bottom. Both are now the flat shared ground.
+
+       The greys below are the shared --ma-* ink values, re-measured against
+       #2e3035 like the rest (muted and faint both moved). */
+    --oid-panel: var(--ma-surface);
+    --oid-panel-strong: var(--ma-surface-strong);
+    --oid-elevated: var(--ma-surface);
+    --oid-hover: var(--ma-hover-bg);
+    /* Demoted to what --ma-border is now: a divider line. This page has ~48
+       inline `border-[color:var(--oid-border)]` uses in TSX and most of them
+       are genuinely rules — a panel header's underline, a table's row
+       separators, a footer's top edge. Those stay. What stopped using it is
+       the panel *edge* (see Panel.tsx), which is a shadow now. */
+    --oid-border: var(--ma-border);
+    --oid-border-hover: var(--ma-border-strong);
+    --oid-track: var(--ma-input-bg);
+    --oid-grid: #3f424a;
 
     --oid-text: #e4e4e6;
     --oid-text-strong: #f6f6f8;
-    --oid-text-muted: #9a9aa2;
-    --oid-text-faint: #75757d;
+    --oid-text-muted: #b4b7bf;
+    --oid-text-faint: #9ba0a9;
     /* #56565e measured at 2.65:1 on #0e0e11 — below even this page's own 3:1
        UI-component floor, on 60+ real usage sites (dossier field labels,
        footnote attribution, placeholder text), not decoration. Lightened to
        the nearest value that clears 3:1 with a small margin, computed against
        both the solid elevated surface and the translucent glass panel. */
-    --oid-text-ghost: #666666;
+    --oid-text-ghost: #8b8f97;
 
     /* --- Type scale -------------------------------------------------------
      * This page is data-dense in a way the app-wide `--ma-text-*` scale
@@ -199,20 +204,20 @@
     --oid-text-md: 12.5px;
     --oid-text-lg: 13px;
 
-    --oid-shadow: 0 1px 0 0 color-mix(in oklab, #4fd1ff 8%, transparent) inset,
-      0 18px 48px -24px rgb(0 0 0 / 0.85);
-    --oid-shadow-raised: 0 1px 0 0 color-mix(in oklab, #4fd1ff 12%, transparent) inset,
-      0 28px 64px -28px rgb(0 0 0 / 0.9);
+    /* The same two pairs the rest of the app uses, aliased rather than
+       restated so this page's material cannot drift from every other page's.
+       `--oid-shadow` is the resting panel and `--oid-shadow-raised` the
+       hovered one; the raised step is a wider throw of the same light, not a
+       different light. */
+    --oid-shadow: var(--ma-raised);
+    --oid-shadow-raised: -9px -9px 20px var(--ma-lift), 9px 9px 22px var(--ma-sink);
 
-    /* The page wash behind the glass panels. Kept as a wash rather than
-       flattened to one colour — the glass treatment needs something to be
-       glass *over* — but pulled down to a near-black neutral with only a
-       trace of the accent hue left in the two radials, which is what stops a
-       full-viewport black page reading as dead rather than deep. */
-    --oid-page: radial-gradient(1200px 600px at 15% -10%, #0f1416 0%, transparent 60%),
-      radial-gradient(900px 500px at 85% 0%, #0c1215 0%, transparent 55%),
-      linear-gradient(180deg, #08080a 0%, #050506 100%);
-    --oid-canvas: #050506;
+    /* Flat, for the reason in the panel block above: a neumorphic highlight is
+       only correct against the exact colour beside it, and a radial wash makes
+       that colour a function of position. The depth this used to get from the
+       gradient now comes from the panels actually having relief. */
+    --oid-page: var(--ma-bg);
+    --oid-canvas: var(--ma-bg);
   }
 
   .oid-root--light {
@@ -222,32 +227,29 @@
     --oid-accent-wash: color-mix(in oklab, var(--ma-accent) 12%, transparent);
     --oid-accent-wash-strong: color-mix(in oklab, var(--ma-accent) 20%, transparent);
 
-    --oid-panel: color-mix(in oklab, #ffffff 86%, transparent);
-    --oid-panel-strong: color-mix(in oklab, #ffffff 94%, transparent);
-    --oid-elevated: #f6fafc;
-    --oid-hover: #eef4f8;
-    --oid-border: color-mix(in oklab, #0f766e 18%, transparent);
-    --oid-border-hover: color-mix(in oklab, #0f766e 34%, transparent);
-    --oid-track: #dce7ee;
-    --oid-grid: #cfdde6;
+    --oid-panel: var(--ma-surface);
+    --oid-panel-strong: var(--ma-surface-strong);
+    --oid-elevated: var(--ma-surface);
+    --oid-hover: var(--ma-hover-bg);
+    --oid-border: var(--ma-border);
+    --oid-border-hover: var(--ma-border-strong);
+    --oid-track: var(--ma-input-bg);
+    --oid-grid: #c8cdd6;
 
-    --oid-text: #0f2231;
-    --oid-text-strong: #061420;
-    --oid-text-muted: #47616f;
-    --oid-text-faint: #64798a;
+    --oid-text: #12201f;
+    --oid-text-strong: #0a1514;
+    --oid-text-muted: #4e5c5d;
+    --oid-text-faint: #5a666c;
     /* Same fix as the dark value above: #90a2ae measured at 2.51:1 on
-       #f6fafc. Darkened to clear 3:1. */
-    --oid-text-ghost: #8a8a8a;
+       #f6fafc. Darkened to clear 3:1 — and again when the ground moved to
+       #e4e7ec, which is darker than the #f6fafc it was last checked against. */
+    --oid-text-ghost: #767c85;
 
-    --oid-shadow: 0 1px 0 0 rgb(255 255 255 / 0.9) inset,
-      0 14px 36px -26px rgb(15 34 49 / 0.35);
-    --oid-shadow-raised: 0 1px 0 0 rgb(255 255 255 / 0.95) inset,
-      0 22px 48px -28px rgb(15 34 49 / 0.42);
+    --oid-shadow: var(--ma-raised);
+    --oid-shadow-raised: -9px -9px 20px var(--ma-lift), 9px 9px 22px var(--ma-sink);
 
-    --oid-page: radial-gradient(1100px 560px at 12% -12%, #dbeef5 0%, transparent 62%),
-      radial-gradient(900px 480px at 88% -4%, #d7f0ea 0%, transparent 58%),
-      linear-gradient(180deg, #f2f7fa 0%, #e8eff4 100%);
-    --oid-canvas: #eef4f8;
+    --oid-page: var(--ma-bg);
+    --oid-canvas: var(--ma-bg);
 
     /* Alert hues darkened so they keep contrast against white panels. */
     --color-alert-warning: #b45309;
@@ -402,13 +404,11 @@
    being recomposited against the page wash on every hover frame. */
 .oid-panel {
   transition:
-    border-color 0.25s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1)),
     box-shadow 0.25s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1)),
     transform 0.25s var(--ma-ease, cubic-bezier(0.4, 0, 0.2, 1));
 }
 
 .oid-panel:hover {
-  border-color: var(--oid-border-hover);
   box-shadow: var(--oid-shadow-raised);
   transform: translateY(-2px) translateZ(0);
 }

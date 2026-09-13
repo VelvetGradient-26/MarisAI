@@ -18,7 +18,7 @@
   --lp-bg: var(--ma-bg-deep);
   /* A hair above --lp-bg so alternating panel sections still separate from
      the ground. Neutral now, like the ground it sits on. */
-  --lp-bg-panel: #08080b;
+  --lp-bg-panel: #2a2c31;
   --lp-text: #f6f6f8;
   /* Raised from 0.62 / 0.38. At 0.38 the labels, chips and spec values were
      barely present on a near-black background — the page read as washed out
@@ -30,14 +30,16 @@
   --lp-accent-soft: var(--ma-accent-soft);
   --lp-rule: rgba(255, 255, 255, 0.1);
   --lp-rule-soft: rgba(255, 255, 255, 0.06);
-  --lp-card: rgba(255, 255, 255, 0.035);
-  --lp-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  /* The ground, like every other surface in the app now — a translucent card
+     cannot be sculpted (see styles/tokens.css's header). */
+  --lp-card: var(--ma-surface);
+  --lp-shadow: var(--ma-raised);
   /* Pure black, because the page ground (--ma-bg-deep, #000103) is dark but
      not black — a shadow darker than the background is what makes elevation
      legible in dark mode without resorting to a colour wash. The margin is
      thinner than it was now that the ground is near-black, so the hover
      shadow leans on the second, tighter layer to read at all. */
-  --lp-shadow-hover: 0 22px 48px rgba(0, 0, 0, 0.72), 0 4px 14px rgba(0, 0, 0, 0.55);
+  --lp-shadow-hover: -9px -9px 20px var(--ma-lift), 9px 9px 22px var(--ma-sink);
 
   --lp-gutter: clamp(1.25rem, 5vw, 4rem);
   --lp-measure: 1180px;
@@ -61,7 +63,7 @@
      contrast than a divider does — at rule strength the line art disappeared. */
   --lp-glyph-line: rgba(226, 238, 244, 0.34);
   --lp-glyph-muted: rgba(226, 238, 244, 0.2);
-  --lp-glyph-bg: rgba(255, 255, 255, 0.028);
+  --lp-glyph-bg: var(--ma-surface);
 
   position: relative;
   min-height: 100vh;
@@ -95,18 +97,18 @@
 /* --lp-bg, --lp-accent and --lp-accent-soft are absent here on purpose: they
    alias shared tokens, which invert themselves from `data-theme` on <html>. */
 .lp--light {
-  --lp-bg-panel: #eef3f5;
+  --lp-bg-panel: #dfe3e9;
   --lp-text: #0a1418;
   --lp-muted: rgba(12, 28, 34, 0.76);
   --lp-faint: rgba(12, 28, 34, 0.58);
   --lp-rule: rgba(10, 26, 32, 0.14);
   --lp-rule-soft: rgba(10, 26, 32, 0.08);
-  --lp-card: rgba(10, 26, 32, 0.026);
-  --lp-shadow: 0 24px 60px rgba(12, 40, 50, 0.12);
-  --lp-shadow-hover: 0 20px 42px rgba(12, 40, 50, 0.17), 0 3px 10px rgba(12, 40, 50, 0.09);
+  --lp-card: var(--ma-surface);
+  --lp-shadow: var(--ma-raised);
+  --lp-shadow-hover: -9px -9px 20px var(--ma-lift), 9px 9px 22px var(--ma-sink);
   --lp-glyph-line: rgba(12, 28, 34, 0.42);
   --lp-glyph-muted: rgba(12, 28, 34, 0.24);
-  --lp-glyph-bg: rgba(10, 26, 32, 0.03);
+  --lp-glyph-bg: var(--ma-surface);
 }
 
 /* --------------------------------------------------------------------------
@@ -456,7 +458,8 @@
 .lp-button--primary {
   background: var(--lp-accent);
   color: var(--ma-accent-on);
-  border: 1px solid var(--lp-accent);
+  border: 0;
+  box-shadow: var(--ma-raised-sm);
 }
 
 .lp--light .lp-button--primary {
@@ -464,9 +467,14 @@
 }
 
 .lp-button--ghost {
-  background: transparent;
+  background: var(--lp-card);
   color: var(--lp-text);
-  border: 1px solid var(--lp-rule);
+  border: 0;
+  box-shadow: var(--ma-raised-sm);
+}
+
+.lp-button:active {
+  box-shadow: var(--ma-inset-sm);
 }
 
 .lp-button:hover {
@@ -554,8 +562,8 @@
 
 .lp-skill {
   padding: clamp(1.5rem, 3vw, 2.25rem);
-  border: 1px solid var(--lp-rule);
-  border-radius: 20px;
+  border: 0;
+  border-radius: 24px;
   background: var(--lp-card);
   box-shadow: var(--lp-shadow);
 }
@@ -738,9 +746,10 @@
   display: flex;
   flex-direction: column;
   padding: clamp(1.5rem, 3vw, 2.25rem);
-  border: 1px solid var(--lp-rule);
-  border-radius: 20px;
+  border: 0;
+  border-radius: 24px;
   background: var(--lp-card);
+  box-shadow: var(--lp-shadow);
   color: inherit;
   text-decoration: none;
   opacity: 1;
@@ -809,9 +818,10 @@
   display: block;
   margin: 0 0 1.5rem;
   padding: 0.5rem;
-  border-radius: 14px;
+  border-radius: 18px;
   background: var(--lp-glyph-bg);
-  border: 1px solid var(--lp-rule-soft);
+  border: 0;
+  box-shadow: var(--ma-inset-sm);
 
   /* The camera. Deliberately shallow — a long perspective flattens the object
      back into the icon it used to be, and a short one distorts the line art
@@ -1078,9 +1088,10 @@
 }
 
 .lp-chip {
-  padding: 0.3rem 0.7rem;
+  padding: 0.35rem 0.75rem;
   border-radius: 999px;
-  border: 1px solid var(--lp-rule);
+  border: 0;
+  box-shadow: var(--ma-raised-sm);
   font-family: var(--lp-font-mono);
   font-size: 0.71875rem;
   font-weight: 400;
@@ -1121,9 +1132,10 @@
 .lp-research-card {
   --rb-spotlight-radius: 20px;
   padding: clamp(1.5rem, 3vw, 2.25rem);
-  border: 1px solid var(--lp-rule);
-  border-radius: 20px;
+  border: 0;
+  border-radius: 24px;
   background: var(--lp-card);
+  box-shadow: var(--lp-shadow);
 }
 
 .lp-research-card__eyebrow {
@@ -1155,9 +1167,10 @@
 .lp-diagram {
   margin: 0;
   padding: 1rem 1rem 0.75rem;
-  border-radius: 14px;
+  border-radius: 18px;
   background: var(--lp-glyph-bg);
-  border: 1px solid var(--lp-rule-soft);
+  border: 0;
+  box-shadow: var(--ma-inset-sm);
 }
 
 .lp-diagram__svg {
@@ -1545,8 +1558,9 @@
   align-items: center;
   gap: 0.6rem;
   margin: 0 0 1.75rem;
-  padding: 0.4rem 0.95rem 0.4rem 0.7rem;
-  border: 1px solid var(--lp-rule);
+  padding: 0.45rem 1rem 0.45rem 0.75rem;
+  border: 0;
+  box-shadow: var(--ma-raised-sm);
   border-radius: 980px;
   background: var(--lp-card);
   backdrop-filter: blur(10px);
