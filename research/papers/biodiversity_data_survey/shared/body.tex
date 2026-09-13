@@ -1,0 +1,438 @@
+% ---------------------------------------------------------------------------
+% The manuscript body, shared verbatim by the Springer (LNCS) and IEEE
+% (IEEEtran) builds. Nothing class-specific may appear in this file.
+%
+% Each wrapper defines, before \input-ing this:
+%   \wfigure / \endwfigure   a figure spanning the full text width
+%   \wtable  / \endwtable    the same for tables
+%   \tabscale                the font size command tables are set at
+%   \para{...}               a run-in bold paragraph heading
+%   \citep{...}               mapped to \cite for the LNCS/IEEEtran builds
+% ---------------------------------------------------------------------------
+
+\section{Introduction}
+
+Building a marine species-distribution or harmful-algal-bloom model, or any
+analytics feature that needs occurrence, catch, or effort data broader than
+what one platform already fetches, starts with a question that sounds like it
+should have a settled answer: which data sources are actually reachable, and
+in what shape? In practice, the answer is scattered across API documentation
+of wildly uneven quality, mailing-list folklore, a portal's own about page,
+and direct trial and error, and it decays --- an endpoint that returned JSON
+last quarter can start returning an HTML redirect, a certificate error, or
+nothing at all, for reasons that have nothing to do with the data it holds.
+Sambasivan et al.\ document, at the level of organisational practice, that
+this kind of unglamorous data work is systematically undervalued relative to
+model work \citep{sambasivan2021}; a source-reachability survey is exactly
+the least glamorous end of that work, which is also why it is rarely written
+down, and almost never written down with a date attached.
+
+This paper reports one such survey: \NSourcesSurveyed{} marine
+biodiversity, fisheries, and catch/effort data sources, each probed live on
+\ProbeDate{} against its documented or discoverable API endpoint. Each is
+classified into one of three shapes: open REST/JSON and occurrence-shaped;
+reachable but gated or bulk-download-only; or dead and defunct. Each verdict
+is reported with the specific HTTP status, DNS or TLS failure, or record
+count the probe returned. The sources span the field's usual anchors (OBIS, GBIF), regional
+and taxonomic infrastructure (WoRMS, EMODnet Biology, ICES DATRAS), regional
+fisheries management organisations (IOTC, ICCAT, WCPFC), and a set of Indian
+marine research institutions whose accessibility motivated the survey in the
+first place. The paper's own thesis is reflexive: a survey of this kind is
+useful precisely because it goes stale, which is the argument for publishing
+it now, with dated probes, rather than waiting for a version that will not
+arrive. Section~\ref{sec:results} demonstrates this directly rather than only
+asserting it: re-probing a subset of the \NSourcesSurveyed{} sources while
+writing this paper, more than a month after the original pass, already finds
+\NEndpointsDrifted{} of \NEndpointsReprobed{} re-checked endpoints answering
+with a different technical signature than they did on \ProbeDate{}.
+
+\subsection{Contributions}
+
+\begin{enumerate}\itemsep2pt
+\item A \textbf{dated, three-tier survey} of \NSourcesSurveyed{} marine
+biodiversity/fisheries/catch data sources, each with a live-probed verdict,
+the specific technical detail behind it (status code, DNS/TLS failure mode,
+or record count), and the date it was true.
+\item Three \textbf{corrections to a plausible-sounding default}, each
+demonstrated with the specific measurement rather than asserted: GBIF is not
+a superset of OBIS for marine fish, so unioning the two requires
+deduplication rather than a source swap; a single non-200 probe response
+does not by itself mean a source is dead, since the same class of response
+(status~000) meant a transient TLS handshake flake for one source and a
+genuinely unreachable host for another; and an institution's parent-domain
+hostname failing does not mean the institution is unreachable, since two of
+four Indian institutes sharing a dead \texttt{icar.gov.in} subdomain are
+reachable under their own \texttt{.res.in} domain instead.
+\item An explicit \textbf{evidence-grading stance}: every claim in this paper
+is graded \emph{Dated} rather than \emph{Artifact}, because the object under
+test is infrastructure this project does not control, and Section
+\ref{sec:method} explains why no claim here could honestly be graded
+otherwise.
+\item A \textbf{live re-verification pass}, performed while writing this
+paper, that finds the survey's own numbers already drifting in a way that
+argues for the paper's central claim rather than against it: an endpoint
+recorded dead by DNS failure on \ProbeDate{} now resolves to a live host
+serving an unconfigured default certificate, and a portal recorded as 404
+now redirects to a live page while its programmatic API remains unchanged.
+\item The survey's \textbf{sharpest single finding}, isolated in
+Section~\ref{sec:discussion}: no Indian marine data source runs its own
+machine-readable API --- except that this is not quite true of IndOBIS, which
+needs no new integration at all, because it is already reachable as a node
+filter on the OBIS API this codebase already calls.
+\end{enumerate}
+
+\section{Related Work}
+\label{sec:related}
+
+\para{What the major aggregators' own papers describe} Grassle's founding
+description of the Ocean Biogeographic Information System \citep{grassle2000}
+and Robertson et al.'s account of the GBIF Integrated Publishing Toolkit
+\citep{robertson2014} both describe what these two aggregators are, how data
+enters them, and why they were built as shared infrastructure rather than
+per-project scraping. Costello et al.\ give the equivalent account for the
+World Register of Marine Species, the taxonomic backbone this survey lists
+as the right place to resolve a name before querying anything else
+\citep{costello2013worms}. None of the three asks, or is designed to answer,
+whether a given consumer can reach a given endpoint programmatically today,
+nor how a source outside this small, well-resourced set behaves --- the
+question this survey's \NTierTwo{}-source gated/bulk tier and
+\NTierThree{}-source Indian-institution tier exist to answer, since neither
+tier is the subject either infrastructure paper describes.
+
+\para{The closest prior assessment, and where this survey sits upstream of
+it} Vandepitte et al.\ assess the data quality, completeness, and fitness for
+use of records already inside marine biogeographic databases --- duplicate
+records, taxonomic mismatches, geographic outliers --- once a dataset has
+already been published into an aggregator like OBIS \citep{vandepitte2015}.
+That is a rigorous, valuable question, and it is a different one from this
+survey's: Vandepitte et al.\ examine data already reachable and already
+inside the system this survey's Tier 1 describes, whereas this survey asks
+the question upstream of that --- is a given source reachable and shaped as
+advertised at all --- across a much longer tail of sources, most of which
+have never been the subject of a quality assessment because nobody has
+systematically probed whether they answer a query in the first place.
+Neither paper substitutes for the other; a source has to clear this survey's
+bar before Vandepitte et al.'s questions can even be asked of it.
+
+\para{Scope} This is a probe-based accessibility survey, not a data-quality
+audit and not a taxonomic or geographic coverage assessment of the sources it
+lists; \S\ref{sec:limitations} states directly that its own findings are
+exactly the kind of claim this paper argues decays fastest.
+
+\section{Method: what \emph{probed} means, and why every claim here is
+\emph{Dated}}
+\label{sec:method}
+
+\para{Probing} Each source in Table~\ref{tab:open}, Table~\ref{tab:gated},
+and Table~\ref{tab:indian} was queried live against its documented or
+discoverable API root or a representative endpoint (an occurrence search, a
+statistics call, a WFS \texttt{GetCapabilities} request, or the plainest
+public page where no API is documented at all), recording the returned HTTP
+status code, DNS or TLS failure where the request did not complete, and,
+where the response was 200, whether the body was machine-readable (JSON,
+XML, or WFS) and occurrence-shaped, a generic repository schema, or plain
+HTML. No source was probed through an authenticated session beyond a key
+already provisioned in this codebase's own configuration
+(\texttt{backend/.env}); a 401/403 response is reported as \emph{gated}, not
+retried with credentials this project does not hold. The original pass was
+run \ProbeDate{} and recorded in \texttt{docs/data-sources.md} (split out of
+\texttt{CLAUDE.md} on \SplitDate{} to keep the root instruction file
+lean); this paper adds a second, partial pass of \NEndpointsReprobed{}
+endpoints, re-run \AsOf{} while writing it, reported in
+\S\ref{sec:results}.
+
+\para{The three-tier scheme} \emph{Tier 1} (\NTierOne{} sources, Table
+\ref{tab:open}): open REST/JSON or equivalent (WFS, OAI-PMH) with no key
+required for reads, returning occurrence- or dataset-shaped data. \emph{Tier
+2} (\NTierTwo{} sources): reachable in some form --- a documentation page, a
+portal, a bulk-download form --- but gated behind a key or account, or usable
+only as a file download rather than a query. \emph{Tier 3} (\NTierThree{}
+sources): Indian marine research institutions, considered separately because
+they motivated the survey and because, as \S\ref{sec:discussion} argues, they
+share a specific and previously undocumented pattern that a plain
+Tier-1/Tier-2 split would flatten.
+
+\para{Why every claim here is graded Dated, not Artifact} A companion
+catalogue from the same research programme grades its own claims
+\emph{Artifact} when a committed report file or a currently-passing
+regression test reproduces the number on demand, and \emph{Dated} when the
+only reproduction path is a named script run again against a moving
+field --- a day's wind, current, or SST state
+\citep{silentfailures2026}\footnote{Cross-referenced for its grading
+convention only; this survey has no numerical or mechanistic overlap with
+that catalogue's eleven instances.}. Every claim in this paper falls further
+along that same axis than either of that catalogue's own categories: there is
+no script this project owns whose re-run reproduces a source's HTTP status,
+because the object being measured is infrastructure entirely outside this
+project's control. Re-running the same request tomorrow is not
+\emph{re-computation}, the way re-running a training script against a
+committed feature store is; it is a fresh observation of a system that can
+legitimately answer differently for reasons --- a certificate renewal, a
+migrated domain, a maintenance window, a policy change --- that have nothing
+to do with anything this project did. Accordingly, this paper does not use an
+\emph{Artifact} grade at all: every verdict below is \emph{Dated}, stamped
+with the date it was observed, and \S\ref{sec:results}'s re-verification
+pass is offered as a demonstration of exactly how much that distinction
+matters over as little as five weeks.
+
+\section{Results}
+\label{sec:results}
+
+\begin{wtable}
+\centering
+\tabscale
+\caption{Tier 1: open REST/JSON (or equivalent) sources, no key required for
+reads, occurrence- or dataset-shaped. All probed \ProbeDate{} unless a
+re-probe date is noted; \NTableRowsOpen{} rows cover \NTierOne{} sources.}
+\label{tab:open}
+\begin{tabular}{p{0.14\linewidth}p{0.08\linewidth}p{0.70\linewidth}}
+\toprule
+Source & Status & Detail \\
+\midrule
+OBIS & 200 & \texttt{/v3/occurrence}, \texttt{/statistics}, \texttt{/checklist} all 200; \texttt{hasextensions=DNADerivedData} eDNA filter returns \ObisEdnaRecordsM{}M records, \ObisEdnaSpecies{} species, \ObisEdnaDatasets{} datasets, 2001--2025. Already implemented (\texttt{marine\_ml/sources/obis.py}). \\
+GBIF & 200 & \texttt{/v1/occurrence/search}, no key, Darwin Core. Already implemented (\texttt{sources/gbif.py}); see below for why unioning it with OBIS is not a superset relation. \\
+iNaturalist & 200 & \texttt{/v1/observations}, no key; citizen-science coastal bias, \texttt{quality\_grade=research} mandatory; not a survey. \\
+WoRMS & 200 & \texttt{/rest/AphiaRecordsByName}; taxonomic backbone for resolving a name/AphiaID before querying anything else. \\
+Marine Regions & 200 & \texttt{/rest/getGazetteerRecordsByName.json}; EEZ/LME/sea-area polygons for defining a region bound instead of a hand-written bbox. \\
+Sea Around Us & 200 & \texttt{/api/v1/eez}, \texttt{/eez/tonnage/taxon}; reconstructed catch by EEZ/taxon --- a different table from occurrences. \\
+ICES DATRAS & 200 & \texttt{/getSurveyList} (XML, SOAP-style \texttt{.asmx}); the only source in this table with true zero-catch hauls, i.e.\ true absences; North Atlantic/European coverage only. \\
+EMODnet Biology & 200 & WFS \texttt{GetCapabilities}; \texttt{GetFeature}+bbox works without a portal scrape; European coverage. \\
+NASA Earthdata CMR & 200 & \texttt{/search/collections.json} unauthenticated for search; downloads require Earthdata Login. \\
+NOAA ERDDAP & 200 & Known in this codebase to flap --- unloads and reloads datasets, answering a transient 404 indistinguishable from a removed dataset (applies to every ERDDAP host, OTN included). \\
+OTN & 200 & Acoustic telemetry (individual tracks, not occurrences); its \texttt{/info/index.json} probe alone returned 000, a TLS handshake flake, not treated as a dead source --- see the correction below. \\
+HYCOM & 200 & THREDDS/OPeNDAP; environmental covariate, overlaps Copernicus, no reason to add unless a field is missing there. \\
+Zenodo / Dryad / DataONE & 200 & Generic repositories; per-dataset ad-hoc schema, useful for discovering a dataset, not for a scheduled fetch. \\
+PANGAEA & 200 / 404 & OAI-PMH provider (\texttt{?verb=Identify}) 200, re-probed \AsOf{}: unchanged. Its older \texttt{/es/dataportal-item/\_search} endpoint is 404 --- gone, use OAI-PMH instead --- re-probed \AsOf{}: also unchanged. \\
+\bottomrule
+\end{tabular}
+\end{wtable}
+
+\begin{wtable}
+\centering
+\tabscale
+\caption{Tier 2: reachable but gated or bulk-download only. All probed
+\ProbeDate{} unless a re-probe date is noted; \NTableRowsGated{} rows cover
+\NTierTwo{} sources.}
+\label{tab:gated}
+\begin{tabular}{p{0.16\linewidth}p{0.10\linewidth}p{0.66\linewidth}}
+\toprule
+Source & Status & Detail \\
+\midrule
+Global Fishing Watch & 401 & Expected; needs the token already provisioned in \texttt{backend/.env} (\texttt{services/gfw.py}). Effort/AIS, not biology. \\
+Movebank & 401 & Free account plus per-study permission from the data owner; most studies are not open. \\
+AIMS & 200 / 403 & Docs 200; \texttt{api.aims.gov.au} 403 --- needs an API key. \\
+FishBase & 000 & \texttt{fishbase.ropensci.org} dead by DNS on \ProbeDate{}; re-probed \AsOf{}, its failure signature has changed --- see below. \texttt{fishbase.se} serves 200 HTML only; programmatic use means the \texttt{rfishbase} data dumps, not a live API. \\
+AquaMaps / Bio-ORACLE / MARSPEC & 200 & Modelled raster products downloaded as files, not queried; AquaMaps output is itself a model prediction, so using it as a label trains on another model. \\
+IOTC / ICCAT / CCSBT & 200 & RFMO catch/effort, gridded aggregates behind manual download forms; ICCAT partly requires a request. \\
+WCPFC & 404 & Both \texttt{/public-domain} and \texttt{/public-domain-data} 404 on \ProbeDate{} --- the URL moved; re-probed \AsOf{}: still 404. \\
+FAO FishStat & 200 & Desktop application plus bulk zip; country-year granularity, fine for context, not for a habitat model. \\
+NOAA Stock SMART & 200 / 404 & Web app 200; \texttt{/sis/api/} and \texttt{/adb/} both 404 --- no documented public API, treat as bulk export. \\
+DFO Canada & 200 / 400 & Federal CKAN \texttt{package\_search} 200; the plain \texttt{/dataset?organization=} URL 400s. \\
+CSIRO / NCEI / MBON / GOOS & 200 & Reachable only as portals. \\
+NIWA & 200 / 404 & Root 200; \texttt{/coasts-and-oceans/marine-data} 404. \\
+RLS & 200 & Standardised reef transects with abundance and real zeros --- genuinely valuable --- but ships as CSV downloads only. \\
+VertNet & 404 / 500 & Portal 404, appspot API 500 on \ProbeDate{}; re-probed \AsOf{}, the portal's status has changed but the API has not --- see below. \\
+\bottomrule
+\end{tabular}
+\end{wtable}
+
+\begin{wtable}
+\centering
+\tabscale
+\caption{Tier 3: Indian marine research institutions, no machine-readable
+API (one important exception). All probed \ProbeDate{} unless a re-probe
+date is noted; \NTableRowsIndian{} rows cover \NTierThree{} sources.}
+\label{tab:indian}
+\begin{tabular}{p{0.16\linewidth}p{0.10\linewidth}p{0.66\linewidth}}
+\toprule
+Source & Status & Detail \\
+\midrule
+CMFRI & 200 & \texttt{cmfri.org.in} and \texttt{eprints.cmfri.org.in} both 200; the EPrints repository has OAI-PMH and holds annual landings estimates, but document-level, not record-level. \\
+FSI & 200 & Survey cruise data; publications only, data by request. \\
+IndOBIS & 200 & Not a counterexample to ``no machine-readable API'' in the way it first appears --- reachable through the existing OBIS API as node \texttt{\IndObisNodeId{}}, no new integration needed. See \S\ref{sec:discussion}. \\
+CIFT / CIBA & 200 & \texttt{cift.res.in}, \texttt{ciba.res.in} both 200, re-probed \AsOf{}: unchanged; their \texttt{*.icar.gov.in} subdomains are 000. \\
+CIFRI / CIFA & 000 / 400 & \texttt{*.icar.gov.in} subdomains 000 (DNS/TLS); \texttt{cifa.nic.in} 400. No confirmed working \texttt{.res.in} equivalent for either, unlike CIFT/CIBA. \\
+\bottomrule
+\end{tabular}
+\end{wtable}
+
+Of \NSourcesSurveyed{} sources probed \ProbeDate{}, \NTierOne{} are open,
+occurrence-shaped, and require no key; \NTierTwo{} are reachable in some form
+but gated or bulk-download-only; and the \NTierThree{} Indian institutions in
+Table~\ref{tab:indian} have, with one important exception discussed below,
+no machine-readable API at all --- everything is a PDF or HTML publication,
+a portal, or a manual request.
+
+\para{Correction 1: GBIF is not a superset of OBIS for marine fish}
+Unioning a second occurrence source with an existing one is often treated as
+a strict superset operation --- more of the same kind of data, so nothing is
+lost by adding it. Measured directly on \emph{Thunnus albacares}, OBIS
+returns \ObisTunaRecords{} records against GBIF's \GbifTunaRecords{} with
+coordinates: a large fraction of GBIF's marine records are themselves OBIS
+datasets republished, so a naive union double-counts, and the two sources
+dominate for different species groups in this codebase's own target list ---
+GBIF for the pelagic tunas, OBIS by roughly an order of magnitude for Indian
+mackerel and oil sardine, the two species that matter most for Indian
+coastal fisheries. The union is a genuine union, not a migration, and it
+requires deduplication on \texttt{occurrenceID} (falling back to dataset,
+catalogue number, latitude/longitude, and date) precisely because neither
+source can be dropped for the other.
+
+\para{Correction 2: a single non-200 probe is not, by itself, a death
+certificate} Two sources across Table~\ref{tab:open} and
+Table~\ref{tab:gated} returned status 000 --- a connection that did not
+complete at all --- on a single probe, and only one of them is actually dead.
+OTN's \texttt{/info/index.json} endpoint returned 000 on \ProbeDate{}, and a
+second request to the same host's plain HTML index succeeded; read alone,
+the 000 would have supported the same ``dead'' verdict this survey gives
+FishBase's ropensci mirror, whose 000 was a genuine DNS resolution failure
+that did not resolve on a retry. The methodological point this survey's own
+working notes make explicit is that a status-000 probe needs a second,
+different request against the same host before it is read as evidence of
+death rather than of a transient handshake flake --- exactly the same
+discipline a companion catalogue from this codebase applies to a corroboration
+rate needing a control arm before it is read as confirmation
+\citep{silentfailures2026}.
+
+\para{Correction 3: a dead parent domain does not mean a dead institution}
+Four Indian institutes --- CIFRI, CIFT, CIBA, and CIFA --- share a hostname
+pattern under \texttt{icar.gov.in} that fails DNS/TLS for all four. Read as a
+single fact about the parent domain, this would suggest all four are
+simply unreachable. Two of the four, CIFT and CIBA, are reachable under their
+own \texttt{.res.in} domain instead (\texttt{cift.res.in},
+\texttt{ciba.res.in}, both 200); the other two are not confirmed reachable
+under any working domain (CIFRI has no \texttt{.res.in} equivalent probed
+successfully here, and CIFA's \texttt{.nic.in} domain returns 400). The
+correction is specific and only two-for-four: an institution sharing a dead
+parent-domain pattern is worth a second, institution-specific probe before
+being written off with the other three, but that second probe does not
+always succeed.
+
+\para{What changed since \ProbeDate{}} Re-probing \NEndpointsReprobed{} of
+the \NSourcesSurveyed{} endpoints while writing this paper, \AsOf{}, finds
+\NEndpointsUnchanged{} identical to the \ProbeDate{} record --- WCPFC's
+\texttt{/public-domain} still 404, PANGAEA's OAI-PMH endpoint still 200 and
+its old Elasticsearch endpoint still 404, \texttt{cift.res.in} and
+\texttt{ciba.res.in} still 200, VertNet's appspot API still 500, and the
+OBIS statistics call filtered to the IndOBIS node still returning exactly
+\IndObisDatasets{} datasets, \IndObisRecords{} records, and
+\IndObisSpecies{} species over \IndObisYearStart{}--\IndObisYearEnd{},
+byte-identical to \ProbeDate{}'s figures. The remaining \NEndpointsDrifted{}
+have not: \texttt{fishbase.ropensci.org}, dead by DNS resolution failure on
+\ProbeDate{}, now resolves to a live host whose TLS handshake completes and
+serves a self-signed certificate with subject and issuer both
+``\FishbaseCertCN{}'' (\texttt{openssl s\_client}'s verify return code
+\FishbaseOpenSSLVerifyCode{}, self-signed certificate) --- an ingress with no
+route configured for this hostname, a different failure mode from an
+unresolvable name, though the practical verdict (do not code against it) is
+unchanged. VertNet's portal, 404 on \ProbeDate{}, now answers 308 and
+redirects to a live 200 marketing page at \texttt{www.vertnet.org}, while its
+programmatic \texttt{appspot.com} search API is still 500 --- the verdict
+for programmatic use (defunct) is unchanged even though the specific status
+code this survey's own table cites for ``portal'' no longer holds. Both
+drifted cases were probed once more, from this session's own network access,
+which is a real limitation on how confidently a single re-probe can be read
+--- discussed in \S\ref{sec:limitations} --- but the FishBase case in
+particular shows a protocol-level, server-side signal (a live TLS listener
+answering with a specific, named default certificate) that a routing or
+caching difference between vantage points does not plausibly explain.
+
+\section{Discussion}
+\label{sec:discussion}
+
+The sharpest single finding in this survey is not any one dead or gated
+source; it is what IndOBIS's status does to the otherwise clean statement
+that no Indian marine data source has a machine-readable API. Read at the
+level of institutions, that statement holds without exception: CMFRI, FSI,
+CIFT, CIBA, CIFRI, and CIFA between them offer document repositories, portal
+pages, and manual-request forms, and not one of the six runs a queryable API
+of its own. IndOBIS looks, at first glance, like the seventh Indian
+institution and the sole counterexample --- a Regional OBIS Node run by
+CMLRE (the Centre for Marine Living Resources and Ecology), returning 200 on
+its own domain (\texttt{indobis.in}) with a real dataset behind it. It is
+not actually a counterexample, and the reason why is the finding worth
+acting on: CMLRE has not built and does not run an API. IndOBIS is a
+\emph{node designation inside the OBIS aggregator}, reachable by passing
+\texttt{?nodeid=\IndObisNodeId{}} to the exact same
+\texttt{/v3/occurrence}, \texttt{/v3/dataset}, and \texttt{/v3/statistics}
+endpoints Table~\ref{tab:open} already lists as open and already implemented
+in this codebase's \texttt{obis.py}. Filtering on that node returns
+\IndObisDatasets{} datasets, \IndObisRecords{} records, and
+\IndObisSpecies{} species across \IndObisYearStart{}--\IndObisYearEnd{}
+(the Actinopterygii subset alone, \texttt{taxonid=10194}, is
+\IndObisActinoRecords{} records across \IndObisSpecies{} $\to$
+\IndObisActinoSpecies{} species and \IndObisActinoDatasets{} datasets), all
+of which a call to \texttt{obis.py} already pulls in as part of the global
+OBIS query it already makes.
+
+The practical consequence is specific and easy to get wrong in the direction
+of doing unnecessary work: the correct response to ``does this platform have
+Indian marine occurrence data'' is not a new integration project aimed at
+CMLRE, because there is no CMLRE-run endpoint to integrate with --- it is
+adding the node filter to a query already being issued, as a
+provenance/diagnostic facet (``how much of this region's background is
+Indian-sourced'') rather than as a source of additional data. A survey that
+stopped at ``IndOBIS returns 200, mark it reachable'' would have filed it
+in the same bucket as CMFRI's eprints repository or CIFT's own domain ---
+reachable, but requiring integration work proportional to a new source. The
+finding that makes this survey worth having is the one level down from
+reachability: \emph{why} it is reachable, which changes the item from a
+backlog entry into a one-line filter on code that already ships.
+
+\section{Limitations}
+\label{sec:limitations}
+
+This survey is the work of one team, probing largely on one date
+(\ProbeDate{}), against each source's documented or discoverable endpoint
+from this team's own network vantage point --- a different vantage point
+(a different country, a different institutional network, a service behind
+geofencing or a CDN edge) could in principle return a different status for
+the same source at the same moment, and neither the original pass nor this
+paper's re-verification pass records which network it was run from. The
+three-way verdict (open, gated, dead) is a deliberate simplification that
+several sources already strain: AIMS, DFO Canada, and NOAA Stock SMART all
+show a documentation page or portal succeeding while the actual data
+endpoint fails, which is neither cleanly ``open'' nor cleanly ``dead,'' and
+is reported in Table~\ref{tab:gated}'s detail column rather than
+folded into a fourth category this survey does not otherwise use. The
+re-verification pass in \S\ref{sec:results} covers \NEndpointsReprobed{} of
+\NSourcesSurveyed{} sources, not all of them, chosen for being the most
+specific or surprising claims in the original pass rather than a random or
+complete sample, so \NEndpointsUnchanged{} of \NEndpointsReprobed{} holding
+steady is evidence about those particular endpoints and should not be read
+as an estimate of how much of the full table has drifted.
+
+None of this is presented as a flaw to correct in a future version, because
+a future, ``final'' version of this survey is not a coherent goal. The
+paper's own thesis is that this kind of survey decays on a timescale of
+weeks, not years, which \S\ref{sec:results}'s own re-verification already
+demonstrates for \NEndpointsDrifted{} of \NEndpointsReprobed{} endpoints
+checked barely five weeks after the original pass; the right response is not
+a more careful one-time survey but a habit of re-probing before relying on a
+``works'' verdict months later, exactly as \texttt{docs/data-sources.md}'s
+own header already tells its readers to do.
+
+\section{Conclusion}
+
+Of \NSourcesSurveyed{} marine biodiversity, fisheries, and catch/effort data
+sources probed live on \ProbeDate{}, \NTierOne{} are open and
+occurrence-shaped with no key required, \NTierTwo{} are reachable but gated
+or bulk-download-only, and \NTierThree{} Indian institutions have, with one
+exception, no machine-readable API at all. That exception is the survey's
+sharpest finding: IndOBIS needs no new integration because it is already
+reachable as a node filter on the OBIS API this codebase already calls, which
+turns what looks like an integration backlog item into a one-line addition
+to an existing query. Three further corrections --- that GBIF is not a
+superset of OBIS for marine fish, that a single status-000 probe conflates a
+transient flake with a genuinely dead host, and that a dead parent domain
+does not mean a dead institution --- show that even a survey built from live
+probes needs a second check before a verdict is trusted, the same discipline
+this research programme has applied elsewhere to its own computed metrics.
+Every claim in this paper is graded Dated rather than Artifact, because the
+object under test is infrastructure outside this project's control, and a
+partial re-verification performed while writing this paper already finds
+two of nine re-checked endpoints answering with a different technical
+signature than they did five weeks earlier --- direct evidence for, not
+against, the paper's central argument that a survey like this is worth
+publishing now, with a date attached, rather than waiting for a version that
+this genre of survey cannot produce.

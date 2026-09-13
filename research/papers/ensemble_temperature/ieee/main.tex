@@ -1,0 +1,97 @@
+% ---------------------------------------------------------------------------
+% IEEE conference build.  Compile with:
+%     tectonic -X compile main.tex --outdir .
+% The body is shared verbatim with ../springer/main.tex; only this wrapper
+% differs.
+% ---------------------------------------------------------------------------
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{siunitx}
+\usepackage{microtype}
+\usepackage{cite}
+\usepackage[hidelinks]{hyperref}
+
+\graphicspath{{../shared/generated/}}
+
+\providecommand{\degree}{^{\circ}}
+
+\newenvironment{wfigure}{\csname figure*\endcsname}{\csname endfigure*\endcsname}
+\newenvironment{wtable}{\csname table*\endcsname}{\csname endtable*\endcsname}
+\newcommand{\tabscale}{\scriptsize}
+
+\newcommand{\para}[1]{\paragraph{#1}}
+
+\providecommand{\citep}[1]{\cite{#1}}
+
+\input{../shared/generated/macros}
+
+\begin{document}
+
+\title{A Softmax Temperature Is Not a Fact About an Ensembling Method: It Is
+a Fact About Two Scores on a Specific Day}
+
+\author{\IEEEauthorblockN{Deepak Krishna}
+\IEEEauthorblockA{\textit{MarisAI} \\
+India \\
+deepakkrishna2206@gmail.com}}
+
+\maketitle
+
+\begin{abstract}
+Softmax-weighted ensembling was measured to fix a real defect in a
+species-distribution ensemble on 2026-08-13: proportional weighting let a
+member at cross-validated TSS \HistMaxentCV{} draw \HistMaxentVote{}\% of
+the vote against a leader at \HistLgbmCV{}, and the resulting ensemble
+scored \HistPropTSS{}, below its own best member's \HistBestMemberTSS{}.
+Softmax at temperature \ShippedTemperature{} raised it to
+\HistSoftmaxTSS{}, above every member. We re-ran the full sweep this fix's
+own documentation named as missing (\NSweepPoints{} temperatures, on the
+exact fit/CV/holdout path the shipped model uses) and find something not
+anticipated: on the current, retrained models, the shipped temperature no
+longer clears the ensemble's own best member (\CurShippedTSS{} against
+\CurLgbmHoldoutTSS{}), because the between-member skill gap it was
+calibrated to has narrowed from \HistGap{} to \CurGap{} TSS points as the
+weak member's own skill improved. The mechanism still works --- a
+temperature of roughly \(0.3\)--\(0.5\) restores the guarantee, at a
+calibration cost we make explicit --- but the specific constant chosen four
+weeks earlier is no longer sufficient on its own terms. We also correct a
+planned second test: harmful-algal-bloom early warning, cited elsewhere in
+this research programme as a second ensemble to sweep, is a single
+calibrated model with no members to weight, and we say so rather than
+substitute a different result.
+\end{abstract}
+
+\begin{IEEEkeywords}
+ensemble weighting, species distribution modelling, softmax temperature,
+reproducibility, silent failure
+\end{IEEEkeywords}
+
+\input{../shared/body}
+
+\section*{Reproducibility}
+{\raggedright\sloppy
+\begin{itemize}\itemsep1pt\parskip0pt
+\item[] \textbf{Sweep.}
+\texttt{machine\_learning/scripts/\allowbreak{}sweep\_ensemble\_temperature.py}
+calls the shipped training path's own \texttt{cross\_validate} and refits
+the same final holdout split
+\texttt{fish\_habitat\_prediction/src/\allowbreak{}train.py}'s \texttt{run()}
+uses, writing
+\texttt{machine\_learning/reports/\allowbreak{}ensemble\_temperature\_sweep.csv}.
+\item[] \textbf{Figure.} \texttt{generate\_figures.py} in this paper's
+\texttt{shared/} directory, reading that same CSV directly.
+\item[] \textbf{2026-08-13 measurement.} Quoted from the code comment above
+\texttt{fish\_habitat\_prediction/src/\allowbreak{}models.py}'s
+\texttt{TSS\_SOFTMAX\_TEMPERATURE}.
+\end{itemize}}
+Every number was verified against the file producing it as of \AsOf{}.
+
+\bibliographystyle{IEEEtran}
+\bibliography{../shared/references}
+
+\end{document}

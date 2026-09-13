@@ -1,0 +1,116 @@
+% ---------------------------------------------------------------------------
+% IEEE conference build.  Compile with:
+%     tectonic -X compile main.tex --outdir .
+% The body is shared verbatim with ../springer/main.tex; only this wrapper
+% differs.
+% ---------------------------------------------------------------------------
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{siunitx}
+\usepackage{microtype}
+\usepackage{cite}
+\usepackage[hidelinks]{hyperref}
+
+\graphicspath{{../shared/generated/}{../shared/diagrams/}}
+
+% siunitx v3 dropped \degree; every use in the body is in math mode.
+\providecommand{\degree}{^{\circ}}
+
+% IEEEtran is two-column: a "wide" float must span both columns.
+\newenvironment{wfigure}{\csname figure*\endcsname}{\csname endfigure*\endcsname}
+\newenvironment{wtable}{\csname table*\endcsname}{\csname endtable*\endcsname}
+\newcommand{\tabscale}{\scriptsize}
+
+% IEEEtran appends its own colon to a run-in \paragraph; adding a period too
+% renders as "Mechanism.:".
+\newcommand{\para}[1]{\paragraph{#1}}
+
+% The shared body uses natbib's \citep; IEEEtran uses plain \cite.
+\providecommand{\citep}[1]{\cite{#1}}
+
+% Every experimental number in the prose is a macro; see the header comment
+% in shared/generated/macros.tex for its provenance (evidence-graded,
+% file/line/commit cited per group).
+\input{../shared/generated/macros}
+
+\begin{document}
+
+\title{Inverted, Frozen, and Flapping: Four Infrastructure Notes from an
+Operational Marine Data Platform}
+
+\author{\IEEEauthorblockN{Deepak Krishna}
+\IEEEauthorblockA{\textit{MarisAI} \\
+India \\
+deepakkrishna2206@gmail.com}}
+
+\maketitle
+
+\begin{abstract}
+Operational research software accumulates infrastructure decisions that look
+like defects until the measurement behind them is produced. We report four
+such decisions from one running marine-data platform, each re-verified
+against its primary source rather than an existing write-up. First, a
+backend forecasting engine is tracked in MLflow without importing MLflow ---
+the training side writes plain JSON, the machine-learning side reads it ---
+and the stated reason for a lighter tracking package (avoiding a
+pandas/pyarrow downgrade) is checked live against that package's own PyPI
+metadata: correct for the exact release pinned, already relaxed one release
+later. Second, pinning a snapshot date and freezing a disk cache's
+time-to-live take a 52-model, 1,248-fit reproducibility audit from roughly
+\AuditSecondsUncached{}~seconds to roughly \AuditSecondsCached{}~seconds per
+variable --- a claim whose model/fit counts are artifact-backed and whose
+speedup figure is not, and is graded accordingly. Third, Copernicus Marine's
+two zarr access services trade an \ArcoSlowdownFactor{}$\times$ measured
+speed difference depending on request shape, and we correct an unsupported
+``hours'' framing of that cost found in this project's own working notes.
+Fourth, an ERDDAP data server answers 404 while reloading a dataset it still
+serves, indistinguishable from a genuinely retired one, which led one real
+dataset to be treated as retired for months; we resolve a live disagreement
+between this project's own source-code comments and its documentation over
+the actual size of a related retry-policy cost, using the arithmetic each
+account carries internally to determine which figure the sources themselves
+support.
+\end{abstract}
+
+\begin{IEEEkeywords}
+experiment tracking, reproducibility, MLflow, cloud-native array formats,
+zarr, ERDDAP, retry policy, research software engineering
+\end{IEEEkeywords}
+
+\input{../shared/body}
+
+\section*{Reproducibility}
+Every number in this paper traces to a file, currently-passing test, git
+commit, or live third-party metadata lookup named in
+\texttt{shared/generated/macros.tex}, grouped and evidence-graded by
+section. Section~\ref{sec:mlflow}'s claims are read from
+\texttt{machine\_learning/marine\_ml/tracking.py},
+\texttt{machine\_learning/requirements.txt}, and
+\texttt{backend/tests/test\_training\_run\_record.py} (re-run for this
+paper: 10 passed), cross-checked against PyPI's release-specific JSON for
+\texttt{mlflow==\MlflowMatchedVersion{}} and \texttt{mlflow==\MlflowLatestVersion{}}.
+Section~\ref{sec:cache}'s counts are read from
+\texttt{research/data/results/\{meta,loso,ablation\_meta\}.json} and
+\texttt{research/data/sites.csv}; its mechanism from
+\texttt{backend/forecasting/history.py} and
+\texttt{backend/scripts/run\_paper\_experiments.py}. Section~\ref{sec:arco}'s
+numbers are read from \texttt{docs/ml-notes.md}. Section~\ref{sec:erddap}'s
+policy and its regression coverage are read from
+\texttt{backend/forecasting/history.py} and
+\texttt{backend/tests/test\_forecasting.py} (re-run for this paper: 8
+passed of the retry-classification tests), its historical correction from
+git commit \texttt{50438f0} and
+\texttt{backend/services/download/providers/gebco.py}, and its documentation
+inconsistency from \texttt{docs/features/forecasting.md} against those same
+two files. Every number in this paper was verified against those sources as
+of \AsOf{}.
+
+\bibliographystyle{IEEEtran}
+\bibliography{../shared/references}
+
+\end{document}

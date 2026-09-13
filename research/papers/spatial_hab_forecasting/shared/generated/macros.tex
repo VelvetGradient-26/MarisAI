@@ -1,0 +1,81 @@
+% ---------------------------------------------------------------------------
+% Numeric macros used by shared/body.tex. Grades follow the convention set by
+% research/papers/silent_failures/: Artifact = a committed file/checkpoint or
+% a value reproduced live during the writing of this paper; Dated = a single
+% recorded measurement with no separately committed report.
+%
+% The headline comparison table was RE-RUN live on \AsOf{} (not merely read
+% from DONE.md) by executing
+% `PYTHONPATH=. .venv/bin/python -m hab_early_warning.src.spatial_train`
+% from `machine_learning/`, and reproduced DONE.md's 2026-08-31 account to
+% 3-4 decimal places on every metric. Model/dataset structural facts (channel
+% count, grid size, parameter count) were read directly from the committed
+% checkpoint `machine_learning/models/hab_early_warning_spatial.pt` via
+% `torch.load` on \AsOf{}. The export finite-fraction was read directly from
+% `machine_learning/exports/hab_bloom_forecast_spatial.nc` via `xarray` on
+% \AsOf{}. All of the above are therefore Artifact-grade.
+% ---------------------------------------------------------------------------
+
+\newcommand{\AsOf}{2026-09-09}
+
+% --- Original build/measurement date (DONE.md) ---
+\newcommand{\OrigDate}{2026-08-31}
+
+% --- Dataset / grid ---
+\newcommand{\NativeLat}{69}
+\newcommand{\NativeLon}{41}
+\newcommand{\PadLat}{72}
+\newcommand{\PadLon}{48}
+\newcommand{\NChannels}{seven}
+\newcommand{\NInputChannels}{14}
+\newcommand{\NTrainDates}{1{,}534}
+\newcommand{\NValidationDates}{329}
+\newcommand{\NTestDates}{329}
+\newcommand{\NTestRows}{575{,}064}
+\newcommand{\TestPositiveRate}{7.59}
+\newcommand{\NParams}{485{,}025}
+
+% --- Architecture / training ---
+\newcommand{\BaseChannels}{16}
+\newcommand{\FocalAlpha}{0.25}
+\newcommand{\FocalGamma}{2.0}
+\newcommand{\LearningRate}{$10^{-3}$}
+\newcommand{\BatchSize}{16}
+\newcommand{\Patience}{8}
+\newcommand{\EpochsRun}{19}
+\newcommand{\TrainSeconds}{70.7}
+
+% --- Headline comparison, re-run live \AsOf{} ---
+% spatial U-Net
+\newcommand{\UnetPRAUC}{0.5438}
+\newcommand{\UnetROCAUC}{0.8966}
+\newcommand{\UnetBrier}{0.0577}
+\newcommand{\UnetTSS}{0.6545}
+% LightGBM, reloaded and rescored on the identical rows
+\newcommand{\LgbmPRAUC}{0.6680}
+\newcommand{\LgbmROCAUC}{0.9421}
+\newcommand{\LgbmBrier}{0.0389}
+\newcommand{\LgbmTSS}{0.7520}
+% Persistence
+\newcommand{\PersistPRAUC}{0.5178}
+\newcommand{\PersistROCAUC}{0.9006}
+\newcommand{\PersistBrier}{0.1864}
+\newcommand{\PersistTSS}{0.6583}
+
+% --- Gaps (computed from the numbers above) ---
+\newcommand{\UnetVsPersistGap}{0.026}
+\newcommand{\UnetVsLgbmGap}{-0.124}
+
+% --- Cross-check against the tabular model's own published number ---
+% hab_early_warning/readme.md's documented t+3 PR-AUC (multi-horizon-coverage
+% row filter, not identical to this run's t+3-only rows -- the two are
+% expected to be close but not equal).
+\newcommand{\ReadmeLGBMPRAUC}{0.661}
+\newcommand{\ReadmePersistPRAUC}{0.511}
+
+% --- Export artifact (re-verified live \AsOf{} via xarray) ---
+\newcommand{\ExportFiniteFrac}{62.4}
+\newcommand{\ExportOceanFrac}{63}
+
+% --- Prior repo baseline: bloom rate context ---
+\newcommand{\BloomRate}{9.7}

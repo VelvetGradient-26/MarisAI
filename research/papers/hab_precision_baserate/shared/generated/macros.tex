@@ -1,0 +1,155 @@
+% ---------------------------------------------------------------------------
+% Numeric macros used by shared/body.tex. Every number below was read
+% directly from a committed report file or a committed source-code constant
+% on \AsOf{} -- not copied from research/research.md, which is where this
+% paper's claim (research.md \S1.13) originates but which this paper treats
+% as a pointer, not a source. research.md's own summary table was found to
+% contain one inaccuracy while re-deriving these numbers (see the note at the
+% end of this file); every macro here traces to the file named beside it, not
+% to that table.
+%
+% All five regions share one pipeline (machine_learning/hab_early_warning/),
+% run once per region with only the geographic bounding box
+% (machine_learning/marine_ml/config.py's HAB_REGIONS) changed. "Arabian Sea"
+% is the unsuffixed, default region per this codebase's own naming
+% convention (CLAUDE.md); its report files carry no region suffix
+% (hab_early_warning_summary.json / _holdout.csv), the other four do
+% (hab_early_warning_<region>_summary.json / _holdout.csv).
+%
+% Evidence grade:
+%   [ARTIFACT]      a committed report file (summary.json / holdout.csv),
+%                    read directly, reproducing the number on demand by
+%                    re-running the committed pipeline.
+%   [ARTIFACT, code] a constant read directly from committed source code
+%                    (not a report), equally reproducible and equally fixed.
+%   [DOCUMENTATION]  descriptive prose in a committed module readme, about
+%                    pipeline scale for the Arabian Sea run specifically --
+%                    not re-derived from a report file, and not claimed to
+%                    hold for the other four regions.
+% ---------------------------------------------------------------------------
+
+\newcommand{\NRegions}{5}
+\newcommand{\AsOf}{2026-09-09}
+
+% --- Shared pipeline configuration [ARTIFACT, code] ---
+% machine_learning/hab_early_warning/src/labels.py (DEFAULT_PERCENTILE);
+% machine_learning/marine_ml/config.py (TRAIN_FRACTION, VALIDATION_FRACTION,
+% HAB_START, HAB_END); machine_learning/hab_early_warning/src/train.py
+% (run()'s n_splits=4 default; target_recall=0.8 passed to
+% threshold_for_recall in fit_final()); machine_learning/marine_ml/validation/
+% splits.py (rolling_origin_splits's gap_days defaults to horizon_days).
+% Identical across all five regions -- only the region bounding box in
+% HAB_REGIONS and each region's own fitted thresholds/model differ.
+\newcommand{\HabPercentile}{90}
+\newcommand{\HabTargetRecall}{0.8}
+\newcommand{\HabTrainPct}{70}
+\newcommand{\HabValPct}{15}
+\newcommand{\HabTestPct}{15}
+\newcommand{\HabNSplits}{4}
+\newcommand{\HabStartYear}{2016}
+\newcommand{\HabEndYear}{2021}
+\newcommand{\HabWindowYears}{6}
+
+% --- Arabian Sea pipeline scale [DOCUMENTATION, Arabian Sea only] ---
+% machine_learning/hab_early_warning/readme.md's own prose ("~3.84M
+% grid-cell-days with 136 features"). Descriptive of one region's run, not
+% re-derived from a report and not asserted for the other four, whose feature
+% sets are not byte-identical (e.g. only the two Indian Ocean regions carry a
+% monsoon-phase categorical feature; see the SHAP top-feature lists in each
+% region's own *_summary.json).
+\newcommand{\HabArabianGridCellDays}{3.84}
+\newcommand{\HabArabianFeatureCount}{136}
+
+% --- Holdout size per region [ARTIFACT] ---
+% hab_early_warning{,_bay_of_bengal,_baltic_sea,_benguela,_california_current}
+% _holdout.csv, "n" column (constant across horizons within a region; only
+% n_positive / positive_rate shift with the horizon).
+\newcommand{\HabArabianN}{577{,}608}
+\newcommand{\HabBengalN}{1{,}090{,}600}
+\newcommand{\HabBalticN}{248{,}296}
+\newcommand{\HabBenguelaN}{655{,}344}
+\newcommand{\HabCaliforniaN}{424{,}432}
+
+% --- Base rate (holdout positive_rate), precision (operating point at
+% target recall 0.8), and lift over persistence at each horizon [ARTIFACT] ---
+% Base rate and lift: hab_early_warning*_holdout.csv, "positive_rate" column
+% and pr_auc(lightgbm_calibrated) - pr_auc(persistence) at the matching
+% horizon row -- the same quantity the pipeline itself logs as
+% "pr_auc_lift_over_persistence" (src/train.py:526).
+% Precision: hab_early_warning*_summary.json, "<horizon>".operating_point.precision.
+
+% Arabian Sea (hab_early_warning_holdout.csv / _summary.json)
+\newcommand{\HabArabianBaseThree}{0.073}
+\newcommand{\HabArabianBaseFive}{0.075}
+\newcommand{\HabArabianBaseSeven}{0.076}
+\newcommand{\HabArabianPrecThree}{0.449}
+\newcommand{\HabArabianPrecFive}{0.280}
+\newcommand{\HabArabianPrecSeven}{0.202}
+\newcommand{\HabArabianLiftThree}{0.149}
+\newcommand{\HabArabianLiftFive}{0.109}
+\newcommand{\HabArabianLiftSeven}{0.053}
+
+% Bay of Bengal (hab_early_warning_bay_of_bengal_holdout.csv / _summary.json)
+\newcommand{\HabBengalBaseThree}{0.078}
+\newcommand{\HabBengalBaseFive}{0.078}
+\newcommand{\HabBengalBaseSeven}{0.078}
+\newcommand{\HabBengalPrecThree}{0.461}
+\newcommand{\HabBengalPrecFive}{0.272}
+\newcommand{\HabBengalPrecSeven}{0.187}
+\newcommand{\HabBengalLiftThree}{0.225}
+\newcommand{\HabBengalLiftFive}{0.189}
+\newcommand{\HabBengalLiftSeven}{0.150}
+
+% Baltic Sea (hab_early_warning_baltic_sea_holdout.csv / _summary.json)
+\newcommand{\HabBalticBaseThree}{0.139}
+\newcommand{\HabBalticBaseFive}{0.138}
+\newcommand{\HabBalticBaseSeven}{0.138}
+\newcommand{\HabBalticPrecThree}{0.699}
+\newcommand{\HabBalticPrecFive}{0.521}
+\newcommand{\HabBalticPrecSeven}{0.416}
+\newcommand{\HabBalticLiftThree}{0.408}
+\newcommand{\HabBalticLiftFive}{0.347}
+\newcommand{\HabBalticLiftSeven}{0.327}
+
+% Benguela (hab_early_warning_benguela_holdout.csv / _summary.json)
+\newcommand{\HabBenguelaBaseThree}{0.153}
+\newcommand{\HabBenguelaBaseFive}{0.154}
+\newcommand{\HabBenguelaBaseSeven}{0.154}
+\newcommand{\HabBenguelaPrecThree}{0.806}
+\newcommand{\HabBenguelaPrecFive}{0.659}
+\newcommand{\HabBenguelaPrecSeven}{0.566}
+\newcommand{\HabBenguelaLiftThree}{0.158}
+\newcommand{\HabBenguelaLiftFive}{0.133}
+\newcommand{\HabBenguelaLiftSeven}{0.111}
+
+% California Current (hab_early_warning_california_current_holdout.csv / _summary.json)
+\newcommand{\HabCaliforniaBaseThree}{0.267}
+\newcommand{\HabCaliforniaBaseFive}{0.266}
+\newcommand{\HabCaliforniaBaseSeven}{0.266}
+\newcommand{\HabCaliforniaPrecThree}{0.950}
+\newcommand{\HabCaliforniaPrecFive}{0.904}
+\newcommand{\HabCaliforniaPrecSeven}{0.844}
+\newcommand{\HabCaliforniaLiftThree}{0.113}
+\newcommand{\HabCaliforniaLiftFive}{0.100}
+\newcommand{\HabCaliforniaLiftSeven}{0.076}
+
+% --- The central contrast [ARTIFACT, derived from the macros above] ---
+% Bay of Bengal's t+7 lift over Arabian Sea's, computed from the unrounded
+% values (0.14957.../0.05260... = 2.84), not from the rounded macros above.
+\newcommand{\HabLiftRatioSeven}{2.8}
+
+% ---------------------------------------------------------------------------
+% Note on research.md \S1.13, checked while building this table (\AsOf{}):
+% its base-rate column mixes horizons across regions rather than reporting
+% one horizon consistently (Arabian Sea's 0.076 is this table's t+7 value;
+% Baltic Sea's 0.139 is this table's t+3 value), and its claim that precision
+% "is ordered exactly by base rate at all three horizons, with no crossings"
+% does not hold at t+5 and t+7: Arabian Sea sits at very slightly *lower*
+% prevalence than Bay of Bengal at both horizons yet reports very slightly
+% *higher* precision (\HabArabianPrecFive{} vs \HabBengalPrecFive{} at t+5;
+% \HabArabianPrecSeven{} vs \HabBengalPrecSeven{} at t+7) -- the opposite
+% order from what base rate alone predicts. This paper reports the per-horizon
+% table as read from the holdout CSVs rather than the single-column version,
+% and treats the small reversal as supporting evidence, not a discrepancy to
+% smooth over: see \S\ref{sec:results}.
+% ---------------------------------------------------------------------------

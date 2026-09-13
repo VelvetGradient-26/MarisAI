@@ -64,8 +64,7 @@ DB-backed.** Each external integration is self-contained and carries its own
 error type (`XError(RuntimeError)`): `copernicus_sst.py`, `copernicus_wind.py`,
 `bathymetry.py`, `openmeteo.py`, `gfw.py`, `crw.py`, `feedback.py`,
 `services/download/`. Derived fields follow the same shape — `drift.py`,
-`eddies.py`, `brief.py`, `compare.py` compute from other services rather than
-fetching.
+`eddies.py`, `brief.py` compute from other services rather than fetching.
 
 **3. Cached, scheduled, never fetched per request.** A global field is tens of
 megabytes per timestep and takes minutes to fetch. Every one of them is warmed
@@ -115,7 +114,7 @@ cannot reopen past conversations.
 | `/api/v1/forecast` | The forecasting engine (see `forecasting/README.md`) |
 | `/api/v1/metrics` | One metric page per variable: series, statistics, Ocean Story |
 | `/api/dashboard` | Global live state, alerts, trends, satellites, **data-quality** |
-| `/api/brief` | One coordinate as a document, `/pdf`, and `/compare` |
+| `/api/brief` | One coordinate as a document, and `/pdf` |
 | `/api/v1/chat` | The assistant — JSON and SSE, plus session history |
 | `/api/v1` | Downloader (`/download`, `/variables`, `/ranges`, progress) and feedback |
 | `/api/vessels` | Live AIS |

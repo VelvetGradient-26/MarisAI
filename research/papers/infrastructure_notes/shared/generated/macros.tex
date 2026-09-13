@@ -1,0 +1,312 @@
+% ---------------------------------------------------------------------------
+% Numeric macros used by shared/body.tex. Every number below was re-verified
+% this session (\AsOf{}) against a primary source -- committed code, a
+% committed report file, a currently-passing test, a git commit, or (for one
+% group) a live PyPI lookup -- not copied from research/research.md, which is
+% where this paper's four topics originate (Tier 4, items 4.1-4.4) but which
+% this project's own house rule treats as a pointer, not a source, after
+% several prior errors found in it this session. Provenance is grouped by
+% section, matching this paper's four numbered sections.
+%
+% Evidence grade is noted per group, using this project's established
+% vocabulary (see research/papers/silent_failures and
+% research/papers/hab_precision_baserate):
+%   [ARTIFACT]       a committed report/data file or a currently-passing test
+%                     reproduces the number on demand.
+%   [ARTIFACT, code]  a constant read directly from committed source code
+%                     (not a report), equally reproducible and equally fixed.
+%   [DOCUMENTATION]   descriptive prose in a committed module docstring,
+%                     README, or comment -- reproducible in principle by
+%                     re-running what it describes, but not backed by a
+%                     stored output file or a named timing script.
+%   [DATED]           a live, single-run measurement recorded with its date
+%                     in a module docstring, re-runnable but with no stored
+%                     output committed. Cited as of that date.
+%   [EXTERNAL]        a fact about a third-party package, checked live
+%                     against that package's own published metadata rather
+%                     than assumed from this repo's comments about it.
+%
+% A note at the end of this file documents every place a source read this
+% session disagreed with research.md, with CLAUDE.md, with another file in
+% this same repository, or with itself.
+% ---------------------------------------------------------------------------
+
+\newcommand{\AsOf}{2026-09-10}
+\newcommand{\NSections}{4}
+
+% =============================================================================
+% Section 1 -- An MLflow dependency inverted, not added
+% =============================================================================
+
+% --- This repo's own pins [ARTIFACT] ---
+% machine_learning/requirements.txt:22-25,58 (pandas, pyarrow, mlflow-skinny),
+% read directly \AsOf{}.
+\newcommand{\PandasPinned}{3.0.5}
+\newcommand{\PyarrowPinned}{25.0.0}
+\newcommand{\MlflowSkinnyPinned}{3.6.0}
+
+% --- Never fails a training run [ARTIFACT, code] ---
+% machine_learning/marine_ml/tracking.py's `_guard` context manager (every
+% logging call site is wrapped in it) and `track()`'s own try/except around
+% mlflow.start_run/end_run, both read directly \AsOf{}.
+\newcommand{\HabRunMinutes}{40}
+
+% --- The backend/ boundary [ARTIFACT] ---
+% backend/tests/test_training_run_record.py::test_the_backend_never_imports_mlflow
+% and ::test_mlflow_is_not_a_backend_dependency, re-run \AsOf{}: 10 passed
+% (both files, test_training_run_record.py + test_download_gebco.py together).
+\newcommand{\BackendMlflowOffenders}{0}
+
+% --- What the full `mlflow` package pins, checked against PyPI's own
+% release metadata rather than assumed from this repo's comment [EXTERNAL,
+% verified \AsOf{}] ---
+% https://pypi.org/pypi/mlflow/3.6.0/json (the release matching the
+% mlflow-skinny version pinned here; upload_time 2025-11-07): requires_dist
+% includes "pandas<3" and "pyarrow<23,>=4.0.0" verbatim -- confirming this
+% repo's own comment (requirements.txt:49-51, tracking.py:17-19) is accurate
+% for the specific release it was written against.
+\newcommand{\MlflowMatchedVersion}{3.6.0}
+\newcommand{\MlflowMatchedPandasCeiling}{3}
+\newcommand{\MlflowMatchedPyarrowCeiling}{23}
+% https://pypi.org/pypi/mlflow/json (latest release at time of writing,
+% 3.16.0): requires_dist has already relaxed to "pandas<4" and
+% "pyarrow<26,>=4.0.0" -- both satisfied by this repo's actual pins above
+% with no downgrade required. See the note at the end of this file: the
+% "would force a downgrade" justification is a property of mlflow==3.6.0
+% specifically, not a stable fact about "mlflow", and needs re-checking at
+% the next upgrade rather than being treated as settled.
+\newcommand{\MlflowLatestVersion}{3.16.0}
+\newcommand{\MlflowLatestPandasCeiling}{4}
+\newcommand{\MlflowLatestPyarrowCeiling}{26}
+
+% =============================================================================
+% Section 2 -- Reproducing a 52-model audit in under a second per variable
+% =============================================================================
+
+% --- Audit scale [ARTIFACT] ---
+% research/data/results/meta.json (variables: 13, horizons: 4,
+% as_of: "2026-08-10", duration_seconds: 5229.8); research/data/sites.csv
+% (25 lines = 1 header + 24 sites); research/data/results/loso.json
+% (a JSON list, len() == 1248, each entry one (variable, horizon, site) fit);
+% research/data/results/ablation_meta.json (duration_seconds: 2411.5).
+% All four read directly \AsOf{}.
+\newcommand{\NVariablesAudited}{13}
+\newcommand{\NHorizonsAudited}{4}
+\newcommand{\NSitesAudited}{24}
+\newcommand{\NModelsAudited}{52}
+\newcommand{\NHeldoutFits}{1{,}248}
+\newcommand{\MainExperimentSeconds}{5229.8}
+\newcommand{\AblationExperimentSeconds}{2411.5}
+
+% --- The freezing mechanism itself [ARTIFACT, code] ---
+% backend/forecasting/history.py:61 (_DISK_TTL = timedelta(hours=6)),
+% :65 (_MEMORY_TTL = timedelta(minutes=15)), :236-250 (frozen_cache(), gated
+% on MARISAI_FROZEN_HISTORY_CACHE=="1"); backend/scripts/run_paper_experiments.py:79
+% (AS_OF = date(2026, 8, 10)); grep confirms the env var is set only by
+% run_paper_experiments.py, run_seasonality_ablation.py and
+% export_research_dataset.py, never by a serving path. All read directly \AsOf{}.
+\newcommand{\DiskCacheTtlHours}{6}
+\newcommand{\MemoryCacheTtlMinutes}{15}
+\newcommand{\PinnedAsOfDate}{2026-08-10}
+
+% --- The per-variable cache speedup [DOCUMENTATION -- prose only, no stored
+% timing artifact or named benchmark script; see the note at the end of this
+% file] ---
+% Stated identically in three places: research/README.md's "Two things that
+% make the experiments reproducible" section; backend/forecasting/history.py:243's
+% own frozen_cache() docstring ("~700s per variable"); and
+% backend/scripts/run_paper_experiments.py:25's module docstring ("~700s").
+% No committed benchmark log gives "0.8s" a reproducible source beyond this
+% repeated prose. Graded separately from the ARTIFACT-backed counts above.
+\newcommand{\AuditSecondsUncached}{700}
+\newcommand{\AuditSecondsCached}{0.8}
+% Derived from the two macros above (700 / 0.8 = 875), not a new measurement.
+\newcommand{\AuditSpeedupFactor}{875}
+% backend/forecasting/history.py's module docstring: an uncached
+% Copernicus point-series fetch costs 8-13s [DOCUMENTATION].
+\newcommand{\PointFetchSecondsLow}{8}
+\newcommand{\PointFetchSecondsHigh}{13}
+
+% =============================================================================
+% Section 3 -- Access-pattern-dependent performance in ARCO zarr stores
+% =============================================================================
+
+% --- The one measured direction [DATED, 2026-08-10; no stored artifact] ---
+% docs/ml-notes.md lines 32-40 (Machine learning conventions section),
+% "Measured 2026-08-10 on one year of global monthly physics coarsened to
+% 0.25deg: geo-series 7.5s, time-series 89.0s." Read directly \AsOf{}.
+% This is a single named-date measurement in prose, not a stored benchmark
+% file; the reversal for the opposite access pattern (bounded area, many
+% timesteps) is stated in the same source as a consequence of the two
+% services' opposite chunking layout, not as a second timed measurement --
+% see the note at the end of this file.
+\newcommand{\ArcoMeasuredDate}{2026-08-10}
+\newcommand{\ArcoGeoSeriesSeconds}{7.5}
+\newcommand{\ArcoTimeSeriesSeconds}{89.0}
+% Derived (89.0 / 7.5 = 11.867, rounded), not a new measurement.
+\newcommand{\ArcoSlowdownFactor}{11.9}
+
+% --- A second, separate hazard: the missing depth bound [DOCUMENTATION] ---
+% docs/ml-notes.md lines 27-31: the `_my_` reanalysis products carry 50 depth
+% levels; passing minimum_depth/maximum_depth to open_dataset turns a request
+% that "did not finish in 15 minutes" into "~60s". Distinct mechanism from
+% the service-selection finding above (a missing server-side filter, not a
+% choice between two services) -- kept as a separate macro group
+% deliberately, not folded into the ARCO pair.
+\newcommand{\ReanalysisDepthLevels}{50}
+\newcommand{\ReanalysisUnboundedMinutes}{15}
+\newcommand{\ReanalysisBoundedSeconds}{60}
+
+% =============================================================================
+% Section 4 -- ERDDAP answers 404 while reloading a dataset
+% =============================================================================
+
+% --- Retry policy constants and classification [ARTIFACT, code +
+% currently-passing tests] ---
+% backend/forecasting/history.py:319-320 (_FETCH_ATTEMPTS = 3,
+% _RETRY_BACKOFF_SECONDS = (2.0, 6.0)), :335-376 (is_retryable);
+% backend/tests/test_forecasting.py::test_permanent_client_errors_are_not_retried,
+% ::test_a_404_is_retried_exactly_once,
+% ::test_the_404_budget_does_not_leak_into_other_client_errors -- re-run
+% \AsOf{}: 8 passed.
+\newcommand{\FetchAttemptsMax}{3}
+\newcommand{\RetryBackoffFirstSeconds}{2.0}
+\newcommand{\RetryBackoffSecondSeconds}{6.0}
+\newcommand{\RetryAttemptsFourZeroFour}{2}
+\newcommand{\RetrySecondsFourZeroFour}{2.0}
+\newcommand{\RetryAttemptsFourHundred}{1}
+\newcommand{\RetryAttemptsFiveZeroThree}{3}
+\newcommand{\RetrySecondsFiveZeroThree}{8.0}
+% Derived: 2.0 + 6.0 = 8.0, the total backoff a fully-retried (5xx) or
+% wrongly-retried (permanent 4xx, pre-fix) request pays.
+\newcommand{\RetryPenaltySeconds}{8}
+
+% --- The corrected belief: GEBCO_2020 was never retired [ARTIFACT, git
+% history + code comment] ---
+% Commit 50438f01b30b717cb02137b57c61c86bac655b46, "fix(forecasting): retry
+% an ERDDAP 404 exactly once", 2026-08-05 15:50 IST: commit message states
+% the re-probe directly. Corroborated by
+% backend/services/download/providers/gebco.py:27-35's own comment and
+% docs/features/forecasting.md lines 72-80. All read/confirmed via `git log`
+% and direct file reads \AsOf{}.
+\newcommand{\GebcoReprobeDate}{2026-08-05}
+\newcommand{\ErddapFlapSeconds}{100}
+
+% --- The training-run cost of one transient failure [DOCUMENTATION, in-code
+% comment, dated to commit 39df31409ccc5f8ea96e9325d67e84a0046a2e94
+% (2026-08-05), no separate stored report] ---
+% backend/forecasting/history.py:314-318's own comment: "A single ERDDAP 503
+% during one training run cost 6 of 24 training points -- a quarter of the
+% model's geography, including the entire Gulf Stream and Coral Sea".
+\newcommand{\ErddapCostAffectedPoints}{6}
+\newcommand{\ErddapCostTotalPoints}{24}
+
+% --- The cost of retrying a permanent failure: two disagreeing sources
+% [an internal inconsistency, both halves committed -- see the note at the
+% end of this file] ---
+% backend/forecasting/history.py:340-341 (is_retryable's own docstring) and
+% backend/tests/test_forecasting.py:877-879
+% (test_permanent_client_errors_are_not_retried's docstring) both say:
+% "a warm 6s forecast/response" becomes 14.5s. docs/features/forecasting.md
+% line 71 (and research.md's Tier-4 4.4 entry, which appears to be copied
+% from it) instead say "a warm 2.2s response" becomes 14.5s. Both figures
+% pair with the same +8s penalty (\RetryPenaltySeconds{}); only 6+8=14 is
+% arithmetically close to 14.5, while 2.2+8=10.2 is not. \WarmForecastCodeSeconds{}
+% is used as the primary figure in the prose on that basis; both are reported.
+\newcommand{\WarmForecastCodeSeconds}{6}
+\newcommand{\WarmForecastDocsSeconds}{2.2}
+\newcommand{\WarmForecastAfterBadRetrySeconds}{14.5}
+
+% ---------------------------------------------------------------------------
+% Notes on discrepancies found while verifying this paper (\AsOf{})
+% ---------------------------------------------------------------------------
+%
+% 1. [Section 1] research.md and this repo's own comments state, without a
+%    version attached, that "the full package pins pandas<3 / pyarrow<23".
+%    Checked live against PyPI: this is exactly correct for mlflow==3.6.0,
+%    the release matching the mlflow-skinny version actually pinned here
+%    (\MlflowMatchedPandasCeiling{}, \MlflowMatchedPyarrowCeiling{}) -- but
+%    mlflow's latest release, 3.16.0, has already relaxed this to
+%    pandas<\MlflowLatestPandasCeiling{} / pyarrow<\MlflowLatestPyarrowCeiling{},
+%    both of which \PandasPinned{} and \PyarrowPinned{} already satisfy with
+%    no downgrade required. The dependency-inversion rationale is accurate
+%    as documented, but it is a fact about one pinned release, not a stable
+%    fact about "mlflow" -- an upgrade of mlflow-skinny past 3.16.0 could
+%    remove the need for the inversion, or a future mlflow release could
+%    re-tighten it. Neither research.md nor this repo's own comments carry a
+%    version number, which is what let this drift unnoticed.
+%
+% 2. [Section 1] marine_ml/tracking.py's own module docstring claims silent
+%    non-tracking "is guarded by `active_run_id`, which the pipelines
+%    print." `grep -rn "active_run_id" machine_learning/` (\AsOf{}) finds
+%    exactly one occurrence: that docstring line itself. No pipeline prints
+%    anything under that name; `RunHandle.run_id` exists but is never
+%    surfaced to stdout under this or another label in the code read this
+%    session. This paper does not rely on the claim.
+%
+% 3. [Section 2] research/README.md's own phrasing, "13 variables x 4
+%    horizons x 24 sites = 52 models", reads as one product but is not one:
+%    13 x 4 = 52 (\NModelsAudited{}) is the model count; the further x 24
+%    (\NSitesAudited{}) gives \NHeldoutFits{} held-out fits (52 x 24 = 1248),
+%    not a third factor of 52. This paper reports the two multiplications
+%    separately rather than reproducing the compressed line.
+%
+% 4. [Section 2] The audit's *scale* (\NModelsAudited{} models,
+%    \NHeldoutFits{} fits, \MainExperimentSeconds{}s / \AblationExperimentSeconds{}s
+%    total run time) is ARTIFACT-graded, read directly from committed report
+%    files. The *speedup* research.md and this paper both quote
+%    (\AuditSecondsUncached{}s to \AuditSecondsCached{}s per variable) is
+%    DOCUMENTATION-graded: it is stated consistently in three places but
+%    traces to no committed benchmark log or named timing script, unlike the
+%    counts beside it. The two claims in this section carry different
+%    evidence weight and are graded separately rather than averaged together.
+%
+% 5. [Section 3] CLAUDE.md states that picking the wrong ARCO service "turns
+%    a ~10s fetch into minutes/hours"; research.md's Tier-4 4.3 entry
+%    tightens this to "hours" outright. Neither figure is supported by any
+%    measurement found this session: the only timed comparison
+%    (docs/ml-notes.md, \ArcoMeasuredDate{}) is \ArcoGeoSeriesSeconds{}s
+%    against \ArcoTimeSeriesSeconds{}s -- an \ArcoSlowdownFactor{}x factor,
+%    not hours -- and the separate depth-bound hazard's worst case is stated
+%    as "did not finish in \ReanalysisUnboundedMinutes{} minutes", which is
+%    a lower bound on how long it might have taken, not a measurement of
+%    "hours". This paper reports only the two measured/stated pairs above
+%    and does not repeat the "hours" framing. Separately, the task brief for
+%    this paper states these numbers are "documented in the companion paper
+%    research/papers/global_vs_regional/"; grepping that paper's shared/
+%    directory for "arco-geo-series", "arco-time-series", "7.5s" and "89.0s"
+%    found no matches. The only source located for these specific numbers is
+%    docs/ml-notes.md; CLAUDE.md documents the same convention but with no
+%    numbers attached.
+%
+% 6. [Section 4] See the macro group above ("two disagreeing sources"):
+%    docs/features/forecasting.md and research.md both state the retrying-a-
+%    permanent-failure cost example as a warm \WarmForecastDocsSeconds{}s
+%    response becoming \WarmForecastAfterBadRetrySeconds{}s; the code comment
+%    and test docstring that this exact scenario is regression-tested against
+%    (backend/forecasting/history.py, backend/tests/test_forecasting.py) both
+%    instead say \WarmForecastCodeSeconds{}s becoming
+%    \WarmForecastAfterBadRetrySeconds{}s. Both pair with the same
+%    \RetryPenaltySeconds{}s penalty; \WarmForecastCodeSeconds{} +
+%    \RetryPenaltySeconds{} = 14, matching \WarmForecastAfterBadRetrySeconds{}
+%    far more closely than \WarmForecastDocsSeconds{} +
+%    \RetryPenaltySeconds{} = 10.2 does. This paper uses
+%    \WarmForecastCodeSeconds{} as the reported figure on that arithmetic
+%    ground, states both, and treats the mismatch as a second, independent
+%    instance of documentation drift found while writing this paper -- the
+%    same shape as note 1 above, in the same paper, about a different
+%    section.
+%
+% 7. [Section 4] backend/tests/test_download_gebco.py's own docstring and
+%    its test `test_the_retired_dataset_id_is_not_requested` still describe
+%    NOAA CoastWatch's GEBCO_2020 as a dataset "the server retired" that "is
+%    gone" -- the pre-\GebcoReprobeDate{} belief, not the corrected one
+%    recorded in gebco.py's own comment and docs/features/forecasting.md
+%    (the dataset was never gone; the server was flapping). The test itself
+%    is not wrong -- it still correctly asserts the provider requests
+%    Ifremer's `gebco2021` rather than `GEBCO_2020`, which remains true for
+%    an unrelated reason (Ifremer stayed up throughout the flap) -- but its
+%    prose was never updated to match the correction shipped in the same
+%    area of the codebase. Confirmed still present and the full file still
+%    passing (10/10, run together with test_training_run_record.py) \AsOf{}.
+% ---------------------------------------------------------------------------

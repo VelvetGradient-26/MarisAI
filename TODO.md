@@ -92,10 +92,10 @@ number for missing data.** Award-site polish trends toward decorative
 confidence — skeletons implying data is coming when the cache is cold,
 animated counters on estimates, "94% confident" chips. The dashboard's
 three-way `ready` / `warming` / `unavailable` is the standard to hold; a
-redesign that softens it is a regression however good it looks. The compare
-page's loading state is the shape to copy: it says what is happening and why
-it takes time, rather than drawing a ghost of a table whose shape is exactly
-what the request is still deciding.
+redesign that softens it is a regression however good it looks. A loading
+state should say what is happening and why it takes time, rather than
+drawing a ghost of a table whose shape is exactly what the request is still
+deciding.
 
 The criteria, unchanged as the ongoing bar new work should keep meeting:
 

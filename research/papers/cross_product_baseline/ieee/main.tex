@@ -1,0 +1,117 @@
+% ---------------------------------------------------------------------------
+% IEEE conference build.  Compile with:
+%     tectonic -X compile main.tex --outdir .
+% The body is shared verbatim with ../springer/main.tex; only this wrapper
+% differs.
+% ---------------------------------------------------------------------------
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{siunitx}
+\usepackage{microtype}
+\usepackage{cite}
+\usepackage[hidelinks]{hyperref}
+
+\graphicspath{{../shared/generated/}}
+
+% siunitx v3 dropped \degree; every bare (non-\si) use in the body is in math
+% mode.
+\providecommand{\degree}{^{\circ}}
+
+% IEEEtran is two-column: a "wide" float must span both columns.
+\newenvironment{wfigure}{\csname figure*\endcsname}{\csname endfigure*\endcsname}
+\newenvironment{wtable}{\csname table*\endcsname}{\csname endtable*\endcsname}
+\newcommand{\tabscale}{\scriptsize}
+
+% IEEEtran appends its own colon to a run-in \paragraph; adding a period too
+% renders as "Mechanism.:".
+\newcommand{\para}[1]{\paragraph{#1}}
+
+% The shared body uses natbib's \citep; IEEEtran uses plain \cite.
+\providecommand{\citep}[1]{\cite{#1}}
+
+% Every experimental number in the prose is a macro; see the header comment
+% in shared/generated/macros.tex for its provenance and evidence grade.
+\input{../shared/generated/macros}
+
+\begin{document}
+
+\title{Fresher, Not Safer: Cross-Product SST Substitution Breaks a Percentile
+Anomaly Test in a Live Corroboration Pipeline}
+
+\author{\IEEEauthorblockN{Deepak Krishna}
+\IEEEauthorblockA{\textit{MarisAI} \\
+India \\
+deepakkrishna2206@gmail.com}}
+
+\maketitle
+
+\begin{abstract}
+Scoring a fresh observation against a climatology fitted on a different data
+product is conventionally treated as a substitution that only affects
+timeliness. We report a case, measured directly inside a live marine
+anomaly-detection pipeline, where that convention is wrong. The system
+corroborates a wind/currents-derived upwelling index against an independent
+cold sea-surface-temperature (SST) signal, scored two ways against the same
+climatology: a weak, mean-based test (a fixed \CoolAnomalyThreshold{}\si{\celsius}
+anomaly threshold) and a strong, percentile-based test (falling below the
+seasonal \ClimPercentile{}th percentile), each reported as a contrast between
+upwelling-favourable and control coastal cells; \NCrossProductFixes{}
+independently attempted fixes for the same latency-driven product mismatch
+--- swapping the scored SST source to a fresher, higher-resolution live
+product (Fix A, measured 2026-08-17), and fitting a matched climatology on
+that same product (Fix B, measured 2026-08-25) --- both leave the weak
+tier's contrast nearly unchanged while inverting the strong tier's sign, from
+a near-zero matched-arm baseline to \FixAStrongLive{} and \FixBStrongGlorys{}
+respectively. A direct one-day per-cell comparison (2026-08-01) locates the
+cause: no systematic offset between the two products, but per-cell dispersion
+of \DisagOpenSD{}\si{\celsius} standard deviation in open water, rising to
+\DisagCoastalSD{}\si{\celsius} across the coastal band --- wider than the weak
+tier's own threshold and comparable in scale to the climatological gap the
+percentile boundary sits close to, which is why the same noise degrades one
+test gracefully and destroys the other. A third, controlled measurement
+(Control C, 2026-08-28) rules out an alternative explanation by holding the
+SST product and its climatology fixed and varying only the wind/currents
+input's temporal aggregation instead: both tiers move only slightly, in the
+same direction, and by less than the matched arm's own run-to-run variation
+--- evidence against instantaneous sampling being the cause. Every number
+reported here is a single, dated, live measurement of a moving field, not a
+standing artifact, and the general rule this evidence points toward --- safe
+substitution up to a threshold set by the inter-product spread --- remains to
+be established beyond the two source pairs measured here.
+\end{abstract}
+
+\begin{IEEEkeywords}
+sea surface temperature, percentile anomaly detection, marine heatwave,
+climatology, cross-product bias, corroboration test, upwelling,
+reproducibility
+\end{IEEEkeywords}
+
+\input{../shared/body}
+
+\section*{Reproducibility}
+Every number in this paper is graded \emph{Dated} in \S\ref{sec:methods}: a
+single, live measurement of a moving field, reproducible on demand from a
+committed script, with no stored output file backing any headline number.
+{\raggedright\sloppy
+Fix A and Fix B are reproduced by
+\texttt{scripts/measure\_sst\_corroboration.py --source \{oisst,
+copernicus\_reanalysis\}}; the GLORYS-fitted climatology Fix B scores against
+is built by \texttt{scripts/build\_climatology\_copernicus.py}; the per-cell
+disagreement measurement is read directly from
+\texttt{services/sst\_anomaly.py}'s own module docstring. Control C is
+reproduced by \texttt{scripts/measure\_wind\_history\_corroboration.py
+--backfill-hours 72}, backfilling real wind history via
+\texttt{scripts/backfill\_wind\_history.py} into
+\texttt{services/wind\_history.py}.\par}
+All five files are committed to the repository and were confirmed present as
+of \AsOf{}; none of their outputs is.
+
+\bibliographystyle{IEEEtran}
+\bibliography{../shared/references}
+
+\end{document}

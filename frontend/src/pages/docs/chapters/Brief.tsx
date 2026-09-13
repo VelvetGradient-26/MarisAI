@@ -1,23 +1,22 @@
 /* oxlint-disable react/jsx-key -- Cells passed to <Table rows={...}> are keyed
  * by Table itself, which wraps every cell in a keyed <td>. */
-import { Callout, Table, Term } from '../primitives';
+import { Callout, Table } from '../primitives';
 
 /**
- * One coordinate as a document, and two coordinates against each other.
+ * One coordinate as a document.
  *
  * The interesting content here is not what the brief contains — everything in
- * it has an endpoint of its own — but the three editorial decisions: it does
- * not compute, it does not rank, and it keeps rows only one side has.
+ * it has an endpoint of its own — but the editorial decisions: it does not
+ * compute, and it does not rank.
  */
 export function Brief() {
   return (
     <>
       <p className="docs-article__eyebrow">Using the platform</p>
-      <h1>The point brief, and comparing two places</h1>
+      <h1>The point brief</h1>
       <p className="docs-article__lede">
         A brief is one coordinate rendered as a document rather than as a panel: everything
-        the platform knows about that spot, laid out in sections, exportable as a PDF. Compare
-        is the same thing for two coordinates, aligned row by row.
+        the platform knows about that spot, laid out in sections, exportable as a PDF.
       </p>
 
       <h2 id="composition">Composition, not computation</h2>
@@ -49,46 +48,6 @@ export function Brief() {
         nobody can hover over a blank panel to find out why it is blank. Model output is
         labelled as model output in the same spirit — a printed page loses the interface's
         visual cues about what came from where.
-      </Callout>
-
-      <h2 id="compare">Comparing two points</h2>
-      <p>
-        Compare gathers two briefs and aligns them on section and row label. It is a{' '}
-        <em>view over</em> the brief rather than a second assembly — a parallel pipeline would
-        let the two halves disagree about one coordinate, which is fatal for a feature whose
-        entire output is a difference.
-      </p>
-      <Table
-        headers={['Situation', 'What you get']}
-        rows={[
-          [
-            'Both sides are numbers in the same unit',
-            'The difference, computed and shown',
-          ],
-          [
-            'Both sides exist but are not comparable numbers',
-            'Both values, side by side, and no delta invented',
-          ],
-          [
-            'Only one side has the row',
-            <>
-              The row is kept and marked <Term>only at</Term>
-            </>,
-          ],
-        ]}
-      />
-      <p>
-        That last case is not an edge case — it is often the most informative line in the
-        document. "Habitat suitability 0.71 here, outside the model's region there" tells you
-        something a dropped row would hide, and dropping it would report two places as more
-        alike than they are.
-      </p>
-      <Callout kind="lesson" title="Thousands separators, again">
-        A delta is only computed when both sides parse as numbers in the same unit, and the
-        number parser has to handle grouped digits. Reading "1,204 m" as "1" turns a 1,200 m
-        difference into a 1 m difference — in the right units, and silently. The assistant's
-        grounding checker learned the identical lesson independently, which is why it is worth
-        writing down twice.
       </Callout>
 
       <h2 id="ranking">It does not rank</h2>

@@ -1,0 +1,109 @@
+% ---------------------------------------------------------------------------
+% Springer LNCS build.  Compile with:
+%     tectonic -X compile main.tex --outdir .
+% The body is shared verbatim with ../ieee/main.tex; only this wrapper differs.
+% ---------------------------------------------------------------------------
+\documentclass[runningheads]{llncs}
+
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{microtype}
+\usepackage{array}
+\usepackage[hidelinks]{hyperref}
+
+\graphicspath{{../shared/generated/}{../shared/diagrams/}}
+
+% LNCS is single-column, so a "wide" float is just a normal float.
+\newenvironment{wfigure}{\figure}{\endfigure}
+\newenvironment{wtable}{\table}{\endtable}
+\newcommand{\tabscale}{\footnotesize}
+
+% llncs sets a run-in \paragraph with no trailing punctuation of its own, so
+% the period belongs here. IEEEtran appends its own colon and must not get one.
+\newcommand{\para}[1]{\paragraph{#1.}}
+
+% llncs uses \cite, not natbib's \citep. Map it so the shared body compiles
+% unchanged under both classes.
+\providecommand{\citep}[1]{\cite{#1}}
+
+% Every claim in the prose is a macro; see the header comment in
+% shared/generated/macros.tex for its provenance and why this paper grades
+% every one of them Dated rather than Artifact.
+\input{../shared/generated/macros}
+
+\begin{document}
+
+\title{Reachable, Gated, or Dead: A Dated Survey of Forty-Four Marine
+Biodiversity and Fisheries Data Sources}
+
+\titlerunning{Reachable, Gated, or Dead}
+
+% No \orcidID: LNCS supports one, but a placeholder identifier would be a
+% fabricated credential. Add the real one before submission.
+\author{Deepak Krishna}
+\authorrunning{D. Krishna}
+\institute{MarisAI, India \\ \email{deepakkrishna2206@gmail.com}}
+
+\maketitle
+
+\begin{abstract}
+Building marine biodiversity or fisheries analytics tooling requires knowing
+which data sources are actually reachable and shaped as advertised, and that
+knowledge is scattered, informal, and decays. We report a dated, live-probed
+survey of \NSourcesSurveyed{} sources --- occurrence aggregators, taxonomic
+and regional infrastructure, regional fisheries management organisations,
+and Indian marine research institutions --- each queried on \ProbeDate{}
+against its documented or discoverable endpoint and classified as open
+REST/JSON and occurrence-shaped (\NTierOne{}), reachable but gated or
+bulk-download-only (\NTierTwo{}), or, for \NTierThree{} Indian institutions
+probed separately, lacking a machine-readable API almost without exception.
+Three corrections to a plausible-sounding default are demonstrated with
+direct measurement: GBIF is not a superset of OBIS for marine fish and
+requires deduplication rather than a source swap; a single status-000 probe
+conflates a transient TLS handshake flake with a genuinely dead host; and a
+dead parent domain (\texttt{icar.gov.in}) does not mean a dead institution,
+since two of four institutes sharing it are reachable under their own
+\texttt{.res.in} domain. Every claim is graded \emph{Dated}, not
+\emph{Artifact}, because the object under test is infrastructure this
+project does not control; re-probing \NEndpointsReprobed{} endpoints while
+writing this paper, \AsOf{}, finds \NEndpointsDrifted{} of them already
+answering with a different technical signature than five weeks earlier ---
+evidence for, not against, the paper's central claim that such a survey is
+worth publishing now rather than later. The sharpest finding is that no
+Indian marine data source runs its own machine-readable API except that this
+is not quite true of IndOBIS, which needs no new integration at all: it is
+already reachable as a node filter on the OBIS API this codebase already
+calls.
+\keywords{biodiversity informatics, data infrastructure, OBIS, GBIF, marine
+fisheries data, reproducibility, API survey}
+\end{abstract}
+
+\input{../shared/body}
+
+\section*{Reproducibility}
+This paper's evidence is a live-probed survey of external infrastructure,
+not a re-runnable local computation, so its reproducibility ledger names
+endpoints and dates rather than committed reports or tests. The original
+\ProbeDate{} pass is recorded in \texttt{docs/data-sources.md}, split from
+\texttt{CLAUDE.md} on \SplitDate{}. This paper's own \AsOf{} re-verification
+queried the following endpoints directly, via HTTP requests issued while
+writing this paper; re-issuing the same requests is the only reproduction
+method that applies, and may legitimately return a different answer than
+either date reports.
+{\raggedright\sloppy
+\begin{itemize}\itemsep1pt\parskip0pt
+\item[] \texttt{api.obis.org/\allowbreak{}v3/\allowbreak{}statistics?nodeid=\allowbreak{}\IndObisNodeId{}}
+\item[] \texttt{fishbase.ropensci.org}
+\item[] \texttt{wcpfc.int/\allowbreak{}public-domain}
+\item[] \texttt{ws.pangaea.de/\allowbreak{}oai/\allowbreak{}provider?verb=Identify}
+\item[] \texttt{ws.pangaea.de/\allowbreak{}es/\allowbreak{}dataportal-item/\_search}
+\item[] \texttt{portal.vertnet.org}, \texttt{vertnet-portal.appspot.com/\allowbreak{}api/\allowbreak{}search}
+\item[] \texttt{cift.res.in}, \texttt{ciba.res.in}
+\end{itemize}}
+
+\bibliographystyle{splncs04}
+\bibliography{../shared/references}
+
+\end{document}

@@ -1,0 +1,116 @@
+% ---------------------------------------------------------------------------
+% Springer LNCS build.  Compile with:
+%     tectonic -X compile main.tex --outdir .
+% The body is shared verbatim with ../ieee/main.tex; only this wrapper differs.
+% ---------------------------------------------------------------------------
+\documentclass[runningheads]{llncs}
+
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{siunitx}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+
+\graphicspath{{../shared/generated/}{../shared/diagrams/}}
+
+% siunitx v3 dropped \degree; every use in the body is in math mode.
+\providecommand{\degree}{^{\circ}}
+
+% LNCS is single-column, so a "wide" float is just a normal float.
+\newenvironment{wfigure}{\figure}{\endfigure}
+\newenvironment{wtable}{\table}{\endtable}
+\newcommand{\tabscale}{\footnotesize}
+
+% llncs sets a run-in \paragraph with no trailing punctuation of its own, so
+% the period belongs here. IEEEtran appends its own colon and must not get one.
+\newcommand{\para}[1]{\paragraph{#1.}}
+
+% llncs uses \cite, not natbib's \citep. Map it so the shared body compiles
+% unchanged under both classes.
+\providecommand{\citep}[1]{\cite{#1}}
+
+% Every experimental number in the prose is a macro; see the header comment
+% in shared/generated/macros.tex for its provenance (source file, line
+% numbers, and evidence grade per group).
+\input{../shared/generated/macros}
+
+\begin{document}
+
+\title{A Detector's Corroboration Needs a Control Arm: A Case Study in
+Coastal Upwelling}
+
+\titlerunning{A Detector's Corroboration Needs a Control Arm}
+
+% No \orcidID: LNCS supports one, but a placeholder identifier would be a
+% fabricated credential. Add the real one before submission.
+\author{Deepak Krishna}
+\authorrunning{D. Krishna}
+\institute{MarisAI, India \\ \email{deepakkrishna2206@gmail.com}}
+
+\maketitle
+
+\begin{abstract}
+A detector that corroborates one signal against a second, independent
+observation is usually reported by its agreement rate alone, which is easy
+to mistake for evidence of causation. We report a case inside a real,
+shipping coastal-upwelling detector where adding a control arm changes that
+reading. The detector implements Bakun's wind-driven Ekman-transport index,
+with a coastal normal derived from the ocean mask gradient rather than a
+coastline dataset, and corroborates it against an independent cold
+sea-surface-temperature (SST) anomaly scored against a percentile
+climatology. On the live global field, measured 2026-08-17,
+\UpwellFavourWeak{}\% of upwelling-favourable coastal cells carried a cold
+anomaly for the season. Scored identically on a control arm --- coasts where
+the wind is downwelling-favourable, where a cold anomaly is not expected ---
+the same test returns \UpwellControlWeak{}\%, a gap of only
+\UpwellGapWeak{} percentage points that narrows to \UpwellGapStrong{} at a
+stronger, percentile-based tier. A follow-up experiment this platform's own
+prior account named as the natural next step --- computing the index against
+a real, backfilled 1.2-day trailing mean of wind forcing rather than one
+instantaneous snapshot, to test whether integrating wind over time
+strengthens the signal --- has since been built and measured, and does not
+widen the gap; its movement is not clearly distinguishable from the
+day-to-day spread the identical, unmodified configuration already shows
+across separate measurement dates. The detector's hemisphere sign
+convention, independently verified here by running the platform's test
+suite directly, is protected by \NTotalUpwellingTests{} passing regression
+tests, including an adversarial fixture built to catch the one error that
+would report every upwelling coast on Earth as downwelling. That guarantee
+is orthogonal to corroboration strength, and the platform now returns a
+control fraction with every response rather than leaving a reader to
+compute one.
+\keywords{coastal upwelling, Bakun index, control arm, detector
+corroboration, sea surface temperature, Ekman transport}
+\end{abstract}
+
+\input{../shared/body}
+
+\section*{Reproducibility}
+The detector is \texttt{backend/services/upwelling.py}; the corroboration
+test and its control arm are \texttt{UpwellingField.corroboration()},
+consumed by \texttt{GET /api/ocean/upwelling\{,/point,/cells\}}. The
+2026-08-17 headline measurement and the 2026-08-17/2026-08-25 matched-configuration
+values in Table~\ref{tab:windhistory} are recorded directly in that module's
+and in \texttt{backend/services/sst\_anomaly.py}'s own module docstrings; both
+are reproducible on demand by running \texttt{scripts/measure\_sst\_corroboration.py}
+against a live Copernicus/OISST snapshot, but no output file is committed for
+either date. The hemisphere/eastern-boundary regression suite is
+\texttt{backend/tests/test\_upwelling.py} (\NUpwellingTests{} tests) and
+\texttt{backend/tests/test\_wind\_history.py} (\NWindHistoryTests{} tests),
+all \NTotalUpwellingTests{} passing as of \AsOf{} via \texttt{uv run pytest
+tests/test\_upwelling.py tests/test\_wind\_history.py -q}. The wind-history
+follow-up is \texttt{backend/services/wind\_history.py} and
+\texttt{upwelling.detect\_from\_history}, backfilled by
+\texttt{scripts/backfill\_wind\_history.py} and measured by
+\texttt{scripts/measure\_wind\_history\_corroboration.py}; its 2026-08-28
+numbers are recorded in \texttt{sst\_anomaly.py}'s docstring and in
+\texttt{DONE.md}'s ``A rolling wind history'' entry, with no stored output
+file committed. Every number in this paper was re-verified against those
+sources, and every relevant test was re-run, as of \AsOf{}.
+
+\bibliographystyle{splncs04}
+\bibliography{../shared/references}
+
+\end{document}

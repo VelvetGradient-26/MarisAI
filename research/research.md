@@ -638,6 +638,20 @@ entry no longer states one. `tests/test_forecast_grid.py` pins the grid path to
 the point path cell-for-cell at 1e-6, so train/serve skew is already
 controlled.
 
+**Built and measured 2026-08-31, negative, drafted 2026-09-10 —
+narrower scope than this entry originally described.** TODO.md's "ConvLSTM /
+U-Net for spatial forecasting" item was executed as a HAB bloom-probability
+pilot (`hab_early_warning/src/spatial_{dataset,model,train}.py`), not as a
+comparison across the forecasting engine's 26 griddable variables this entry
+envisioned — a single-frame U-Net over a 7-channel (14 with observed-masks)
+Arabian Sea field, scored against the reloaded per-cell LightGBM model on
+575,064 identical held-out rows. The spatial model loses clearly (PR-AUC
+0.544 vs. 0.668) despite beating persistence. Re-run live on 2026-09-09
+while drafting the paper and reproduced to 3-4 decimal places. Written up at
+`research/papers/spatial_hab_forecasting/`. The original 26-variable-engine
+comparison this entry describes is still undone; this closes the TODO item
+the entry traces to, not the broader forecasting-engine scope stated above.
+
 **Venue.** *Environmental Data Science*, *Artificial Intelligence for the Earth
 Systems* (AIES), *Geoscientific Model Development*.
 
@@ -766,11 +780,20 @@ precision of its *basin* as though it were the precision of its model (1.13). In
 every case the system keeps running, produces output of the right shape and
 units, and looks correct.
 
-A single paper — *"Silent failure modes in operational marine machine
-learning"* — with eleven measured instances from one running system, each with its
-detection method and its fix, is probably higher-impact than any individual
-entry above and is **already fully evidenced**. It needs writing, not
-experiments. That is the recommendation.
+**Drafted 2026-09-09**, as *"Silent, Plausible, and Signed: Eleven Measured
+Failure Modes in One Operational Marine Machine-Learning Pipeline"* —
+`research/papers/silent_failures/` (IEEE and Springer builds). Re-verifying
+each instance's own evidence before writing (rather than copying the numbers
+above) found two of them had drifted: I.1's numbers are dated 2026-08-13 and
+the model has since been retrained (the mechanism still holds on a fresh
+holdout, at a narrower margin), and this catalogue's own 1.2 write-up traces
+to a companion-paper macro that overstated the regional Maxent tier's TSS
+(0.407 vs the source CSV's 0.365, now fixed in
+`research/papers/global_vs_regional/`). Both are reported in the new paper's
+Discussion as further instances of its own thesis, not corrected away
+quietly. A single paper — with eleven measured instances from one running
+system, each with its detection method and its fix — was, as suspected,
+higher-impact than any individual entry above.
 
 The sharpest framing available: **every one of these was found by a check that
 was cheap and is almost never reported** — a second baseline, a control arm, a
@@ -791,8 +814,8 @@ publishing from this repo is no longer evidence, it is prose.
 
 | # | Topic | Distance | Value |
 | --- | --- | --- | --- |
-| 1 | Silent failure modes (cross-cutting) | writing only | highest |
-| 2 | 1.2 What going global buys an SDM | **writing only** — headline measured | high |
+| 1 | Silent failure modes (cross-cutting) | **drafted 2026-09-09** | highest |
+| 2 | 1.2 What going global buys an SDM | **drafted 2026-08-28** | high |
 | 3 | 1.12 Cross-product baselines invert tail tests | writing only; generalising is optional | high, transfers widely |
 | 4 | 1.11 Corroboration needs a control arm | writing only | high, small, negative |
 | 5 | 1.13 HAB precision is base rate, not skill | **writing only** — five regions run | high |
@@ -802,7 +825,7 @@ publishing from this repo is no longer evidence, it is prose.
 | 9 | 2.1 GBIF ∪ OBIS | one integration | medium-high |
 | 10 | 2.2 True absences vs pseudo-absences | region change | highest ceiling, highest cost |
 | 11 | 4.5 Data-access survey | writing only | medium, perishable |
-| 12 | 3.4 ConvLSTM vs the tree baseline | large build | medium |
+| 12 | 3.4 ConvLSTM vs the tree baseline | **drafted 2026-09-10** (HAB pilot scope, not the 26-variable engine) | medium |
 
 **1.2 changed rank for a reason worth noting**: it was ranked 4th at "one
 training run away", and that run has since been done — and *reversed the

@@ -1,0 +1,285 @@
+% ---------------------------------------------------------------------------
+% The manuscript body, shared verbatim by the Springer (LNCS) and IEEE
+% (IEEEtran) builds. Nothing class-specific may appear in this file.
+%
+% Each wrapper defines, before \input-ing this:
+%   \wfigure / \endwfigure   a figure spanning the full text width
+%   \wtable  / \endwtable    the same for tables
+%   \tabscale                the font size command tables are set at
+%   \para{...}               a run-in bold paragraph heading
+%   \citep{...}               mapped to \cite for the LNCS/IEEEtran builds
+% ---------------------------------------------------------------------------
+
+\section{Introduction}
+
+A per-cell classifier scores every grid cell of a harmful-algal-bloom
+early-warning system independently: the same gradient-boosted tree, applied
+row by row, with no mechanism to see an eddy, a front, or the shape of a
+bloom spanning several cells. The natural architectural objection is that
+this throws away information a spatial model could use, and the natural fix
+is a convolutional model that sees the whole field at once. This paper
+reports a controlled test of that objection for one operational system and
+finds it does not hold, at least not the way it is usually tried: a
+single-frame U-Net~\citep{ronneberger2015} given a \NInputChannels{}-channel
+ocean-state image (\NChannels{} physical fields, each paired with an
+observed-mask channel) loses clearly to the existing per-cell LightGBM
+model on \NTestRows{} identical held-out rows, despite the two being scored
+through the same metrics on the same test period by construction.
+
+The result matters beyond this one system for two reasons. First, it was
+tested rigorously rather than assumed: the existing tabular model was
+reloaded and rescored on the spatial model's own exact test rows rather than
+cited from a README, closing the gap between "the spatial model scored
+lower than a number we remembered" and "the spatial model scored lower than
+the same model, run again, on the same water." Second, the negative result
+is informative about what to try \emph{next}, not just what not to do: the
+architecture plan that scoped this work deliberately ordered a spatial-only
+model before a spatial-plus-temporal one (a
+ConvLSTM~\citep{shi2015}) specifically so that a negative single-frame
+result would argue against the more expensive next step, not merely
+postpone it. It does.
+
+\subsection{Contributions}
+
+\begin{enumerate}\itemsep2pt
+\item A \textbf{matched, identical-row comparison} between a spatial U-Net
+and the shipped per-cell LightGBM model for t+3 harmful-algal-bloom
+probability, built so that a fair comparison does not depend on trusting two
+numbers measured at different times on different row sets.
+\item A \textbf{live re-verification}: rather than reporting the
+\OrigDate{} build's numbers as a standing fact, this paper re-ran the full
+training-and-comparison pipeline on \AsOf{} and confirms the original
+result to three to four decimal places on every metric (\S\ref{sec:results}).
+\item A stated \textbf{engineering hazard specific to mixing this stack}:
+importing \texttt{torch} and then loading a LightGBM artifact with
+\texttt{joblib} in the same process segfaults on this platform, with no
+Python traceback --- silent enough that the fix (score the tabular baseline
+in a subprocess) had to be designed as part of making the comparison
+trustworthy at all, not as an afterthought (\S\ref{sec:methods}).
+\item An explicit \textbf{narrowing of the next step}: the result is
+evidence against reaching for temporal recurrence next, not merely a
+placeholder result to be superseded by one.
+\end{enumerate}
+
+\section{Related Work}
+\label{sec:related}
+
+\para{U-Net and focal loss} The U-Net encoder-decoder with skip connections
+\citep{ronneberger2015} is the standard architecture for dense, per-pixel
+prediction from a small amount of training data, which is the regime this
+problem sits in: \NTrainDates{} training dates, not the tens of thousands of
+images a segmentation benchmark assumes. Focal
+loss~\citep{lin2017} was designed for exactly the class-imbalance problem a
+\BloomRate{}\% bloom rate creates, down-weighting the loss contribution of
+confidently-correct negatives so a handful of hard positive cells is not
+swamped; this codebase's own tabular model handles the same imbalance with a
+class-weighting scheme, so the two models face an equivalent, not merely
+similar, imbalance problem.
+
+\para{Deep learning versus trees on structured environmental data}
+Grinsztajn et al.~\citep{grinsztajn2022} show tree-based models remain
+state-of-the-art on medium-sized tabular data even accounting for training
+cost, and trace the gap to inductive-bias differences rather than raw
+capacity. That result is about the same features presented in a different
+\emph{representation} (rows versus columns); the comparison in this paper is
+a different axis, holding representation architecture fixed to what each
+model naturally wants (a dense image for the U-Net, rows for LightGBM) and
+asking instead whether \emph{spatial context itself} --- neighbouring cells,
+not just more rows of the same per-cell features --- is worth the switch.
+Both findings point the same direction for this kind of data without being
+the same finding.
+
+\para{ConvLSTM and the ordering of this agenda item} Convolutional
+LSTMs~\citep{shi2015} extend a recurrent architecture with convolutional
+gates specifically to model spatiotemporal sequences such as radar
+nowcasting, and are the natural reach once a single frame is judged
+insufficient. This paper's plan ordered the spatial-only U-Net before the
+spatial-plus-temporal ConvLSTM for a stated reason, not simplicity alone: if
+a full spatial neighbourhood in a single frame does not help, stacking
+several such frames in time is unlikely to be the fix, and a negative result
+here is therefore evidence against that next step rather than merely a
+smaller version of it.
+
+\section{Methods}
+\label{sec:methods}
+
+\para{Task and channels} The target is \texttt{bloom\_t3}, the codebase's
+one sanctioned forward-shifted label (t+3 harmful-algal-bloom onset),
+already fitted train-only by the existing labelling pipeline and reused
+unchanged --- the spatial pilot introduces no second forward shift. The
+input is a \NInputChannels{}-channel image per date: \NChannels{}
+contemporaneous physical fields (chlorophyll, sea-surface temperature,
+mixed-layer depth, a chlorophyll gradient, an SST gradient, Okubo--Weiss
+vorticity, and a wind-driven upwelling index), chosen to match the
+architectural objection directly --- a stratification proxy, frontal-strength
+gradients, an eddy-structure term, and the nutrient-supply driver a per-cell
+model cannot see the shape of --- each paired with its own observed-mask
+channel, since the Arabian Sea grid used here is a rectangle of ocean and
+land and a value channel alone cannot distinguish "zero" from "not observed
+here."
+
+\para{Grid and architecture} The native grid is \NativeLat{}$\times$\NativeLon{}
+cells at 0.25\si{\degree} over the Arabian Sea, zero-padded to
+\PadLat{}$\times$\PadLon{} so three stride-2 pooling levels reach a clean
+bottleneck without pooling a single-digit dimension; padded cells carry a
+permanently-false valid mask and contribute to neither the loss nor any
+reported metric. The network is a three-level U-Net with
+\BaseChannels{}/32/64/128 channels per level, GroupNorm rather than
+BatchNorm (training batches are tens of frames, not hundreds, where
+BatchNorm's running statistics are unreliable), and a masked focal loss
+($\alpha=\FocalAlpha{}$, $\gamma=\FocalGamma{}$) that excludes padding and
+any cell with no label from the gradient entirely rather than down-weighting
+it. The trained checkpoint holds \NParams{} parameters.
+
+\para{Matched split and training} Train/validation/test splits use the
+identical chronological-fraction cutoffs the tabular model's own final fit
+uses, so the test period is the same water at the same dates by
+construction: \NTrainDates{} training, \NValidationDates{} validation, and
+\NTestDates{} test dates. Training uses Adam (lr~\LearningRate{}, batch size
+\BatchSize{}) with early stopping on validation loss (patience
+\Patience{} epochs); the reported run stopped after \EpochsRun{} epochs in
+\TrainSeconds{}\,s on Apple Silicon MPS --- early stopping fired well
+before any wall-clock or hardware limit was approached, though neither
+model capacity nor training schedule was swept (\S\ref{sec:limitations}).
+
+\para{Matched-row scoring, and a segfault it was built to avoid} The trained
+U-Net's dense per-date predictions are pivoted back into tidy rows at
+exactly the coordinates the tabular pipeline scores, using the shared
+fusion layer's dense-cube construction in both directions, so the row set
+compared is identical rather than merely similar in size. The shipped
+LightGBM artifact is reloaded and rescored, and persistence is recomputed,
+on that identical row set --- deliberately in a separate process. Measured
+directly on this platform: importing \texttt{torch} anywhere earlier in a
+process and then loading the LightGBM pipeline with \texttt{joblib}
+segfaults (SIGSEGV, no Python traceback), and the reverse import order does
+not crash but is unavailable here, since the same process must load
+\texttt{torch} to run the U-Net at all. Scoring the tabular baseline in a
+subprocess with no \texttt{torch} import is therefore not an optimisation
+but the only way the three-way comparison could be trusted to run at all,
+and is stated here because a comparison pipeline that silently crashed
+midway would have been a second, unrelated way for this result to look
+wrong for reasons that had nothing to do with which model forecasts better.
+
+\section{Results}
+\label{sec:results}
+
+\begin{wtable}
+\centering
+\tabscale
+\caption{All three models scored on the identical \NTestRows{} test rows.
+Higher is better except Brier. Re-run live on \AsOf{}; the \OrigDate{}
+measurement this reproduces is quoted in the text.}
+\label{tab:comparison}
+\begin{tabular}{lrrrr}
+\toprule
+Model & PR-AUC & ROC-AUC & Brier & TSS \\
+\midrule
+Spatial U-Net & \UnetPRAUC{} & \UnetROCAUC{} & \UnetBrier{} & \UnetTSS{} \\
+LightGBM (reloaded) & \textbf{\LgbmPRAUC{}} & \textbf{\LgbmROCAUC{}} & \textbf{\LgbmBrier{}} & \textbf{\LgbmTSS{}} \\
+Persistence & \PersistPRAUC{} & \PersistROCAUC{} & \PersistBrier{} & \PersistTSS{} \\
+\bottomrule
+\end{tabular}
+\end{wtable}
+
+Table~\ref{tab:comparison} was produced by re-running
+\texttt{hab\_early\_warning.src.spatial\_train} in full on \AsOf{} ---
+training a fresh U-Net from the same seed and configuration, reloading the
+same shipped LightGBM artifact, and rescoring both plus persistence on the
+\NTestRows{} rows (positive rate \TestPositiveRate{}\%) that run's own test
+split produces. Every metric matches the \OrigDate{} account to three or
+four decimal places: PR-AUC \UnetPRAUC{} (originally 0.544), ROC-AUC
+\UnetROCAUC{} (0.897), Brier \UnetBrier{} (0.058), TSS \UnetTSS{} (0.655)
+for the spatial model, and equivalently close agreement for LightGBM and
+persistence. This is a second independent training run, ten days after the
+first, on a maintained codebase that has continued to change elsewhere in
+the interim (\S\ref{sec:limitations}); the reproduction is not a
+formality.
+
+\para{Against persistence the picture is mixed; against LightGBM it is not}
+The U-Net clears persistence on PR-AUC (gap \UnetVsPersistGap{}) and on
+Brier by a wide margin (\UnetBrier{} against \PersistBrier{}), and trails
+it marginally on ROC-AUC and TSS (by \(0.004\) and \(0.004\)
+respectively) --- a mixed result, not a clean win. The persistence
+baseline here is not a bare carried-forward label but a sigmoid-squashed
+standardised chlorophyll anomaly, a real, continuous, ranked score; its
+comparatively poor Brier alongside a competitive ROC-AUC is consistent with
+that score being reasonably well \emph{ordered} but poorly
+\emph{calibrated} to the \TestPositiveRate{}\% test-period base rate, not
+with it being a degenerate baseline that is trivially easy to beat. Against
+the reloaded LightGBM model the comparison is unambiguous: the U-Net trails
+on all four metrics simultaneously (PR-AUC gap \UnetVsLgbmGap{}), with no
+metric on which it is competitive.
+
+\para{The reloaded baseline agrees with its own published number, which is
+what makes the comparison trustworthy} The reloaded LightGBM's PR-AUC,
+\LgbmPRAUC{}, sits close to \texttt{hab\_early\_warning/readme.md}'s
+documented \ReadmeLGBMPRAUC{} (persistence \ReadmePersistPRAUC{}) for the
+same model, though not identical --- that number's row set passed a
+different multi-horizon coverage filter, while this run's is t+3-only. The
+closeness is itself a check: the comparison pipeline is measuring the
+actual shipped model on real held-out water, not something subtly
+different that happens to run without error.
+
+\para{The exported artifact is consistent with the region it claims to
+cover} A standalone forecast export
+(\texttt{exports/hab\_bloom\_forecast\_spatial.nc}, not wired into the
+platform's serving path) was re-opened for this paper and its finite-value
+fraction measured directly at \ExportFiniteFrac{}\%, matching the
+Arabian-Sea grid's independently measured real-ocean-cell fraction of
+approximately \ExportOceanFrac{}\% --- land is masked to \texttt{NaN}
+correctly, not merely by omission.
+
+\section{Discussion}
+
+Two explanations for a negative result are worth distinguishing, because
+they license different next steps. The first is that the implementation is
+wrong: a bug, a leak, a mismatched row set. The matched-row, reloaded-
+baseline, twice-reproduced design in \S\ref{sec:methods}--\ref{sec:results}
+is built specifically to rule this out, and the close agreement with the
+tabular model's own published number is the check that it worked. The
+second is that spatial context, added this way, genuinely does not carry
+enough additional signal for this task to be worth a harder-to-train model
+--- and that is the more likely reading here, given the U-Net still clears
+persistence by a real margin and is not failing outright, it is simply
+behind a strong, already-well-tuned tabular alternative.
+
+\para{What this narrows, not just what it rules out} The architecture plan
+this pilot answers to explicitly staged a spatial-only model before a
+spatial-plus-temporal one for a stated methodological reason: if a full
+neighbourhood in one frame does not help, stacking several such frames
+along time is unlikely to rescue the approach, since temporal recurrence
+adds a different kind of information (persistence and trend) that a
+sufficiently strong tabular model can already partly capture through
+lagged features. A negative U-Net result is therefore a specific, informative
+data point against reaching for ConvLSTM~\citep{shi2015} next by default,
+not an argument that no spatial architecture could ever help this problem.
+
+\section{Limitations}
+\label{sec:limitations}
+
+This is one region (Arabian Sea), one horizon (t+3), one channel set, and
+one architecture family (a plain U-Net, not a wider search over depth,
+channel width, or loss function). The codebase continues to change --- this
+paper's own re-verification on \AsOf{} exists precisely because a repository
+that trains and retrains models should not be trusted to reproduce a
+result from prose alone, a discipline this same research programme applies
+to its own other papers~\citep{risingskill2026}. The exported artifact is
+explicitly a standalone, unwired output: it is not served to any product
+surface, and this paper makes no claim that it should be, absent a future
+spatial attempt that actually beats the point model on held-out skill.
+Boyce-index spatial calibration, computed for the platform's habitat-
+suitability models elsewhere, was not populated for this classification
+comparison and is not reported here rather than reported as a placeholder.
+
+\section{Conclusion}
+
+A single-frame U-Net given full spatial context for t+3 harmful-algal-bloom
+forecasting beats a naive persistence baseline but loses clearly to the
+existing per-cell LightGBM model on \NTestRows{} identical held-out rows,
+reproduced live to three to four decimal places ten days after the original
+measurement. The result is a real, informative negative: it does not show
+spatial structure is irrelevant to blooms, only that this way of giving a
+model access to it does not beat a well-tuned tabular alternative on this
+task, and it specifically argues against reaching for a spatiotemporal
+architecture next, since the ordering of this agenda item was designed to
+make exactly that inference available.

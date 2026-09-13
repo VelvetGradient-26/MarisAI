@@ -64,8 +64,8 @@ export const CHAPTERS: Chapter[] = [
   },
   {
     id: 'brief',
-    label: 'Briefs & compare',
-    title: 'The point brief, and comparing two places',
+    label: 'The point brief',
+    title: 'The point brief',
     group: 'Using the platform',
     Component: Brief,
   },

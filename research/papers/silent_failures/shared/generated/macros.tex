@@ -1,0 +1,166 @@
+% ---------------------------------------------------------------------------
+% Numeric macros used by shared/body.tex. Every instance below was re-verified
+% against its primary source (a committed report/test file, or the dated prose
+% in the module that ships it) on \AsOf{} -- not copied from research/research.md
+% or CLAUDE.md, which is where the catalogue entries originate but which this
+% paper treats as a pointer, not a source. Provenance is grouped by instance
+% number, matching research/research.md's numbering (I.1, I.2, ... refer to
+% that catalogue's 1.1, 1.2, ...).
+%
+% Evidence grade is noted per group:
+%   [ARTIFACT]  a committed report/data file or a currently-passing test
+%               reproduces the number on demand.
+%   [DATED]     a live, single-run measurement recorded with its date in a
+%               module docstring or work log, re-runnable from a named script
+%               but with no stored output committed. Cited as of that date,
+%               not as a standing fact.
+% ---------------------------------------------------------------------------
+
+\newcommand{\NInstances}{11}
+\newcommand{\AsOf}{2026-09-09}
+
+% --- I.4: mixed-cadence aggregation [ARTIFACT] ---
+% backend/tests/test_download_cadence.py:50-80,
+% test_an_hourly_field_joined_against_a_daily_one_is_a_daily_mean (passing).
+% The 20.0/23.0 pair is the test's own constructed scenario (amplitude 3.0
+% around a 20.0 mean, sampled at 00:00); the fixed code returns 20.0.
+\newcommand{\CadMean}{20.0}
+\newcommand{\CadInstant}{23.0}
+\newcommand{\CadAmplitude}{3.0}
+\newcommand{\CadCurrentSpeed}{1.0}
+
+% --- I.5: circular variables [ARTIFACT for i-iii, mixed for iv] ---
+% (i)/(ii) backend/services/field_sampling.py (angular sampler, angular_difference),
+% backend/tests/test_field_sampling.py (passing).
+\newcommand{\CircReverse}{180}
+% (iii) backend/forecasting/grid_predictor.py:508-514, comment naming the
+% historical shipped value directly; regression test in tests/test_derived.py.
+\newcommand{\CircLegendBug}{400}
+% (iv) backend/forecasting/derived.py's own docstring: a 5-degree veer across
+% north trains as -355 under target_mode: delta. [DATED, in-code prose]
+\newcommand{\CircDeltaVeer}{5}
+\newcommand{\CircDeltaCross}{-355}
+
+% --- I.7: Hampel outlier filter [DATED throughout; no stored report] ---
+% backend/forecasting/config.py, forecasting/README.md, docs/features/forecasting.md
+% all state this; backend/forecasting/preprocessing.py:161's own comment gives
+% the denominator as 367, not the 365 the docs round it to -- used here since
+% it is closest to the code that produced the count.
+\newcommand{\HampelFlagLow}{5}
+\newcommand{\HampelFlagHigh}{12}
+\newcommand{\HampelZeroMAD}{74}
+\newcommand{\HampelWindow}{367}
+\newcommand{\HampelSkillWith}{0.138}
+\newcommand{\HampelSkillWithout}{0.202}
+
+% --- I.8: eddy detector [ARTIFACT for mechanism tests; DATED for the count] ---
+% backend/services/eddies.py (polarity, antimeridian, white-noise-floor all
+% covered by passing tests); count/timing from DONE.md's 2026-08-15 entry, a
+% live snapshot of the current-field state, not a fixed model artifact.
+\newcommand{\EddyCount}{2{,}097}
+\newcommand{\EddyCyclonic}{954}
+\newcommand{\EddyAnticyclonic}{1{,}143}
+\newcommand{\EddyRadius}{55}
+\newcommand{\EddyPassTime}{0.1}
+\newcommand{\EddyLoopTime}{37}
+
+% --- I.9: bilinear resampling over a NaN-holed grid [ARTIFACT] ---
+% backend/services/field_sampling.py's own module docstring states this
+% directly, and backend/tests/test_forecast_grid.py::
+% test_the_painted_edge_reaches_halfway_to_the_first_land_cell pins the fixed
+% boundary geometrically (passing).
+\newcommand{\BilinearStaircaseKm}{110}
+\newcommand{\BilinearErasedCells}{3{,}609}
+\newcommand{\BilinearTotalCells}{42{,}499}
+\newcommand{\BilinearErasedPct}{8.5}
+% Contrast ratios are a separate, [DATED] sub-claim (docs/features/forecasting.md),
+% about the forecast-tile colour ramp rather than the coverage-field fix itself.
+\newcommand{\BilinearContrastLow}{1.13}
+\newcommand{\BilinearContrastHigh}{1.27}
+
+% --- I.1: softmax ensemble weighting ---
+% [DATED, commit 7acf907, 2026-08-13] -- the numbers research.md's catalogue
+% entry quotes. The model has since been retrained; these are cited as a
+% point-in-time measurement, not a standing fact (see body.tex's discussion of
+% why this instance's own evidence illustrates the paper's thesis).
+\newcommand{\EnsMaxentCVOld}{0.619}
+\newcommand{\EnsLGBMCVOld}{0.826}
+\newcommand{\EnsMaxentVoteOld}{27}
+\newcommand{\EnsPropScoreOld}{0.694}
+\newcommand{\EnsBestMemberOld}{0.788}
+\newcommand{\EnsSoftmaxScoreOld}{0.792}
+\newcommand{\EnsBoyceOldBefore}{0.936}
+\newcommand{\EnsBoyceOldAfter}{0.905}
+% [ARTIFACT, re-verified \AsOf{}] machine_learning/reports/fish_habitat_summary.json
+% and fish_habitat_holdout.csv, read directly.
+\newcommand{\EnsMaxentCVNow}{0.689}
+\newcommand{\EnsLGBMCVNow}{0.825}
+\newcommand{\EnsRFCVNow}{0.821}
+\newcommand{\EnsWeightLGBMNow}{50.2}
+\newcommand{\EnsWeightRFNow}{46.5}
+\newcommand{\EnsWeightMaxentNow}{3.3}
+\newcommand{\EnsHoldoutEnsembleNow}{0.8554}
+\newcommand{\EnsHoldoutBestNow}{0.8564}
+
+% --- I.2: global vs regional habitat model ---
+% [ARTIFACT] Headline numbers only, cross-checked directly against
+% machine_learning/reports/global_vs_regional_habitat.csv on \AsOf{}; full
+% mechanism (MESS, SHAP, ablation) is the companion paper
+% research/papers/global_vs_regional/, cited rather than re-derived here.
+\newcommand{\GvrTSSRegion}{0.798}
+\newcommand{\GvrTSSGlobal}{0.448}
+\newcommand{\GvrDataMultiple}{64.7}
+\newcommand{\GvrNRegionalTrain}{1{,}902}
+\newcommand{\GvrNGlobalTrain}{123{,}104}
+\newcommand{\GvrMESSGlobal}{1.24}
+\newcommand{\GvrMESSRegion}{9.04}
+
+% --- I.11: corroboration needs a control arm [DATED, 2026-08-17] ---
+% backend/services/upwelling.py's own module docstring; control_cool_fraction
+% as a returned field is [ARTIFACT] (services/upwelling.py:377-379); the
+% eastern-boundary/hemisphere regression is a passing test
+% (backend/tests/test_upwelling.py).
+\newcommand{\UpwellFavor}{19.9}
+\newcommand{\UpwellControl}{17.2}
+\newcommand{\UpwellStrongFavor}{4.1}
+\newcommand{\UpwellStrongControl}{3.9}
+\newcommand{\UpwellAnomFavor}{0.91}
+\newcommand{\UpwellAnomControl}{0.60}
+
+% --- I.12: a baseline fitted on one product cannot score another ---
+% [DATED throughout] backend/services/sst_anomaly.py's own module docstring,
+% three separate dated attempts (2026-08-17, 2026-08-25, 2026-08-28), each
+% naming its own reproduction script; no stored output file for any of them.
+\newcommand{\SstWeakOISST}{0.026}
+\newcommand{\SstWeakLive}{0.022}
+\newcommand{\SstStrongOISST}{0.002}
+\newcommand{\SstStrongLive}{-0.149}
+\newcommand{\SstMeanOpen}{0.033}
+\newcommand{\SstSDOpen}{0.467}
+\newcommand{\SstOpenFracHalf}{14.3}
+\newcommand{\SstOpenFracOne}{3.9}
+\newcommand{\SstMeanCoastal}{0.131}
+\newcommand{\SstSDCoastal}{0.758}
+\newcommand{\SstCoastalFracHalf}{24.9}
+\newcommand{\SstCoastalFracOne}{10.0}
+\newcommand{\SstMatchedOISSTStrong}{-0.001}
+\newcommand{\SstMatchedGLORYSStrong}{-0.051}
+
+% --- I.13: HAB precision tracks regional base rate [ARTIFACT] ---
+% machine_learning/reports/hab_early_warning_*_summary.json and the matching
+% *_holdout.csv for all five regions, read directly on \AsOf{}.
+\newcommand{\HabArabianBase}{0.076}
+\newcommand{\HabBengalBase}{0.078}
+\newcommand{\HabArabianPrecSeven}{0.202}
+\newcommand{\HabBengalPrecSeven}{0.187}
+\newcommand{\HabArabianLiftSeven}{0.053}
+\newcommand{\HabBengalLiftSeven}{0.150}
+
+% --- 2.5: batched spatiotemporal sampling equivalence [ARTIFACT, reproduced
+% live \AsOf{}] machine_learning/marine_ml/fusion.py:358 (_BATCH_PAD_DAYS = 45);
+% machine_learning/tests/test_global_sources.py::
+% test_year_batched_sampling_matches_the_unbatched_path (passing); pad=0
+% failure reproduced live by monkeypatching the constant and rerunning the
+% test's own fixture (max abs diff on thetao = 2.9170, 2 affected rows).
+\newcommand{\BatchPadDays}{45}
+\newcommand{\BatchThetaoErrorNoPad}{2.92}

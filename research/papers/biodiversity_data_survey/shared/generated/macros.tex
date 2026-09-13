@@ -1,0 +1,106 @@
+% ---------------------------------------------------------------------------
+% Numeric macros used by shared/body.tex. This paper's evidence is
+% categorically different from its siblings': every number below is either
+% (a) read directly from docs/data-sources.md (the survey itself, split from
+% CLAUDE.md on \SplitDate{}, live-probed \ProbeDate{}), or (b) a live network
+% probe performed while writing this paper, on \AsOf{}, using this session's
+% own network access (WebFetch and curl). Nothing here is a committed report
+% file or a currently-passing test -- the object being measured is external
+% infrastructure this project does not control, so "reproduce it" means
+% "issue the same HTTP request again," not "re-run a script against a
+% checked-in artifact." Every macro is therefore graded DATED, full stop; see
+% shared/body.tex's Methods section for why this paper does not use an
+% ARTIFACT category at all, unlike silent_failures/cross_product_baseline.
+%
+% research/research.md's own \S4.5 is treated as a pointer to
+% docs/data-sources.md, not as a source -- consistent with this project's
+% house rule after several prior research.md errors found this session. Two
+% discrepancies between \S4.5's prose and docs/data-sources.md's actual
+% content were found while building this table; both are documented in the
+% note at the end of this file rather than silently corrected.
+% ---------------------------------------------------------------------------
+
+% --- Survey scope [DATED, docs/data-sources.md in full] ---
+\newcommand{\ProbeDate}{2026-08-05}
+\newcommand{\SplitDate}{2026-08-28}
+\newcommand{\AsOf}{2026-09-10}
+\newcommand{\NSourcesSurveyed}{44}
+\newcommand{\NTierOne}{16}
+\newcommand{\NTierTwo}{21}
+\newcommand{\NTierThree}{7}
+% Table~\ref{tab:open}, Table~\ref{tab:gated}, Table~\ref{tab:indian} row
+% counts (sources grouped onto one row where docs/data-sources.md itself
+% groups them, e.g. "Zenodo / Dryad / DataONE", "CIFT / CIBA").
+\newcommand{\NTableRowsOpen}{14}
+\newcommand{\NTableRowsGated}{14}
+\newcommand{\NTableRowsIndian}{5}
+
+% --- OBIS eDNA filter [DATED, docs/data-sources.md Tier-1 table, OBIS row] ---
+% hasextensions=DNADerivedData on /v3/occurrence and /occurrence/grid/{p}.
+\newcommand{\ObisEdnaRecordsM}{44.5}
+\newcommand{\ObisEdnaSpecies}{11{,}927}
+\newcommand{\ObisEdnaDatasets}{131}
+
+% --- GBIF is not a superset of OBIS for marine fish [DATED, docs/ ---
+% data-sources.md "Two findings that change what to build", first bullet].
+% Measured on Thunnus albacares, records with coordinates.
+\newcommand{\ObisTunaRecords}{246{,}964}
+\newcommand{\GbifTunaRecords}{174{,}799}
+
+% --- IndOBIS: reachable via the existing OBIS API, no new integration ---
+% [DATED, docs/data-sources.md Tier-3, IndOBIS bullet; re-probed directly by
+% this paper \AsOf{} against https://api.obis.org/v3/statistics?nodeid=...,
+% see the note below -- byte-identical to the \ProbeDate{} figures].
+\newcommand{\IndObisNodeId}{1a3b0f1a-4474-4d73-9ee1-d28f92a83996}
+\newcommand{\IndObisDatasets}{79}
+\newcommand{\IndObisRecords}{110{,}905}
+\newcommand{\IndObisSpecies}{19{,}210}
+\newcommand{\IndObisYearStart}{1743}
+\newcommand{\IndObisYearEnd}{2025}
+\newcommand{\IndObisActinoRecords}{16{,}701}
+\newcommand{\IndObisActinoSpecies}{3{,}217}
+\newcommand{\IndObisActinoDatasets}{36}
+
+% --- This paper's own re-verification pass [DATED, \AsOf{}, performed while ---
+% --- writing this paper via WebFetch and curl against the live internet] ---
+% Endpoints re-probed: api.obis.org/v3/statistics?nodeid=... (IndOBIS),
+% fishbase.ropensci.org, wcpfc.int/public-domain, ws.pangaea.de/oai/provider
+% (Identify), ws.pangaea.de/es/dataportal-item/_search, portal.vertnet.org,
+% vertnet-portal.appspot.com/api/search, cift.res.in, ciba.res.in.
+\newcommand{\NEndpointsReprobed}{9}
+\newcommand{\NEndpointsDrifted}{2}
+\newcommand{\NEndpointsUnchanged}{7}
+% fishbase.ropensci.org \AsOf{}: DNS now resolves (128.32.85.8); TLS
+% handshake completes but serves a self-signed certificate whose subject and
+% issuer are both "TRAEFIK DEFAULT CERT" (openssl s_client verify return
+% code 18, self-signed certificate) -- an ingress with no route configured
+% for this host, not the DNS failure (code 000) recorded on \ProbeDate{}.
+\newcommand{\FishbaseCertCN}{TRAEFIK DEFAULT CERT}
+\newcommand{\FishbaseOpenSSLVerifyCode}{18}
+% VertNet \AsOf{}: portal.vertnet.org now answers 308, redirecting to
+% https://www.vertnet.org/ (200) -- a live marketing page where
+% docs/data-sources.md recorded a 404 on \ProbeDate{}. The programmatic path
+% is unchanged: vertnet-portal.appspot.com/api/search is still 500.
+
+% ---------------------------------------------------------------------------
+% Note on research.md \S4.5, checked while building this table (\AsOf{}):
+%
+% 1. \S4.5 states the survey covers "~40 sources." The precise count across
+%    all three tiers of docs/data-sources.md, tallied directly from its
+%    table rows and bullet lists (Tier 1: 16, Tier 2: 21, Tier 3: 7), is
+%    \NSourcesSurveyed{} -- close to "~40" but not the number itself; this
+%    paper reports \NSourcesSurveyed{} rather than rounding.
+%
+% 2. \S4.5 states: "the *.icar.gov.in hostnames for CIFRI/CIFT/CIBA/CIFA all
+%    fail DNS/TLS while the .res.in domains work," reading as a claim that
+%    all four institutions have a confirmed working .res.in equivalent.
+%    docs/data-sources.md's own Tier-3 section does not support that for two
+%    of the four: it confirms cift.res.in and ciba.res.in each return 200,
+%    but for CIFRI and CIFA it says only "prefer the .res.in domains and
+%    re-probe CIFRI/CIFA" -- an instruction to check, not a recorded result
+%    -- and separately records cifa.nic.in (a .nic.in domain, not .res.in)
+%    returning 400. This paper's Table~\ref{tab:gatedindian} reports CIFT
+%    and CIBA as confirmed reachable via .res.in and CIFRI/CIFA as reachable
+%    via neither their icar.gov.in nor a confirmed .res.in domain, rather
+%    than repeating \S4.5's four-for-four framing.
+% ---------------------------------------------------------------------------

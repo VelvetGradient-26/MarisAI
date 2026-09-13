@@ -107,7 +107,6 @@ training rows only" — the guardrails against silent methodology error.
 | Metric intelligence | `/dashboard/<variable>` | Everything known about one variable — history, forecast, drivers |
 | Model dossier | `/dashboard/model` | Everything reproducible about one trained forecasting artifact |
 | Point analytics | `/analytics` | Every metric at one coordinate |
-| Compare | `/compare` | How one place differs from another |
 | Assistant | `/assistant` | The whole platform through one conversational interface — including route planning, geofencing, and cyclone/weather alerts that have no other UI |
 | Downloader | `/download` | Bulk export of 34 ocean variables as CSV/JSON/PDF |
 | Docs | `/docs` | How everything here works, was built, validated, and where it fails — full-text searchable |
@@ -138,8 +137,7 @@ training rows only" — the guardrails against silent methodology error.
   through the assistant. Hazard-aware A* route planning, EEZ/boundary/MPA
   geofencing, a PFZ screening heuristic, GDACS cyclone alerts, and IMD CAP
   severe-weather alerts.
-- **A point brief, and a comparison** — one coordinate as a document (screen or
-  PDF), or two coordinates aligned row by row.
+- **A point brief** — one coordinate as a document (screen or PDF).
 - **The Ocean Intelligence Dashboard** — global KPIs, live provider health,
   threshold-based alerts, and per-entity dossier pages (model / buoy /
   satellite product).
@@ -245,7 +243,7 @@ frontend/src/
   features/map/           Map engine: managers, layer registry, GPU vector fields
   features/dashboard/      Ocean Intelligence Dashboard, metric pages, dossiers
   features/assistant/      Chat thread
-  pages/                  Hand-rolled pages (landing, download, compare, docs, …)
+  pages/                  Hand-rolled pages (landing, download, docs, …)
     docs/                  Chapters + DocsSearch.tsx (full-text, evaluates chapter
                            components directly rather than reading static text)
 machine_learning/

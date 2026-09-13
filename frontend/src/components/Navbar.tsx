@@ -14,7 +14,6 @@ const NAV_LINKS = [
   { label: 'Dashboard', to: '/dashboard' },
   { label: 'Assistant', to: '/assistant' },
   { label: 'Analytics', to: '/analytics' },
-  { label: 'Compare', to: '/compare' },
   { label: 'Download', to: '/download' },
   { label: 'Docs', to: '/docs' },
 ];

@@ -1,0 +1,143 @@
+% ---------------------------------------------------------------------------
+% Numeric macros used by shared/body.tex. Every number below was read directly
+% from backend/services/sst_anomaly.py's module docstring (verified in full,
+% all 209 lines, on \AsOf{}), cross-checked against DONE.md's "A rolling wind
+% history" entry (2026-08-28) for the third experiment, and against the source
+% constants named per group. None of this was copied from research/research.md
+% \S1.12 or from research/papers/silent_failures/ — those documents are
+% treated as pointers, not sources, per this project's own house rule after
+% two prior research.md errors were found this session. Concretely:
+%   - research.md's \S1.12 states the per-cell disagreement's "no systematic
+%     offset" claim as "mean +0.005 degC over 60S-60N". That figure appears
+%     nowhere in sst_anomaly.py's own docstring, which gives a per-cell mean
+%     of +0.033 degC (open ocean) and +0.131 degC (coastal band) -- two
+%     different numbers, neither +0.005. +0.005 is not used anywhere below.
+%   - research.md's \S1.12 does not mention the matched-GLORYS-climatology
+%     attempt (2026-08-25) or the rolling-wind-history attempt (2026-08-28)
+%     at all; both are documented directly in sst_anomaly.py's docstring and
+%     in DONE.md, dated after research.md's own last revision on this topic.
+%
+% Evidence grade for every number in this file: DATED. Every measurement is a
+% single, live run against a moving field (a day's wind/currents/SST state),
+% named with its date and its reproduction script, with no stored output file
+% committed anywhere in the repository. The three reproduction scripts
+% (measure_sst_corroboration.py, build_climatology_copernicus.py,
+% measure_wind_history_corroboration.py) plus backfill_wind_history.py and
+% services/wind_history.py ARE committed and were confirmed to exist and to
+% do what this file describes -- so the correct grade is "reproducible on
+% demand from a committed script, no stored output," which is stronger than
+% "no evidence" and weaker than the Artifact grade silent_failures reserves
+% for a committed report or currently-passing test. Nothing here should be
+% read as a standing fact about the current state of any live field.
+% ---------------------------------------------------------------------------
+
+\newcommand{\AsOf}{2026-09-09}
+\newcommand{\NCrossProductFixes}{2}
+
+% --- Fixed thresholds and baseline windows the two tests are built on ---
+% backend/services/upwelling.py:169, COOL_ANOMALY_C = 0.5 (the weak tier's
+% fixed absolute anomaly threshold).
+\newcommand{\CoolAnomalyThreshold}{0.5}
+% backend/services/climatology/build.py: PERCENTILES = (10, 90) (line ~72);
+% DEFAULT_WINDOW_DAYS = 5 (day-of-year pooling half-width, line 67). The cold
+% (10th) percentile is what the strong tier actually tests against
+% (services/sst_anomaly.py's cold_exceedance); the warm (90th) companion from
+% the same PERCENTILES tuple is named separately so Hobday et al.'s
+% warm/cold pair (\S2) can be stated without gluing a literal "0" onto
+% \ClimPercentile{} (that concatenation previously rendered "100th").
+\newcommand{\ClimPercentile}{10}
+\newcommand{\ClimPercentileWarm}{90}
+\newcommand{\ClimWindowDays}{5}
+% OISST climatology: build.py DEFAULT_BASELINE_START/END = 1991/2020.
+\newcommand{\OisstBaselineStart}{1991}
+\newcommand{\OisstBaselineEnd}{2020}
+% GLORYS-fitted climatology: scripts/build_climatology_copernicus.py
+% DEFAULT_BASELINE_START/END = 1993/2022 -- the longest 30-year window the
+% reanalysis's 1993 coverage start actually supports (its own docstring
+% states 1991-2020 is unavailable and build_climatology would reject it).
+\newcommand{\GlorysBaselineStart}{1993}
+\newcommand{\GlorysBaselineEnd}{2022}
+% Copernicus GLORYS reanalysis dataset id, from build_climatology_copernicus.py.
+\newcommand{\GlorysDatasetId}{cmems\_mod\_glo\_phy\_my\_0.083deg\_P1D-m}
+
+% --- Fix A: swap the scored observation from OISST to a fresher, higher- ---
+% --- resolution live product, holding the climatology fixed [2026-08-17] ---
+% sst_anomaly.py docstring, first table. copernicus_sst.anomaly_field() was,
+% at this date, implemented to score the live Copernicus physics field
+% against the OISST-fitted climatology (services/copernicus_sst.py:210-224's
+% own docstring states this configuration directly and that it "was measured
+% and made services/upwelling.py's corroboration worse"). Both arms scored
+% over the identical live wind/currents snapshot; contrast = favourable minus
+% control (downwelling-favourable coastal cells).
+\newcommand{\FixAWeakOisst}{0.026}
+\newcommand{\FixAWeakLive}{0.022}
+\newcommand{\FixAStrongOisst}{0.002}
+\newcommand{\FixAStrongLive}{-0.149}
+
+% --- Per-cell product disagreement, measured directly [2026-08-01] ---
+% sst_anomaly.py docstring, second table: one day of hourly Copernicus
+% physics, daily-averaged and coarsened onto the OISST grid, compared
+% cell-by-cell against OISST. Open ocean vs. the coastal band, kept as two
+% distinct rows throughout this paper -- do not merge them.
+\newcommand{\DisagOpenMean}{0.033}
+\newcommand{\DisagOpenMedian}{0.011}
+\newcommand{\DisagOpenSD}{0.467}
+\newcommand{\DisagOpenFracHalf}{14.3}
+\newcommand{\DisagOpenFracOne}{3.9}
+\newcommand{\DisagCoastalMean}{0.131}
+\newcommand{\DisagCoastalMedian}{-0.002}
+\newcommand{\DisagCoastalSD}{0.758}
+\newcommand{\DisagCoastalFracHalf}{24.9}
+\newcommand{\DisagCoastalFracOne}{10.0}
+
+% --- Fix B: fit a matched climatology on the product being scored ---
+% [2026-08-25] sst_anomaly.py docstring, third table. GLORYS-fitted
+% climatology built for real by build_climatology_copernicus.py (30 years,
+% 1993-2022); copernicus_sst.anomaly_field() was repointed to it
+% (REANALYSIS_CLIMATOLOGY_VARIABLE, copernicus_sst.py:207,235) and is the
+% version shipped today, though services/upwelling.py's production
+% corroboration still consumes heatwaves.sst_anomaly_field() (OISST), not
+% this path. Both arms reproduced by
+% scripts/measure_sst_corroboration.py --source {oisst,copernicus_reanalysis}
+% over the identical live wind/currents snapshot on the measurement date.
+\newcommand{\FixBWeakOisst}{0.027}
+\newcommand{\FixBWeakGlorys}{0.021}
+\newcommand{\FixBStrongOisst}{-0.001}
+\newcommand{\FixBStrongGlorys}{-0.051}
+
+% --- Control C: hold the product AND climatology matched (OISST throughout) ---
+% --- and vary only the wind/currents input's temporal aggregation ---
+% [2026-08-28] sst_anomaly.py docstring's fourth section and DONE.md's "A
+% rolling wind history" entry (2026-08-28, 30/30 backfilled real timesteps,
+% 1.21-day real span, rounded to "1.2-day" in the module docstring -- the
+% inconsistency is left visible per this project's own convention rather than
+% silently resolved). This is NOT a third cross-product fix: both arms score
+% OISST against its own OISST-fitted climatology throughout
+% (heatwaves.sst_anomaly_field()); only the wind/currents field varies
+% (upwelling.detect, instantaneous, vs upwelling.detect_from_history, a
+% trailing mean from services/wind_history.py, backfilled by
+% scripts/backfill_wind_history.py). Its purpose is to rule out instantaneous
+% sampling (rather than product mismatch) as the actual cause of the earlier
+% two inversions -- reproduced by
+% scripts/measure_wind_history_corroboration.py --backfill-hours 72 (30
+% timesteps of real coverage were obtained; see the docstring for the
+% "24 straight empty hourly placeholders" gap the backfill had to route
+% around).
+\newcommand{\CtrlWeakInstant}{0.0234}
+\newcommand{\CtrlWeakTrailing}{0.0182}
+\newcommand{\CtrlStrongInstant}{-0.0061}
+\newcommand{\CtrlStrongTrailing}{-0.0049}
+\newcommand{\WindHistoryWindowDays}{1.2}
+\newcommand{\WindHistoryTimesteps}{30}
+\newcommand{\WindHistoryTargetWindowDays}{3}
+% services/wind_history.py:83, MIN_COVERAGE_FRACTION = 0.5, as a percentage.
+\newcommand{\WindHistoryMinCoveragePct}{50}
+
+% --- Derived quantities computed directly from the macros above, not new ---
+% --- measurements: the matched (OISST-vs-OISST) arm's own strong-tier value ---
+% --- moved by this much between the two dates it was measured on, which ---
+% --- bounds how much of Control C's own, smaller movement is signal. ---
+% |FixAStrongOisst - FixBStrongOisst| = |0.002 - (-0.001)|.
+\newcommand{\MatchedArmWander}{0.003}
+% |CtrlStrongInstant - CtrlStrongTrailing| = |-0.0061 - (-0.0049)|.
+\newcommand{\CtrlStrongDelta}{0.0012}

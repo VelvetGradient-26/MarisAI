@@ -1,0 +1,162 @@
+% ---------------------------------------------------------------------------
+% Numeric macros used by shared/body.tex. Every number below was read
+% directly from backend/services/upwelling.py (module docstring and source,
+% verified in full, all 932 lines), backend/services/sst_anomaly.py (module
+% docstring, verified in full, all 209 lines), backend/services/wind_history.py
+% (verified in full, 210 lines), DONE.md's "A rolling wind history" entry, and
+% by running backend/tests/test_upwelling.py + backend/tests/test_wind_history.py
+% directly (`uv run pytest tests/test_upwelling.py tests/test_wind_history.py -q`,
+% 39 passed, no failures) -- on \AsOf{}. None of this was copied from
+% research/research.md's \S1.11, which is where this paper's claim originates
+% but which this project's own house rule (after repeated research.md errors
+% found this session) treats as a pointer, not a source. Concretely:
+%   - research.md's \S1.11 "Missing" section calls for a rolling wind history
+%     experiment as not yet done. It has since been built and measured
+%     (services/wind_history.py, upwelling.detect_from_history,
+%     scripts/backfill_wind_history.py, scripts/measure_wind_history_
+%     corroboration.py, all dated 2026-08-28 in DONE.md and in
+%     sst_anomaly.py's own docstring) -- this file's "Group D" below.
+%   - The same 2026-08-28 measurement is independently analysed by a
+%     contemporaneous companion draft in this research program
+%     (research/papers/cross_product_baseline/, not yet given ieee/springer
+%     wrappers or a title) as its own "Control C", for a different purpose
+%     (ruling out instantaneous wind sampling as the explanation for a
+%     cross-SST-product mismatch, rather than testing whether wind averaging
+%     rescues this paper's control-arm finding). Both papers report the same
+%     four raw numbers from one run; see shared/body.tex's Discussion for the
+%     explicit disclosure.
+%
+% Evidence grade for every group is noted below:
+%   [ARTIFACT]        a source-code constant or a currently-passing test,
+%                       reproducible on demand and not subject to drift.
+%   [DATED, <date>]    a single, live run recorded with its date in a module
+%                       docstring or DONE.md, naming its own reproduction
+%                       script, with no stored output file committed anywhere
+%                       in the repository. Cited as of that date, not as a
+%                       standing fact about the current state of any field.
+%   [ARTIFACT + DATED] the mechanism/infrastructure is a passing test or
+%                       shipping code (Artifact); the headline number itself
+%                       is a Dated measurement of a moving field. Same hybrid
+%                       category research/papers/silent_failures/ uses.
+% ---------------------------------------------------------------------------
+
+\newcommand{\AsOf}{2026-09-10}
+
+% --- Group A: fixed thresholds and constants, all [ARTIFACT, code] ---------
+% backend/services/upwelling.py: COOL_ANOMALY_C (line 169), EQUATORIAL_BAND_DEG
+% (line 145), COASTAL_BAND_CELLS (line 151, "two cells at ~0.25 degrees is
+% ~55 km" per the code's own comment), MIN_COASTLINE_CONFIDENCE (line 162),
+% NORMAL_SMOOTHING_CELLS (line 157), MAX_SST_LAG_DAYS (line 175).
+\newcommand{\CoolAnomalyThreshold}{0.5}
+\newcommand{\EquatorialBandDeg}{5}
+\newcommand{\CoastalBandCells}{2}
+\newcommand{\CoastalBandKm}{55}
+\newcommand{\MinCoastlineConfidence}{0.05}
+\newcommand{\NormalSmoothingCells}{3}
+\newcommand{\MaxSstLagDays}{30}
+% backend/services/climatology/build.py: DEFAULT_BASELINE_START/END (lines
+% 59-60), DEFAULT_WINDOW_DAYS (line 67), PERCENTILES (line 72) -- confirmed
+% directly against the source, not assumed from a sibling paper's macro.
+\newcommand{\ClimPercentile}{10}
+\newcommand{\ClimWindowDays}{5}
+\newcommand{\OisstBaselineStart}{1991}
+\newcommand{\OisstBaselineEnd}{2020}
+
+% --- Group A2: the bulk wind-stress / Ekman-transport constants, all
+% [ARTIFACT, code] backend/services/upwelling.py lines 135-141. ---
+\newcommand{\AirDensity}{1.225}
+\newcommand{\DragCoefficient}{1.3\times10^{-3}}
+\newcommand{\SeawaterDensity}{1025}
+\newcommand{\EarthOmega}{7.2921\times10^{-5}}
+
+% --- Group B: the headline corroboration measurement [DATED, 2026-08-17] --
+% backend/services/upwelling.py's own module docstring ("How strong the
+% agreement actually is, measured") and the identical numbers repeated in its
+% corroboration() method's own comment (lines 340-346). Percentages, not
+% fractions, matching the docstring's own units.
+\newcommand{\UpwellFavourWeak}{19.9}
+\newcommand{\UpwellControlWeak}{17.2}
+\newcommand{\UpwellGapWeak}{2.7}
+\newcommand{\UpwellFavourStrong}{4.1}
+\newcommand{\UpwellControlStrong}{3.9}
+\newcommand{\UpwellGapStrong}{0.2}
+\newcommand{\UpwellAnomFavour}{0.91}
+\newcommand{\UpwellAnomControl}{0.60}
+% Only the weak tier's control fraction is a field the live API actually
+% returns (control_cool_fraction, computed lines 347-349 and returned lines
+% 377-379, confirmed [ARTIFACT] by reading the code directly -- this is the
+% structural fact research.md's \S1.11 calls out, independent of its dated
+% value above). The strong-tier control and the mean-anomaly control are
+% [DATED] numbers from the module docstring with no corresponding shipped
+% field; scripts/measure_sst_corroboration.py computes them ad hoc.
+
+% --- Group C: cross-date stability of the *same, untouched* matched
+% configuration (OISST scored against its own OISST-fitted climatology,
+% instantaneous wind) [DATED, three separate dates] -- used in
+% \S\ref{sec:results} as the noise floor the wind-history follow-up (Group D)
+% is read against. All three are "cool contrast"/"below-p10 contrast" =
+% favourable-fraction minus control-fraction, in fraction units (not percent),
+% exactly as scripts/measure_sst_corroboration.py and
+% scripts/measure_wind_history_corroboration.py's own _contrasts() compute
+% them -- NOT the same units as Group B's percentages, and not derived from
+% Group B's numbers (see \S\ref{sec:methods} for why the two must not be
+% subtracted from each other). Sources: backend/services/sst_anomaly.py's own
+% docstring, first table (2026-08-17 row) and third table (2026-08-25, OISST
+% row); the 2026-08-28 instantaneous row is shared with Group D below.
+\newcommand{\MatchedWeakAugSeventeen}{0.026}
+\newcommand{\MatchedWeakAugTwentyFive}{0.027}
+\newcommand{\MatchedStrongAugSeventeen}{0.002}
+\newcommand{\MatchedStrongAugTwentyFive}{-0.001}
+% Spreads computed directly from the three matched-configuration values in
+% this group and Group D (max minus min): weak = 0.027 - 0.0234 = 0.0036;
+% strong = 0.002 - (-0.0061) = 0.0081.
+\newcommand{\WeakCrossDateSpread}{0.0036}
+\newcommand{\StrongCrossDateSpread}{0.0081}
+
+% --- Group D: the wind-history follow-up [ARTIFACT + DATED] ---------------
+% Infrastructure is [ARTIFACT]: backend/services/wind_history.py,
+% upwelling.detect_from_history/_assemble_field, scripts/backfill_wind_history.py
+% and scripts/measure_wind_history_corroboration.py all confirmed present and
+% read in full; backend/tests/test_wind_history.py (7 tests) and
+% backend/tests/test_upwelling.py's TestDetectFromHistory class (2 tests) all
+% pass (`uv run pytest tests/test_upwelling.py tests/test_wind_history.py -q`,
+% 39 passed, re-run on \AsOf{}).
+\newcommand{\NUpwellingTests}{32}
+\newcommand{\NWindHistoryTests}{7}
+\newcommand{\NTotalUpwellingTests}{39}
+% wind_history.py: MIN_COVERAGE_FRACTION (line 83, as a percentage),
+% RETAIN_DAYS (line 71). DONE.md's "A rolling wind history" entry: the
+% backfill's real span (30 backfilled timesteps, 1.21 real days -- rounded to
+% "1.2" in sst_anomaly.py's own docstring, an inconsistency left visible per
+% this project's own convention rather than silently resolved) against the
+% originally targeted 3-day window; the _MAX_LOOKBACK_STEPS offset (30 hours)
+% needed to route the backfill around copernicus_wind.py's documented
+% "24 straight empty hourly placeholders" gap.
+\newcommand{\WindHistoryTimesteps}{30}
+\newcommand{\WindHistoryActualWindowDays}{1.2}
+\newcommand{\WindHistoryTargetWindowDays}{3}
+\newcommand{\WindHistoryMinCoveragePct}{50}
+\newcommand{\WindHistoryLookbackHours}{30}
+% The headline numbers are [DATED, 2026-08-28]: sst_anomaly.py's docstring's
+% fourth section and DONE.md's own table, both read directly; reproduced by
+% scripts/measure_wind_history_corroboration.py --backfill-hours 72. No
+% stored output file is committed for this measurement.
+\newcommand{\WindHistoryWeakInstant}{0.0234}
+\newcommand{\WindHistoryWeakTrailing}{0.0182}
+\newcommand{\WindHistoryStrongInstant}{-0.0061}
+\newcommand{\WindHistoryStrongTrailing}{-0.0049}
+% Movements computed directly from the two lines above, not new measurements:
+% weak = |0.0234 - 0.0182|; strong = |-0.0061 - (-0.0049)|.
+\newcommand{\WindHistoryWeakMovement}{0.0052}
+\newcommand{\WindHistoryStrongMovement}{0.0012}
+
+% ---------------------------------------------------------------------------
+% Note on evidence-grading language, checked while building this table
+% (\AsOf{}): silent_failures's own I.11 paragraph calls the 4.1\%/3.9\% pair
+% "statistically indistinguishable". No test statistic exists anywhere in this
+% codebase for that pair, or for any contrast in Group C or Group D -- there
+% is no committed significance test on any of these numbers. This paper does
+% not repeat that phrase; it reports the raw gaps (\UpwellGapStrong{} points)
+% and the cross-date spread (Group C) instead of asserting a statistical
+% conclusion the underlying measurements cannot support.
+% ---------------------------------------------------------------------------

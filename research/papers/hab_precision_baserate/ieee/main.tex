@@ -1,0 +1,133 @@
+% ---------------------------------------------------------------------------
+% IEEE conference build.  Compile with:
+%     tectonic -X compile main.tex --outdir .
+% The body is shared verbatim with ../springer/main.tex; only this wrapper
+% differs.
+% ---------------------------------------------------------------------------
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{siunitx}
+\usepackage{microtype}
+\usepackage{cite}
+\usepackage[hidelinks]{hyperref}
+
+\graphicspath{{../shared/generated/}}
+
+% siunitx v3 dropped \degree; every bare (non-\si) use in the body is in math
+% mode.
+\providecommand{\degree}{^{\circ}}
+
+% IEEEtran is two-column: a "wide" float must span both columns.
+\newenvironment{wfigure}{\csname figure*\endcsname}{\csname endfigure*\endcsname}
+\newenvironment{wtable}{\csname table*\endcsname}{\csname endtable*\endcsname}
+\newcommand{\tabscale}{\scriptsize}
+
+% IEEEtran appends its own colon to a run-in \paragraph; adding a period too
+% renders as "Mechanism.:".
+\newcommand{\para}[1]{\paragraph{#1}}
+
+% The shared body uses natbib's \citep; IEEEtran uses plain \cite.
+\providecommand{\citep}[1]{\cite{#1}}
+
+% Every experimental number in the prose is a macro; see the header comment
+% in shared/generated/macros.tex for its provenance and evidence grade.
+\input{../shared/generated/macros}
+
+\begin{document}
+
+\title{Same Base Rate, Different Skill: Why Precision at a Fixed Recall Does
+Not Rank Cross-Region Harmful-Algal-Bloom Forecasting Skill}
+
+\author{\IEEEauthorblockN{Deepak Krishna}
+\IEEEauthorblockA{\textit{MarisAI} \\
+India \\
+deepakkrishna2206@gmail.com}}
+
+\maketitle
+
+\begin{abstract}
+An operational harmful-algal-bloom (HAB) early-warning system is
+conventionally summarised by precision at a fixed, policy-relevant recall,
+and that number is compared across regions as if it measured the same thing
+everywhere. We report a controlled demonstration, from \NRegions{} regional
+HAB early-warning models built on one shared pipeline, that it usually does
+not: precision at a fixed recall is dominated by each region's own bloom
+base rate, not by how much the model has actually learned about that
+region's blooms. The central evidence is a matched-prevalence pair: the
+Arabian Sea and Bay of Bengal sit within half a percentage point of each
+other in base rate at every horizon tested and report nearly identical
+precision at the longest horizon (\HabArabianPrecSeven{} against
+\HabBengalPrecSeven{}), yet differ by \HabLiftRatioSeven{}$\times$ in skill
+lift over a persistence baseline at that same horizon --- the region
+reporting the \emph{lower} precision carries the larger, not the smaller,
+measured skill advantage. A third, independent region corroborates the same
+decoupling in the other direction: the Baltic Sea's lift over persistence is
+the largest of the five regions at every horizon tested, while its base rate
+is the second-lowest. The same precision figure driving this paper's central
+contrast, \HabArabianPrecSeven{}, is also the number a live product decision
+inside this codebase already used to scope the Arabian Sea's own HAB alert
+tool to a three-day rather than a seven-day horizon --- a defensible call
+that, read next to this paper's results, is a statement about how rare
+blooms are in that one basin, not about how far ahead HAB forecasting works
+in general. We recommend reporting skill lift over a persistence baseline
+beside precision, always, rather than ranking regions, systems, or papers on
+precision alone.
+\end{abstract}
+
+\begin{IEEEkeywords}
+harmful algal blooms, precision-recall, class prevalence, skill assessment,
+persistence baseline, reporting methodology, marine machine learning
+\end{IEEEkeywords}
+
+\input{../shared/body}
+
+\section*{Reproducibility}
+All five regions are produced by one shared pipeline,
+\texttt{machine\_learning/hab\_early\_warning/}, run once per region with
+only the geographic bounding box changed
+(\texttt{machine\_learning/marine\_ml/config.py}'s \texttt{HAB\_REGIONS}).
+Every number in Table~\ref{tab:regions} is read directly from that region's
+own committed report files, re-verified as of \AsOf{}.
+{\raggedright\sloppy
+\begin{itemize}\itemsep1pt\parskip0pt
+\item[] \textbf{Artifact.} Base rate and lift over persistence: each
+region's \texttt{hab\_early\_warning\allowbreak{}*\_holdout.csv}
+(\texttt{positive\_rate} column; PR-AUC of the calibrated LightGBM model
+minus PR-AUC of the persistence baseline at the matching horizon row --- the
+same quantity \texttt{src/train.py} logs as
+\texttt{pr\_auc\_lift\_over\_persistence}). Precision: each region's
+\texttt{hab\_early\_warning\allowbreak{}*\_summary.json},
+\texttt{"<horizon>"\allowbreak{}.operating\_point.precision}. Holdout size
+($n$): the same \texttt{*\_holdout.csv} files' \texttt{n} column.
+\item[] \textbf{Artifact, code.} The shared pipeline configuration ---
+percentile threshold, train/validation/test split, fold count, training
+window, target recall --- is read from
+\texttt{machine\_learning/hab\_early\_warning/\allowbreak{}src/labels.py}
+(\texttt{DEFAULT\_PERCENTILE}),
+\texttt{machine\_learning/marine\_ml/\allowbreak{}config.py}
+(\texttt{TRAIN\_FRACTION}, \texttt{VALIDATION\_FRACTION}, \texttt{HAB\_START},
+\texttt{HAB\_END}),
+\texttt{machine\_learning/hab\_early\_warning/\allowbreak{}src/train.py}
+(\texttt{run()}'s \texttt{n\_splits=4} default;
+\texttt{target\_recall=0.8} passed to \texttt{threshold\_for\_recall} in
+\texttt{fit\_final()}), and
+\texttt{machine\_learning/marine\_ml/\allowbreak{}validation/splits.py}
+(\texttt{rolling\_origin\_splits}'s \texttt{gap\_days} defaulting to the
+forecast horizon).
+\item[] \textbf{Documentation, Arabian Sea only.} Pipeline scale
+(\HabArabianGridCellDays{}M grid-cell-days, \HabArabianFeatureCount{}
+features) is descriptive prose in
+\texttt{machine\_learning/hab\_early\_warning/\allowbreak{}readme.md}, about
+the Arabian Sea run specifically --- not re-derived from a report file and
+not claimed to hold for the other four regions.
+\end{itemize}}
+
+\bibliographystyle{IEEEtran}
+\bibliography{../shared/references}
+
+\end{document}

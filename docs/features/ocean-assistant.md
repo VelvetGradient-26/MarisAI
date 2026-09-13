@@ -77,10 +77,10 @@
       response, or the REST endpoints from item 1 driving map layers
       independently of chat), not to a rename here.
     - *Reporting* also maps onto nothing wired into chat. The platform's only
-      reporting capability is the point brief / comparison feature
-      (`services/brief.py`, `services/brief_pdf.py`, `/compare`) described
-      below, and it is a separate REST feature with no chat tool calling it —
-      renaming a specialist "reporting" would not make it generate a report.
+      reporting capability is the point brief feature (`services/brief.py`,
+      `services/brief_pdf.py`) described below, and it is a separate REST
+      feature with no chat tool calling it — renaming a specialist "reporting"
+      would not make it generate a report.
     The three names stay as-is; this analysis is the documentation this item
     asked for, so the next session does not re-litigate it.
   - **Delegation reasoning is traced for PS2's "demonstrable autonomous

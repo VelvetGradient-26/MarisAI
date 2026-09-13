@@ -1,0 +1,67 @@
+% ---------------------------------------------------------------------------
+% Numeric macros used by shared/body.tex. Two evidence classes:
+%   [HISTORICAL, 2026-08-13] the shipped constant's own justification, read
+%     directly from machine_learning/fish_habitat_prediction/src/models.py's
+%     code comment above TSS_SOFTMAX_TEMPERATURE. A point-in-time measurement
+%     on since-retrained models, quoted as history, not as a current fact.
+%   [ARTIFACT, re-run \AsOf{}] every other number, produced by re-running
+%     machine_learning/scripts/sweep_ensemble_temperature.py against the
+%     live feature store and the exact fit/CV/holdout path
+%     fish_habitat_prediction/src/train.py's run() uses (same seed, same
+%     spatial-block CV, same final split), written to
+%     machine_learning/reports/ensemble_temperature_sweep.csv.
+% ---------------------------------------------------------------------------
+
+\newcommand{\AsOf}{2026-09-10}
+\newcommand{\ShippedTemperature}{0.05}
+
+% --- Historical justification for the shipped constant [HISTORICAL, 2026-08-13] ---
+\newcommand{\HistMaxentCV}{0.619}
+\newcommand{\HistLgbmCV}{0.826}
+\newcommand{\HistRfCV}{0.821}
+\newcommand{\HistPropTSS}{0.694}
+\newcommand{\HistBestMemberTSS}{0.788}
+\newcommand{\HistSoftmaxTSS}{0.792}
+\newcommand{\HistBoyceProp}{0.936}
+\newcommand{\HistBoyceSoftmax}{0.905}
+\newcommand{\HistLgbmVote}{51.9}
+\newcommand{\HistRfVote}{47.3}
+\newcommand{\HistMaxentVote}{0.8}
+
+% --- Current CV scores, re-verified [ARTIFACT, \AsOf{}] ---
+\newcommand{\CurLgbmCV}{0.8253}
+\newcommand{\CurMaxentCV}{0.6891}
+\newcommand{\CurRfCV}{0.8214}
+\newcommand{\HistGap}{0.207}
+\newcommand{\CurGap}{0.136}
+
+% --- Current holdout: n, positives, per-member TSS [ARTIFACT, \AsOf{}] ---
+\newcommand{\NHoldout}{427}
+\newcommand{\NHoldoutPos}{236}
+\newcommand{\HoldoutPosRate}{55.3}
+\newcommand{\CurLgbmHoldoutTSS}{0.8564}
+\newcommand{\CurRfHoldoutTSS}{0.8554}
+\newcommand{\CurMaxentHoldoutTSS}{0.6699}
+\newcommand{\CurBestMember}{lightgbm}
+
+% --- Current default configuration re-measured: proportional and the ---
+% --- shipped softmax temperature (0.05), both on the current holdout ---
+\newcommand{\CurPropTSS}{0.8519}
+\newcommand{\CurPropBoyce}{0.8919}
+\newcommand{\CurShippedTSS}{0.8554}
+\newcommand{\CurShippedBoyce}{0.7904}
+\newcommand{\CurShippedLgbmWeight}{50.2}
+\newcommand{\CurShippedRfWeight}{46.5}
+\newcommand{\CurShippedMaxentWeight}{3.3}
+
+% --- Sweep: first temperature (in the swept grid) that clears the best ---
+% --- member's holdout TSS, and a mid-range point trading calibration back ---
+\newcommand{\FirstClearingTemp}{0.30}
+\newcommand{\FirstClearingTSS}{0.8594}
+\newcommand{\FirstClearingBoyce}{0.8781}
+\newcommand{\MidTemp}{0.50}
+\newcommand{\MidTSS}{0.8594}
+\newcommand{\MidBoyce}{0.8854}
+\newcommand{\LowTemp}{0.01}
+\newcommand{\LowBoyce}{0.7755}
+\newcommand{\NSweepPoints}{12}

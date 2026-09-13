@@ -1,0 +1,105 @@
+% ---------------------------------------------------------------------------
+% Springer LNCS build.  Compile with:
+%     tectonic -X compile main.tex --outdir .
+% The body is shared verbatim with ../ieee/main.tex; only this wrapper differs.
+% ---------------------------------------------------------------------------
+\documentclass[runningheads]{llncs}
+
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{siunitx}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+
+\graphicspath{{../shared/generated/}}
+
+% siunitx v3 dropped \degree; every bare (non-\si) use in the body is in math
+% mode.
+\providecommand{\degree}{^{\circ}}
+
+% LNCS is single-column, so a "wide" float is just a normal float.
+\newenvironment{wfigure}{\figure}{\endfigure}
+\newenvironment{wtable}{\table}{\endtable}
+\newcommand{\tabscale}{\footnotesize}
+
+% llncs sets a run-in \paragraph with no trailing punctuation of its own, so
+% the period belongs here. IEEEtran appends its own colon and must not get one.
+\newcommand{\para}[1]{\paragraph{#1.}}
+
+% llncs uses \cite, not natbib's \citep. Map it so the shared body compiles
+% unchanged under both classes.
+\providecommand{\citep}[1]{\cite{#1}}
+
+% Every experimental number in the prose is a macro; see the header comment
+% in shared/generated/macros.tex for its provenance and evidence grade.
+\input{../shared/generated/macros}
+
+\begin{document}
+
+\title{Spatial Context Did Not Help: A U-Net Loses to a Per-Cell Tree Model
+for Harmful-Algal-Bloom Forecasting, Measured Twice}
+
+\titlerunning{Spatial Context Did Not Help}
+
+% No \orcidID: LNCS supports one, but a placeholder identifier would be a
+% fabricated credential. Add the real one before submission.
+\author{Deepak Krishna}
+\authorrunning{D. Krishna}
+\institute{MarisAI, India \\ \email{deepakkrishna2206@gmail.com}}
+
+\maketitle
+
+\begin{abstract}
+A per-cell classifier forecasting harmful-algal-bloom risk cannot see an
+eddy, a front, or the shape of a bloom spanning several grid cells --- the
+standard architectural objection to per-cell models, and the standard
+argument for a convolutional alternative. We test that objection directly:
+a single-frame U-Net given a \NInputChannels{}-channel ocean-state image
+(\NChannels{} physical fields, each paired with an observed-mask channel)
+is trained to forecast t+3 bloom probability and scored against the
+existing per-cell LightGBM model, reloaded and rescored on the U-Net's own
+\NTestRows{} test rows so the comparison is identical-row rather than
+merely same-sized. The U-Net beats a persistence baseline (PR-AUC
+\UnetPRAUC{} vs.\ \PersistPRAUC{}) but loses clearly to LightGBM
+(\LgbmPRAUC{}) on every one of four metrics. We re-ran the full pipeline
+live while writing this paper and reproduce the original measurement to
+three to four decimal places, and report an unrelated engineering hazard
+found in building the comparison: importing \texttt{torch} before loading a
+LightGBM artifact with \texttt{joblib} in the same process segfaults with
+no traceback, which is why the tabular baseline is scored in a subprocess.
+The negative result is evidence against reaching for a spatiotemporal
+architecture (ConvLSTM) next, since this agenda item was deliberately
+ordered to make that inference available from a single-frame test.
+\keywords{harmful algal blooms, spatial deep learning, U-Net, gradient
+boosting, negative results, reproducibility}
+\end{abstract}
+
+\input{../shared/body}
+
+\section*{Reproducibility}
+Every macro in \texttt{shared/generated/macros.tex} names its source and
+evidence grade.
+{\raggedright\sloppy
+\begin{itemize}\itemsep1pt\parskip0pt
+\item[] \textbf{Pipeline.} From \texttt{machine\_learning/}:
+\texttt{PYTHONPATH=. .venv/bin/python\allowbreak{} -m\allowbreak{}
+hab\_early\_warning.src.spatial\_train} builds the dense-cube dataset
+(\texttt{hab\_early\_warning/src/\allowbreak{}spatial\_dataset.py}), trains
+the U-Net (\texttt{spatial\_model.py}), and scores it against the reloaded
+LightGBM artifact and persistence via a subprocess
+(\texttt{spatial\_lightgbm\_subprocess.py}) to avoid the
+\texttt{torch}/\texttt{joblib} segfault described in \S\ref{sec:methods}.
+\item[] \textbf{Artifacts re-opened directly for this paper.}
+\texttt{machine\_learning/models/\allowbreak{}hab\_early\_warning\_spatial.pt}
+and
+\texttt{machine\_learning/exports/\allowbreak{}hab\_bloom\_forecast\_spatial.nc}.
+\end{itemize}}
+Every number was verified against the file or live re-run producing it as
+of \AsOf{}.
+
+\bibliographystyle{splncs04}
+\bibliography{../shared/references}
+
+\end{document}

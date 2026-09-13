@@ -1,28 +1,17 @@
-# MarisAI — Point Tools, Brief/Compare, and Alerts
+# MarisAI — Point Tools, Brief, and Alerts
 
 > Split out of `CLAUDE.md` on 2026-08-28 to keep the root file lean (it was ~155KB and loaded on every conversation regardless of relevance). Read this file when working in this area; see `CLAUDE.md`'s Feature reference index for the full list.
 
-- Point brief and comparison (`services/brief.py`, `services/brief_pdf.py`,
-  `services/compare.py`, `routers/brief.py`, `/compare`) — one coordinate as a
-  document, and two coordinates aligned against each other.
+> The two-point comparison feature (`services/compare.py`, `/compare`) was
+> removed on 2026-09-13 — scrapped outright, not deprecated. `services/brief.py`
+> and its `/api/brief`, `/api/brief/pdf` routes (single coordinate) remain.
+
+- Point brief (`services/brief.py`, `services/brief_pdf.py`, `routers/brief.py`)
+  — one coordinate as a document.
   - **Composition, not computation.** Every number already has an endpoint; the
     brief lays them out. Each section carries `available` plus a reason, and
     model output is labelled as model output — stricter here than on screen,
     because a PDF is read where nobody can hover over a blank panel.
-  - **`compare.py` is a view over `brief.py`, not a second assembly.** Two
-    briefs are gathered and aligned on `(section, row label)`. A parallel
-    pipeline would let the two disagree about one coordinate, which is fatal for
-    a feature whose entire output is a difference.
-    - **A delta is computed only when both sides parse as numbers in the same
-      unit**, and the number regex handles thousands separators for the same
-      reason the assistant's grounding checker learned to — "1,204 m" read as
-      "1" turns a 1,200 m difference into 1 m, in the right units, silently.
-    - **A row only one point has is kept and labelled `only_at`.** The asymmetry
-      ("suitability 0.71 here, outside the model's region there") is often the
-      most informative part; dropping it reports two points as more alike than
-      they are.
-    - **It does not rank.** No composite score — same reason the Fishing
-      Opportunity Index was rejected: there is nothing to validate it against.
   - **Recorded biodiversity comes from OBIS** (`services/biodiversity.py`,
     `GET /api/ocean/biodiversity`, and the brief's last section). Two cheap
     calls — `/v3/statistics` and `/v3/checklist` over a box. **The counts are
