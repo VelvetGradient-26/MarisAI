@@ -30,10 +30,14 @@
 .story__card {
   position: relative;
   padding: 1.5rem 1.5rem 1.15rem;
-  border: 1px solid var(--ocean-border);
-  border-radius: 18px;
+  border: 0;
+  border-radius: 22px;
   /* Backdrop blur rather than a solid fill, so the map stays visible behind
-     the card and the two read as one scene. */
+     the card and the two read as one scene. Deliberately still translucent,
+     unlike the map's panels: this one is a *scrim* over a guided tour, and the
+     whole point of it is that you keep seeing the map it is narrating. It
+     therefore keeps a plain cast shadow rather than the neumorphic pair — a
+     sculpted highlight needs an opaque face to be a highlight of. */
   background: var(--ocean-scrim);
   backdrop-filter: blur(18px) saturate(1.2);
   -webkit-backdrop-filter: blur(18px) saturate(1.2);
@@ -161,7 +165,8 @@
   align-items: center;
   gap: 0.4rem;
   padding: 0.55rem 1rem;
-  border: 1px solid var(--ocean-accent-line);
+  border: 0;
+  box-shadow: var(--ma-raised-sm);
   border-radius: 999px;
   background: var(--ocean-accent-soft);
   color: var(--ocean-accent);
@@ -219,15 +224,19 @@
 }
 
 .story__button {
-  border: 1px solid var(--ocean-accent);
+  border: 0;
+  box-shadow: var(--ma-raised-sm);
   background: var(--ocean-accent);
   color: var(--ma-accent-on);
 }
 
 .story__button--ghost {
-  border-color: var(--ocean-border);
-  background: transparent;
+  background: var(--ocean-panel);
   color: var(--ocean-text);
+}
+
+.story__button:active {
+  box-shadow: var(--ma-inset-sm);
 }
 
 .story__button:disabled {
@@ -246,7 +255,8 @@
   align-items: center;
   gap: 0.45rem;
   padding: 0.55rem 1.1rem;
-  border: 1px solid var(--ocean-border);
+  border: 0;
+  box-shadow: var(--ma-raised-sm);
   border-radius: 999px;
   background: var(--ocean-scrim);
   backdrop-filter: blur(14px);
@@ -256,11 +266,11 @@
   font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
-  transition: border-color 0.2s ease, background 0.2s ease;
+  transition: box-shadow 0.2s ease, background 0.2s ease;
 }
 
 .story-launch:hover {
-  border-color: var(--ocean-accent-line);
+  box-shadow: var(--ma-inset-sm);
   background: var(--ocean-scrim-strong);
 }
 

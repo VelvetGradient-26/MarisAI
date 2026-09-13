@@ -167,7 +167,13 @@
        #2e3035 like the rest (muted and faint both moved). */
     --oid-panel: var(--ma-surface);
     --oid-panel-strong: var(--ma-surface-strong);
-    --oid-elevated: var(--ma-surface);
+    /* A visible tint, NOT the ground — the same trap `--oid-track` fell into.
+       ~20 TSX call sites use this as a standalone `bg-` on a chip, a row or a
+       <pre>, with only a 0.07-alpha border beside it, so at the ground colour
+       every one of them loses its edge. "Elevated" means raised, and
+       `--ma-surface-strong` is the token for a surface stacked on an
+       already-raised one, which is exactly what these are. */
+    --oid-elevated: var(--ma-surface-strong);
     --oid-hover: var(--ma-hover-bg);
     /* Demoted to what --ma-border is now: a divider line. This page has ~48
        inline `border-[color:var(--oid-border)]` uses in TSX and most of them
@@ -243,7 +249,7 @@
 
     --oid-panel: var(--ma-surface);
     --oid-panel-strong: var(--ma-surface-strong);
-    --oid-elevated: var(--ma-surface);
+    --oid-elevated: var(--ma-surface-strong);
     --oid-hover: var(--ma-hover-bg);
     --oid-border: var(--ma-border);
     --oid-border-hover: var(--ma-border-strong);

@@ -120,12 +120,26 @@
 
   /* --- lines -----------------------------------------------------------
      Narrowed job: dividers, table rules, and the few controls that want a
-     hard edge. NOT card edges — those are `--ma-raised`. Softer than they
-     were, because a line now sits next to sculpted edges rather than doing
-     that work alone. */
-  --ma-border: rgba(255, 255, 255, 0.07);
-  --ma-border-soft: rgba(255, 255, 255, 0.045);
-  --ma-border-strong: rgba(255, 255, 255, 0.12);
+     hard edge. NOT card edges — those are `--ma-raised`.
+
+     Softer than they were, because a line now sits next to sculpted edges
+     rather than doing that work alone — but softened by *less* than the first
+     pass at this, and the reason is arithmetic rather than taste. An alpha is
+     not a contrast: the same white-alpha line is a much smaller step over a
+     mid-tone ground than over a near-black one, so lowering the alpha at the
+     same time as raising the ground compounds twice. Measured as a step in
+     8-bit channel value against each theme's own ground:
+
+                      before (on #060607)   0.07/0.045   these values
+       --ma-border           24.9               14.6          18.8
+       --ma-border-soft      14.9                9.4          12.5
+
+     At 9.4 the soft rules — a table's cell borders, `.dashboard-card__header`'s
+     underline — were near the edge of not reading at all. These keep the
+     intended softening without spending it twice. */
+  --ma-border: rgba(255, 255, 255, 0.09);
+  --ma-border-soft: rgba(255, 255, 255, 0.06);
+  --ma-border-strong: rgba(255, 255, 255, 0.14);
 
   /* --- ink -------------------------------------------------------------
      Re-measured against the #2e3035 ground; the previous values were
@@ -258,9 +272,12 @@
   --ma-inset: inset -4px -4px 9px var(--ma-lift), inset 4px 4px 10px var(--ma-sink);
   --ma-inset-sm: inset -2px -2px 5px var(--ma-lift), inset 2px 2px 6px var(--ma-sink);
 
-  --ma-border: rgba(15, 30, 30, 0.07);
-  --ma-border-soft: rgba(15, 30, 30, 0.05);
-  --ma-border-strong: rgba(15, 30, 30, 0.13);
+  /* Same correction as the dark set, same arithmetic: the light ground rose
+     toward the ink rather than away from it, so these compressed from steps of
+     22.9/16.0 to 14.9/9.6 before being brought back to 19.2/12.8. */
+  --ma-border: rgba(15, 30, 30, 0.09);
+  --ma-border-soft: rgba(15, 30, 30, 0.06);
+  --ma-border-strong: rgba(15, 30, 30, 0.15);
 
   /* Re-measured against #e4e7ec: heading 15.0:1, text 13.5:1, muted 5.6:1,
      faint 4.8:1. `muted` and `faint` both moved down — on the lighter old

@@ -1450,12 +1450,11 @@ body,
   pointer-events: none;
   background: var(--ocean-panel-solid);
   border: 0;
+  border-radius: 14px;
   box-shadow: var(--ocean-shadow);
-  border-radius: 8px;
   padding: 10px 12px;
   color: var(--ocean-text);
   font: 12px/1.45 var(--ocean-font-mono);
-  box-shadow: var(--ocean-shadow);
 }
 
 .map-tooltip__header {
@@ -1685,8 +1684,25 @@ body,
 .maplibregl-ctrl-group {
   background: var(--ocean-panel-bg);
   border: 0;
+  border-radius: 12px;
+}
+
+/* The control stack's shadow needs its own rule, and the selector is the whole
+   point of it. MapLibre ships `.maplibregl-ctrl-group:not(:empty) { box-shadow:
+   0 0 0 2px rgba(0,0,0,.1) }` — specificity (0,2,0), which a bare
+   `.maplibregl-ctrl-group` (0,1,0) cannot override at any import order. The
+   `box-shadow: none` that used to sit in the rule above was therefore losing
+   too, silently: these controls have been carrying MapLibre's default grey ring
+   this whole time, on a page that believed it had themed them. Verified with
+   `getComputedStyle`, which is the only way this kind of loss shows up — a
+   declaration that loses on specificity is not an error anywhere.
+
+   `.map-root` takes it to (0,3,0) and wins deterministically rather than by
+   import order. It also scopes the override to this app's maps, and it covers
+   the dashboard's embedded map, which reuses `.map-root` (see
+   features/dashboard/styles/embedded-map.css). */
+.map-root .maplibregl-ctrl-group:not(:empty) {
   box-shadow: var(--ocean-shadow);
-  box-shadow: none;
 }
 
 .maplibregl-ctrl-group button + button {
@@ -1955,14 +1971,18 @@ body,
   transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
 }
 
+/* Playing is a toggle that is currently *on*, so it is held down — the same
+   "selected means pressed" idiom the basemap grid and the downloader's tabs
+   use. The border-colour these two rules used to set is a no-op now that the
+   button's edge is a shadow. */
 .horizon-control__play[aria-pressed='true'] {
-  border-color: var(--ocean-forecast-accent);
+  box-shadow: var(--ma-inset-sm);
   color: var(--ocean-forecast-accent);
   background: var(--ocean-forecast-accent-soft);
 }
 
 .horizon-control__play:hover {
-  border-color: var(--ocean-forecast-accent);
+  box-shadow: var(--ma-inset-sm);
   color: var(--ocean-forecast-accent);
 }
 
@@ -2344,7 +2364,7 @@ body,
 
 .my-alerts-panel__remove-button:hover:not(:disabled) {
   color: var(--ocean-error);
-  border-color: var(--ocean-error);
+  box-shadow: var(--ma-inset-sm);
 }
 
 .my-alerts-panel__remove-button:disabled {
