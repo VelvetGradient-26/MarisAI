@@ -121,7 +121,10 @@ export function HeroField({ dark }: HeroFieldProps) {
     // between strokes, so a mismatch here shows up as the hero being a
     // different shade from the section under it — and at 0.018 per frame it
     // accumulates into the dominant colour of the whole hero, not a tint.
-    const fade = dark ? 'rgba(0, 1, 3, ' : 'rgba(247, 250, 251, ';
+    // Moved with the neumorphic ground (#000103 -> #282a2e dark, #f7fafb ->
+    // #dfe3e9 light). This is the one place the palette is read by JS rather
+    // than by CSS, so it does not follow tokens.css on its own.
+    const fade = dark ? 'rgba(40, 42, 46, ' : 'rgba(223, 227, 233, ';
 
     function draw() {
       if (!running || !context) return;

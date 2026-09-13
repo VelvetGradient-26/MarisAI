@@ -49,11 +49,15 @@
   --color-alert-warning: #f59e0b;
   --color-alert-critical: #ef4444;
 
-  /* Surfaces. Glass panels are a translucent navy over the page gradient
-   * rather than a flat fill, so the map and gradients read through them. */
-  --color-glass: color-mix(in oklab, #131316 78%, transparent);
-  --color-glass-strong: color-mix(in oklab, #0e0e11 88%, transparent);
-  --color-hairline: color-mix(in oklab, #4fd1ff 14%, transparent);
+  /* Surfaces. No longer glass — see the `--oid-panel` note below for why a
+   * translucent panel and a sculpted one are mutually exclusive. Retuned to
+   * the neumorphic ground for the same reason the abyss scale above was
+   * retuned: nothing uses these utilities today (checked), and left at the old
+   * translucent navy the first person to type `bg-glass` would get a
+   * see-through navy panel on a mid-tone grey page with no idea why. */
+  --color-glass: #2e3035;
+  --color-glass-strong: #33353b;
+  --color-hairline: rgb(255 255 255 / 0.07);
 
   --font-display: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
@@ -63,10 +67,12 @@
 
   --radius-panel: 16px;
 
-  --shadow-panel: 0 1px 0 0 color-mix(in oklab, #4fd1ff 8%, transparent) inset,
-    0 18px 48px -24px rgb(0 0 0 / 0.85);
-  --shadow-raised: 0 1px 0 0 color-mix(in oklab, #4fd1ff 12%, transparent) inset,
-    0 28px 64px -28px rgb(0 0 0 / 0.9);
+  /* Same story as the surfaces above: unused utilities, kept in step so they
+   * cannot hand someone the old material. `@theme` is resolved at build time
+   * and cannot read `--ma-*`, so unlike `--oid-shadow` these are literals and
+   * have to be changed by hand alongside tokens.css. */
+  --shadow-panel: -6px -6px 14px #3c3f46, 6px 6px 16px #191a1d;
+  --shadow-raised: -9px -9px 20px #3c3f46, 9px 9px 22px #191a1d;
 
   --animate-shimmer: shimmer 1.8s ease-in-out infinite;
   --animate-pulse-ring: pulse-ring 2.4s ease-out infinite;
@@ -118,15 +124,19 @@
  * same cyan/teal written out a second time, and a duplicated identity colour
  * is the one that eventually drifts — the map's `#22d3ee` was exactly that.
  *
- * Everything else here stays local *on purpose*, and this is the deliberate
- * exception to the app-wide palette rather than an oversight. The dashboard is
- * the one Tailwind surface: translucent glass panels floating on a radial
- * gradient wash. (The ink used to be a cooler blue-white too; it is now the
- * shared neutral, since that was hue drift rather than material.) `--ma-surface`
- * is a flat card colour and `--ma-bg` a flat canvas — aliasing to them would
- * not unify this page, it would delete its treatment. The rule of thumb: a
- * token that means "which product is this" is shared; a token that means "what
- * does this page's material look like" is not.
+ * What stays local is now a shorter list than it was, and the reason is worth
+ * recording because it reverses an argument this comment used to make. The old
+ * rule of thumb was: a token meaning "which product is this" is shared, a token
+ * meaning "what does this page's material look like" is not — and on that basis
+ * the surfaces stayed local, because this page's material (translucent glass on
+ * a radial gradient wash) genuinely differed from a flat card on a flat canvas.
+ *
+ * The app no longer has a flat card on a flat canvas. It has one neumorphic
+ * material, and a material is exactly the kind of thing that must not have two
+ * implementations — so the surface and shadow tokens now alias `--ma-*`. What
+ * is still local is what was always local for a better reason: the type scale
+ * (this page's information density is not the marketing pages'), the alert
+ * ramp, and `--oid-accent-soft`.
  *
  * The alert ramp deliberately does NOT invert — orange still means warning
  * and red still means critical in both themes. Only their tints are darkened
@@ -277,13 +287,15 @@
    * genuinely differs.
    */
   :root:has(.oid-root) {
-    background-color: #04080f;
+    background-color: var(--ma-bg);
   }
 
   /* Light mode has to flip the canvas too, or the overscroll area stays dark
-     against a light page. */
+     against a light page. Both values now alias --ma-bg, which inverts itself
+     from `data-theme` — the two literals here were the last copies of the old
+     page palette and had already drifted from `--oid-canvas` beside them. */
   :root:has(.oid-root--light) {
-    background-color: #eef4f8;
+    background-color: var(--ma-bg);
   }
 
   .oid-root {
@@ -322,9 +334,17 @@
     cursor: pointer;
   }
 
+  /* `border: 0` matters as much as the font here, and it was missing: Tailwind
+     is imported without preflight (see this file's header), so nothing else in
+     the app zeroes a native control's border, and the `.oid-root button` reset
+     above did it for buttons but not for inputs. Every number input on this
+     page was rendering the browser's default `2px inset #767676`. It was
+     invisible against the old near-black panel and obvious the moment the
+     ground became mid-tone — a pre-existing bug the palette was hiding. */
   .oid-root input {
     font: inherit;
     color: inherit;
+    border: 0;
   }
 
   .oid-root table {
@@ -441,7 +461,13 @@
   position: relative;
   overflow: hidden;
   background: var(--oid-track);
-  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--oid-accent) 55%, transparent);
+  /* The accent floor plus the recess, exactly as `.ma-skeleton` in index.css —
+     `--oid-track` is the page ground now, so without the inset pair the track
+     had no edge and the floor line was left drawing a lone underscore. The
+     accent line is listed first so it stays above the sunken edge. */
+  box-shadow:
+    inset 0 -1px 0 color-mix(in oklab, var(--oid-accent) 55%, transparent),
+    var(--ma-inset-sm);
 }
 
 .oid-scanline__pass {
