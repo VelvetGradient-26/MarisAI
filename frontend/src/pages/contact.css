@@ -22,10 +22,10 @@
 .contact-card {
   width: 100%;
   max-width: 480px;
-  border: 1px solid var(--ct-border);
-  border-radius: 16px;
+  border-radius: 26px;
   padding: 40px;
   background: var(--ct-card-bg);
+  box-shadow: var(--ma-raised);
   color: var(--ct-text);
   text-align: center;
 }
@@ -55,17 +55,21 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  border: 1px solid var(--ct-border);
-  border-radius: 10px;
-  padding: 12px 16px;
+  border-radius: 14px;
+  padding: 13px 17px;
   background: var(--ct-card-bg);
+  box-shadow: var(--ma-raised-sm);
   color: var(--ct-text);
   text-decoration: none;
-  transition: background 0.2s ease;
+  transition: box-shadow var(--ma-duration) var(--ma-ease),
+    color var(--ma-duration) var(--ma-ease);
 }
 
+/* Pressed rather than tinted on hover — see notfound.css's .nf-link for why
+   every pad-shaped affordance in the app sinks instead of lighting up. */
 .contact-link:hover {
-  background: var(--ct-link-hover-bg);
+  box-shadow: var(--ma-inset-sm);
+  color: var(--ct-primary);
 }
 
 /* The card is a fixed 40px-padded 480px box; on a 320px screen that leaves

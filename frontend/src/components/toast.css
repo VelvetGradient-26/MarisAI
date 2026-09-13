@@ -20,12 +20,11 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  border: 1px solid var(--ma-border);
-  border-radius: 12px;
-  padding: 12px 12px 12px 14px;
-  background: var(--ma-surface-solid);
+  border-radius: 18px;
+  padding: 13px 13px 13px 15px;
+  background: var(--ma-surface);
   color: var(--ma-text);
-  box-shadow: var(--ma-shadow);
+  box-shadow: var(--ma-raised);
   animation: toast-enter 0.24s var(--ma-ease);
 }
 
@@ -36,12 +35,17 @@
   }
 }
 
+/* Status was a tinted border, which the neumorphic model no longer has to
+   tint. A 3px inset rail down the leading edge carries it instead: it survives
+   inside a sculpted panel (an outline around one would fight the lit edge),
+   and it re-uses the same left-hand side the icon already sits on, so the
+   status reads as one mark rather than two. */
 .toast--success {
-  border-color: color-mix(in srgb, var(--ma-good) 45%, var(--ma-border));
+  box-shadow: inset 3px 0 0 var(--ma-good), var(--ma-raised);
 }
 
 .toast--error {
-  border-color: color-mix(in srgb, var(--ma-error) 45%, var(--ma-border));
+  box-shadow: inset 3px 0 0 var(--ma-error), var(--ma-raised);
 }
 
 .toast__icon {
@@ -106,13 +110,18 @@
 
 /* Progress bar on a pending toast. Sits under the detail line so the row grows
    downward rather than reflowing the text it sits beneath. */
+/* A track is a channel cut into the surface, so it takes the inset pair rather
+   than a tinted fill. 6px rather than 4px because the recess needs a couple of
+   pixels of depth to read at all — at 4px the two inset shadows meet in the
+   middle and the track just looks dark. */
 .toast__progress {
   position: relative;
   overflow: hidden;
-  height: 4px;
-  margin-top: 8px;
+  height: 6px;
+  margin-top: 9px;
   border-radius: 999px;
-  background: var(--ma-track, color-mix(in srgb, var(--ma-text) 12%, transparent));
+  background: var(--ma-input-bg);
+  box-shadow: var(--ma-inset-sm);
 }
 
 .toast__progress-fill {

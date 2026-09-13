@@ -9,12 +9,19 @@
    Geometry is tokenised rather than fixed for the same reason: upstream's
    2rem padding / 1.5rem radius are its own look, and the landing page's cards
    already have theirs. Callers override via the two custom properties; the
-   defaults just keep the component usable standalone. */
+   defaults just keep the component usable standalone.
+
+   The border became `--ma-raised` with the rest of the app. Note this is one
+   of the few places where `overflow: hidden` is load-bearing (it clips the
+   ::before spotlight), and it does *not* clip the box-shadow — an outer shadow
+   is painted outside the border box, which `overflow` never touches. Only an
+   inset pair would have been swallowed here. */
 .card-spotlight {
   position: relative;
   border-radius: var(--rb-spotlight-radius, 1.25rem);
-  border: 1px solid var(--ma-border);
+  border: 0;
   background-color: var(--ma-surface);
+  box-shadow: var(--ma-raised);
   padding: var(--rb-spotlight-padding, 2rem);
   overflow: hidden;
   --mouse-x: 50%;

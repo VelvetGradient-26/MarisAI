@@ -4,19 +4,25 @@
 
 /* The navbar's own tokens stay mostly local, and that is deliberate: it is the
    one surface that floats *over* every page — including the full-bleed map —
-   so its background and controls are translucent, tuned against a blur, and
-   cannot simply be a page surface. Only the border and accent are shared,
-   because those are what visibly disagreed with the page underneath. */
+   so it is still tuned against a blur and cannot simply be a page surface.
+   What changed under the neumorphic model is the *fill*: the bar is now the
+   page ground at high opacity rather than a near-black translucent strip.
+
+   Why it had to change: a neumorphic control needs the ground behind it, or
+   its highlight has nothing to be a highlight *of*. At the old
+   `rgba(10,12,14,0.82)` the bar's own fill was darker than every page under
+   it, so the timezone select and the icon buttons would have been sculpted
+   out of the wrong material — lit pills on a dark strip on a mid-tone page.
+   Opacity stays below 1 (and the blur stays) because on the map route there
+   is genuinely a moving globe behind it, which is the whole reason this bar
+   is translucent in the first place. */
 .navbar {
-  --nav-bg: rgba(10, 12, 14, 0.82);
+  --nav-bg: rgba(46, 48, 53, 0.88);
   --nav-border: var(--ma-border);
-  --nav-text: rgba(255, 255, 255, 0.65);
+  --nav-text: var(--ma-muted);
   --nav-primary: var(--ma-accent);
-  --nav-control-bg: rgba(255, 255, 255, 0.05);
-  --nav-control-bg-hover: rgba(255, 255, 255, 0.12);
-  --nav-control-border: rgba(255, 255, 255, 0.12);
-  --nav-control-text: rgba(255, 255, 255, 0.85);
-  --nav-mobile-bg: rgba(10, 12, 14, 0.96);
+  --nav-control-text: var(--ma-text);
+  --nav-mobile-bg: rgba(46, 48, 53, 0.97);
 
   position: fixed;
   top: 0;
@@ -24,27 +30,21 @@
   z-index: 1000;
   width: 100%;
   height: var(--navbar-h);
-  border-bottom: 1px solid var(--nav-border);
   background: var(--nav-bg);
   backdrop-filter: blur(20px);
   font-family: var(--ma-font-ui);
-  transition: background 0.3s ease, border-color 0.3s ease;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
 }
 
 .navbar--light {
-  --nav-bg: rgba(255, 255, 255, 0.85);
-  --nav-text: rgba(15, 30, 30, 0.65);
-  --nav-control-bg: rgba(15, 30, 30, 0.04);
-  --nav-control-bg-hover: rgba(15, 30, 30, 0.1);
-  --nav-control-border: rgba(15, 30, 30, 0.14);
-  --nav-control-text: rgba(15, 30, 30, 0.8);
-  --nav-mobile-bg: rgba(255, 255, 255, 0.97);
+  --nav-bg: rgba(228, 231, 236, 0.88);
+  --nav-mobile-bg: rgba(228, 231, 236, 0.97);
 }
 
 /* Visually identical on the map page — "overlay" just documents intent
    (the map beneath stays full-bleed; see map.css's --navbar-h offsets). */
 .navbar--overlay {
-  border-bottom: 1px solid var(--nav-border);
+  box-shadow: 0 6px 16px var(--ma-sink);
 }
 
 .navbar__inner {
@@ -75,7 +75,7 @@
    pleasant three seconds and a permanent layout cost. Only the paint moves. */
 .navbar:not(.is-scrolled):not(.navbar--overlay) {
   --nav-bg: transparent;
-  border-bottom-color: transparent;
+  box-shadow: none;
   backdrop-filter: none;
 }
 
@@ -91,12 +91,13 @@
    only correct when there is nothing behind the bar yet; on an overlay there
    is always something behind it, from the first frame. */
 
+/* The scrolled bar is a raised ledge rather than a bordered strip: the lit
+   edge along its underside is the same top-left light source every panel on
+   the page uses, so the bar reads as sitting *above* the content passing under
+   it. One-sided on purpose — the bar's top edge is against the viewport
+   boundary, where a highlight would have nothing to describe. */
 .navbar.is-scrolled {
-  box-shadow: 0 1px 24px rgba(0, 0, 0, 0.28);
-}
-
-.navbar--light.is-scrolled {
-  box-shadow: 0 1px 20px rgba(15, 30, 30, 0.06);
+  box-shadow: 0 6px 16px var(--ma-sink);
 }
 
 .navbar__logo {
@@ -279,14 +280,19 @@
   gap: 10px;
 }
 
+/* The select is *recessed* while the buttons are *raised*, and that split is
+   the neumorphic idiom doing real work rather than decoration: a well is
+   something you put a value into, a pad is something you press. It is the same
+   distinction `--ma-inset` draws for every text input in the app. */
 .navbar__timezone {
   max-width: 160px;
-  border: 1px solid var(--nav-control-border);
+  border: 0;
   border-radius: 999px;
-  background: var(--nav-control-bg);
+  background: var(--ma-input-bg);
+  box-shadow: var(--ma-inset-sm);
   color: var(--nav-control-text);
   font-size: 11px;
-  padding: 6px 10px;
+  padding: 7px 12px;
 }
 
 .navbar__icon-button,
@@ -296,18 +302,27 @@
   height: 38px;
   flex-shrink: 0;
   place-items: center;
-  border: 1px solid var(--nav-control-border);
+  border: 0;
   border-radius: 999px;
-  background: var(--nav-control-bg);
+  background: var(--ma-surface);
+  box-shadow: var(--ma-raised-sm);
   color: var(--nav-control-text);
   cursor: pointer;
   text-decoration: none;
-  transition: background 0.2s ease;
+  transition: box-shadow var(--ma-duration-fast) var(--ma-ease), color var(--ma-duration-fast) var(--ma-ease);
 }
 
 .navbar__icon-button:hover,
 .navbar__menu-button:hover {
-  background: var(--nav-control-bg-hover);
+  color: var(--nav-primary);
+}
+
+/* Pressing a neumorphic pad sinks it. Nothing moves and nothing resizes — the
+   light source flips from outside the element to inside it, which is the whole
+   grammar of the style and costs no layout. */
+.navbar__icon-button:active,
+.navbar__menu-button:active {
+  box-shadow: var(--ma-inset-sm);
 }
 
 .navbar__menu-button {
@@ -344,9 +359,9 @@
     flex-direction: column;
     align-items: stretch;
     gap: 16px;
-    border-top: 1px solid var(--nav-border);
     padding: 18px 24px 22px;
     background: var(--nav-mobile-bg);
+    box-shadow: 0 8px 18px var(--ma-sink);
   }
   .navbar__links--mobile a {
     padding: 4px 0;

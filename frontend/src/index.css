@@ -150,13 +150,17 @@ body {
    hand: a crash screen that is a different shade of dark from the rest of the
    app reads as a different application, which is the opposite of reassuring.
    It does not follow the light theme, and that is the trade for not depending
-   on anything. */
+   on anything.
+
+   Hand-copied from the dark set, including the neumorphic pair below: ground
+   #2e3035, lift #3c3f46, sink #191a1d. If those move in tokens.css they must
+   move here too — that is the standing cost of the no-dependency rule. */
 .app-error {
   display: grid;
   min-height: 100vh;
   place-items: center;
   padding: calc(var(--navbar-h, 64px) + 2rem) 1.5rem 2rem;
-  background: #060607;
+  background: #2e3035;
   color: #e4e4e6;
 }
 
@@ -164,9 +168,9 @@ body {
   width: 100%;
   max-width: 34rem;
   padding: 2rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.03);
+  border-radius: 22px;
+  background: #2e3035;
+  box-shadow: -6px -6px 14px #3c3f46, 6px 6px 16px #191a1d;
 }
 
 .app-error__eyebrow {
@@ -195,8 +199,9 @@ body {
   margin: 0 0 1.5rem;
   padding: 0.85rem 1rem;
   overflow-x: auto;
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.35);
+  border-radius: 14px;
+  background: #2e3035;
+  box-shadow: inset -4px -4px 9px #3c3f46, inset 4px 4px 10px #191a1d;
   font: 12px/1.5 'IBM Plex Mono', monospace;
   color: #ffb4a2;
   white-space: pre-wrap;
@@ -211,19 +216,23 @@ body {
 
 .app-error__button {
   padding: 0.6rem 1.2rem;
-  border: 1px solid #4fd1ff;
+  border: 0;
   border-radius: 999px;
   background: #4fd1ff;
-  color: #000103;
+  color: #001b22;
   font: 500 0.9375rem/1 inherit;
   font-family: inherit;
+  box-shadow: -3px -3px 7px #3c3f46, 3px 3px 8px #191a1d;
   cursor: pointer;
 }
 
 .app-error__button--ghost {
-  background: transparent;
-  border-color: rgba(255, 255, 255, 0.18);
-  color: #e6eef4;
+  background: #2e3035;
+  color: #e4e4e6;
+}
+
+.app-error__button:active {
+  box-shadow: inset -2px -2px 5px #3c3f46, inset 2px 2px 6px #191a1d;
 }
 
 /* --------------------------------------------------------------------------
@@ -272,18 +281,25 @@ body {
   min-width: 2.5rem;
   height: 1em;
   overflow: hidden;
-  border-radius: 3px;
+  border-radius: 6px;
   background: var(--ma-input-bg);
   vertical-align: middle;
-  /* The floor. One pixel of accent under the track is what makes the shape
-     read as a channel with something travelling through it, rather than as a
-     rounded rectangle that happens to be animating.
+  /* The floor, plus the channel itself. One pixel of accent under the track is
+     what makes the shape read as a channel with something travelling through
+     it, rather than as a rounded rectangle that happens to be animating.
 
      At `--ma-accent-line` (0.3 alpha) it was invisible against the track on a
      near-black page — checked in a screenshot, which is how a judge will most
      often see it. At 0.55 it reads as a deliberate baseline without competing
-     with the value that replaces it. */
-  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--ma-accent) 55%, transparent);
+     with the value that replaces it.
+
+     `--ma-inset-sm` joins it under the neumorphic model: the track's fill is
+     now the page ground, so without a recess the placeholder had no edge at
+     all and the floor line was left drawing a lone underscore. The accent line
+     is listed first so it stays on top of the sunken edge. */
+  box-shadow:
+    inset 0 -1px 0 color-mix(in srgb, var(--ma-accent) 55%, transparent),
+    var(--ma-inset-sm);
 }
 
 /* ---- submarine: list rows ------------------------------------------------- */

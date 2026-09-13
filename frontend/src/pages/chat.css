@@ -39,8 +39,8 @@
   --chat-flag-bg: rgba(245, 158, 11, 0.12);
   --chat-flag-border: rgba(245, 158, 11, 0.35);
   --chat-flag-text: #fbbf24;
-  --chat-code-bg: rgba(0, 0, 0, 0.32);
-  --chat-sidebar-bg: rgba(255, 255, 255, 0.02);
+  --chat-code-bg: var(--ma-surface);
+  --chat-sidebar-bg: var(--ma-surface);
   --chat-active-bg: rgba(79, 209, 255, 0.14);
   --chat-focus-ring: rgba(79, 209, 255, 0.18);
 
@@ -106,10 +106,10 @@
   flex-direction: column;
   gap: 12px;
   min-height: 0;
-  padding: 16px;
-  border: 1px solid var(--chat-border);
-  border-radius: 16px;
+  padding: 18px;
+  border-radius: 24px;
   background: var(--chat-sidebar-bg);
+  box-shadow: var(--ma-raised);
   /* Only `overflow-x` — clipping both axes would cut off the session list's
    * own `overflow-y: auto` scrollbar along with the width it is meant to
    * hide during the collapse transition. */
@@ -163,10 +163,11 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 11px 14px;
-  border: 1px solid var(--chat-user-border);
-  border-radius: 10px;
+  padding: 12px 15px;
+  border: 0;
+  border-radius: 14px;
   background: var(--chat-user-bg);
+  box-shadow: var(--ma-raised-sm);
   color: var(--chat-primary);
   font: inherit;
   font-size: 0.85rem;
@@ -363,9 +364,8 @@
   display: flex;
   flex-direction: column;
   gap: 22px;
-  padding: 24px clamp(16px, 4vw, 40px);
-  border: 1px solid var(--chat-border);
-  border-radius: 16px;
+  padding: 26px clamp(16px, 4vw, 40px);
+  border-radius: 24px;
   background: var(--chat-panel);
   box-shadow: var(--chat-shadow);
   scrollbar-color: var(--chat-border) transparent;
@@ -390,21 +390,21 @@
 }
 
 .chat-suggestion {
-  padding: 9px 14px;
-  border: 1px solid var(--chat-border);
+  padding: 10px 15px;
+  border: 0;
   border-radius: 999px;
-  background: transparent;
+  background: var(--chat-panel);
+  box-shadow: var(--ma-raised-sm);
   color: var(--chat-muted);
   font: inherit;
   font-size: 0.83rem;
   cursor: pointer;
-  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+  transition: box-shadow 0.2s ease, color 0.2s ease;
 }
 
 .chat-suggestion:hover {
-  border-color: var(--chat-primary);
+  box-shadow: var(--ma-inset-sm);
   color: var(--chat-primary);
-  background: var(--chat-user-bg);
 }
 
 .chat-turn {
@@ -446,16 +446,23 @@
   line-height: 1.62;
 }
 
+/* The two bubble directions take opposite sides of the material, which is the
+ * neumorphic model saying something the old pair of tinted borders could not:
+ * what you sent is raised out of the surface, what arrived is set into it.
+ * It survives a screenshot with the colour removed, where "slightly cyan
+ * border vs slightly grey border" did not. */
 .chat-bubble--user {
-  border: 1px solid var(--chat-user-border);
+  border: 0;
   background: var(--chat-user-bg);
+  box-shadow: var(--ma-raised-sm);
   border-bottom-right-radius: 4px;
   white-space: pre-wrap;
 }
 
 .chat-bubble--assistant {
-  border: 1px solid var(--chat-border-soft);
+  border: 0;
   background: var(--chat-assistant-bg);
+  box-shadow: var(--ma-inset-sm);
   border-bottom-left-radius: 4px;
 }
 
@@ -611,9 +618,9 @@
   align-items: flex-start;
   gap: 7px;
   margin: 12px 0 0;
-  padding: 8px 11px;
-  border: 1px solid var(--chat-flag-border);
-  border-radius: 9px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  box-shadow: inset 3px 0 0 var(--chat-flag-text), var(--ma-raised-sm);
   background: var(--chat-flag-bg);
   color: var(--chat-flag-text);
   font-size: 0.79rem;
@@ -716,9 +723,9 @@
 
 .chat-forecast-chart {
   margin-top: 12px;
-  padding: 12px 14px 10px;
-  border: 1px solid var(--chat-border-soft);
-  border-radius: 12px;
+  padding: 13px 15px 11px;
+  border-radius: 16px;
+  box-shadow: var(--ma-raised-sm);
   background: var(--chat-code-bg);
 }
 
@@ -752,10 +759,11 @@
   position: absolute;
   top: 4px;
   right: 4px;
-  padding: 3px 7px;
-  border: 1px solid var(--chat-border);
-  border-radius: 6px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
   background: var(--chat-panel);
+  box-shadow: var(--ma-raised-sm);
   color: var(--chat-faint);
   font-size: 0.68rem;
   cursor: pointer;
@@ -820,9 +828,9 @@
 
 .chat-map-preview {
   margin-top: 12px;
-  padding: 10px 10px 10px;
-  border: 1px solid var(--chat-border-soft);
-  border-radius: 12px;
+  padding: 10px;
+  border-radius: 16px;
+  box-shadow: var(--ma-raised-sm);
   background: var(--chat-code-bg);
   overflow: hidden;
 }
@@ -901,23 +909,32 @@
   margin: 22px auto 24px;
 }
 
-/* The wrapper carries the border and focus ring so the textarea itself can be
+/* The wrapper carries the recess and focus ring so the textarea itself can be
  * borderless — a border on an auto-growing textarea visibly jumps by a pixel
- * each time the height is recomputed. `position: relative` is what lets the
- * circular send button (`.chat-send-btn`, assistant.css) sit *inside* this
- * card rather than beside it — the single-card-with-an-embedded-button shape
- * assistant-ui's own composer uses, instead of two boxes side by side. */
+ * each time the height is recomputed, and the same is true of a shadow that
+ * has to be re-drawn against a changing height, which is why the recess lives
+ * out here too. `position: relative` is what lets the circular send button
+ * (`.chat-send-btn`, assistant.css) sit *inside* this card rather than beside
+ * it — the single-card-with-an-embedded-button shape assistant-ui's own
+ * composer uses, instead of two boxes side by side.
+ *
+ * A well, not a card: the composer is the one place on the page you put
+ * something *into*, which is the distinction --ma-inset exists to draw. */
 .chat-input-wrap {
   position: relative;
-  border: 1px solid var(--chat-border);
+  border: 0;
   border-radius: 20px;
   background: var(--chat-input-bg);
-  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+  box-shadow: var(--ma-inset);
+  transition: box-shadow 0.25s ease;
 }
 
+/* Focus deepens the well and adds the accent halo. The halo is listed last so
+ * it sits outside the two inset shadows rather than being painted over by
+ * them. */
 .chat-input-wrap:focus-within {
-  border-color: var(--chat-primary);
-  box-shadow: 0 0 0 4px var(--chat-focus-ring);
+  box-shadow: inset -5px -5px 11px var(--ma-lift), inset 5px 5px 12px var(--ma-sink),
+    0 0 0 4px var(--chat-focus-ring);
 }
 
 /* Reserves room on the left for `.chat-attach-btn` (assistant.css), the same

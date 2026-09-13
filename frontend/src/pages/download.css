@@ -67,9 +67,9 @@
 
 .download-section {
   background: var(--dl-card);
-  border: 1px solid var(--dl-border);
-  border-radius: 12px;
-  padding: 1.25rem 1.5rem;
+  border-radius: 22px;
+  box-shadow: var(--ma-raised);
+  padding: 1.5rem 1.75rem;
 }
 
 .download-section h2 {
@@ -89,23 +89,32 @@
 }
 
 .download-tabs button {
-  background: transparent;
-  border: 1px solid var(--dl-border);
+  background: var(--dl-card);
+  border: 0;
   color: var(--dl-text);
   border-radius: 999px;
-  padding: 0.4rem 0.9rem;
+  padding: 0.45rem 1rem;
   font-size: 0.85rem;
+  box-shadow: var(--ma-raised-sm);
   cursor: pointer;
+  transition: box-shadow var(--ma-duration-fast) var(--ma-ease),
+    color var(--ma-duration-fast) var(--ma-ease);
 }
 
+/* The selected tab is held *down*. This is the one place the neumorphic
+   grammar states a selection better than the old filled pill did: a pressed
+   pad is unambiguously the one currently engaged, and it does not need a
+   colour fill to say so, so the accent stays available for the ink. */
 .download-tabs button.active {
-  background: var(--dl-primary);
-  color: var(--dl-primary-on);
-  border-color: var(--dl-primary);
+  background: var(--dl-card);
+  box-shadow: var(--ma-inset-sm);
+  color: var(--dl-primary);
+  font-weight: 600;
 }
 
 .download-tabs button:disabled {
   opacity: 0.4;
+  box-shadow: none;
   cursor: not-allowed;
 }
 
@@ -128,20 +137,24 @@
 .download-field-row input,
 .download-section select {
   background: var(--dl-input-bg);
-  border: 1px solid var(--dl-border);
+  border: 0;
   color: var(--dl-text);
-  border-radius: 8px;
-  padding: 0.5rem 0.6rem;
+  border-radius: 12px;
+  box-shadow: var(--ma-inset-sm);
+  padding: 0.6rem 0.75rem;
   font-size: 0.9rem;
 }
 
 .download-draw-map {
   width: 100%;
   height: 320px;
-  border-radius: 10px;
+  border-radius: 18px;
   overflow: hidden;
   margin-bottom: 1rem;
-  border: 1px solid var(--dl-border);
+  /* The map is real imagery, not a surface, so it gets a recess rather than a
+     raise — the frame is a window cut into the panel. A raised pair here would
+     have claimed the tiles were a physical object sitting on the card. */
+  box-shadow: var(--ma-inset-sm);
 }
 
 .download-variable-groups {
@@ -151,9 +164,10 @@
 }
 
 .download-variable-group {
-  border: 1px solid var(--dl-border);
-  border-radius: 10px;
-  padding: 0.75rem 1rem;
+  border: 0;
+  border-radius: 16px;
+  box-shadow: var(--ma-raised-sm);
+  padding: 0.9rem 1.1rem;
 }
 
 .download-variable-group legend {
@@ -179,9 +193,10 @@
 
 .download-variable-group .badge {
   font-size: 0.65rem;
-  background: var(--dl-badge-bg);
+  background: var(--dl-card);
   border-radius: 999px;
-  padding: 0.1rem 0.5rem;
+  box-shadow: var(--ma-inset-sm);
+  padding: 0.15rem 0.55rem;
   color: var(--dl-muted);
 }
 
@@ -254,14 +269,21 @@
   color: var(--dl-primary-on);
   border: none;
   border-radius: 999px;
-  padding: 0.75rem 2rem;
+  padding: 0.8rem 2.1rem;
   font-size: 1rem;
   font-weight: 600;
+  box-shadow: var(--ma-raised-sm);
   cursor: pointer;
+  transition: box-shadow var(--ma-duration-fast) var(--ma-ease);
+}
+
+.download-submit:active:not(:disabled) {
+  box-shadow: var(--ma-inset-sm);
 }
 
 .download-submit:disabled {
   opacity: 0.6;
+  box-shadow: none;
   cursor: not-allowed;
 }
 

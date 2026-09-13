@@ -20,8 +20,9 @@
   height: 30px;
   margin-top: 2px;
   border-radius: 50%;
-  border: 1px solid var(--chat-user-border);
+  border: 0;
   background: var(--chat-user-bg);
+  box-shadow: var(--ma-raised-sm);
   color: var(--chat-primary);
 }
 
@@ -40,8 +41,9 @@
   place-items: center;
   flex: none;
   border-radius: 50%;
-  border: 1px solid var(--chat-user-border);
+  border: 0;
   background: var(--chat-user-bg);
+  box-shadow: var(--ma-raised-sm);
   color: var(--chat-primary);
 }
 
@@ -171,11 +173,15 @@
 .chat-edit-composer {
   width: 100%;
   max-width: 34rem;
-  padding: 10px;
-  border: 1px solid var(--chat-primary);
-  border-radius: 16px;
+  padding: 11px;
+  border: 0;
+  border-radius: 18px;
   background: var(--chat-input-bg);
-  box-shadow: 0 0 0 4px var(--chat-focus-ring);
+  /* Deliberately identical to `.chat-input-wrap:focus-within` in chat.css —
+     the point of this control is that editing reads as the same composer,
+     relocated. If that rule's well depth changes, change this one with it. */
+  box-shadow: inset -5px -5px 11px var(--ma-lift), inset 5px 5px 12px var(--ma-sink),
+    0 0 0 4px var(--chat-focus-ring);
 }
 
 .chat-edit-input {
@@ -257,20 +263,25 @@
   border-radius: 50%;
   background: var(--chat-primary);
   color: var(--chat-primary-on);
+  box-shadow: var(--ma-raised-sm);
   cursor: pointer;
-  transition: opacity 0.2s ease, transform 0.1s ease;
+  transition: opacity 0.2s ease, box-shadow 0.1s ease;
 }
 
 .chat-send-btn:hover:not(:disabled) {
   opacity: 0.88;
 }
 
+/* Sinks rather than scaling. The button sits inside the composer's own well,
+   where a scale change reads as the button shrinking away from its socket;
+   flipping the light source keeps it seated. */
 .chat-send-btn:active:not(:disabled) {
-  transform: scale(0.94);
+  box-shadow: var(--ma-inset-sm);
 }
 
 .chat-send-btn:disabled {
   opacity: 0.35;
+  box-shadow: none;
   cursor: not-allowed;
 }
 
@@ -322,9 +333,10 @@
   position: relative;
   width: 52px;
   height: 52px;
-  border-radius: 10px;
+  border-radius: 14px;
   overflow: hidden;
-  border: 1px solid var(--chat-border);
+  border: 0;
+  box-shadow: var(--ma-raised-sm);
   background: var(--chat-input-bg);
 }
 
@@ -382,8 +394,9 @@
   width: auto;
   height: auto;
   object-fit: contain;
-  border-radius: 10px;
-  border: 1px solid var(--chat-user-border);
+  border-radius: 14px;
+  border: 0;
+  box-shadow: var(--ma-raised-sm);
 }
 
 /* --- Scroll to bottom ------------------------------------------------------
@@ -406,13 +419,13 @@
   width: 34px;
   height: 34px;
   padding: 0;
-  border: 1px solid var(--chat-border-strong);
+  border: 0;
   border-radius: 50%;
   background: var(--chat-assistant-bg);
   color: var(--chat-text);
-  box-shadow: var(--chat-shadow);
+  box-shadow: var(--ma-raised-sm);
   cursor: pointer;
-  transition: background 0.15s ease, transform 0.15s ease;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
 
 .chat-scroll-btn:hover {

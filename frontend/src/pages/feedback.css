@@ -27,10 +27,10 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  border: 1px solid var(--fb-border);
-  border-radius: 16px;
+  border-radius: 26px;
   padding: 40px;
   background: var(--fb-card-bg);
+  box-shadow: var(--ma-raised);
   color: var(--fb-text);
 }
 
@@ -56,9 +56,10 @@
 .feedback-card input,
 .feedback-card textarea {
   background: var(--fb-input-bg);
-  border: 1px solid var(--fb-border);
-  border-radius: 8px;
-  padding: 10px 12px;
+  border: 0;
+  border-radius: 14px;
+  box-shadow: var(--ma-inset);
+  padding: 12px 14px;
   color: var(--fb-text);
   font-family: inherit;
   font-size: 0.95rem;
@@ -83,14 +84,25 @@
   color: var(--fb-primary-on);
   border: none;
   border-radius: 999px;
-  padding: 0.7rem 1.8rem;
+  padding: 0.75rem 1.9rem;
   font-size: 1rem;
   font-weight: 600;
+  box-shadow: var(--ma-raised-sm);
   cursor: pointer;
+  transition: box-shadow var(--ma-duration-fast) var(--ma-ease);
 }
 
+.feedback-submit:active:not(:disabled) {
+  box-shadow: var(--ma-inset-sm);
+}
+
+/* A disabled pad is flat: it is neither raised nor pressed, because there is
+   nothing to press. Dropping the shadow does more work here than the opacity
+   alone did — on a page of sculpted controls, "flat" is the clearest possible
+   way to say "not a control right now". */
 .feedback-submit:disabled {
   opacity: 0.6;
+  box-shadow: none;
   cursor: not-allowed;
 }
 

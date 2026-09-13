@@ -16,10 +16,10 @@
 .nf-card {
   width: 100%;
   max-width: 520px;
-  border: 1px solid var(--ma-border);
-  border-radius: 16px;
+  border-radius: 26px;
   padding: 40px;
   background: var(--ma-surface);
+  box-shadow: var(--ma-raised);
 }
 
 .nf-eyebrow {
@@ -50,9 +50,10 @@
 /* The offending path can be arbitrarily long and arbitrarily unbreakable —
    it came from a URL bar, not from prose. */
 .nf-path {
-  padding: 0.1rem 0.4rem;
-  border-radius: 5px;
+  padding: 0.15rem 0.45rem;
+  border-radius: 7px;
   background: var(--ma-input-bg);
+  box-shadow: var(--ma-inset-sm);
   color: var(--ma-text);
   font-family: var(--ma-font-mono);
   font-size: 0.9em;
@@ -65,22 +66,28 @@
   margin-bottom: 1.75rem;
 }
 
+/* These sit *on* the card, which is itself already raised. Stacking a second
+   full-strength raise reads as a card floating off a card; the small pair is
+   the step for anything one level up from an already-lifted surface. */
 .nf-link {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  border: 1px solid var(--ma-border-soft);
-  border-radius: 10px;
-  padding: 12px 14px;
+  border-radius: 14px;
+  padding: 13px 15px;
   color: var(--ma-text);
+  box-shadow: var(--ma-raised-sm);
   text-decoration: none;
-  transition: background var(--ma-duration) var(--ma-ease),
-    border-color var(--ma-duration) var(--ma-ease);
+  transition: box-shadow var(--ma-duration) var(--ma-ease),
+    color var(--ma-duration) var(--ma-ease);
 }
 
+/* Hover presses it in. On a page where every affordance is a physical pad,
+   "lit up" is the wrong verb — a link you are about to follow should feel
+   like it is already going down under the pointer. */
 .nf-link:hover {
-  background: var(--ma-hover-bg);
-  border-color: var(--ma-accent-line);
+  box-shadow: var(--ma-inset-sm);
+  color: var(--ma-accent);
 }
 
 .nf-link__label {

@@ -1,7 +1,13 @@
-/* Page tokens alias the shared palette in styles/tokens.css. The four that
-   stay local are genuinely this page's own: a translucent sticky header, a
-   raised-but-see-through card, the "selected control" border, and the accent
-   glow behind an active KPI. Those still need a per-theme block. */
+/* Page tokens alias the shared palette in styles/tokens.css. The ones that
+   stay local are genuinely this page's own: a translucent sticky header, the
+   "selected control" edge, and the accent container behind an active KPI.
+   Those still need a per-theme block.
+
+   `--dash-card` lost its translucency under the neumorphic model and is now
+   just the ground — a see-through card cannot be sculpted, because the
+   shadows behind it show through the face they are supposed to be lighting.
+   `--dash-glow` survives as the *selected* state only (see .dashboard-card
+   below); it is no longer what gives a card its edge. */
 .dashboard-shell {
   --dash-bg: var(--ma-bg);
   --dash-card-solid: var(--ma-surface-solid);
@@ -13,11 +19,11 @@
   --dash-primary: var(--ma-accent);
   --dash-on-primary: var(--ma-accent-on);
 
-  --dash-header: rgba(13, 14, 15, 0.88);
-  --dash-card: rgba(30, 32, 32, 0.7);
+  --dash-header: rgba(46, 48, 53, 0.88);
+  --dash-card: var(--ma-surface);
   --dash-border-active: rgba(79, 209, 255, 0.46);
   --dash-primary-container: #0b4a5e;
-  --dash-glow: 0 0 22px rgba(79, 209, 255, 0.14);
+  --dash-glow: 0 0 22px rgba(79, 209, 255, 0.2);
 
   min-height: 100vh;
   background: var(--dash-bg);
@@ -27,11 +33,11 @@
 }
 
 .dashboard-shell--light {
-  --dash-header: rgba(255, 255, 255, 0.9);
-  --dash-card: #fff;
-  --dash-border-active: rgba(15, 118, 110, 0.42);
+  --dash-header: rgba(228, 231, 236, 0.9);
+  --dash-card: var(--ma-surface);
+  --dash-border-active: rgba(14, 106, 99, 0.42);
   --dash-primary-container: #ccfbf1;
-  --dash-glow: 0 8px 30px rgba(15, 30, 30, 0.07);
+  --dash-glow: 0 0 22px rgba(14, 106, 99, 0.18);
 }
 
 .dashboard-toolbar {
@@ -90,9 +96,9 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  border: 1px solid var(--dash-border);
   border-radius: 999px;
-  padding: 8px 13px;
+  box-shadow: var(--ma-raised-sm);
+  padding: 8px 14px;
   color: var(--dash-muted);
   font-size: 10px;
   font-weight: 700;
@@ -100,7 +106,7 @@
   text-transform: uppercase;
 }
 
-.dashboard-live-status--success { border-color: var(--dash-border-active); color: var(--dash-primary); }
+.dashboard-live-status--success { color: var(--dash-primary); }
 .dashboard-live-status--error { color: #f87171; }
 
 .dashboard-coordinate-form {
@@ -109,11 +115,10 @@
   align-items: center;
   gap: 14px;
   margin-bottom: 30px;
-  border: 1px solid var(--dash-border);
   border-radius: 24px;
-  padding: 22px;
+  padding: 24px;
   background: var(--dash-card);
-  box-shadow: var(--dash-glow);
+  box-shadow: var(--ma-raised);
 }
 
 .dashboard-coordinate-form__label {
@@ -129,13 +134,19 @@
   display: flex;
   flex: 1 1 190px;
   align-items: center;
-  border: 1px solid var(--dash-border);
   border-radius: 999px;
-  padding: 13px 18px;
+  box-shadow: var(--ma-inset);
+  padding: 14px 19px;
   background: var(--dash-input);
 }
 
-.dashboard-coordinate-input:focus-within { border-color: var(--dash-border-active); }
+/* The well deepens rather than gaining an outline — an outline on a recessed
+   control reads as a second, conflicting edge. The `:focus-visible` ring in
+   tokens.css still fires on the inner <input> for keyboard users, which is the
+   part that has to stay a real outline. */
+.dashboard-coordinate-input:focus-within {
+  box-shadow: inset -5px -5px 11px var(--ma-lift), inset 5px 5px 12px var(--ma-sink);
+}
 
 .dashboard-coordinate-input input {
   min-width: 0;
@@ -174,13 +185,24 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  box-shadow: var(--ma-raised-sm);
+  transition: box-shadow var(--ma-duration-fast) var(--ma-ease);
+}
+
+.dashboard-update-button:active {
+  box-shadow: var(--ma-inset-sm);
 }
 
 .dashboard-location-button {
   width: 48px;
-  border: 1px solid var(--dash-border);
+  border: 0;
+  box-shadow: var(--ma-raised-sm);
   background: var(--dash-input);
   color: var(--dash-text);
+}
+
+.dashboard-location-button:active {
+  box-shadow: var(--ma-inset-sm);
 }
 
 .dashboard-form-error {
@@ -192,10 +214,10 @@
 
 .dashboard-request-error {
   margin: -14px 0 24px;
-  border: 1px solid rgba(248, 113, 113, 0.28);
-  border-radius: 12px;
-  padding: 12px 16px;
-  background: rgba(248, 113, 113, 0.08);
+  border-radius: 16px;
+  box-shadow: inset 3px 0 0 var(--ma-error), var(--ma-raised-sm);
+  padding: 13px 17px;
+  background: var(--dash-card);
   color: #fca5a5;
   font-size: 13px;
 }
@@ -211,16 +233,20 @@
   min-width: 0;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--dash-border);
   border-radius: 26px;
   background: var(--dash-card);
-  backdrop-filter: blur(16px);
-  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: var(--ma-raised);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 
+/* Hover lifts further rather than lighting an edge. The `translateY` is kept
+   from the old rule and still earns its place — under a fixed light source,
+   rising toward it is what a raised object does, so the shadow growth and the
+   movement are describing the same event. The accent glow stays, but only as
+   a third layer on top of the material rather than as the card's own edge. */
 .dashboard-card:hover {
-  border-color: var(--dash-border-active);
-  box-shadow: var(--dash-glow);
+  box-shadow: -9px -9px 20px var(--ma-lift), 9px 9px 22px var(--ma-sink),
+    var(--dash-glow);
   transform: translateY(-2px);
 }
 
@@ -228,6 +254,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* Stays a real line. This is a divider inside a panel, not a panel edge —
+     the rule the neumorphic model keeps borders for. */
   border-bottom: 1px solid var(--dash-border);
   padding: 18px 22px;
   color: var(--dash-faint);
@@ -346,11 +374,10 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  border: 1px solid var(--dash-border);
   border-radius: 999px;
   padding: 7px 12px 7px 7px;
   background: var(--dash-card-solid);
-  box-shadow: var(--dash-glow);
+  box-shadow: var(--ma-raised-sm);
   color: var(--dash-muted);
   font-family: inherit;
   font-size: 9px;
@@ -358,13 +385,19 @@
   letter-spacing: 0.07em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: border-color 0.2s ease, opacity 0.2s ease;
+  transition: box-shadow 0.2s ease, color 0.2s ease, opacity 0.2s ease;
 }
 
-.dashboard-neural-badge:not(:disabled):hover { border-color: var(--dash-border-active); }
+.dashboard-neural-badge:not(:disabled):hover {
+  box-shadow: var(--ma-inset-sm);
+  color: var(--dash-primary);
+}
 
+/* Flat, not dimmed-and-still-raised: see feedback.css's submit for why a
+   disabled control loses its shadow entirely on a neumorphic page. */
 .dashboard-neural-badge:disabled {
   cursor: not-allowed;
+  box-shadow: none;
   opacity: 0.55;
 }
 

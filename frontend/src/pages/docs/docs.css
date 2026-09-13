@@ -84,15 +84,15 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--dc-border);
-  border-radius: 9px;
+  padding: 9px 12px;
+  border-radius: 13px;
   background: var(--dc-surface);
-  transition: border-color 0.15s ease;
+  box-shadow: var(--ma-inset-sm);
+  transition: box-shadow 0.15s ease;
 }
 
 .docs-search__field:focus-within {
-  border-color: var(--dc-primary);
+  box-shadow: var(--ma-inset);
 }
 
 .docs-search__icon {
@@ -163,17 +163,19 @@
   gap: 2px;
   width: 100%;
   padding: 8px 10px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  border: 0;
+  border-radius: 10px;
   background: none;
   text-align: left;
   cursor: pointer;
   font-family: inherit;
 }
 
+/* Keyboard-highlighted result. Raised rather than tinted: this is a list row
+   inside an already-recessed panel, so lifting the active one is what reads as
+   "this is the one you are on". */
 .docs-search__result.is-active {
-  border-color: var(--dc-border);
-  background: var(--dc-row-hover);
+  box-shadow: var(--ma-raised-sm);
 }
 
 .docs-search__result-group {
@@ -253,9 +255,9 @@
 .docs-nav__badge {
   display: inline-block;
   margin-left: 8px;
-  padding: 1px 6px;
-  border: 1px solid var(--dc-border);
+  padding: 2px 7px;
   border-radius: 999px;
+  box-shadow: var(--ma-inset-sm);
   font-size: 9.5px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -431,8 +433,8 @@
   margin: 0 0 20px;
   padding: 14px 16px;
   overflow-x: auto;
-  border: 1px solid var(--dc-border);
-  border-radius: 10px;
+  border-radius: 14px;
+  box-shadow: var(--ma-inset);
   background: var(--dc-code-bg);
   font-family: 'IBM Plex Mono', monospace;
   font-size: 12.5px;
@@ -454,9 +456,11 @@
 .doc-formula {
   margin: 0 0 20px;
   padding: 16px 18px;
-  border: 1px solid var(--dc-border);
-  border-left: 3px solid var(--dc-primary);
-  border-radius: 0 10px 10px 0;
+  border-radius: 14px;
+  /* The accent rule stays, as an inset spike rather than a left border — same
+     mark as a toast's status rail, and it survives inside a sculpted box where
+     a real border would cut across the lit edge. */
+  box-shadow: inset 3px 0 0 var(--dc-primary), var(--ma-raised-sm);
   background: var(--dc-surface);
 }
 
@@ -482,9 +486,8 @@
   --callout-tone: var(--dc-primary);
   margin: 0 0 22px;
   padding: 16px 18px;
-  border: 1px solid var(--dc-border);
-  border-left: 3px solid var(--callout-tone);
-  border-radius: 0 10px 10px 0;
+  border-radius: 14px;
+  box-shadow: inset 3px 0 0 var(--callout-tone), var(--ma-raised-sm);
   background: var(--dc-surface);
 }
 
@@ -525,8 +528,8 @@
 .doc-table-wrap {
   margin: 0 0 10px;
   overflow-x: auto;
-  border: 1px solid var(--dc-border);
-  border-radius: 10px;
+  border-radius: 16px;
+  box-shadow: var(--ma-raised-sm);
   background: var(--dc-surface);
 }
 
@@ -602,9 +605,9 @@
 }
 
 .doc-var {
-  padding: 13px 15px;
-  border: 1px solid var(--dc-border);
-  border-radius: 10px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  box-shadow: var(--ma-raised-sm);
   background: var(--dc-surface);
 }
 
@@ -642,18 +645,18 @@
 
 .docs-pager__link {
   flex: 1;
-  padding: 14px 16px;
-  border: 1px solid var(--dc-border);
-  border-radius: 10px;
+  padding: 15px 17px;
+  border-radius: 16px;
   background: var(--dc-surface);
+  box-shadow: var(--ma-raised-sm);
   color: var(--dc-heading);
   text-decoration: none;
-  transition: border-color 0.2s ease, background 0.2s ease;
+  transition: box-shadow 0.2s ease, color 0.2s ease;
 }
 
 .docs-pager__link:hover {
-  border-color: var(--dc-border-strong);
-  background: var(--dc-surface-strong);
+  box-shadow: var(--ma-inset-sm);
+  color: var(--dc-primary);
 }
 
 .docs-pager__link--next {
@@ -692,9 +695,10 @@
 
 .docs-mobile-nav select {
   width: 100%;
-  padding: 11px 14px;
-  border: 1px solid var(--dc-border);
-  border-radius: 10px;
+  padding: 12px 15px;
+  border: 0;
+  border-radius: 14px;
+  box-shadow: var(--ma-inset-sm);
   background: var(--dc-surface);
   color: var(--dc-text);
   font-family: inherit;
