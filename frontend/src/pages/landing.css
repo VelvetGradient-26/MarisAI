@@ -34,11 +34,11 @@
      cannot be sculpted (see styles/tokens.css's header). */
   --lp-card: var(--ma-surface);
   --lp-shadow: var(--ma-raised);
-  /* Pure black, because the page ground (--ma-bg-deep, #000103) is dark but
-     not black — a shadow darker than the background is what makes elevation
-     legible in dark mode without resorting to a colour wash. The margin is
-     thinner than it was now that the ground is near-black, so the hover
-     shadow leans on the second, tighter layer to read at all. */
+  /* The raised pair at a wider throw — hover lifts the card toward the same
+     top-left light every other surface uses, rather than deepening a drop
+     shadow under it. (This used to be pure black on the argument that a
+     shadow darker than a near-black ground is what makes elevation legible;
+     the ground is mid-tone now, so the highlight half does that work.) */
   --lp-shadow-hover: -9px -9px 20px var(--ma-lift), 9px 9px 22px var(--ma-sink);
 
   --lp-gutter: clamp(1.25rem, 5vw, 4rem);

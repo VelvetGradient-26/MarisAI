@@ -176,7 +176,11 @@
        the panel *edge* (see Panel.tsx), which is a shadow now. */
     --oid-border: var(--ma-border);
     --oid-border-hover: var(--ma-border-strong);
-    --oid-track: var(--ma-input-bg);
+    /* A visible tint, not the ground: ~10 call sites use this as a chip fill
+       or a `hover:bg-` and would have become invisible. The one place that
+       genuinely wants the ground is `.oid-scanline`, which asks for
+       `--ma-input-bg` directly. */
+    --oid-track: var(--ma-hover-bg);
     --oid-grid: #3f424a;
 
     --oid-text: #e4e4e6;
@@ -243,7 +247,7 @@
     --oid-hover: var(--ma-hover-bg);
     --oid-border: var(--ma-border);
     --oid-border-hover: var(--ma-border-strong);
-    --oid-track: var(--ma-input-bg);
+    --oid-track: var(--ma-hover-bg);
     --oid-grid: #c8cdd6;
 
     --oid-text: #12201f;
@@ -460,7 +464,7 @@
 .oid-scanline {
   position: relative;
   overflow: hidden;
-  background: var(--oid-track);
+  background: var(--ma-input-bg);
   /* The accent floor plus the recess, exactly as `.ma-skeleton` in index.css —
      `--oid-track` is the page ground now, so without the inset pair the track
      had no edge and the floor line was left drawing a lone underscore. The

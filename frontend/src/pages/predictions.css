@@ -1,8 +1,9 @@
 /* Model Insights page.
  *
  * Follows the repo's per-page theming convention: --pr-* custom properties on
- * the root class, overridden wholesale in .predictions-page--light. Dark accent
- * is the shared cyan (#4fd1ff, matching the navbar); light accent is teal.
+ * the root class. There is no longer a .predictions-page--light block — every
+ * token here aliases styles/tokens.css, which inverts itself from `data-theme`
+ * on <html>, and nothing ever applied that class anyway (checked).
  *
  * The "good"/"bad" tones are deliberately NOT the accent colour — a verdict
  * about whether a model beats its baseline is status information, and reusing
@@ -10,43 +11,36 @@
  * the same page.
  */
 
+/* This page was the last one still holding a fully private palette — its own
+   #0e1116 ground, its own translucent cards, its own greys and its own copy of
+   the accent — rather than aliasing styles/tokens.css like every other page.
+   That was survivable while the app's material was "a lighter card on a darker
+   page", because the page was at least internally consistent. It is not
+   survivable under the neumorphic model: a sculpted panel has to be the exact
+   colour of the ground beside it, so a private ground means the highlight and
+   the shadow are describing a surface that is not there. Aliased now, with the
+   per-page names kept. Both themes come from `data-theme` on <html>. */
 .predictions-page {
-  --pr-bg: #0e1116;
-  --pr-card-bg: rgba(255, 255, 255, 0.03);
-  --pr-card-bg-strong: rgba(255, 255, 255, 0.055);
-  --pr-border: rgba(255, 255, 255, 0.1);
-  --pr-text: #e3e2e2;
-  --pr-heading: #f5f7fa;
-  --pr-muted: #9ba0af;
-  --pr-primary: #4fd1ff;
-  --pr-primary-soft: rgba(79, 209, 255, 0.16);
-  --pr-good: #4ade80;
-  --pr-bad: #f87171;
-  --pr-warn: #fbbf24;
-  --pr-track: rgba(255, 255, 255, 0.08);
+  --pr-bg: var(--ma-bg);
+  --pr-card-bg: var(--ma-surface);
+  --pr-card-bg-strong: var(--ma-surface-strong);
+  --pr-border: var(--ma-border);
+  --pr-text: var(--ma-text);
+  --pr-heading: var(--ma-heading);
+  --pr-muted: var(--ma-muted);
+  --pr-primary: var(--ma-accent);
+  --pr-primary-soft: var(--ma-accent-soft);
+  --pr-good: var(--ma-good);
+  --pr-bad: var(--ma-error);
+  --pr-warn: var(--ma-warn);
+  --pr-track: var(--ma-input-bg);
 
   min-height: 100vh;
   padding: calc(var(--navbar-h, 64px) + 40px) 24px 64px;
   background: var(--pr-bg);
   color: var(--pr-text);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--ma-font-ui);
   transition: background 0.3s ease, color 0.3s ease;
-}
-
-.predictions-page--light {
-  --pr-bg: #f4f7f8;
-  --pr-card-bg: #fff;
-  --pr-card-bg-strong: #fff;
-  --pr-border: rgba(15, 30, 30, 0.09);
-  --pr-text: #12201f;
-  --pr-heading: #0a1514;
-  --pr-muted: #5c6b6c;
-  --pr-primary: #0f766e;
-  --pr-primary-soft: rgba(15, 118, 110, 0.12);
-  --pr-good: #15803d;
-  --pr-bad: #b91c1c;
-  --pr-warn: #b45309;
-  --pr-track: rgba(15, 30, 30, 0.07);
 }
 
 .predictions-shell {
@@ -101,9 +95,10 @@
 }
 
 .predictions-state code {
-  padding: 2px 6px;
-  border-radius: 5px;
+  padding: 3px 7px;
+  border-radius: 7px;
   background: var(--pr-track);
+  box-shadow: var(--ma-inset-sm);
   font-size: 12px;
 }
 
@@ -286,7 +281,9 @@
 .metric-table td {
   padding: 9px 0;
   text-align: right;
-  border-bottom: 1px solid var(--pr-track);
+  /* --pr-border, not --pr-track: the track is the page ground under the
+     neumorphic model, so a rule drawn in it is a rule drawn in nothing. */
+  border-bottom: 1px solid var(--pr-border);
 }
 
 .metric-table__best td {
@@ -320,10 +317,14 @@
   white-space: nowrap;
 }
 
+/* A channel cut into the card, like toast.css's progress track. `overflow` is
+   kept for the fill's rounded ends, and does not clip the inset pair — inset
+   shadows paint inside the padding box, which is exactly where they belong. */
 .driver-track {
   height: 8px;
   border-radius: 999px;
   background: var(--pr-track);
+  box-shadow: var(--ma-inset-sm);
   overflow: hidden;
 }
 

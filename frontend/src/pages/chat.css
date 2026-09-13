@@ -9,12 +9,18 @@
  * invert from `data-theme` on <html>. The handful listed under "Local" below
  * are this page's own and still need `.chat-page--light`.
  *
- * Two of them intentionally do NOT simply invert:
+ * One of them intentionally does NOT simply invert:
  *   --chat-flag-*  the ungrounded-figure warning stays amber-on-warm in both
  *                  themes, because it means the same thing in both and an
  *                  inverted warning reads as decoration.
- *   --chat-code-*  the provenance JSON keeps a raised surface in light mode
- *                  rather than going white-on-white with the bubble.
+ *
+ * `--chat-code-*` used to be listed here too, on the grounds that the
+ * provenance JSON needed a raised surface in light mode rather than going
+ * white-on-white with the bubble. That problem is gone: under the neumorphic
+ * model the bubble is not white, and the JSON is separated by being *recessed*
+ * into the surface rather than by being a different colour from it — which is
+ * the distinction `--ma-inset` exists to draw, and it works identically in
+ * both themes.
  */
 
 .chat-page {
@@ -53,13 +59,12 @@
 }
 
 .chat-page--light {
-  --chat-assistant-bg: #fff;
-  --chat-input-bg: #fff;
+  /* The three surface tokens are absent here now: under the neumorphic model
+     they are all the ground, which inverts itself from `data-theme`. A white
+     card on a grey page is the old material. */
   --chat-flag-bg: rgba(180, 83, 9, 0.1);
   --chat-flag-border: rgba(180, 83, 9, 0.28);
   --chat-flag-text: #b45309;
-  --chat-code-bg: rgba(15, 30, 30, 0.05);
-  --chat-sidebar-bg: #fbfdfd;
   --chat-active-bg: rgba(15, 118, 110, 0.12);
   --chat-focus-ring: rgba(15, 118, 110, 0.15);
 }
@@ -513,9 +518,10 @@
 }
 
 .md-code {
-  padding: 0.1em 0.36em;
-  border-radius: 5px;
+  padding: 0.14em 0.4em;
+  border-radius: 6px;
   background: var(--chat-code-bg);
+  box-shadow: var(--ma-inset-sm);
   font-size: 0.86em;
   /* Break long identifiers rather than widening the bubble past the column. */
   overflow-wrap: anywhere;
@@ -525,8 +531,9 @@
   margin: 0 0 0.7em;
   padding: 10px 12px;
   overflow-x: auto;
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--chat-code-bg);
+  box-shadow: var(--ma-inset);
   font-size: 0.8rem;
   line-height: 1.5;
   white-space: pre;
@@ -696,8 +703,9 @@
    * sideways because a provider returned a wide result. */
   max-height: 200px;
   overflow: auto;
-  border-radius: 7px;
+  border-radius: 11px;
   background: var(--chat-code-bg);
+  box-shadow: var(--ma-inset-sm);
   color: var(--chat-muted);
   font-size: 0.72rem;
   line-height: 1.5;
