@@ -27,8 +27,38 @@
   max-height: calc(100% - 32px);
 }
 
+/* `max-height: 320px` used to sit here, and it was the clipping: the panel's
+   content is ~626px tall, so a fixed cap truncated it mid-section — and it
+   truncated it at 320px even when the embed had 420px to give. The shell above
+   already caps the panel against the container, and the body is a
+   `flex: 1 1 auto; min-height: 0` child of it, so removing the fixed cap lets
+   the body take whatever the container actually has and scroll the rest. */
 .oid-map-embed .map-controls__body {
-  max-height: 320px;
+  max-height: none;
+}
+
+/* The content still overflows after that — 626px does not fit in any embed
+   this panel appears in — so the truncation needs to *read* as scrollable
+   rather than as broken, which is what it looked like before. A gradient over
+   the last few pixels of the shell does that, and it lives on the shell rather
+   than on the scrolling body so it stays at the bottom edge instead of
+   travelling with the content.
+
+   Only in the embed: on the /map route the panel has the full viewport height
+   and a fade would be claiming there is more below when there is not. */
+.oid-map-embed .map-controls::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 26px;
+  border-radius: inherit;
+  background: linear-gradient(to bottom, transparent, var(--ocean-panel-bg));
+  pointer-events: none;
+}
+
+/* Collapsed, the panel is a 40px square with no content to run out of. */
+.oid-map-embed .map-controls.collapsed::after {
+  display: none;
 }
 
 /* MapLibre's attribution and controls sit tight against the panel's rounded
