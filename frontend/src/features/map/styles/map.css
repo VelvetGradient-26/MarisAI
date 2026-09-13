@@ -281,7 +281,14 @@ body,
   border: 0;
   box-shadow: var(--ocean-shadow);
   border-radius: 18px;
-  width: 248px;
+  /* 16px wider than it was, and the width is spent entirely on the padding
+     and gaps below rather than on the controls. A raised pad throws its
+     shadow ~20px (6px offset + 14px blur), so the 14px padding and 6px grid
+     gap this panel inherited — both sized for flat bordered controls — left
+     every button's shadow either colliding with its neighbour's or clipped by
+     the shell's own `overflow: hidden`. Widening keeps the button hit targets
+     the size they were. */
+  width: 264px;
   color: var(--ocean-text);
   font-size: 13px;
   line-height: 1.4;
@@ -304,7 +311,7 @@ body,
 /* Collapses up/down (like a dropdown) rather than sideways — width stays
    fixed always, only the body's height animates away. */
 .map-controls__body {
-  width: 220px;
+  width: 236px;
   /* The shell above owns the height budget; the body just takes what is left
      of it and scrolls. Previously the body carried its own `100vh - navbar`
      cap, which reserved nothing for the bottom-left furniture — with every
@@ -314,7 +321,7 @@ body,
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 40px 14px 14px;
+  padding: 44px 18px 18px;
   opacity: 1;
   transition: max-height 0.32s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease 0.08s,
     padding 0.32s cubic-bezier(0.4, 0, 0.2, 1);
@@ -888,16 +895,32 @@ body,
   background: color-mix(in srgb, var(--ocean-severity-critical) 16%, transparent);
 }
 
+/* The gap between sections lives on the sections, NOT on the label's
+   margin-top, and that is a correctness fix rather than a preference.
+
+   Every `<h3>` here is the first and only h3 inside its own `<section>` (see
+   MapControls.tsx), and `:first-of-type` is scoped to the element's *parent* —
+   so a `.map-controls h3:first-of-type { margin-top: 0 }` rule intended to
+   de-indent the first label was in fact matching every label and zeroing all
+   of them. Any margin-top set above it was dead. That was invisible while the
+   controls were flat and bordered, and became the whole problem once they were
+   raised pads whose shadows need somewhere to fall.
+
+   `section + section` cannot have that failure mode: it spaces the joins and
+   leaves the first section flush against the body's own padding, which is what
+   the old rule was trying to express. */
+.map-controls__body section + section {
+  margin-top: 18px;
+}
+
+/* Only the bottom margin now — enough that the label is clear of the
+   highlight on the pad it titles. */
 .map-controls h3 {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--ocean-muted);
-  margin: 12px 0 6px;
-}
-
-.map-controls h3:first-of-type {
-  margin-top: 0;
+  margin: 0 0 9px;
 }
 
 .panel-toggle {
@@ -928,7 +951,9 @@ body,
 .basemap-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  /* 6px put two raised buttons close enough that each sat in the other's
+     shadow, which reads as one smudged block rather than two pads. */
+  gap: 10px;
 }
 
 .basemap-grid button {
@@ -991,7 +1016,7 @@ body,
 .layer-dropdown {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 11px;
 }
 
 .layer-dropdown__trigger {
@@ -1746,7 +1771,7 @@ body,
    controls (top-left), legends (top-right), coordinate readout (bottom-left),
    feed status (bottom-centre) and the selected-location panel (bottom-right).
    Their widths are absolute, so below roughly 760px they start intersecting —
-   at 375px the controls (248px) and the legend stack (220px) alone want 468px
+   at 375px the controls (264px) and the legend stack (220px) alone want 484px
    of a 375px screen, and the bottom three all want the same corner.
 
    The fix is to stop treating the phone as a narrow desktop:
@@ -1764,15 +1789,17 @@ body,
 @media (max-width: 720px) {
   .map-controls {
     width: calc(50vw - 20px);
-    max-width: 248px;
+    max-width: 264px;
   }
 
-  /* The body is normally a fixed 220px inside a 248px shell; on mobile the
-     shell is fluid, so the body has to follow it or it overflows. */
+  /* The body is normally a fixed 236px inside a 264px shell; on mobile the
+     shell is fluid, so the body has to follow it or it overflows. The padding
+     stays tighter than desktop's 18px — on a phone the panel is already
+     eating half the width, and the shadows are the thing that gives here. */
   .map-controls__body {
     width: 100%;
     max-height: 34vh;
-    padding: 40px 12px 12px;
+    padding: 44px 14px 14px;
   }
 
   /* Collapsed stays a square button — the fluid width above must not apply,
