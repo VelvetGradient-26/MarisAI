@@ -56,7 +56,7 @@ function readSidebarCollapsed(): boolean {
  */
 export function AssistantPage() {
   const isDark = useThemeStore((s) => s.dark);
-  const { runtime, provenance, error, setError, sessionRef, resetProvenance } =
+  const { runtime, provenance, error, setError, sessionRef, resetProvenance, loadProvenance } =
     useMarisChatRuntime();
 
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
@@ -151,12 +151,43 @@ export function AssistantPage() {
         });
         sessionRef.current = id;
         setActiveSession(id);
-        resetProvenance();
+        // Rehydrate each stored assistant turn's provenance under the same
+        // message id it was imported with. The map preview, forecast charts
+        // and data-calls panel all read `meta.observations` from here, and
+        // the backend already persists them — clearing this instead is what
+        // made a reopened chat's map vanish. Delegations are not stored, so
+        // that list is honestly empty rather than invented.
+        const restored: Record<string, TurnProvenance> = {};
+        stored.forEach((message, index) => {
+          if (message.role !== 'assistant') return;
+          restored[`${id}-${index}`] = {
+            pending: false,
+            tools: message.observations.map(({ tool, arguments: args, agent }) => ({
+              tool,
+              arguments: args,
+              agent,
+            })),
+            delegations: [],
+            meta: {
+              answer: message.content,
+              grounded: message.grounded,
+              unsupported_numbers: message.unsupported_numbers,
+              possible_false_refusal: false,
+              glossary_gaps: [],
+              observations: message.observations,
+              sources: message.sources,
+              delegations: [],
+              truncated: false,
+              session_id: id,
+            },
+          };
+        });
+        loadProvenance(restored);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not open that chat.');
       }
     },
-    [activeSession, runtime, sessionRef, resetProvenance, setError]
+    [activeSession, runtime, sessionRef, loadProvenance, setError]
   );
 
   const remove = useCallback(

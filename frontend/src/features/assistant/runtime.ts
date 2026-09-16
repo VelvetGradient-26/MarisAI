@@ -197,5 +197,8 @@ export function useMarisChatRuntime() {
     setError,
     sessionRef,
     resetProvenance: () => setProvenance({}),
+    // Replaces (not merges) the whole record: used when a stored session is
+    // opened, where the previous thread's entries are meaningless.
+    loadProvenance: (entries: Record<string, TurnProvenance>) => setProvenance(entries),
   };
 }
