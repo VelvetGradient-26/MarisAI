@@ -52,3 +52,30 @@ export async function fetchGeofence(
   }
   return (await response.json()) as GeofenceResponse;
 }
+
+/**
+ * India's maritime boundary lines (treaty, median, court-ruled and 200 NM
+ * limits, from Marine Regions) plus every registered Marine Protected Area
+ * outline — `GET /api/ocean/geofence/boundaries`. Static on the backend, so it
+ * is fetched once per page load and the promise reused.
+ */
+let boundariesPromise: Promise<GeoJSON.FeatureCollection> | null = null;
+
+export function fetchGeofenceBoundaries(): Promise<GeoJSON.FeatureCollection> {
+  if (!boundariesPromise) {
+    boundariesPromise = fetch(url('/api/ocean/geofence/boundaries'))
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Geofence boundaries failed with status ${response.status}`);
+        }
+        return response.json() as Promise<GeoJSON.FeatureCollection>;
+      })
+      .catch((error) => {
+        // A failed fetch must not be cached, or one backend restart would
+        // leave the lines missing until a full page reload.
+        boundariesPromise = null;
+        throw error;
+      });
+  }
+  return boundariesPromise;
+}

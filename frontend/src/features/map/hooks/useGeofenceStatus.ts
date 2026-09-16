@@ -1,23 +1,23 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { MapManager } from '../managers/MapManager';
 import { useMapStore } from '../../../store/mapStore';
 import { useToolsStore } from '../../../store/toolsStore';
 import { useToastStore } from '../../../store/toastStore';
-import { fetchGeofence } from '../api/geofence';
+import { fetchGeofence, fetchGeofenceBoundaries } from '../api/geofence';
 import type { GeofenceResponse } from '../api/geofence';
 import type { CursorCoordinates } from '../types';
 
 export const GEOFENCE_LAYER_ID = 'geofence-status';
 
 /**
- * Draws what `check_geofence` found near the clicked point: each nearby
+ * Draws India's maritime boundaries whenever the layer is on — treaty and
+ * median lines with each neighbour, the 200 NM outer limits and every
+ * registered Marine Protected Area outline, styled like the basemap's country
+ * borders — and, on top, what `check_geofence` found near the clicked point: each nearby
  * Marine Protected Area as its own real box (see the backend's `bounds`
  * field), plus a line to the nearest India-Sri Lanka IMBL point when the
- * query point is near it. The India EEZ boundary itself is deliberately not
- * re-drawn here — the existing "Exclusive Economic Zones" reference layer
- * already renders that from Marine Regions' own WMS, and duplicating a
- * multi-hundred-vertex polygon into every point-check response would bloat
- * the payload for a boundary the map can already show.
+ * query point is near it. The boundary lines come from their own static
+ * endpoint, fetched once, rather than riding in every point-check response.
  *
  * Called from `Map.tsx` like every other data-feed hook; `SelectedLocationPanel`
  * reads the result from `useToolsStore` rather than calling this itself — see
@@ -32,14 +32,63 @@ export function useGeofenceStatus(
   const setGeofence = useToolsStore((s) => s.setGeofence);
   const pushToast = useToastStore((s) => s.push);
   const inFlight = useRef<AbortController | null>(null);
+  const [boundaries, setBoundaries] = useState<GeoJSON.Feature[]>([]);
+
+  // The boundary lines are independent of any click: they draw as soon as the
+  // layer is switched on, like a reference layer.
+  useEffect(() => {
+    if (!active || boundaries.length > 0) return;
+    let cancelled = false;
+    fetchGeofenceBoundaries()
+      .then((collection) => {
+        if (!cancelled) setBoundaries(collection.features);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        pushToast({
+          tone: 'error',
+          title: 'Maritime boundaries unavailable',
+          detail: error instanceof Error ? error.message : 'Could not load boundary lines',
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, boundaries.length]);
+
+  // The click's own features, kept so the boundaries arriving (or the click
+  // result arriving) can redraw both without re-running the point check —
+  // re-running it would fire its toast a second time.
+  const pointFeatures = useRef<GeoJSON.Feature[]>([]);
+  const boundariesRef = useRef(boundaries);
+  boundariesRef.current = boundaries;
 
   useEffect(() => {
     const layerManager = manager?.getLayerManager();
+    if (!ready || !layerManager || !active) return;
+    layerManager.setGeoJsonData(GEOFENCE_LAYER_ID, {
+      type: 'FeatureCollection',
+      features: [...boundaries, ...pointFeatures.current],
+    });
+  }, [manager, ready, active, boundaries]);
+
+  useEffect(() => {
+    const layerManager = manager?.getLayerManager();
+    const draw = (features: GeoJSON.Feature[]) => {
+      pointFeatures.current = features;
+      layerManager?.setGeoJsonData(GEOFENCE_LAYER_ID, {
+        type: 'FeatureCollection',
+        features: [...boundariesRef.current, ...features],
+      });
+    };
     if (!ready || !layerManager || !active || !selectedLocation) {
       setGeofence({ active, loading: false, unavailableReason: null, response: null });
-      layerManager?.setGeoJsonData(GEOFENCE_LAYER_ID, { type: 'FeatureCollection', features: [] });
+      draw([]);
       return;
     }
+    // Boundaries stay on screen while the point check is in flight.
+    draw([]);
 
     inFlight.current?.abort();
     const controller = new AbortController();
@@ -49,7 +98,7 @@ export function useGeofenceStatus(
     fetchGeofence(selectedLocation, controller.signal)
       .then((result) => {
         if (controller.signal.aborted) return;
-        layerManager.setGeoJsonData(GEOFENCE_LAYER_ID, toGeoJson(result, selectedLocation));
+        draw(toGeoJson(result, selectedLocation).features);
         setGeofence({ active, loading: false, unavailableReason: null, response: result });
         const { title, detail } = summariseGeofence(result);
         pushToast({ tone: 'success', title, detail });

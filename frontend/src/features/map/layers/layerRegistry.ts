@@ -992,49 +992,92 @@ function pfzZonesLayer(): GeoJsonLayerDescriptor {
 }
 
 /**
- * What `services/geofencing.py::check()` found near the clicked point: each
- * nearby Marine Protected Area as its real box, and a line to the nearest
- * India-Sri Lanka IMBL point when the query point is near it. Fed by
- * `useGeofenceStatus`. The India EEZ boundary itself is not re-drawn here —
- * see that hook's docstring for why the existing `eez` reference layer
- * already covers it.
+ * India's maritime boundaries (`services/geofencing.py::boundaries()`), drawn
+ * as dashed lines in the manner of the basemap's country borders, plus what
+ * `check()` found near the clicked point: each nearby Marine Protected Area
+ * as its real box, and a line to the nearest India-Sri Lanka IMBL point when
+ * the query point is near it. Fed by `useGeofenceStatus`. Styled by the
+ * `kind` property rather than geometry type — the boundary set mixes
+ * LineString and MultiLineString, and MPA outlines are polygons that must not
+ * pick up the near-click fill.
  */
 const GEOFENCE_MPA_COLOR = '#db7c6f';
 const GEOFENCE_IMBL_COLOR = '#f8fafc';
+// Boundaries with a neighbour (treaty, median, court-ruled) are the ones a
+// vessel is actually warned about, so they carry the brighter stroke; the
+// 200 NM outer limit borders the high seas and takes the accent instead.
+const GEOFENCE_BORDER_COLOR = '#e2e8f0';
+const GEOFENCE_EEZ_LIMIT_COLOR = '#4fd1ff';
+// Same dash and zoom-scaled width as the basemap's `boundary-country`
+// (basemaps/abyss.ts), a touch heavier so the lines hold over raster layers.
+const BOUNDARY_DASH = [3, 2];
+const boundaryWidth = (scale: number) =>
+  ['interpolate', ['linear'], ['zoom'], 1, 0.6 * scale, 8, 1.6 * scale];
 
 function geofenceStatusLayer(): GeoJsonLayerDescriptor {
   return {
     id: 'geofence-status',
-    name: 'Geofence Check (near click)',
+    name: 'Geofence Check & Maritime Boundaries',
     category: 'reference',
     type: 'geojson',
     attribution:
-      'India EEZ / India-Sri Lanka IMBL / Marine Protected Area proximity for the clicked ' +
-      'point (services/geofencing.py). Pure local geometry: EEZ and the IMBL are from Marine ' +
-      'Regions and the 1974/1976 India-Sri Lanka treaty line; Marine Protected Areas remain a ' +
-      'hand-curated list of named sites, not a surveyed footprint — each drawn box is that ' +
-      'site\'s real registered extent, not a simplification. Not a substitute for an official ' +
-      'chart before navigating on it.',
+      'India\'s maritime boundaries — treaty and median lines with each neighbour and the 200 NM ' +
+      'outer limits, from Marine Regions\' eez_boundaries (coastal straight baselines omitted) — ' +
+      'plus every registered Marine Protected Area outline, and for the clicked point its nearby ' +
+      'protected areas and distance to the India-Sri Lanka IMBL (services/geofencing.py). Marine ' +
+      'Protected Areas remain a hand-curated list of named sites, not a surveyed footprint. Not a ' +
+      'substitute for an official chart before navigating on it.',
     defaultOpacity: 0.85,
     defaultVisible: false,
     paintLayers: (opacity: number) => [
       {
+        type: 'line',
+        filter: ['==', ['get', 'kind'], 'eez_limit'],
+        paint: {
+          'line-color': GEOFENCE_EEZ_LIMIT_COLOR,
+          'line-width': boundaryWidth(1),
+          'line-dasharray': BOUNDARY_DASH,
+          'line-opacity': 0.8 * opacity,
+        },
+      },
+      {
+        type: 'line',
+        filter: ['in', ['get', 'kind'], ['literal', ['treaty', 'median_line', 'court_ruling']]],
+        paint: {
+          'line-color': GEOFENCE_BORDER_COLOR,
+          'line-width': boundaryWidth(1.2),
+          'line-dasharray': BOUNDARY_DASH,
+          'line-opacity': 0.9 * opacity,
+        },
+      },
+      {
+        type: 'line',
+        filter: ['==', ['get', 'kind'], 'protected_area_outline'],
+        paint: {
+          'line-color': GEOFENCE_MPA_COLOR,
+          'line-width': boundaryWidth(0.9),
+          'line-dasharray': BOUNDARY_DASH,
+          'line-opacity': 0.8 * opacity,
+        },
+      },
+      // The clicked point's nearby areas: filled, over their outline above.
+      {
         type: 'fill',
-        filter: ['==', ['geometry-type'], 'Polygon'],
+        filter: ['==', ['get', 'kind'], 'protected_area'],
         paint: { 'fill-color': GEOFENCE_MPA_COLOR, 'fill-opacity': 0.18 * opacity },
       },
       {
         type: 'line',
-        filter: ['==', ['geometry-type'], 'Polygon'],
+        filter: ['==', ['get', 'kind'], 'protected_area'],
         paint: { 'line-color': GEOFENCE_MPA_COLOR, 'line-width': 1.4, 'line-opacity': 0.9 * opacity },
       },
       {
         type: 'line',
-        filter: ['==', ['geometry-type'], 'LineString'],
+        filter: ['==', ['get', 'kind'], 'imbl_distance'],
         paint: {
           'line-color': GEOFENCE_IMBL_COLOR,
           'line-width': 1.4,
-          'line-dasharray': [2, 1.5],
+          'line-dasharray': [1, 1.5],
           'line-opacity': 0.9 * opacity,
         },
       },
@@ -1043,7 +1086,9 @@ function geofenceStatusLayer(): GeoJsonLayerDescriptor {
       type: 'categories',
       unit: 'geofence',
       categories: [
-        { label: 'Nearby Marine Protected Area', range: 'real registered box', color: GEOFENCE_MPA_COLOR },
+        { label: 'Maritime border with a neighbour', range: 'treaty / median line', color: GEOFENCE_BORDER_COLOR },
+        { label: 'EEZ outer limit', range: '200 NM', color: GEOFENCE_EEZ_LIMIT_COLOR },
+        { label: 'Marine Protected Area', range: 'filled when near the click', color: GEOFENCE_MPA_COLOR },
         { label: 'Distance to IMBL', range: 'when within 20 km', color: GEOFENCE_IMBL_COLOR },
       ],
     },

@@ -143,3 +143,16 @@ def test_the_imbl_result_carries_the_actual_nearest_point():
     )
     reported_distance = _haversine_km(9.6, 79.4, nearest["latitude"], nearest["longitude"])
     assert reported_distance <= endpoint_distance
+
+
+def test_boundaries_are_seaward_lines_not_coastline():
+    collection = geofencing.boundaries()
+    kinds = {feature["properties"]["kind"] for feature in collection["features"]}
+    assert {"treaty", "eez_limit", "median_line", "protected_area_outline"} <= kinds
+    # The coastal line types are what would trace the shore; they must not ship.
+    line_types = {feature["properties"].get("line_type") for feature in collection["features"]}
+    assert "Straight baseline" not in line_types
+    assert "Connection line" not in line_types
+    assert sum(k == "protected_area_outline" for k in (f["properties"]["kind"] for f in collection["features"])) == len(
+        geofencing.PROTECTED_AREAS
+    )

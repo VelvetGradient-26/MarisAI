@@ -6,10 +6,9 @@ import type { LayerDescriptor, LayerCategory, CustomVectorFieldLayer } from '../
  * the ADR's ambiguous hierarchy diagram. */
 const CATEGORY_ORDER: LayerCategory[] = ['ocean', 'flow', 'ai', 'reference'];
 
-// Cross-referenced below so switching on the geofence check also switches on
-// the layer that draws every boundary it might report proximity to.
-const GEOFENCE_STATUS_LAYER_ID = 'geofence-status';
-const EEZ_LAYER_ID = 'eez';
+// The geofence check used to switch on the `eez` WMS raster here, because it
+// drew no boundaries of its own. It now draws India's maritime boundaries as
+// vector lines, and pulling in the raster would draw them twice in two styles.
 
 /**
  * MapLibre's tile errors read like `AJAXError: Bad Request (400):
@@ -204,20 +203,6 @@ export class LayerManager {
       error: undefined,
     });
     this.emit();
-
-    // The geofence check only draws what's near the clicked point (nearby
-    // MPA boxes, an IMBL distance line) — see geofenceStatusLayer's own
-    // docstring for why the India EEZ outline itself isn't duplicated into
-    // that response. Switching the check on is also switching on "which
-    // boundaries exist at all", so it pulls in the `eez` reference layer
-    // (all EEZ boundaries worldwide, via Marine Regions' WMS) rather than
-    // requiring a second, separate toggle for the map to make sense of what
-    // the check just reported. One-directional: turning the check back off
-    // leaves `eez` as the user left it, since they may have wanted it on its
-    // own.
-    if (id === GEOFENCE_STATUS_LAYER_ID && this.registry.has(EEZ_LAYER_ID)) {
-      this.add(EEZ_LAYER_ID);
-    }
   }
 
   remove(id: string) {

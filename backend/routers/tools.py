@@ -82,6 +82,14 @@ async def get_pfz(
     return pfz.find_zones(lat, lon, radius_km)
 
 
+@router.get("/geofence/boundaries")
+async def get_geofence_boundaries():
+    """India's maritime boundary lines and Marine Protected Area outlines, as
+    GeoJSON, for drawing — static, so the map fetches it once. See
+    `geofencing.boundaries()`."""
+    return geofencing.boundaries()
+
+
 @router.get("/geofence")
 async def get_geofence(
     lat: float = Query(..., ge=-90, le=90),

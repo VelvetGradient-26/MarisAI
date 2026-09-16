@@ -325,3 +325,48 @@ def check(latitude: float, longitude: float) -> dict[str, Any]:
         "nearby_protected_areas": areas,
         "note": ACCURACY_NOTE,
     }
+
+
+# --------------------------------------------------------------------------
+# Drawable boundary lines — for the map, not for `check()`.
+# --------------------------------------------------------------------------
+
+# Deliberately *not* the EEZ polygons above drawn as outlines. Those rings are
+# closed along the low-water line, so stroking them traces the entire
+# coastline, which reads as a coast rather than a border. Marine Regions
+# publishes the seaward limits separately (`eez_boundaries`): the treaty lines
+# with each neighbour, the median lines with Pakistan and Bangladesh, the
+# court-ruled Bay of Bengal segment, and the 200 NM outer limits. Straight
+# baselines (coastal again) and "connection lines" (sub-kilometre stubs) are
+# dropped. Stored as a static file for the same reason `india_eez.json` is:
+# this must keep working with every external provider down.
+with (_GEO_DATA_DIR / "india_maritime_boundaries.json").open() as _boundaries_file:
+    _MARITIME_BOUNDARIES: dict[str, Any] = json.load(_boundaries_file)
+
+
+def boundaries() -> dict[str, Any]:
+    """India's maritime boundary lines plus every registered Marine Protected
+    Area outline, as one GeoJSON FeatureCollection.
+
+    Static for the life of the process, so callers can fetch it once. The IMBL
+    is already inside the Marine Regions set (its four treaty segments), so it
+    is not appended again from `IMBL_INDIA_SRI_LANKA`.
+    """
+    features = list(_MARITIME_BOUNDARIES["features"])
+    for area in PROTECTED_AREAS:
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[list(c) for c in area.polygon.exterior.coords]],
+                },
+                "properties": {"kind": "protected_area_outline", "name": area.name, "state": area.state},
+            }
+        )
+    return {
+        "type": "FeatureCollection",
+        "features": features,
+        "source": _MARITIME_BOUNDARIES["source"],
+        "note": ACCURACY_NOTE,
+    }

@@ -57,6 +57,18 @@
     their result into a small new `store/toolsStore.ts` — a one-way mirror,
     same rule `mapStore` follows for MapLibre state — so `SelectedLocationPanel`
     only *reads* the result rather than re-fetching it itself.
+  - **The geofence layer also draws India's maritime boundaries, click or no
+    click** (2026-09-16), as dashed lines styled after the basemap's
+    `boundary-country`. They come from `GET /api/ocean/geofence/boundaries`
+    (`geofencing.boundaries()`, static file
+    `services/geo_data/india_maritime_boundaries.json`), fetched once.
+    **Not the EEZ polygons from `india_eez.json` stroked as outlines**: those
+    rings close along the low-water line, so outlining them traces the whole
+    coastline. Marine Regions' `eez_boundaries` carries only the seaward
+    lines — treaty, median, court-ruled, 200 NM — and straight baselines and
+    connection lines are dropped from it for the same coastal reason. Turning
+    the layer on used to auto-enable the `eez` WMS raster; that coupling was
+    removed, because it drew the same boundaries a second time in another style.
   - **`geofencing.check()` grew two additive fields for this**:
     `india_sri_lanka_imbl.nearest_point` (the actual projected point on the
     treaty line, not just its distance) and each `nearby_protected_areas[]`
