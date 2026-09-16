@@ -1,5 +1,7 @@
 import asyncio
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
@@ -40,6 +42,10 @@ from routers.vessels import router as vessels_router
 from routers.watch import router as watch_router
 from services import (
     ais,
+    copernicus_chlorophyll,
+    copernicus_currents,
+    copernicus_sst,
+    copernicus_wind,
     crw,
     currents_depth,
     drift,
@@ -72,35 +78,91 @@ WIND_REFRESH_INTERVAL_HOURS = 1
 CURRENTS_REFRESH_INTERVAL_HOURS = 1
 
 
+async def _restore_then_refresh(
+    restore: Callable[[], Awaitable[datetime | None]],
+    refresh: Callable[[], Awaitable[None]],
+    interval_hours: float,
+) -> bool:
+    """Restore a cache from disk, then refetch unless the saved copy is still
+    within its refresh interval. Returns whether a refetch was attempted."""
+    if _is_fresh(await restore(), interval_hours):
+        return False
+    await refresh()
+    return True
+
+
+def _is_fresh(fetched_at: datetime | None, interval_hours: float) -> bool:
+    return fetched_at is not None and datetime.now(timezone.utc) - fetched_at < timedelta(
+        hours=interval_hours
+    )
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # Kick off in the background rather than awaiting: the initial fetch
-    # takes ~10-30s (a full global grid), and the app should start serving
-    # other routes immediately rather than blocking boot on it. Until it
-    # finishes, SST/wind endpoints report "not yet available" (see
-    # CopernicusSstError/CopernicusWindError) instead of erroring.
-    asyncio.create_task(refresh_sst_cache())
+    # Every Copernicus-backed cache first restores its last saved copy from
+    # backend/downloads/copernicus-cache (app/core/disk_cache.py), so a restart
+    # serves the previous data in the first second instead of blank layers for
+    # the length of a global fetch — or for hours, on a day CloudFerro is slow.
+    # A copy younger than the cache's own refresh interval skips the immediate
+    # refetch and waits for the scheduler; an older one is refetched in the
+    # background as before. Fetches run on dedicated threads with a time budget
+    # (app/core/copernicus_io.py), so none of this can starve tile rendering.
+    # Until a cache has either, its endpoints report "not yet available".
+    asyncio.create_task(
+        _restore_then_refresh(
+            copernicus_sst.restore_from_disk, refresh_sst_cache, SST_REFRESH_INTERVAL_HOURS
+        )
+    )
     # Feeds the PFZ ("nearest fishing zone") chat tool, on the same
     # fire-and-forget footing as everything else here.
-    asyncio.create_task(refresh_chlorophyll_cache())
+    asyncio.create_task(
+        _restore_then_refresh(
+            copernicus_chlorophyll.restore_from_disk,
+            refresh_chlorophyll_cache,
+            CHLOROPHYLL_REFRESH_INTERVAL_HOURS,
+        )
+    )
+
     # Wind, surface currents and Stokes drift warm together and then compose the
     # combined drift field, which is summed from all three. Gathered rather than
     # created separately so the compose can be chained onto them: it needs every
     # term present, and the alternative — a scheduled compose that finds a cold
     # cache — leaves the drift layer unavailable for a full interval after boot
-    # for no reason. The three still fetch concurrently, exactly as before.
+    # for no reason. Composed once straight after the restore (so drift is
+    # servable from disk too) and again once any refetch lands.
     async def _warm_flow_fields() -> None:
-        await asyncio.gather(
-            refresh_wind_cache(), refresh_currents_cache(), stokes_drift.refresh_cache()
+        flows = (
+            (copernicus_wind.restore_from_disk, refresh_wind_cache, WIND_REFRESH_INTERVAL_HOURS),
+            (
+                copernicus_currents.restore_from_disk,
+                refresh_currents_cache,
+                CURRENTS_REFRESH_INTERVAL_HOURS,
+            ),
+            (stokes_drift.restore_from_disk, stokes_drift.refresh_cache, stokes_drift.REFRESH_INTERVAL_HOURS),
         )
+        restored = await asyncio.gather(*(restore() for restore, _, _ in flows))
         await drift.refresh_cache()
+        stale = [
+            refresh()
+            for (_, refresh, hours), fetched_at in zip(flows, restored, strict=True)
+            if not _is_fresh(fetched_at, hours)
+        ]
+        if stale:
+            await asyncio.gather(*stale)
+            await drift.refresh_cache()
 
     asyncio.create_task(_warm_flow_fields())
     # The depth-resolved currents, on the same fire-and-forget footing. Depth
     # warms only the levels someone has opened (plus two on the schedule) — six
     # whole-globe fetches per cycle for levels nobody is looking at is most of
     # the cost of the feature for none of its value.
-    asyncio.create_task(currents_depth.refresh_cache())
+    asyncio.create_task(
+        _restore_then_refresh(
+            currents_depth.restore_from_disk,
+            currents_depth.refresh_cache,
+            currents_depth.REFRESH_INTERVAL_HOURS,
+        )
+    )
 
     # The dashboard's caches, on the same fire-and-forget footing. Each
     # service keeps its previous data on a failed refresh and reports itself
@@ -110,7 +172,13 @@ async def lifespan(_app: FastAPI):
     asyncio.create_task(ndbc.refresh_cache())
     asyncio.create_task(crw.refresh_cache())
     asyncio.create_task(gibs.refresh_cache())
-    asyncio.create_task(ocean_state.refresh_cache())
+    asyncio.create_task(
+        _restore_then_refresh(
+            ocean_state.restore_from_disk,
+            ocean_state.refresh_cache,
+            ocean_state.REFRESH_INTERVAL_HOURS,
+        )
+    )
     # Marine heatwaves. Cheap (one griddap request plus a numpy pass) and it
     # degrades to a logged note when no climatology has been built yet, so a
     # fresh clone starts without it rather than failing.

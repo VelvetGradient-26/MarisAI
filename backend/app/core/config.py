@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     # Copernicus Marine
     COPERNICUS_USERNAME: str = ""
     COPERNICUS_PASSWORD: str = ""
+    # Wall-clock budget for one live-cache fetch (app/core/copernicus_io.py).
+    # A normal whole-globe read is 10-60s; this only needs to be well above
+    # that, so a degraded upstream reports "unavailable" instead of hanging.
+    COPERNICUS_FETCH_TIMEOUT_SECONDS: int = 600
+    # Threads reserved for Copernicus network reads, separate from asyncio's
+    # default pool that tile rendering and every other `to_thread` call uses.
+    COPERNICUS_MAX_CONCURRENT_FETCHES: int = 4
 
     # NASA Earthdata
     NASA_BEARER_TOKEN: str = ""

@@ -260,6 +260,12 @@ backend/data/*
 # not state the server writes to itself. See services/docs.py's docstring.
 !backend/data/docs_index.json
 
+# The last good copy of each live Copernicus cache (app/core/disk_cache.py),
+# restored at startup so a restart serves data before the first refetch lands.
+# A root `downloads/` rule above already covers it; named here so removing that
+# rule cannot silently start committing hundreds of MB of grids.
+backend/downloads/
+
 # Forecasting engine artifacts (backend/forecasting/, backend/models/).
 #
 # `backend/models/forecasting/` used to be ignored here on the reasoning that

@@ -30,7 +30,9 @@ from loguru import logger
 from scipy.interpolate import RegularGridInterpolator
 from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 
+from app.core import disk_cache
 from app.core.config import settings
+from app.core.copernicus_io import CopernicusFetchBusy, run_fetch
 from services import vector_field, vector_source
 
 DATASET_ID = "cmems_obs-wind_glo_phy_nrt_l4_0.125deg_PT1H"
@@ -82,6 +84,8 @@ class _WindCache:
     # judging provider health on it reports a working feed as down.
     timestamp: datetime
     fetched_at: datetime
+    # Restored from `app/core/disk_cache.py` rather than fetched by this process.
+    from_disk: bool = False
 
 
 _cache: _WindCache | None = None
@@ -245,37 +249,57 @@ def _fetch_latest_grid() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray
         ds.close()
 
 
+_DISK_KEY = "wind"
+
+
+async def _build_cache(
+    lat: np.ndarray,
+    lon: np.ndarray,
+    u: np.ndarray,
+    v: np.ndarray,
+    timestamp: datetime,
+    fetched_at: datetime,
+    from_disk: bool = False,
+) -> _WindCache:
+    u_interp = vector_field.build_interpolator(lat, lon, u)
+    v_interp = vector_field.build_interpolator(lat, lon, v)
+    texture = await asyncio.to_thread(vector_field.encode, u, v, lat, lon, downsample=_DOWNSAMPLE)
+    return _WindCache(
+        u_interp=u_interp,
+        v_interp=v_interp,
+        lon_min=float(lon[0]),
+        texture=texture,
+        timestamp=timestamp,
+        fetched_at=fetched_at,
+        from_disk=from_disk,
+    )
+
+
 async def refresh_wind_cache() -> None:
     global _cache
     async with _refresh_lock:
-        # Everything here — fetch, interpolator build, PNG encode — is inside
-        # one try/except. Previously only the fetch was guarded, so a failure
-        # in _build_interpolator/_encode_field_png (e.g. a grid shape that
-        # doesn't split evenly into the encoder's downsample blocks, or an
-        # all-NaN slice) escaped uncaught out of a fire-and-forget asyncio
-        # task/scheduler job: asyncio just logs "exception was never
-        # retrieved" and drops it, _cache stays None forever, and every wind
-        # endpoint 502s/503s permanently with nothing actionable in the logs.
         try:
-            lat, lon, u, v, timestamp = await asyncio.to_thread(_fetch_latest_grid)
-            u_interp = vector_field.build_interpolator(lat, lon, u)
-            v_interp = vector_field.build_interpolator(lat, lon, v)
-            texture = await asyncio.to_thread(
-                vector_field.encode, u, v, lat, lon, downsample=_DOWNSAMPLE
-            )
+            lat, lon, u, v, timestamp = await run_fetch(_DISK_KEY, _fetch_latest_grid)
+            fetched_at = datetime.now(UTC)
+            fresh = await _build_cache(lat, lon, u, v, timestamp, fetched_at)
+        except CopernicusFetchBusy as exc:
+            logger.info(f"Wind refresh skipped: {exc}")
+            return
         except Exception:  # noqa: BLE001 - keep stale cache on any failure
             logger.opt(exception=True).warning("Wind refresh failed, keeping previous cache if any")
             return
 
-        _cache = _WindCache(
-            u_interp=u_interp,
-            v_interp=v_interp,
-            lon_min=float(lon[0]),
-            texture=texture,
-            timestamp=timestamp,
-            fetched_at=datetime.now(UTC),
-        )
+        _cache = fresh
         logger.info(f"Wind cache refreshed: timestep {timestamp.isoformat()}")
+
+        # After the new field is live — see copernicus_sst.refresh_sst_cache.
+        # float32 on disk: ~0.01 m/s of real precision, half the file.
+        await asyncio.to_thread(
+            disk_cache.save,
+            _DISK_KEY,
+            {"lat": lat, "lon": lon, "u": u.astype(np.float32), "v": v.astype(np.float32)},
+            {"timestamp": timestamp.isoformat(), "fetched_at": fetched_at.isoformat()},
+        )
 
         try:
             # Folds this timestep into the rolling Ekman-transport history
@@ -288,6 +312,37 @@ async def refresh_wind_cache() -> None:
             wind_history.record(snapshot())
         except Exception:  # noqa: BLE001 - see the comment above
             logger.opt(exception=True).warning("Wind history record failed; wind cache is unaffected")
+
+
+
+async def restore_from_disk() -> datetime | None:
+    """Same contract as `copernicus_sst.restore_from_disk`. Does not append to
+    wind history — that records fetches, and this is not one."""
+    global _cache
+    stored = await asyncio.to_thread(disk_cache.load, _DISK_KEY)
+    if stored is None:
+        return None
+    arrays, meta = stored
+    try:
+        timestamp = datetime.fromisoformat(meta["timestamp"])
+        fetched_at = datetime.fromisoformat(meta["fetched_at"])
+        restored = await _build_cache(
+            arrays["lat"].astype(np.float64),
+            arrays["lon"].astype(np.float64),
+            arrays["u"].astype(np.float64),
+            arrays["v"].astype(np.float64),
+            timestamp,
+            fetched_at,
+            from_disk=True,
+        )
+    except Exception:  # noqa: BLE001
+        logger.opt(exception=True).warning("Wind disk cache unusable; ignoring it")
+        return None
+
+    if _cache is None:
+        _cache = restored
+        logger.info(f"Wind restored from disk: timestep {timestamp.isoformat()}")
+    return fetched_at
 
 
 def _require_cache() -> _WindCache:
@@ -316,6 +371,7 @@ def get_meta() -> dict[str, Any]:
     return {
         "timestamp": cache.timestamp.isoformat(),
         "fetched_at": cache.fetched_at.isoformat(),
+        "from_disk_cache": cache.from_disk,
         "source": SOURCE_LABEL,
         "unit": UNIT,
         "speed_max_legend": SPEED_MAX_LEGEND,

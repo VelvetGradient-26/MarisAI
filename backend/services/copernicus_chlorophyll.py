@@ -33,7 +33,9 @@ from loguru import logger
 from scipy.interpolate import RegularGridInterpolator
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from app.core import disk_cache
 from app.core.config import settings
+from app.core.copernicus_io import CopernicusFetchBusy, run_fetch
 
 DATASET_ID = "cmems_mod_glo_bgc-pft_anfc_0.25deg_P1D-m"
 VARIABLE = "chl"
@@ -56,6 +58,8 @@ class _ChlCache:
     interpolator: RegularGridInterpolator
     timestamp: datetime
     fetched_at: datetime
+    # Restored from `app/core/disk_cache.py` rather than fetched by this process.
+    from_disk: bool = False
 
 
 _cache: _ChlCache | None = None
@@ -107,24 +111,63 @@ def _fetch_latest_grid() -> tuple[np.ndarray, np.ndarray, np.ndarray, datetime]:
         ds.close()
 
 
+_DISK_KEY = "chlorophyll"
+
+
 async def refresh_chlorophyll_cache() -> None:
     global _cache
     async with _refresh_lock:
         try:
-            lat, lon, grid, timestamp = await asyncio.to_thread(_fetch_latest_grid)
+            lat, lon, grid, timestamp = await run_fetch(_DISK_KEY, _fetch_latest_grid)
             interpolator = _build_interpolator(lat, lon, grid)
+        except CopernicusFetchBusy as exc:
+            logger.info(f"Chlorophyll refresh skipped: {exc}")
+            return
         except Exception:  # noqa: BLE001 - keep stale cache on any failure
             logger.opt(exception=True).warning(
                 "Chlorophyll refresh failed, keeping previous cache if any"
             )
             return
 
-        _cache = _ChlCache(
-            interpolator=interpolator,
-            timestamp=timestamp,
-            fetched_at=datetime.now(timezone.utc),
-        )
+        fetched_at = datetime.now(timezone.utc)
+        _cache = _ChlCache(interpolator=interpolator, timestamp=timestamp, fetched_at=fetched_at)
         logger.info(f"Chlorophyll cache refreshed: timestep {timestamp.isoformat()}")
+
+        # After the new grid is live — see copernicus_sst.refresh_sst_cache.
+        await asyncio.to_thread(
+            disk_cache.save,
+            _DISK_KEY,
+            {"lat": lat, "lon": lon, "grid": grid},
+            {"timestamp": timestamp.isoformat(), "fetched_at": fetched_at.isoformat()},
+        )
+
+
+async def restore_from_disk() -> datetime | None:
+    """Same contract as `copernicus_sst.restore_from_disk`."""
+    global _cache
+    stored = await asyncio.to_thread(disk_cache.load, _DISK_KEY)
+    if stored is None:
+        return None
+    arrays, meta = stored
+    try:
+        interpolator = await asyncio.to_thread(
+            _build_interpolator,
+            arrays["lat"].astype(np.float64),
+            arrays["lon"].astype(np.float64),
+            arrays["grid"].astype(np.float32),
+        )
+        timestamp = datetime.fromisoformat(meta["timestamp"])
+        fetched_at = datetime.fromisoformat(meta["fetched_at"])
+    except Exception:  # noqa: BLE001
+        logger.opt(exception=True).warning("Chlorophyll disk cache unusable; ignoring it")
+        return None
+
+    if _cache is None:
+        _cache = _ChlCache(
+            interpolator=interpolator, timestamp=timestamp, fetched_at=fetched_at, from_disk=True
+        )
+        logger.info(f"Chlorophyll restored from disk: timestep {timestamp.isoformat()}")
+    return fetched_at
 
 
 def _require_cache() -> _ChlCache:

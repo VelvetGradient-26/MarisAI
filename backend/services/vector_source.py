@@ -47,7 +47,9 @@ from loguru import logger
 from scipy.interpolate import RegularGridInterpolator
 from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 
+from app.core import disk_cache
 from app.core.config import settings
+from app.core.copernicus_io import CopernicusFetchBusy, run_fetch
 from services import vector_field
 
 _COMPASS_LABELS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
@@ -133,6 +135,8 @@ class _Cache:
     # the requested number. Reported, never rounded silently — a user asking for
     # 100 m and getting 92.3 m should be told which.
     depth_m: float | None = None
+    # Restored from `app/core/disk_cache.py` rather than fetched by this process.
+    from_disk: bool = False
 
 
 @dataclass
@@ -226,6 +230,33 @@ class VectorSource:
 
         return _attempt()
 
+    async def _build_cache(
+        self,
+        lat: np.ndarray,
+        lon: np.ndarray,
+        u: np.ndarray,
+        v: np.ndarray,
+        timestamp: datetime,
+        fetched_at: datetime,
+        depth: float | None,
+        from_disk: bool = False,
+    ) -> _Cache:
+        u_interp = vector_field.build_interpolator(lat, lon, u)
+        v_interp = vector_field.build_interpolator(lat, lon, v)
+        texture = await asyncio.to_thread(
+            vector_field.encode, u, v, lat, lon, downsample=self.spec.downsample
+        )
+        return _Cache(
+            u_interp=u_interp,
+            v_interp=v_interp,
+            lon_min=float(lon[0]),
+            texture=texture,
+            timestamp=timestamp,
+            fetched_at=fetched_at,
+            depth_m=depth,
+            from_disk=from_disk,
+        )
+
     async def refresh(self) -> None:
         """Refetch and re-encode. Never raises, and never clears a good cache.
 
@@ -234,34 +265,70 @@ class VectorSource:
         scheduler task, so an exception escaping the encode step is swallowed by
         asyncio, the cache stays empty forever, and every endpoint 503s
         permanently with nothing actionable logged.
+
+        The fetch runs on `copernicus_io`'s dedicated threads with its time
+        budget; the file on disk is replaced only after the new field is live.
         """
         async with self._lock:
             try:
-                lat, lon, u, v, timestamp, depth = await asyncio.to_thread(self._fetch)
-                u_interp = vector_field.build_interpolator(lat, lon, u)
-                v_interp = vector_field.build_interpolator(lat, lon, v)
-                texture = await asyncio.to_thread(
-                    vector_field.encode, u, v, lat, lon, downsample=self.spec.downsample
-                )
+                lat, lon, u, v, timestamp, depth = await run_fetch(self.spec.key, self._fetch)
+                fetched_at = datetime.now(UTC)
+                fresh = await self._build_cache(lat, lon, u, v, timestamp, fetched_at, depth)
+            except CopernicusFetchBusy as exc:
+                logger.info(f"{self.spec.key} refresh skipped: {exc}")
+                return
             except Exception:  # noqa: BLE001 - keep stale cache on any failure
                 logger.opt(exception=True).warning(
                     f"{self.spec.key} refresh failed, keeping previous cache if any"
                 )
                 return
 
-            self._cache = _Cache(
-                u_interp=u_interp,
-                v_interp=v_interp,
-                lon_min=float(lon[0]),
-                texture=texture,
-                timestamp=timestamp,
-                fetched_at=datetime.now(UTC),
-                depth_m=depth,
-            )
+            self._cache = fresh
             logger.info(
                 f"{self.spec.key} cache refreshed: timestep {timestamp.isoformat()}"
                 + (f" at {depth:.1f} m" if depth is not None else "")
             )
+
+            meta: dict[str, Any] = {
+                "timestamp": timestamp.isoformat(),
+                "fetched_at": fetched_at.isoformat(),
+                "depth_m": depth,
+            }
+            await asyncio.to_thread(
+                disk_cache.save,
+                self.spec.key,
+                {"lat": lat, "lon": lon, "u": u.astype(np.float32), "v": v.astype(np.float32)},
+                meta,
+            )
+
+    async def restore_from_disk(self) -> datetime | None:
+        """Load this field's last saved grid if nothing fresher is cached.
+        Returns the saved copy's original `fetched_at`, or None."""
+        stored = await asyncio.to_thread(disk_cache.load, self.spec.key)
+        if stored is None:
+            return None
+        arrays, meta = stored
+        try:
+            timestamp = datetime.fromisoformat(meta["timestamp"])
+            fetched_at = datetime.fromisoformat(meta["fetched_at"])
+            restored = await self._build_cache(
+                arrays["lat"].astype(np.float64),
+                arrays["lon"].astype(np.float64),
+                arrays["u"].astype(np.float64),
+                arrays["v"].astype(np.float64),
+                timestamp,
+                fetched_at,
+                meta.get("depth_m"),
+                from_disk=True,
+            )
+        except Exception:  # noqa: BLE001 - an unusable file is no cache, not a crash
+            logger.opt(exception=True).warning(f"{self.spec.key} disk cache unusable; ignoring it")
+            return None
+
+        if self._cache is None:
+            self._cache = restored
+            logger.info(f"{self.spec.key} restored from disk: timestep {timestamp.isoformat()}")
+        return fetched_at
 
     # ---------------------------------------------------------------- reads
 
@@ -301,6 +368,7 @@ class VectorSource:
         payload = {
             "timestamp": cache.timestamp.isoformat(),
             "fetched_at": cache.fetched_at.isoformat(),
+            "from_disk_cache": cache.from_disk,
             "source": self.spec.source_label,
             "unit": self.spec.unit,
             "speed_max_legend": self.spec.speed_max_legend,

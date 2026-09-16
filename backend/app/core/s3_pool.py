@@ -47,6 +47,7 @@ from loguru import logger
 # leaving many sockets idle. Pool entries are created on demand — this is a
 # ceiling, not an allocation.
 DEFAULT_MAX_POOL_CONNECTIONS = 32
+CONNECT_TIMEOUT_SECONDS = 10
 
 _applied = False
 
@@ -71,4 +72,12 @@ def widen_s3_connection_pool(size: int = DEFAULT_MAX_POOL_CONNECTIONS) -> None:
         return
 
     defaults["max_pool_connections"] = size
+    # Fail fast on a host that will not accept a connection at all. Only the
+    # *connect* timeout: `read_timeout` stays at botocore's 60s, because a
+    # degraded CloudFerro is thousands of individually slow range requests,
+    # not one hung one, and copernicusmarine retries each of them up to ten
+    # times — a tighter read timeout multiplies into more retries, not less
+    # waiting. The overall budget lives at the caller (copernicus_io.py).
+    if "connect_timeout" in defaults:
+        defaults["connect_timeout"] = CONNECT_TIMEOUT_SECONDS
     _applied = True

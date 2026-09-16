@@ -28,7 +28,9 @@ from PIL import Image
 from scipy.interpolate import RegularGridInterpolator
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from app.core import disk_cache
 from app.core.config import settings
+from app.core.copernicus_io import CopernicusFetchBusy, run_fetch
 from services import sst_anomaly
 from services.colormaps import SST_COLORMAP
 
@@ -59,6 +61,10 @@ class _SstCache:
     fetched_at: datetime
     latitudes: np.ndarray
     longitudes: np.ndarray
+    # True when this grid was restored from `app/core/disk_cache.py` at startup
+    # rather than fetched by this process. `fetched_at` is still the original
+    # fetch time either way.
+    from_disk: bool = False
 
     @property
     def grid(self) -> np.ndarray:
@@ -145,25 +151,75 @@ def _fetch_latest_grid() -> tuple[np.ndarray, np.ndarray, np.ndarray, datetime]:
         ds.close()
 
 
+_DISK_KEY = "sst"
+
+
 async def refresh_sst_cache() -> None:
     global _cache
     async with _refresh_lock:
         try:
-            lat, lon, grid, timestamp = await asyncio.to_thread(_fetch_latest_grid)
+            lat, lon, grid, timestamp = await run_fetch(_DISK_KEY, _fetch_latest_grid)
             interpolator = _build_interpolator(lat, lon, grid)
+        except CopernicusFetchBusy as exc:
+            logger.info(f"SST refresh skipped: {exc}")
+            return
         except Exception:  # noqa: BLE001 - keep stale cache on any failure
             logger.opt(exception=True).warning("SST refresh failed, keeping previous cache if any")
             return
 
+        fetched_at = datetime.now(timezone.utc)
         _cache = _SstCache(
             interpolator=interpolator,
             timestamp=timestamp,
-            fetched_at=datetime.now(timezone.utc),
+            fetched_at=fetched_at,
             latitudes=lat,
             longitudes=lon,
         )
         render_tile.cache_clear()
         logger.info(f"SST cache refreshed: timestep {timestamp.isoformat()}")
+
+        # Only after the new grid is live in memory — the file on disk is
+        # replaced by data this process has already proven it can serve.
+        await asyncio.to_thread(
+            disk_cache.save,
+            _DISK_KEY,
+            {"lat": lat, "lon": lon, "grid": grid},
+            {"timestamp": timestamp.isoformat(), "fetched_at": fetched_at.isoformat()},
+        )
+
+
+async def restore_from_disk() -> datetime | None:
+    """Load the last saved grid, if any, when nothing fresher is cached.
+
+    Returns the saved copy's original `fetched_at`, so the caller can decide
+    whether it is recent enough to skip an immediate refetch."""
+    global _cache
+    stored = await asyncio.to_thread(disk_cache.load, _DISK_KEY)
+    if stored is None:
+        return None
+    arrays, meta = stored
+    try:
+        lat, lon = arrays["lat"].astype(np.float64), arrays["lon"].astype(np.float64)
+        grid = arrays["grid"].astype(np.float32)
+        interpolator = await asyncio.to_thread(_build_interpolator, lat, lon, grid)
+        timestamp = datetime.fromisoformat(meta["timestamp"])
+        fetched_at = datetime.fromisoformat(meta["fetched_at"])
+    except Exception:  # noqa: BLE001 - an unusable file is no cache, not a crash
+        logger.opt(exception=True).warning("SST disk cache unusable; ignoring it")
+        return None
+
+    if _cache is None:
+        _cache = _SstCache(
+            interpolator=interpolator,
+            timestamp=timestamp,
+            fetched_at=fetched_at,
+            latitudes=lat,
+            longitudes=lon,
+            from_disk=True,
+        )
+        render_tile.cache_clear()
+        logger.info(f"SST restored from disk: timestep {timestamp.isoformat()}, fetched {fetched_at.isoformat()}")
+    return fetched_at
 
 
 def _require_cache() -> _SstCache:
@@ -188,6 +244,7 @@ def get_meta() -> dict[str, Any]:
     return {
         "timestamp": cache.timestamp.isoformat(),
         "fetched_at": cache.fetched_at.isoformat(),
+        "from_disk_cache": cache.from_disk,
         "source": SOURCE_LABEL,
         "depth_m": DEPTH_M,
         "unit": "°C",

@@ -34,6 +34,7 @@ a number, and that "still warming" and "failed" must not look alike.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 from typing import Any
 
 from services.vector_source import VectorSource, VectorSourceError, VectorSourceSpec
@@ -118,6 +119,22 @@ async def refresh_cache() -> None:
     """
     for depth in sorted(_requested):
         await _sources[depth].refresh()
+
+
+async def restore_from_disk() -> datetime | None:
+    """Restore every depth with a saved copy, and keep refreshing it.
+
+    A saved level was opened by someone at some point, so it rejoins the
+    refresh set — otherwise a restored level would be served at whatever age
+    it was saved, forever. Returns the *oldest* restored `fetched_at`."""
+    oldest: datetime | None = None
+    for depth in DEPTH_LADDER:
+        fetched_at = await _sources[depth].restore_from_disk()
+        if fetched_at is None:
+            continue
+        _requested.add(depth)
+        oldest = fetched_at if oldest is None else min(oldest, fetched_at)
+    return oldest
 
 
 def _ensure_warming(depth: float) -> None:

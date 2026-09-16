@@ -32,7 +32,9 @@ import numpy as np
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from app.core import disk_cache
 from app.core.config import settings
+from app.core.copernicus_io import CopernicusFetchBusy, run_fetch
 from services.download.providers.copernicus import (
     BGC_BIO_DATASET_ID,
     BGC_PFT_DATASET_ID,
@@ -143,6 +145,8 @@ class _Snapshot:
     fields: dict[str, dict[str, Any]] = field(default_factory=dict)
     fetched_at: datetime | None = None
     latency_ms: float = 0.0
+    # Restored from `app/core/disk_cache.py` rather than fetched by this process.
+    from_disk: bool = False
 
 
 _cache: _Snapshot | None = None
@@ -249,6 +253,13 @@ def _load_all() -> _Snapshot:
     return snapshot
 
 
+_DISK_KEY = "ocean_state"
+
+# Five whole-globe fields read one after another (~80s when healthy), so the
+# budget is the per-fetch one scaled up rather than shared with a single grid.
+_FETCH_BUDGET_MULTIPLIER = 2
+
+
 async def refresh_cache() -> None:
     """Rebuild the snapshot, keeping the previous one on total failure.
 
@@ -258,7 +269,14 @@ async def refresh_cache() -> None:
     global _cache
     async with _refresh_lock:
         try:
-            fresh = await asyncio.to_thread(_load_all)
+            fresh = await run_fetch(
+                _DISK_KEY,
+                _load_all,
+                timeout=settings.COPERNICUS_FETCH_TIMEOUT_SECONDS * _FETCH_BUDGET_MULTIPLIER,
+            )
+        except CopernicusFetchBusy as exc:
+            logger.info(f"Ocean-state refresh skipped: {exc}")
+            return
         except Exception:  # noqa: BLE001
             logger.opt(exception=True).warning(
                 "Ocean-state refresh failed, keeping previous snapshot if any"
@@ -267,6 +285,34 @@ async def refresh_cache() -> None:
 
         _cache = fresh
         logger.info(f"Ocean-state snapshot refreshed: {len(fresh.fields)} fields")
+
+        await asyncio.to_thread(
+            disk_cache.save_json,
+            _DISK_KEY,
+            {
+                "fields": fresh.fields,
+                "fetched_at": fresh.fetched_at.isoformat() if fresh.fetched_at else None,
+                "latency_ms": fresh.latency_ms,
+            },
+        )
+
+
+async def restore_from_disk() -> datetime | None:
+    """Same contract as `copernicus_sst.restore_from_disk`."""
+    global _cache
+    stored = await asyncio.to_thread(disk_cache.load_json, _DISK_KEY)
+    if not stored or not stored.get("fields") or not stored.get("fetched_at"):
+        return None
+    fetched_at = datetime.fromisoformat(stored["fetched_at"])
+    if _cache is None:
+        _cache = _Snapshot(
+            fields=stored["fields"],
+            fetched_at=fetched_at,
+            latency_ms=float(stored.get("latency_ms") or 0.0),
+            from_disk=True,
+        )
+        logger.info(f"Ocean-state snapshot restored from disk: fetched {fetched_at.isoformat()}")
+    return fetched_at
 
 
 def _require_cache() -> _Snapshot:
@@ -300,6 +346,7 @@ def health() -> dict[str, Any]:
         "latency_ms": round(_cache.latency_ms),
         "last_sync": _cache.fetched_at.isoformat(),
         "records": len(_cache.fields),
+        "from_disk_cache": _cache.from_disk,
     }
 
 

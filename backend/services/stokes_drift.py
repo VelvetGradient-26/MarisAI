@@ -84,6 +84,10 @@ async def refresh_cache() -> None:
     await _source.refresh()
 
 
+async def restore_from_disk():
+    return await _source.restore_from_disk()
+
+
 def is_refreshing() -> bool:
     return _source.is_refreshing()
 
