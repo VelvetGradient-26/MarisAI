@@ -23,7 +23,7 @@ RUN uv sync --frozen --no-dev
 FROM python:3.11-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libpq5 curl \
+        libpq5 curl libgomp1 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 1000 appuser
 
