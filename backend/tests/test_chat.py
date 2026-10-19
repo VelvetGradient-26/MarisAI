@@ -1465,3 +1465,69 @@ def test_a_malformed_image_data_url_is_rejected_at_the_request_boundary():
         image="data:image/png;base64,aGVsbG8=",
     )
     assert request.image == "data:image/png;base64,aGVsbG8="
+
+
+@pytest.mark.asyncio
+async def test_client_supplied_assistant_history_does_not_whitelist_numbers(patched):
+    """Without a database the browser's own copy of the conversation is the
+    only history, and it can say anything: an assistant turn from it must not
+    make an invented figure look traced."""
+    patched(ScriptedModel([AIMessage(content="It is still 31.7 C there.")]))
+    history = [
+        {"role": "user", "content": "What is the SST off Kochi?"},
+        {"role": "assistant", "content": "It is 31.7 C."},
+    ]
+
+    reply = await agent.answer("And now?", history)
+
+    assert reply["grounded"] is False
+    assert "31.7" in reply["unsupported_numbers"]
+
+
+def _stored_history(monkeypatch, turns):
+    import uuid
+
+    from services.chat import store
+
+    session = uuid.uuid4()
+
+    async def ensure_session(session_id, client_id, question):
+        return session
+
+    async def history(session_id):
+        return turns
+
+    async def record(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(store, "enabled", lambda: True)
+    monkeypatch.setattr(store, "ensure_session", ensure_session)
+    monkeypatch.setattr(store, "history", history)
+    monkeypatch.setattr(store, "record", record)
+
+
+@pytest.mark.asyncio
+async def test_number_flagged_in_an_earlier_turn_is_still_flagged_when_repeated(patched, monkeypatch):
+    _stored_history(monkeypatch, [
+        {"role": "user", "content": "What is the SST off Kochi?"},
+        {"role": "assistant", "content": "It is 31.7 C.", "unsupported_numbers": ["31.7"]},
+    ])
+    patched(ScriptedModel([AIMessage(content="It is still 31.7 C there.")]))
+
+    reply = await agent.answer("And now?", client_id="test-client-00000000")
+
+    assert reply["grounded"] is False
+    assert "31.7" in reply["unsupported_numbers"]
+
+
+@pytest.mark.asyncio
+async def test_a_traced_earlier_answer_still_permits_its_numbers(patched, monkeypatch):
+    _stored_history(monkeypatch, [
+        {"role": "user", "content": "What is the SST off Kochi?"},
+        {"role": "assistant", "content": "It is 29.4 C.", "unsupported_numbers": []},
+    ])
+    patched(ScriptedModel([AIMessage(content="As I said, 29.4 C.")]))
+
+    reply = await agent.answer("Repeat that?", client_id="test-client-00000000")
+
+    assert reply["grounded"] is True

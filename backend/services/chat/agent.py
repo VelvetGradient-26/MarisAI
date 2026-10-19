@@ -445,6 +445,29 @@ def _documentation_only_turn(ledger: Ledger) -> bool:
     )
 
 
+def _permitted_history_text(prior: list[dict[str, Any]], *, trusted: bool) -> str:
+    """The part of the earlier conversation whose figures may be repeated.
+
+    User turns always count: repeating a number back to the person who gave
+    it is not a fabrication. An assistant turn counts only when it comes from
+    the stored transcript (`trusted`), and then minus its own
+    `unsupported_numbers`, so a figure that was untraced when first said
+    stays untraced when said again. A browser-supplied history (no database)
+    contributes user turns only: it can claim the assistant said anything.
+    """
+    parts: list[str] = []
+    for turn in prior:
+        role = (turn.get("role") or "").lower()
+        content = turn.get("content") or ""
+        if role == "user":
+            parts.append(content)
+        elif trusted and role in {"assistant", "ai"}:
+            for token in turn.get("unsupported_numbers") or []:
+                content = re.sub(rf"(?<![\w.]){re.escape(token)}(?![\d])", " ", content)
+            parts.append(content)
+    return "\n".join(parts)
+
+
 def _ungrounded_numbers(text: str, ledger: Ledger, said: str = "") -> list[str]:
     """Figures in the answer that appear in no tool result.
 
@@ -898,7 +921,7 @@ async def answer(
     shown = "\n".join(
         [
             question,
-            *(turn.get("content", "") for turn in prior),
+            _permitted_history_text(prior, trusted=resolved is not None),
             _SYSTEM_PROMPT,
             *(tool.description for tool in tools),
             *(_schema_prose(tool) for tool in tools),
@@ -1116,7 +1139,7 @@ async def answer_stream(
     shown = "\n".join(
         [
             question,
-            *(turn.get("content", "") for turn in prior),
+            _permitted_history_text(prior, trusted=resolved is not None),
             _SYSTEM_PROMPT,
             *(tool.description for tool in tools),
             *(_schema_prose(tool) for tool in tools),

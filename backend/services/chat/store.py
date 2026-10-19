@@ -91,21 +91,27 @@ async def ensure_session(
         return None
 
 
-async def history(session_id: uuid.UUID | None) -> list[dict[str, str]]:
-    """The stored transcript, oldest-first, bounded to the replay window."""
+async def history(session_id: uuid.UUID | None) -> list[dict[str, Any]]:
+    """The stored transcript, oldest-first, bounded to the replay window.
+
+    Assistant turns carry `unsupported_numbers` (their own grounding verdict)
+    so a later turn cannot treat an earlier untraced figure as traced."""
     if not enabled() or session_id is None:
         return []
     try:
         async with _session_factory()() as db:
             rows = (
                 await db.execute(
-                    select(ChatMessage.role, ChatMessage.content)
+                    select(ChatMessage.role, ChatMessage.content, ChatMessage.unsupported_numbers)
                     .where(ChatMessage.session_id == session_id)
                     .order_by(ChatMessage.seq.desc())
                     .limit(HISTORY_MESSAGES)
                 )
             ).all()
-        return [{"role": role, "content": content} for role, content in reversed(rows)]
+        return [
+            {"role": role, "content": content, "unsupported_numbers": list(unsupported or [])}
+            for role, content, unsupported in reversed(rows)
+        ]
     except SQLAlchemyError:
         logger.exception("could not read chat history; continuing without it")
         return []
