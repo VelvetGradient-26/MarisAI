@@ -38,6 +38,7 @@ from forecasting.evaluator import (
     EvaluationError,
     build_diagnostics,
     compute_metrics,
+    chronological_split,
     rolling_origin_splits,
 )
 from forecasting.feature_engineering import (
@@ -219,6 +220,37 @@ def test_rolling_origin_splits_are_chronological():
     # Training sets expand.
     sizes = [len(split.train) for split in splits]
     assert sizes == sorted(sizes)
+
+
+def _pooled_timestamps(points: int = 24, days: int = 203) -> pd.Series:
+    """A pooled multi-location frame, sorted by time the way trainer.py sorts
+    it: every date appears once per location. 203 days so row-count cutoffs
+    do not happen to land on date boundaries."""
+    dates = pd.date_range("2024-01-01", periods=days, freq="D")
+    return pd.Series(np.repeat(dates.values, points))
+
+
+def test_pooled_frame_embargo_spans_whole_dates():
+    timestamps = _pooled_timestamps()
+    for split in rolling_origin_splits(timestamps, n_splits=5, horizon_steps=7):
+        gap = timestamps.iloc[split.test].min() - timestamps.iloc[split.train].max()
+        assert gap >= pd.Timedelta(days=8), split.name
+
+
+def test_no_date_straddles_train_and_test():
+    timestamps = _pooled_timestamps()
+    for split in rolling_origin_splits(timestamps, n_splits=5, horizon_steps=7):
+        train_dates = set(timestamps.iloc[split.train])
+        test_dates = set(timestamps.iloc[split.test])
+        assert not train_dates & test_dates
+
+
+def test_chronological_split_is_date_based_on_a_pooled_frame():
+    timestamps = _pooled_timestamps()
+    train, test = chronological_split(timestamps, 0.8, 7)
+    gap = timestamps.iloc[test].min() - timestamps.iloc[train].max()
+    assert gap >= pd.Timedelta(days=8)
+    assert not set(timestamps.iloc[train]) & set(timestamps.iloc[test])
 
 
 def test_rolling_origin_rejects_a_series_that_is_too_short():

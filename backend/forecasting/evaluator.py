@@ -71,6 +71,14 @@ def rolling_origin_splits(
     two: a training row at cutoff - 1 has its label at cutoff - 1 + h, inside
     the test period.
 
+    **Cutoffs, windows and the gap count unique timestamps, not rows.** The
+    trainer pools ~24 locations into one frame sorted by time, so one date is
+    ~24 rows: a gap of 7 rows was a third of a day, not 7 days, and a cutoff
+    could split one date between train and test. Counting distinct dates makes
+    the embargo mean what it says on a pooled frame and is identical to the
+    old behaviour on a single series (one row per date). The returned indices
+    are still row positions.
+
     Expanding rather than sliding, because these histories are short (a few
     hundred daily rows per point) and discarding the earliest data to hold the
     window fixed costs more than the non-stationarity it would buy back.
@@ -80,13 +88,15 @@ def rolling_origin_splits(
         raise EvaluationError("cannot split an empty series")
 
     gap = horizon_steps if embargo_steps is None else embargo_steps
-    total = len(stamps)
+    dates = np.sort(stamps.unique())
+    total = len(dates)
+    position = np.searchsorted(dates, stamps.to_numpy())
 
     first_cutoff = int(total * min_train_fraction)
     if first_cutoff <= gap:
         raise EvaluationError(
-            f"series of {total} rows is too short for {n_splits} folds with a "
-            f"{gap}-step embargo — need at least {int((gap + 1) / min_train_fraction)} rows."
+            f"series of {total} dates is too short for {n_splits} folds with a "
+            f"{gap}-step embargo - need at least {int((gap + 1) / min_train_fraction)} dates."
         )
 
     # Cutoff positions spread evenly from the first cutoff to the end, one per
@@ -99,20 +109,20 @@ def rolling_origin_splits(
         train_end = cutoff - gap
         if train_end <= 0 or test_end <= cutoff:
             continue
-        train = np.arange(0, train_end)
-        test = np.arange(cutoff, test_end)
+        train = np.flatnonzero(position < train_end)
+        test = np.flatnonzero((position >= cutoff) & (position < test_end))
         if len(train) == 0 or len(test) == 0:
             continue
         produced += 1
         yield Split(
-            name=f"fold{fold + 1}_{stamps.iloc[cutoff].date()}_{stamps.iloc[test_end - 1].date()}",
+            name=f"fold{fold + 1}_{pd.Timestamp(dates[cutoff]).date()}_{pd.Timestamp(dates[test_end - 1]).date()}",
             train=train,
             test=test,
         )
 
     if produced == 0:
         raise EvaluationError(
-            f"no usable folds from {total} rows with a {gap}-step embargo"
+            f"no usable folds from {total} dates with a {gap}-step embargo"
         )
 
 
@@ -122,12 +132,15 @@ def chronological_split(
     """A single train/holdout cut by time, with the same embargo discipline.
 
     Used for the final fit's honest holdout, where rolling-origin CV has
-    already chosen the model and one clean number is wanted.
+    already chosen the model and one clean number is wanted. Counts unique
+    timestamps, not rows, for the same reason as `rolling_origin_splits`.
     """
-    total = len(timestamps)
-    cutoff = int(total * train_fraction)
+    stamps = pd.to_datetime(pd.Series(timestamps).reset_index(drop=True))
+    dates = np.sort(stamps.unique())
+    position = np.searchsorted(dates, stamps.to_numpy())
+    cutoff = int(len(dates) * train_fraction)
     train_end = max(1, cutoff - embargo_steps)
-    return np.arange(0, train_end), np.arange(cutoff, total)
+    return np.flatnonzero(position < train_end), np.flatnonzero(position >= cutoff)
 
 
 # --------------------------------------------------------------------------
