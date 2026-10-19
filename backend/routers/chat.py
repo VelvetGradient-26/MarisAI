@@ -12,11 +12,12 @@ from __future__ import annotations
 import json
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from services.chat import ChatError, answer, answer_stream, store
+from services.rate_limit import RateLimiter, enforce
 
 logger = logging.getLogger(__name__)
 
@@ -71,8 +72,16 @@ class ChatRequest(BaseModel):
         return value
 
 
+# The most expensive endpoints here: one turn is up to 6 orchestrator rounds
+# plus 5 per specialist, each an LLM call, plus web search. Shared by the JSON
+# and streaming endpoints, and checked before any model call.
+_CHAT_LIMITER = RateLimiter(limit=40, window_seconds=600)
+_CHAT_LIMIT_MESSAGE = "Too many questions in a short time. Please wait a few minutes."
+
+
 @router.post("")
-async def post_chat(request: ChatRequest):
+async def post_chat(request: ChatRequest, http_request: Request):
+    enforce(_CHAT_LIMITER, http_request, _CHAT_LIMIT_MESSAGE)
     try:
         return await answer(
             request.message,
@@ -86,7 +95,7 @@ async def post_chat(request: ChatRequest):
 
 
 @router.post("/stream")
-async def post_chat_stream(request: ChatRequest):
+async def post_chat_stream(request: ChatRequest, http_request: Request):
     """The same turn as `POST /api/v1/chat`, as Server-Sent Events.
 
     Additive: the JSON endpoint above is unchanged and remains the fallback.
@@ -99,6 +108,9 @@ async def post_chat_stream(request: ChatRequest):
     the turn, not merely informational; the alternative, tearing the connection
     down mid-stream, is indistinguishable to the browser from a network drop.
     """
+
+
+    enforce(_CHAT_LIMITER, http_request, _CHAT_LIMIT_MESSAGE)
 
     async def events():
         try:

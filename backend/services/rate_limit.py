@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 
 from fastapi import HTTPException, Request, status
 
+from app.core.config import settings
+
 
 @dataclass
 class _Window:
@@ -78,7 +80,7 @@ def client_key(request: Request) -> str:
     Deployments that terminate TLS at a trusted proxy should run uvicorn with
     --proxy-headers so request.client reflects the real peer.
     """
-    forwarded = request.headers.get("x-forwarded-for")
+    forwarded = request.headers.get("x-forwarded-for") if settings.TRUST_FORWARDED_FOR else None
     if forwarded:
         first = forwarded.split(",")[0].strip()
         if first:

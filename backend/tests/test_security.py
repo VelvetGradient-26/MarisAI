@@ -171,3 +171,65 @@ class TestPublicBaseUrl:
         monkeypatch.setattr(public_url, "_TRANSPORT", httpx.MockTransport(handler))
         public_url.public_base_url.cache_clear()
         assert public_url.public_base_url() == "http://localhost:5173"
+
+
+class TestClientKey:
+    @staticmethod
+    def _request(forwarded: str | None, peer: str = "10.0.0.9"):
+        from starlette.requests import Request
+
+        headers = [(b"x-forwarded-for", forwarded.encode())] if forwarded else []
+        return Request({"type": "http", "headers": headers, "client": (peer, 1234)})
+
+    def test_forwarded_for_is_ignored_when_untrusted(self, monkeypatch):
+        from services import rate_limit
+
+        monkeypatch.setattr(rate_limit.settings, "TRUST_FORWARDED_FOR", False)
+        assert rate_limit.client_key(self._request("1.2.3.4")) == "10.0.0.9"
+
+    def test_forwarded_for_is_used_when_trusted(self, monkeypatch):
+        from services import rate_limit
+
+        monkeypatch.setattr(rate_limit.settings, "TRUST_FORWARDED_FOR", True)
+        assert rate_limit.client_key(self._request("1.2.3.4")) == "1.2.3.4"
+
+
+def test_chat_is_rate_limited(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from fastapi import FastAPI
+
+    from routers import chat as chat_router
+
+    async def fake_answer(*args, **kwargs):
+        return {"answer": "ok"}
+
+    monkeypatch.setattr(chat_router, "answer", fake_answer)
+    chat_router._CHAT_LIMITER._hits.clear()
+    body = {"message": "hi", "client_id": "ratelimit-test-0001"}
+    app = FastAPI()
+    app.include_router(chat_router.router)
+    client = TestClient(app)
+    statuses = [client.post("/api/v1/chat", json=body).status_code for _ in range(41)]
+    limited = client.post("/api/v1/chat", json=body)
+    assert statuses[:40] == [200] * 40
+    assert statuses[40] == 429
+    assert limited.status_code == 429
+    assert int(limited.headers["Retry-After"]) >= 1
+
+
+def test_chat_stream_shares_the_chat_limit(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from routers import chat as chat_router
+
+    chat_router._CHAT_LIMITER._hits.clear()
+    for _ in range(40):
+        chat_router._CHAT_LIMITER.check("testclient")
+    app = FastAPI()
+    app.include_router(chat_router.router)
+    response = TestClient(app).post(
+        "/api/v1/chat/stream", json={"message": "hi", "client_id": "ratelimit-test-0001"}
+    )
+    assert response.status_code == 429
