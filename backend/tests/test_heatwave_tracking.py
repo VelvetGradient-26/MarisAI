@@ -212,3 +212,63 @@ class TestGridChange:
         snap = heatwave_tracking.snapshot(0.0, 0.0)
         assert snap["available"] is True
         assert snap["run_days"] == 0
+
+
+class TestHobdayGaps:
+    """Hobday et al. (2016): events separated by a gap of 2 days or fewer
+    are one event; the gap days count toward its duration."""
+
+    def _advance(self, hot_cold, start="2026-06-01"):
+        lats, lons = (0.0,), (0.0,)
+        values = np.array([25.0 if hot else 19.0 for hot in hot_cold]).reshape(-1, 1, 1)
+        heatwave_tracking.advance(_record(values, lats, lons, start=start), _climatology(lats, lons))
+
+    def test_two_day_gap_joins_one_event(self):
+        self._advance([True] * 6 + [False] * 2 + [True] * 3)
+        snap = heatwave_tracking.snapshot(0.0, 0.0)
+        assert snap["run_days"] == 11
+        assert snap["onset_date"] == "2026-06-01"
+
+    def test_three_day_gap_splits_events(self):
+        self._advance([True] * 6 + [False] * 3 + [True] * 2)
+        snap = heatwave_tracking.snapshot(0.0, 0.0)
+        assert snap["run_days"] == 2
+        assert snap["onset_date"] == "2026-06-10"
+
+    def test_a_gap_before_qualifying_ends_the_run(self):
+        self._advance([True] * 3 + [False] + [True] * 2)
+        assert heatwave_tracking.snapshot(0.0, 0.0)["run_days"] == 2
+
+    def test_missing_calendar_day_counts_as_a_gap(self):
+        self._advance([True] * 6, start="2026-06-01")
+        # 7, 8 and 9 June never arrive: three gap days end the event.
+        self._advance([True] * 2, start="2026-06-10")
+        snap = heatwave_tracking.snapshot(0.0, 0.0)
+        assert snap["run_days"] == 2
+        assert snap["onset_date"] == "2026-06-10"
+
+
+def test_state_survives_a_restart():
+    lats, lons = (0.0,), (0.0,)
+    heatwave_tracking.advance(_record(np.full((8, 1, 1), 25.0), lats, lons), _climatology(lats, lons))
+    before = heatwave_tracking.snapshot(0.0, 0.0)
+    assert heatwave_tracking.save_state() is True
+
+    heatwave_tracking._state = None
+    assert heatwave_tracking.restore_state() is True
+    assert heatwave_tracking.snapshot(0.0, 0.0) == before
+
+
+def test_advance_and_persist_resumes_saved_state_after_a_restart():
+    lats, lons = (0.0,), (0.0,)
+    climatology = _climatology(lats, lons)
+    heatwave_tracking.advance_and_persist(_record(np.full((8, 1, 1), 25.0), lats, lons), climatology)
+
+    heatwave_tracking._state = None  # the process restarted
+    heatwave_tracking.advance_and_persist(
+        _record(np.full((2, 1, 1), 25.0), lats, lons, start="2026-06-09"), climatology
+    )
+
+    snap = heatwave_tracking.snapshot(0.0, 0.0)
+    assert snap["run_days"] == 10
+    assert snap["onset_date"] == "2026-06-01"

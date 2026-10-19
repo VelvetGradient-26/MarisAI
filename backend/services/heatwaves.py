@@ -501,7 +501,7 @@ async def refresh_cache(variable: str = "sea_surface_temperature") -> None:
             # costs no second OISST call. Its own try/except: a tracking
             # failure must not un-cache the field this refresh just produced,
             # since the plain snapshot is the more important of the two.
-            await asyncio.to_thread(heatwave_tracking.advance, record["sst"], climatology)
+            await asyncio.to_thread(heatwave_tracking.advance_and_persist, record["sst"], climatology)
         except Exception as exc:  # noqa: BLE001 - see the docstring above
             logger.warning(f"marine heatwave tracking update failed: {exc}")
 

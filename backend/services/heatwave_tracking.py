@@ -58,8 +58,15 @@ import pandas as pd
 import xarray as xr
 from loguru import logger
 
+from app.core import disk_cache
 from services.climatology import build as climatology_build
 from services.heatwave_common import CATEGORY_NAMES, MIN_DURATION_DAYS, categorize, day_state
+
+# Hobday et al. (2016): two events separated by a gap of this many days or
+# fewer are one event, and the gap days count toward its duration.
+MAX_GAP_DAYS = 2
+
+_DISK_KEY = "heatwave_tracking"
 
 
 def _epoch_days(stamps: pd.DatetimeIndex) -> np.ndarray:
@@ -86,6 +93,7 @@ class _State:
     onset_ordinal: np.ndarray  # int64, epoch-day the current run began; 0 = not in a run
     cumulative_c_days: np.ndarray  # float32, degree-days of exceedance over the current run
     peak_category: np.ndarray  # int8, index into CATEGORY_NAMES; highest reached this run
+    gap_days: np.ndarray  # int16, below-threshold days inside a qualified, still-open run
     last_processed_ordinal: int = 0  # 0 = never processed
     tracking_started_ordinal: int = 0  # 0 = not yet initialised
 
@@ -103,7 +111,49 @@ def _fresh_state(latitude: np.ndarray, longitude: np.ndarray) -> _State:
         onset_ordinal=np.zeros(shape, dtype="int64"),
         cumulative_c_days=np.zeros(shape, dtype="float32"),
         peak_category=np.zeros(shape, dtype="int8"),
+        gap_days=np.zeros(shape, dtype="int16"),
     )
+
+
+def _step(state: _State, above: np.ndarray, exceedance: np.ndarray, multiple: np.ndarray, day: int) -> None:
+    """Fold one calendar day into the per-cell state.
+
+    A qualified run (at least MIN_DURATION_DAYS long) survives up to
+    MAX_GAP_DAYS days below threshold; when it resumes, the gap days are added
+    to its duration. A third gap day, or any below-threshold day before the
+    run qualified, closes it. `above` is False for a missing day or an
+    off-coverage (NaN) cell, so both count as gap days.
+    """
+    qualified = state.run_days >= MIN_DURATION_DAYS
+    resuming = above & (state.gap_days > 0)
+    starting = above & (state.run_days == 0)
+
+    run_days = np.where(
+        above, state.run_days + 1 + np.where(resuming, state.gap_days, 0), state.run_days
+    ).astype("int32")
+    gap_days = np.where(above, 0, np.where(qualified, state.gap_days + 1, 0)).astype("int16")
+    closing = ~above & (~qualified | (gap_days > MAX_GAP_DAYS))
+    run_days = np.where(closing, 0, run_days).astype("int32")
+    gap_days = np.where(closing, 0, gap_days).astype("int16")
+
+    category_today = categorize(multiple, above & (run_days >= MIN_DURATION_DAYS))
+    state.onset_ordinal = np.where(
+        starting, day, np.where(closing, 0, state.onset_ordinal)
+    ).astype("int64")
+    # `exceedance` is only finite and positive where `above` is true (an
+    # off-coverage cell is NaN, and NaN > p90 is False), so this never folds a
+    # NaN or a non-exceeding day in.
+    state.cumulative_c_days = np.where(
+        above, state.cumulative_c_days + exceedance, np.where(closing, 0.0, state.cumulative_c_days)
+    ).astype("float32")
+    state.peak_category = np.where(
+        above,
+        np.maximum(state.peak_category, category_today),
+        np.where(closing, 0, state.peak_category),
+    ).astype("int8")
+    state.run_days = run_days
+    state.gap_days = gap_days
+    state.last_processed_ordinal = int(day)
 
 
 def advance(record: xr.DataArray, climatology: xr.Dataset) -> None:
@@ -160,30 +210,85 @@ def advance(record: xr.DataArray, climatology: xr.Dataset) -> None:
             state.tracking_started_ordinal = int(epoch_day[new_days[0]])
 
         for i in new_days:
+            day = int(epoch_day[i])
+            # Calendar days that never arrived (an archive gap, or refreshes
+            # missed while the server was down) are gap days, not skipped:
+            # walking by array index would join two runs a week apart.
+            if state.last_processed_ordinal:
+                missing = min(day - state.last_processed_ordinal - 1, MAX_GAP_DAYS + 1)
+                nothing = np.zeros(state.run_days.shape, dtype=bool)
+                zeros = np.zeros(state.run_days.shape, dtype="float32")
+                for _ in range(max(missing, 0)):
+                    _step(state, nothing, zeros, np.full(state.run_days.shape, np.nan), state.last_processed_ordinal + 1)
+                state.last_processed_ordinal = day - 1 if missing > 0 else state.last_processed_ordinal
+
             above = values_all[i] > p90_all[i]
             exceedance, multiple = day_state(values_all[i], p90_all[i], mean_all[i])
-
-            starting = above & (state.run_days == 0)
-            new_run_days = np.where(above, state.run_days + 1, 0).astype("int32")
-            qualifies = above & (new_run_days >= MIN_DURATION_DAYS)
-            category_today = categorize(multiple, qualifies)
-
-            state.onset_ordinal = np.where(
-                starting, epoch_day[i], np.where(above, state.onset_ordinal, 0)
-            ).astype("int64")
-            # `exceedance` is only finite and positive where `above` is true
-            # (an off-coverage cell is NaN in `values_all`, and NaN > p90 is
-            # False), so this never folds a NaN or a non-exceeding day in.
-            state.cumulative_c_days = np.where(
-                above, state.cumulative_c_days + exceedance, 0.0
-            ).astype("float32")
-            state.peak_category = np.where(
-                above, np.maximum(state.peak_category, category_today), 0
-            ).astype("int8")
-            state.run_days = new_run_days
-            state.last_processed_ordinal = int(epoch_day[i])
+            _step(state, above, exceedance, multiple, day)
 
         _state = state
+
+
+def save_state() -> bool:
+    """Write the tracked state to the disk cache, so a restart resumes true
+    durations instead of re-censoring every run to the fetch window."""
+    with _lock:
+        state = _state
+    if state is None:
+        return False
+    return disk_cache.save(
+        _DISK_KEY,
+        {
+            "latitude": state.latitude,
+            "longitude": state.longitude,
+            "run_days": state.run_days,
+            "onset_ordinal": state.onset_ordinal,
+            "cumulative_c_days": state.cumulative_c_days,
+            "peak_category": state.peak_category,
+            "gap_days": state.gap_days,
+        },
+        {
+            "last_processed_ordinal": state.last_processed_ordinal,
+            "tracking_started_ordinal": state.tracking_started_ordinal,
+        },
+    )
+
+
+def restore_state() -> bool:
+    """Load the saved state if nothing has been tracked in this process yet."""
+    global _state
+    loaded = disk_cache.load(_DISK_KEY)
+    if loaded is None:
+        return False
+    arrays, meta = loaded
+    try:
+        restored = _State(
+            latitude=arrays["latitude"],
+            longitude=arrays["longitude"],
+            run_days=arrays["run_days"].astype("int32"),
+            onset_ordinal=arrays["onset_ordinal"].astype("int64"),
+            cumulative_c_days=arrays["cumulative_c_days"].astype("float32"),
+            peak_category=arrays["peak_category"].astype("int8"),
+            gap_days=arrays["gap_days"].astype("int16"),
+            last_processed_ordinal=int(meta["last_processed_ordinal"]),
+            tracking_started_ordinal=int(meta["tracking_started_ordinal"]),
+        )
+    except (KeyError, ValueError, TypeError) as exc:
+        logger.warning(f"saved heatwave tracking state is incomplete; starting fresh: {exc}")
+        return False
+    with _lock:
+        if _state is None:
+            _state = restored
+    return True
+
+
+def advance_and_persist(record: xr.DataArray, climatology: xr.Dataset) -> None:
+    """The refresh job's entry point: resume saved state on the first call in
+    a process, fold in the new days, then save."""
+    if not is_available():
+        restore_state()
+    advance(record, climatology)
+    save_state()
 
 
 def is_available() -> bool:
