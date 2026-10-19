@@ -56,7 +56,9 @@ torch==2.13.0
 # The web UI is deliberately not installed. Run it without touching this venv:
 #   uvx --from mlflow mlflow ui --backend-store-uri sqlite:///mlruns.db
 mlflow-skinny==3.6.0
-sqlalchemy>=2.0
+# <2.1: 2.1 removed sqlalchemy.pool.FallbackAsyncAdaptedQueuePool, which
+# mlflow-skinny 3.6.0 imports; a fresh install otherwise breaks tracking.
+sqlalchemy>=2.0,<2.1
 alembic>=1.13
 
 # --- plotting & notebooks --------------------------------------------------

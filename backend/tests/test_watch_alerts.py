@@ -14,6 +14,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from db_guard import requires_database
 
 from services import watch_alerts
 from services.cyclones import CycloneError
@@ -194,9 +195,7 @@ async def test_a_failed_cyclone_check_does_not_block_the_others(monkeypatch: pyt
 # DB-backed: create / confirm / unsubscribe / list / evaluate_and_notify dedup
 # --------------------------------------------------------------------------
 
-pytestmark_db = pytest.mark.skipif(
-    not watch_alerts.enabled(), reason="DATABASE_URL is not configured"
-)
+pytestmark_db = requires_database
 
 
 @pytest.fixture(autouse=True)

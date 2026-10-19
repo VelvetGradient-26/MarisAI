@@ -34,7 +34,7 @@ def _get_engine():
         from app.core.config import settings
         _engine = create_engine(
             _get_sync_database_url(settings.DATABASE_URL),
-            echo=True,
+            echo=settings.DATABASE_ECHO,
             future=True,
         )
     return _engine
@@ -46,7 +46,7 @@ def _get_async_engine():
         from app.core.config import settings
         _async_engine = create_async_engine(
             _get_async_database_url(settings.DATABASE_URL),
-            echo=True,
+            echo=settings.DATABASE_ECHO,
             future=True,
         )
     return _async_engine

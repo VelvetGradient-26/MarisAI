@@ -41,7 +41,7 @@
   - `pages/ChatPage.legacy.tsx` is the previous hand-rolled non-streaming page,
     kept as a reference until the streaming one has run in anger. It still
     works against the unchanged JSON endpoint.
-  - **Two loop levels: a top-level orchestrator delegates to three named
+  - **Two loop levels: a top-level orchestrator delegates to four named
     specialists, each its own smaller bounded loop.** `agent.py`'s
     `MAX_ITERATIONS = 6` bounds the top level; each specialist gets its own
     `orchestrator.SUB_MAX_ITERATIONS = 5` (measured too tight at 4 for
@@ -55,8 +55,10 @@
     inner loop. `Ledger.record` tags every observation with which specialist
     made it, so the grounding check reads correctly regardless of which loop
     produced a number — the multi-agent split does not weaken grounding.
-  - **The three specialists are `ocean_analytics`, `weather_safety`,
-    `geospatial_risk` — split by domain, not by function, and that was a
+  - **The four specialists are `ocean_analytics`, `weather_safety`,
+    `geospatial_risk` and `external_research` (web_search, fetch_webpage,
+    search_scientific_literature; added after this decision for controlled
+    internet tools) — split by domain, not by function, and that was a
     deliberate decision (sihtodo.md item 2, closed 2026-08-26) against the
     guide's suggested planning/risk-assessment/visualization/reporting
     framing.** None of the four functional labels maps cleanly onto one
@@ -181,7 +183,7 @@
     "what does grounded mean") is static, not a live measurement — the same
     reasoning `agent.py` already used to keep the dataset catalog out of a
     tenth specialist tool — so it is bound directly on the top-level model
-    alongside the three `delegate_to_*` tools rather than routed through
+    alongside the four `delegate_to_*` tools rather than routed through
     `orchestrator.run_specialist`. `services/docs.py` word-overlap-searches
     `data/docs_index.json`, a plain-text export of every chapter under
     `frontend/src/pages/docs/chapters/` produced by

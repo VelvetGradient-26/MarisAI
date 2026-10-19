@@ -11,12 +11,11 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from db_guard import requires_database
 
 from services.chat import store
 
-pytestmark = pytest.mark.skipif(
-    not store.enabled(), reason="DATABASE_URL is not configured"
-)
+pytestmark = requires_database
 
 
 @pytest.fixture(autouse=True)

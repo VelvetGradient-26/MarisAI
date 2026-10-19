@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # it. Restoring sign-in means restoring those keys here as well as the
     # modules — the guide lists them.
     DATABASE_URL: str = ""
+    # SQL statement logging. Off: echo=True logged every statement at INFO in
+    # production, drowning the application log. Turn on only to debug queries.
+    DATABASE_ECHO: bool = False
 
     # Where the frontend is served from. Still used for links and redirects
     # even though the OAuth callback that originally motivated it is gone.

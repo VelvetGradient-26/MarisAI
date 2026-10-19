@@ -186,3 +186,17 @@ def test_the_interceptor_is_installed_on_root():
     assert any(isinstance(handler, InterceptHandler) for handler in root.handlers)
     # level=0 on root, so the per-logger levels above are what filter.
     assert root.level == 0
+
+
+def test_database_engines_do_not_echo_sql(monkeypatch):
+    from app.database import session
+
+    monkeypatch.setattr(session, "_engine", None)
+    monkeypatch.setattr(session, "_async_engine", None)
+    monkeypatch.setattr("app.core.config.settings.DATABASE_URL", "postgresql+psycopg2://u:p@localhost:5432/x")
+    try:
+        assert session._get_engine().echo is False
+        assert session._get_async_engine().echo is False
+    finally:
+        session._engine = None
+        session._async_engine = None

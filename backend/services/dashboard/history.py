@@ -41,7 +41,7 @@ import asyncio
 import logging
 import threading
 from collections import deque
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, func, select
@@ -80,7 +80,7 @@ def record(key: str, value: float | None, *, now: datetime | None = None) -> Non
     if value is None or not isinstance(value, (int, float)):
         return
 
-    moment = now or datetime.now(timezone.utc)
+    moment = now or datetime.now(UTC)
     with _lock:
         previous = _last_sample.get(key)
         if previous is not None and moment - previous < MIN_SAMPLE_INTERVAL:
@@ -107,7 +107,7 @@ async def _persist(key: str, value: float, moment: datetime) -> None:
         async with _session_factory()() as db:
             db.add(KpiHistoryPoint(key=key, value=value, recorded_at=moment))
             await db.commit()
-    except SQLAlchemyError:
+    except Exception:  # noqa: BLE001 - a refused connection is OSError, not SQLAlchemyError
         logger.exception("could not persist a KPI history point; the in-process buffer still has it")
 
 

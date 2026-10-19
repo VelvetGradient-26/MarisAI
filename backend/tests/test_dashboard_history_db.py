@@ -10,16 +10,15 @@ up the rows it writes.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
+from db_guard import requires_database
 from sqlalchemy import delete, select
 
 from services.dashboard import history
 
-pytestmark = pytest.mark.skipif(
-    not history.enabled(), reason="DATABASE_URL is not configured"
-)
+pytestmark = requires_database
 
 
 @pytest.fixture(autouse=True)
@@ -57,7 +56,7 @@ async def test_record_persists_in_the_background(key):
     """`record()` is sync, but with a running loop and a configured database it
     still schedules a real write — this is the property the whole feature is
     for: the KPI history is not just held in this process's memory."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     history.record(key, 1.0, now=now)
     # `record()` only *schedules* the write via `loop.create_task`; give it a
     # tick to actually run before checking the database.
@@ -82,7 +81,7 @@ async def test_hydrate_from_db_reloads_after_a_simulated_restart(key):
     """The actual point of this feature: a fresh process (simulated here by
     `history.reset()`, which clears only the in-process buffer) picks the
     sparkline back up from the database rather than starting empty."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     history.record(key, 10.0, now=now)
     history.record(key, 12.0, now=now + history.MIN_SAMPLE_INTERVAL)
     await _drain()
@@ -124,7 +123,7 @@ async def test_prune_db_keeps_only_the_newest_max_points(key):
     in-process ring buffer already enforces, not an unbounded log."""
     from app.models.dashboard import KpiHistoryPoint
 
-    start = datetime.now(timezone.utc)
+    start = datetime.now(UTC)
     extra = 10
     async with history._session_factory()() as db:
         for index in range(history.MAX_POINTS + extra):

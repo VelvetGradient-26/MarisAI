@@ -6,7 +6,7 @@ and the coverage gate that stops a chart requesting a range its product cannot
 serve. Nothing here touches the network — the grids are synthetic.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import numpy as np
@@ -62,7 +62,7 @@ def test_relative_humidity_is_derived_only_when_both_inputs_exist():
 
 def test_observation_timestamps_are_utc_aware():
     first = ndbc.parse_latest_obs(_FEED)[0]
-    assert first.observed_at == datetime(2026, 8, 4, 1, 0, tzinfo=timezone.utc)
+    assert first.observed_at == datetime(2026, 8, 4, 1, 0, tzinfo=UTC)
 
 
 # --------------------------------------------------------------------------
@@ -73,7 +73,7 @@ def test_observation_timestamps_are_utc_aware():
 def _install_ndbc_cache(monkeypatch):
     observations = ndbc.parse_latest_obs(_FEED)
     cache = ndbc._NdbcCache(
-        observations=observations, fetched_at=datetime.now(timezone.utc), latency_ms=12.0
+        observations=observations, fetched_at=datetime.now(UTC), latency_ms=12.0
     )
     monkeypatch.setattr(ndbc, "_cache", cache)
     return cache
@@ -160,8 +160,8 @@ def _synthetic_cache(**overrides):
         "hotspot": np.zeros(shape),
         "baa": np.zeros(shape),
         "seaice": np.full(shape, np.nan),
-        "timestamp": datetime(2026, 8, 2, 12, tzinfo=timezone.utc),
-        "fetched_at": datetime(2026, 8, 4, tzinfo=timezone.utc),
+        "timestamp": datetime(2026, 8, 2, 12, tzinfo=UTC),
+        "fetched_at": datetime(2026, 8, 4, tzinfo=UTC),
         "latency_ms": 1.0,
     }
     fields.update(overrides)
@@ -255,7 +255,7 @@ def test_hotspots_are_declustered(crw_cache):
 
 def test_history_throttles_repeat_samples():
     history.reset()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     history.record("k", 1.0, now=now)
     history.record("k", 2.0, now=now + timedelta(minutes=1))
     assert len(history.series("k")) == 1
@@ -280,7 +280,7 @@ def test_history_ignores_non_numeric_values():
 
 def test_history_is_bounded():
     history.reset()
-    start = datetime.now(timezone.utc)
+    start = datetime.now(UTC)
     for index in range(history.MAX_POINTS + 25):
         history.record("k", float(index), now=start + index * history.MIN_SAMPLE_INTERVAL)
     assert len(history.series("k")) == history.MAX_POINTS
@@ -509,3 +509,22 @@ def test_the_correlation_endpoint_maps_correlation_error_to_400(monkeypatch):
 
     assert response.status_code == 400
     assert "range must be one of" in response.json()["detail"]
+
+
+async def test_kpi_persist_swallows_a_refused_connection(monkeypatch):
+    """A Postgres that refuses connections raises OSError, not SQLAlchemyError;
+    the background write must log it, not leak 'Task exception was never
+    retrieved'."""
+    from datetime import datetime
+
+    from services.dashboard import history
+
+    class _Refusing:
+        async def __aenter__(self):
+            raise OSError("Connect call failed ('127.0.0.1', 5432)")
+
+        async def __aexit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(history, "_session_factory", lambda: (lambda: _Refusing()))
+    await history._persist("sst_mean", 28.1, datetime.now(UTC))
