@@ -56,7 +56,7 @@ def _patch_all_clear(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_no_active_hazards_produces_an_empty_signature(monkeypatch: pytest.MonkeyPatch):
     _patch_all_clear(monkeypatch)
 
-    signature_parts, reasons = await watch_alerts._evaluate_one(_Sub())
+    signature_parts, reasons, _failed = await watch_alerts._evaluate_one(_Sub())
 
     assert signature_parts == []
     assert reasons == []
@@ -81,7 +81,7 @@ async def test_a_severe_weather_alert_is_included(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr(watch_alerts.severe_weather, "check_point", severe)
 
-    signature_parts, reasons = await watch_alerts._evaluate_one(_Sub())
+    signature_parts, reasons, _failed = await watch_alerts._evaluate_one(_Sub())
 
     assert signature_parts == ["severe:https://example.org/alert/1"]
     assert "Thunderstorm" in reasons[0]
@@ -101,7 +101,7 @@ async def test_a_nearby_cyclone_is_included(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(watch_alerts.cyclones, "check_point", cyclone)
 
-    signature_parts, reasons = await watch_alerts._evaluate_one(_Sub())
+    signature_parts, reasons, _failed = await watch_alerts._evaluate_one(_Sub())
 
     assert signature_parts == ["cyclone:MICHAUNG-23"]
     assert "MICHAUNG-23" in reasons[0]
@@ -121,7 +121,7 @@ async def test_a_cyclone_outside_the_watch_radius_is_not_included(monkeypatch: p
 
     monkeypatch.setattr(watch_alerts.cyclones, "check_point", cyclone)
 
-    signature_parts, reasons = await watch_alerts._evaluate_one(_Sub())
+    signature_parts, reasons, _failed = await watch_alerts._evaluate_one(_Sub())
 
     assert signature_parts == []
 
@@ -136,7 +136,7 @@ async def test_bloom_risk_above_threshold_is_included(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(watch_alerts.predictions, "hab_point", bloom)
 
-    signature_parts, reasons = await watch_alerts._evaluate_one(_Sub())
+    signature_parts, reasons, _failed = await watch_alerts._evaluate_one(_Sub())
 
     assert signature_parts == ["bloom"]
     assert "62%" in reasons[0]
@@ -146,7 +146,7 @@ async def test_bloom_risk_above_threshold_is_included(monkeypatch: pytest.Monkey
 async def test_bloom_risk_below_threshold_is_not_included(monkeypatch: pytest.MonkeyPatch):
     _patch_all_clear(monkeypatch)
 
-    signature_parts, _ = await watch_alerts._evaluate_one(_Sub())
+    signature_parts, _, _failed = await watch_alerts._evaluate_one(_Sub())
 
     assert signature_parts == []
 
@@ -171,7 +171,7 @@ async def test_a_failed_severe_weather_check_does_not_block_the_others(
     monkeypatch.setattr(watch_alerts.severe_weather, "check_point", broken_severe)
     monkeypatch.setattr(watch_alerts.cyclones, "check_point", cyclone)
 
-    signature_parts, reasons = await watch_alerts._evaluate_one(_Sub())
+    signature_parts, reasons, _failed = await watch_alerts._evaluate_one(_Sub())
 
     assert signature_parts == ["cyclone:STILL-DETECTED"]
 
@@ -186,7 +186,7 @@ async def test_a_failed_cyclone_check_does_not_block_the_others(monkeypatch: pyt
     monkeypatch.setattr(watch_alerts.cyclones, "check_point", broken_cyclone)
 
     # Should not raise, and severe_weather (clear) still runs.
-    signature_parts, _ = await watch_alerts._evaluate_one(_Sub())
+    signature_parts, _, _failed = await watch_alerts._evaluate_one(_Sub())
     assert signature_parts == []
 
 
@@ -411,5 +411,43 @@ async def test_historical_bloom_export_never_alerts(monkeypatch: pytest.MonkeyPa
                 "is_historical": True}
 
     monkeypatch.setattr(watch_alerts.predictions, "hab_point", bloom)
-    signature_parts, reasons = await watch_alerts._evaluate_one(_Sub())
+    signature_parts, reasons, _failed = await watch_alerts._evaluate_one(_Sub())
     assert "bloom" not in signature_parts
+
+
+def test_failed_feed_keeps_previous_parts():
+    from services import watch_alerts
+
+    stored, new = watch_alerts._next_signature({"severe:https://x/a.xml", "bloom"}, {"bloom"}, {"severe"})
+    assert stored == {"severe:https://x/a.xml", "bloom"}
+    assert new == set()
+
+
+def test_shrinking_alert_set_sends_nothing():
+    from services import watch_alerts
+
+    stored, new = watch_alerts._next_signature({"severe:a", "severe:b"}, {"severe:a"}, set())
+    assert stored == {"severe:a"}
+    assert new == set()
+
+
+def test_new_part_is_emailed():
+    from services import watch_alerts
+
+    stored, new = watch_alerts._next_signature({"severe:a"}, {"severe:a", "cyclone:Test"}, set())
+    assert stored == {"severe:a", "cyclone:Test"}
+    assert new == {"cyclone:Test"}
+
+
+@pytest.mark.asyncio
+async def test_a_failed_severe_feed_is_reported_as_a_failed_kind(monkeypatch: pytest.MonkeyPatch):
+    from services import watch_alerts
+
+    _patch_all_clear(monkeypatch)
+
+    async def broken(lat, lon):
+        raise watch_alerts.SevereWeatherError("down")
+
+    monkeypatch.setattr(watch_alerts.severe_weather, "check_point", broken)
+    _, _, failed = await watch_alerts._evaluate_one(_Sub())
+    assert failed == {"severe"}

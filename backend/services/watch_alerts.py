@@ -391,21 +391,45 @@ async def _cleanup_unconfirmed() -> None:
         logger.exception("could not clean up unconfirmed alert watches")
 
 
-async def _evaluate_one(sub: Any) -> tuple[list[str], list[str]]:
-    """Returns (signature_parts, human-readable reasons) for one subscription.
-    Never raises — each signal's own fetch failure is caught and skipped,
-    matching services/marine_risk.py's per-sub-check degradation, so one
-    dead feed does not block the other signals for this subscription."""
+def _kind(part: str) -> str:
+    return part.split(":", 1)[0]
+
+
+def _next_signature(
+    previous: set[str], current: set[str], failed_kinds: set[str]
+) -> tuple[set[str], set[str]]:
+    """(signature to store, parts that newly appeared).
+
+    A signal whose check failed this run says nothing about whether its
+    conditions ended, so its previous parts are carried over: otherwise a
+    feed outage reads as "all clear" and the same alert is emailed again the
+    moment the feed returns. Only parts that newly appeared are emailed; an
+    alert set shrinking is not news worth an email.
+    """
+    carried = {part for part in previous if _kind(part) in failed_kinds}
+    stored = current | carried
+    return stored, current - previous
+
+
+async def _evaluate_one(sub: Any) -> tuple[list[str], list[str], set[str]]:
+    """Returns (signature_parts, reasons aligned with them, failed signal
+    kinds) for one subscription. Never raises - each signal's own fetch
+    failure is caught and reported as a failed kind, so one dead feed does
+    not block the other signals and does not read as an all-clear."""
     signature_parts: list[str] = []
     reasons: list[str] = []
+    failed: set[str] = set()
 
     try:
         severe = await severe_weather.check_point(sub.latitude, sub.longitude)
         for alert in severe["alerts"]:
             signature_parts.append(f"severe:{alert['url']}")
             reasons.append(f"IMD alert: {alert['event']} ({alert['severity']})")
+        if severe.get("fetch_failures"):
+            failed.add("severe")
     except SevereWeatherError:
         logger.warning("severe-weather check failed for watch %s", sub.id)
+        failed.add("severe")
 
     try:
         cyclone = await cyclones.check_point(sub.latitude, sub.longitude, sub.radius_km)
@@ -418,6 +442,7 @@ async def _evaluate_one(sub: Any) -> tuple[list[str], list[str]]:
             )
     except CycloneError:
         logger.warning("cyclone check failed for watch %s", sub.id)
+        failed.add("cyclone")
 
     try:
         bloom = predictions.hab_point(_BLOOM_HORIZON_DAYS, sub.latitude, sub.longitude)
@@ -434,8 +459,9 @@ async def _evaluate_one(sub: Any) -> tuple[list[str], list[str]]:
             )
     except Exception:  # noqa: BLE001 - hab_point should never raise, but this signal must not take the others down if it somehow does
         logger.exception("bloom-risk check failed for watch %s", sub.id)
+        failed.add("bloom")
 
-    return signature_parts, reasons
+    return signature_parts, reasons, failed
 
 
 async def evaluate_and_notify() -> None:
@@ -446,12 +472,15 @@ async def evaluate_and_notify() -> None:
 
     subs = await _confirmed_subscriptions()
     for sub in subs:
-        signature_parts, reasons = await _evaluate_one(sub)
-        signature = ",".join(sorted(signature_parts))
+        signature_parts, reasons, failed = await _evaluate_one(sub)
+        previous = set(filter(None, (sub.last_alert_signature or "").split(",")))
+        stored, newly = _next_signature(previous, set(signature_parts), failed)
+        signature = ",".join(sorted(stored))
 
         if signature != (sub.last_alert_signature or ""):
-            if signature:
-                await _send_alert_email(sub, reasons)
-            await _update_notification_state(sub.id, signature, notified=bool(signature))
+            new_reasons = [reason for part, reason in zip(signature_parts, reasons) if part in newly]
+            if new_reasons:
+                await _send_alert_email(sub, new_reasons)
+            await _update_notification_state(sub.id, signature, notified=bool(new_reasons))
 
     await _cleanup_unconfirmed()

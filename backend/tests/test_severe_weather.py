@@ -114,11 +114,11 @@ async def test_a_not_yet_started_alert_is_excluded(monkeypatch):
 @pytest.mark.asyncio
 async def test_an_alert_with_no_expires_is_excluded(monkeypatch):
     """CAP requires `expires` on a real alert; a malformed one without it must
-    not be shown forever."""
+    not be shown forever: it lapses 24 h after its onset."""
     _install(
         monkeypatch,
         ["https://x/a.xml"],
-        {"https://x/a.xml": _cap(expires_hours=None)},
+        {"https://x/a.xml": _cap(onset_hours=-25, expires_hours=None)},
     )
 
     payload = await severe_weather.get_active_alerts()
@@ -232,3 +232,74 @@ async def test_imd_alert_expiring_before_target_is_ignored(monkeypatch):
 
     assert (await severe_weather.check_point(20.0, 85.0))["count"] == 1
     assert (await severe_weather.check_point(20.0, 85.0, at=later))["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_alert_without_expires_is_active_for_24h_from_onset(monkeypatch):
+    _install(monkeypatch, ["https://x/a.xml"], {"https://x/a.xml": _cap(onset_hours=-1, expires_hours=None)})
+
+    payload = await severe_weather.get_active_alerts()
+
+    assert payload["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_naive_timestamps_are_read_as_ist(monkeypatch):
+    # IMD is an Indian feed: a timestamp with no offset is IST. Expired an hour
+    # ago in IST, it would still look 4.5 h in the future if read as UTC.
+    ist = timezone(timedelta(hours=5, minutes=30))
+    now_ist = datetime.now(timezone.utc).astimezone(ist).replace(tzinfo=None)
+    xml = _cap(onset_hours=-5, expires_hours=None).replace(
+        "</cap:onset>", "</cap:onset>\n    <cap:expires>" + (now_ist - timedelta(hours=1)).isoformat() + "</cap:expires>"
+    )
+    xml = xml.replace(
+        xml[xml.index("<cap:onset>") + 11 : xml.index("</cap:onset>")],
+        (now_ist - timedelta(hours=5)).isoformat(),
+    )
+    _install(monkeypatch, ["https://x/a.xml"], {"https://x/a.xml": xml})
+
+    payload = await severe_weather.get_active_alerts()
+
+    assert payload["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_alert_without_geometry_is_reported_unlocated(monkeypatch):
+    _install(monkeypatch, ["https://x/a.xml"], {"https://x/a.xml": _cap()})
+
+    result = await severe_weather.check_point(20.0, 85.0)
+
+    assert result["count"] == 0
+    assert len(result["unlocated"]) == 1
+    assert result["unlocated"][0]["area"] == "Odisha"
+
+
+@pytest.mark.asyncio
+async def test_partial_fetch_failure_is_counted(monkeypatch):
+    import httpx
+
+    severe_weather._cache = None
+
+    async def fake_get_text(client, url):
+        if url == severe_weather.RSS_URL:
+            return _rss(["https://x/a.xml", "https://x/b.xml"])
+        if url.endswith("b.xml"):
+            raise httpx.ConnectError("boom")
+        return _cap()
+
+    monkeypatch.setattr(severe_weather, "_get_text", fake_get_text)
+
+    payload = await severe_weather.get_active_alerts()
+
+    assert payload["count"] == 1
+    assert payload["fetch_failures"] == 1
+
+
+@pytest.mark.asyncio
+async def test_more_than_twenty_items_are_all_read(monkeypatch):
+    links = [f"https://x/{i}.xml" for i in range(25)]
+    _install(monkeypatch, links, {link: _cap() for link in links})
+
+    payload = await severe_weather.get_active_alerts()
+
+    assert payload["count"] == 25

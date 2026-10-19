@@ -48,10 +48,11 @@ RSS_URL = "https://cap-sources.s3.amazonaws.com/in-imd-en/rss.xml"
 _TIMEOUT = httpx.Timeout(20.0)
 _CAP_NS = {"cap": "urn:oasis:names:tc:emergency:cap:1.2"}
 
-# The aggregator's RSS has been observed carrying 7 items; fetched generously
-# past that in case it ever carries more, since fetching a handful of small
-# XML files costs nothing.
-_MAX_ITEMS = 20
+# The aggregator's RSS has been observed carrying 7 items. Every item is read
+# (an earlier cap of 20 silently dropped the rest), bounded only by this hard
+# ceiling and fetched a few at a time.
+_MAX_ITEMS_HARD_CAP = 200
+_FETCH_CONCURRENCY = 8
 
 
 class SevereWeatherError(RuntimeError):
@@ -84,14 +85,21 @@ class _Alert:
     circles: list[tuple[float, float, float]] = field(default_factory=list)
 
     def is_active(self, now: datetime) -> bool:
-        # No `expires` means this cannot be judged live or expired, and CAP
-        # requires it on a real "Alert" message — treat a malformed one as
-        # inactive rather than showing it forever.
-        if self.expires is None:
-            return False
+        # CAP requires `expires` on a real "Alert" message. A malformed one
+        # without it is treated as valid for 24 h from its onset: dropping it
+        # would hide a real warning, keeping it would show it forever.
+        expires = self.expires
+        if expires is None:
+            if self.onset is None:
+                return False
+            expires = self.onset + _DEFAULT_VALIDITY
         if self.onset is not None and now < self.onset:
             return False
-        return now <= self.expires
+        return now <= expires
+
+    @property
+    def located(self) -> bool:
+        return bool(self.polygons or self.circles)
 
     def covers(self, latitude: float, longitude: float) -> bool:
         point = Point(longitude, latitude)
@@ -121,6 +129,13 @@ class _Alert:
 class _Entry:
     alerts: list[_Alert]
     stored_at: datetime
+    fetch_failures: int = 0
+
+
+# Validity assumed for an alert that carries no `expires`.
+_DEFAULT_VALIDITY = timedelta(hours=24)
+# IMD timestamps that carry no UTC offset are Indian Standard Time.
+_IST = timezone(timedelta(hours=5, minutes=30))
 
 
 _CACHE_TTL = timedelta(minutes=10)
@@ -128,28 +143,30 @@ _cache: _Entry | None = None
 _lock = threading.Lock()
 
 
-def _cached() -> list[_Alert] | None:
+def _cached() -> _Entry | None:
     with _lock:
         if _cache is None:
             return None
         if datetime.now(timezone.utc) - _cache.stored_at > _CACHE_TTL:
             return None
-        return _cache.alerts
+        return _cache
 
 
-def _store(alerts: list[_Alert]) -> None:
+def _store(alerts: list[_Alert], fetch_failures: int) -> _Entry:
     global _cache
     with _lock:
-        _cache = _Entry(alerts=alerts, stored_at=datetime.now(timezone.utc))
+        _cache = _Entry(alerts=alerts, stored_at=datetime.now(timezone.utc), fetch_failures=fetch_failures)
+        return _cache
 
 
 def _parse_datetime(raw: str | None) -> datetime | None:
     if not raw:
         return None
     try:
-        return datetime.fromisoformat(raw)
+        parsed = datetime.fromisoformat(raw)
     except ValueError:
         return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=_IST)
 
 
 def _parse_circle(raw: str) -> tuple[float, float, float] | None:
@@ -226,7 +243,11 @@ def _parse_alert(xml_text: str, url: str) -> _Alert | None:
         severity=text("severity"),
         urgency=text("urgency"),
         certainty=text("certainty"),
-        onset=_parse_datetime(text("onset") or text("effective")),
+        onset=_parse_datetime(
+            text("onset")
+            or text("effective")
+            or root.findtext("cap:sent", default="", namespaces=_CAP_NS)
+        ),
         expires=_parse_datetime(text("expires")),
         area_desc="; ".join(area_descs),
         polygons=polygons,
@@ -240,7 +261,7 @@ async def _get_text(client: httpx.AsyncClient, url: str) -> str:
     return response.text
 
 
-async def _fetch_alerts() -> list[_Alert]:
+async def _fetch_alerts() -> tuple[list[_Alert], int]:
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             rss_text = await _get_text(client, RSS_URL)
@@ -253,11 +274,15 @@ async def _fetch_alerts() -> list[_Alert]:
                 item_link.text
                 for item_link in rss.findall(".//item/link")
                 if item_link.text
-            ][:_MAX_ITEMS]
+            ][:_MAX_ITEMS_HARD_CAP]
 
-            texts = await asyncio.gather(
-                *(_get_text(client, link) for link in links), return_exceptions=True
-            )
+            semaphore = asyncio.Semaphore(_FETCH_CONCURRENCY)
+
+            async def bounded(link: str) -> str:
+                async with semaphore:
+                    return await _get_text(client, link)
+
+            texts = await asyncio.gather(*(bounded(link) for link in links), return_exceptions=True)
     except httpx.HTTPStatusError as exc:
         raise SevereWeatherError(
             f"The IMD alert feed returned {exc.response.status_code}"
@@ -267,23 +292,24 @@ async def _fetch_alerts() -> list[_Alert]:
         raise SevereWeatherError(f"The IMD alert feed could not be reached: {exc}") from exc
 
     alerts: list[_Alert] = []
+    failures = 0
     for link, text_or_exc in zip(links, texts):
         if isinstance(text_or_exc, BaseException):
             logger.warning(f"IMD CAP alert fetch failed for {link}: {text_or_exc}")
+            failures += 1
             continue
         parsed = _parse_alert(text_or_exc, link)
         if parsed is not None:
             alerts.append(parsed)
-    return alerts
+    return alerts, failures
 
 
-async def _active_alerts() -> list[_Alert]:
+async def _active_alerts() -> _Entry:
     cached = _cached()
     if cached is not None:
         return cached
-    alerts = await _fetch_alerts()
-    _store(alerts)
-    return alerts
+    alerts, failures = await _fetch_alerts()
+    return _store(alerts, failures)
 
 
 async def get_active_alerts() -> dict[str, Any]:
@@ -292,12 +318,13 @@ async def get_active_alerts() -> dict[str, Any]:
     Nationwide — India, land included — since IMD does not scope this feed to
     the coast.
     """
-    alerts = await _active_alerts()
+    entry = await _active_alerts()
     now = datetime.now(timezone.utc)
-    active = [alert.summary() for alert in alerts if alert.is_active(now)]
+    active = [alert.summary() for alert in entry.alerts if alert.is_active(now)]
     return {
         "alerts": active,
         "count": len(active),
+        "fetch_failures": entry.fetch_failures,
         "source": "India Meteorological Department (NWFC), via its public CAP feed",
         "note": (
             "General severe-weather warnings (heavy rain, heatwave, cold wave, "
@@ -314,18 +341,19 @@ async def check_point(
     """IMD severe-weather alerts whose warned area covers one point, active at
     `at` (default now) - so a question about tomorrow morning ignores an alert
     that expires tonight."""
-    alerts = await _active_alerts()
+    entry = await _active_alerts()
     now = at or datetime.now(timezone.utc)
-    covering = [
-        alert.summary()
-        for alert in alerts
-        if alert.is_active(now) and alert.covers(latitude, longitude)
-    ]
-    total_active = sum(1 for alert in alerts if alert.is_active(now))
+    active = [alert for alert in entry.alerts if alert.is_active(now)]
+    covering = [alert.summary() for alert in active if alert.covers(latitude, longitude)]
+    # An alert with no polygon or circle cannot be placed, so it can never be
+    # said to cover (or miss) this point. Listed rather than dropped.
+    unlocated = [alert.summary() for alert in active if not alert.located]
     return {
         "alerts": covering,
         "count": len(covering),
-        "active_nationwide": total_active,
+        "active_nationwide": len(active),
+        "unlocated": unlocated,
+        "fetch_failures": entry.fetch_failures,
         "source": "India Meteorological Department (NWFC), via its public CAP feed",
         "note": (
             "General severe-weather warnings, not a cyclone-track bulletin. "

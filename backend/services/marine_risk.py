@@ -235,6 +235,19 @@ async def assess(
         checked.append("IMD severe-weather alerts")
         level, severe_reasons = _assess_severe_weather(level, severe_result)
         reasons.extend(severe_reasons)
+        failures = int(severe_result.get("fetch_failures") or 0)
+        if failures:
+            could_not_verify.append(
+                f"{failures} IMD alert{'s' if failures != 1 else ''} could not be read from the feed"
+            )
+        unlocated = severe_result.get("unlocated") or []
+        if unlocated:
+            could_not_verify.append(
+                f"{len(unlocated)} active IMD alert{'s' if len(unlocated) != 1 else ''} "
+                f"{'have' if len(unlocated) != 1 else 'has'} no mapped area, so whether "
+                f"{'they cover' if len(unlocated) != 1 else 'it covers'} this point is unknown: "
+                + "; ".join(f"{a.get('event')} ({a.get('area')})" for a in unlocated)
+            )
 
     if isinstance(cyclone_result, BaseException):
         logger.warning(f"assess_marine_risk: cyclone check failed: {cyclone_result}")

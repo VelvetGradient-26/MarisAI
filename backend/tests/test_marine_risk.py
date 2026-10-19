@@ -344,3 +344,18 @@ async def test_chat_tool_passes_the_time_through(monkeypatch):
     assert seen == {"when": "tomorrow_morning", "hours_ahead": None}
     schema = tools.MarineRiskArgs.model_json_schema()
     assert "tomorrow_morning" in str(schema["properties"]["when"])
+
+
+async def test_unreadable_or_unplaceable_imd_alerts_are_not_verified(monkeypatch):
+    _patch_all_clear(monkeypatch)
+
+    async def partial(lat, lon, at=None):
+        return {**_NO_SEVERE_WEATHER, "fetch_failures": 2,
+                "unlocated": [{"event": "Thunderstorm", "area": "Kerala"}]}
+
+    monkeypatch.setattr(marine_risk.severe_weather, "check_point", partial)
+
+    result = await marine_risk.assess(*_FAR_OFFSHORE)
+
+    assert any("2 IMD alerts could not be read" in item for item in result["could_not_verify"])
+    assert any("1 active IMD alert has no mapped area" in item for item in result["could_not_verify"])
