@@ -308,10 +308,14 @@ async def get_active_alerts() -> dict[str, Any]:
     }
 
 
-async def check_point(latitude: float, longitude: float) -> dict[str, Any]:
-    """IMD severe-weather alerts whose warned area covers one point."""
+async def check_point(
+    latitude: float, longitude: float, at: datetime | None = None
+) -> dict[str, Any]:
+    """IMD severe-weather alerts whose warned area covers one point, active at
+    `at` (default now) - so a question about tomorrow morning ignores an alert
+    that expires tonight."""
     alerts = await _active_alerts()
-    now = datetime.now(timezone.utc)
+    now = at or datetime.now(timezone.utc)
     covering = [
         alert.summary()
         for alert in alerts

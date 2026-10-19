@@ -239,7 +239,7 @@ def test_severe_weather_point_endpoint_returns_covering_alerts(monkeypatch, clie
 
 
 def test_risk_endpoint_returns_the_service_payload(monkeypatch, client):
-    async def fake_assess(lat, lon):
+    async def fake_assess(lat, lon, **kwargs):
         return {"latitude": lat, "longitude": lon, "risk_level": "low", "reasons": []}
 
     monkeypatch.setattr(tools_router, "assess_marine_risk", fake_assess)

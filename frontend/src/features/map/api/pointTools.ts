@@ -30,7 +30,11 @@ async function extractErrorMessage(response: Response, fallback: string): Promis
 export interface MarineRiskResponse {
   latitude: number;
   longitude: number;
-  risk_level: 'low' | 'moderate' | 'high' | 'extreme';
+  /** 'unknown': the sea state could not be verified. Never shown as safe. */
+  risk_level: 'unknown' | 'low' | 'moderate' | 'high' | 'extreme';
+  verified: boolean;
+  /** Local hour the verdict describes (forecast hour for a future time). */
+  valid_time: string | null;
   reasons: string[];
   checked: string[];
   could_not_verify: string[];

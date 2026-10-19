@@ -885,6 +885,12 @@ body,
   letter-spacing: 0.03em;
 }
 
+/* Unverified sea state: neutral, so it never reads as the calm teal. */
+.selected-location-panel__risk-badge--unknown {
+  color: var(--ocean-muted);
+  background: color-mix(in srgb, var(--ocean-muted) 16%, transparent);
+}
+
 .selected-location-panel__risk-badge--low {
   color: var(--ocean-route-calm);
   background: color-mix(in srgb, var(--ocean-route-calm) 16%, transparent);

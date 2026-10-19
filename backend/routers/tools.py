@@ -42,6 +42,8 @@ to 502, the same class as `/tide`/`/route`/`/cyclones`.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Query
 
 from services import geofencing, pfz
@@ -188,6 +190,8 @@ async def get_severe_weather_point(
 async def get_marine_risk(
     lat: float = Query(..., ge=-90, le=90),
     lon: float = Query(..., ge=-180, le=180),
+    when: Literal["now", "tonight", "tomorrow_morning", "tomorrow_afternoon", "tomorrow_evening"] = "now",
+    hours_ahead: int | None = Query(None, ge=1, le=72),
 ):
     """Deterministic 'is it safe to venture out' verdict for a point.
 
@@ -196,7 +200,7 @@ async def get_marine_risk(
     failed one into `could_not_verify` rather than failing the whole call —
     see `services/marine_risk.py`.
     """
-    return await assess_marine_risk(lat, lon)
+    return await assess_marine_risk(lat, lon, when=when, hours_ahead=hours_ahead)
 
 
 @router.get("/search")

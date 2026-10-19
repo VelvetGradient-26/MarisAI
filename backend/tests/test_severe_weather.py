@@ -218,3 +218,17 @@ async def test_a_fetch_failure_raises_severe_weather_error(monkeypatch):
 
     with pytest.raises(severe_weather.SevereWeatherError):
         await severe_weather.get_active_alerts()
+
+
+@pytest.mark.asyncio
+async def test_imd_alert_expiring_before_target_is_ignored(monkeypatch):
+    polygon = "19,84 19,86 21,86 21,84 19,84"
+    _install(
+        monkeypatch,
+        ["https://x/a.xml"],
+        {"https://x/a.xml": _cap(polygon=polygon, onset_hours=-1, expires_hours=2)},
+    )
+    later = datetime.now(timezone.utc) + timedelta(hours=5)
+
+    assert (await severe_weather.check_point(20.0, 85.0))["count"] == 1
+    assert (await severe_weather.check_point(20.0, 85.0, at=later))["count"] == 0

@@ -30,25 +30,27 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
 from services import cyclones, geofencing, openmeteo, severe_weather
+from services.openmeteo import When
+from services.sea_state import WAVE_CAUTION_M, WAVE_HAZARD_M, WIND_CAUTION_KMH, WIND_HAZARD_KMH
 
 logger = logging.getLogger(__name__)
 
-RiskLevel = Literal["low", "moderate", "high", "extreme"]
+# "unknown" means the sea state itself could not be verified. It ranks with
+# "low" for escalation, so any real hazard from another check still wins, but
+# it is never reported as "low": a gap in the answer is not evidence of calm.
+RiskLevel = Literal["unknown", "low", "moderate", "high", "extreme"]
 
-_LEVEL_RANK: dict[RiskLevel, int] = {"low": 0, "moderate": 1, "high": 2, "extreme": 3}
+_LEVEL_RANK: dict[RiskLevel, int] = {"unknown": 0, "low": 0, "moderate": 1, "high": 2, "extreme": 3}
 
-# Matches services/routing.py's own `_WAVE_CAUTION_M` / `_WAVE_HAZARD_M` —
-# one definition of "rough water" rather than a second one invented here.
-_WAVE_CAUTION_M = 1.5
-_WAVE_HAZARD_M = 2.5
-
-# Beaufort 6 ("strong breeze", small craft warnings routinely start here) and
-# Beaufort 8 ("gale") in km/h, rounded.
-_WIND_CAUTION_KMH = 40.0
-_WIND_HAZARD_KMH = 62.0
+# One definition of "rough water", shared with services/routing.py.
+_WAVE_CAUTION_M = WAVE_CAUTION_M
+_WAVE_HAZARD_M = WAVE_HAZARD_M
+_WIND_CAUTION_KMH = WIND_CAUTION_KMH
+_WIND_HAZARD_KMH = WIND_HAZARD_KMH
 
 # CAP's own severity vocabulary (IMD's feed uses it directly — see
 # services/severe_weather.py). Anything not in this table — Moderate, Minor,
@@ -136,20 +138,66 @@ def _assess_geofence(level: RiskLevel, geofence: dict[str, Any]) -> tuple[RiskLe
     return level, notes
 
 
-async def assess(latitude: float, longitude: float) -> dict[str, Any]:
-    """Combine live sea conditions, IMD alerts, active cyclones and
-    boundary/MPA proximity into one deterministic risk verdict for a point.
+def _target_utc(conditions: Any, when: When, hours_ahead: int | None, longitude: float) -> datetime:
+    """The instant a future question refers to, for the IMD validity check.
+
+    Taken from the forecast's own resolved local hour when it arrived; if the
+    forecast failed, estimated from the longitude's nominal offset so the
+    alert check still targets roughly the right time.
+    """
+    if isinstance(conditions, dict) and conditions.get("valid_time"):
+        offset = timezone(timedelta(seconds=int(conditions.get("utc_offset_seconds") or 0)))
+        local = datetime.fromisoformat(conditions["valid_time"]).replace(tzinfo=offset)
+        return local.astimezone(timezone.utc)
+    offset = timezone(timedelta(hours=round(longitude / 15)))
+    now_local = datetime.now(timezone.utc).astimezone(offset)
+    return openmeteo.resolve_target(when, hours_ahead, now_local).astimezone(timezone.utc)
+
+
+async def assess(
+    latitude: float,
+    longitude: float,
+    *,
+    when: When = "now",
+    hours_ahead: int | None = None,
+) -> dict[str, Any]:
+    """Combine sea conditions, IMD alerts, active cyclones and boundary/MPA
+    proximity into one deterministic risk verdict for a point, now or at a
+    future local time (`when`, or `hours_ahead` 1-72).
 
     Never raises: each live check is isolated, so one dead upstream degrades
     that one input (recorded in `could_not_verify`) rather than failing the
     whole assessment.
     """
-    conditions_result, severe_result, cyclone_result = await asyncio.gather(
-        openmeteo.get_realtime_ocean_conditions(latitude, longitude),
-        severe_weather.check_point(latitude, longitude),
-        cyclones.check_point(latitude, longitude),
-        return_exceptions=True,
-    )
+    future = hours_ahead is not None or when != "now"
+    if not future:
+        conditions_result, severe_result, cyclone_result = await asyncio.gather(
+            openmeteo.get_realtime_ocean_conditions(latitude, longitude),
+            severe_weather.check_point(latitude, longitude),
+            cyclones.check_point(latitude, longitude),
+            return_exceptions=True,
+        )
+        valid_time = None
+    else:
+        # Sequential on purpose: the forecast resolves the point's local hour,
+        # and the IMD check needs that instant.
+        try:
+            conditions_result = await openmeteo.get_forecast_ocean_conditions(
+                latitude, longitude, when=when, hours_ahead=hours_ahead
+            )
+        except Exception as exc:  # noqa: BLE001 - isolated like the gather above
+            conditions_result = exc
+        target = _target_utc(conditions_result, when, hours_ahead, longitude)
+        valid_time = (
+            conditions_result.get("valid_time")
+            if isinstance(conditions_result, dict)
+            else target.isoformat(timespec="minutes")
+        )
+        severe_result, cyclone_result = await asyncio.gather(
+            severe_weather.check_point(latitude, longitude, at=target),
+            cyclones.check_point(latitude, longitude),
+            return_exceptions=True,
+        )
     # Pure local geometry — never raises, touches no network.
     geofence = geofencing.check(latitude, longitude)
 
@@ -158,12 +206,24 @@ async def assess(latitude: float, longitude: float) -> dict[str, Any]:
     checked: list[str] = []
     could_not_verify: list[str] = []
 
+    conditions_label = "forecast sea/weather conditions" if future else "current sea/weather conditions"
+    sea_state_verified = False
     if isinstance(conditions_result, BaseException):
-        logger.warning(f"assess_marine_risk: current conditions check failed: {conditions_result}")
-        could_not_verify.append(f"current sea/weather conditions ({conditions_result})")
+        logger.warning(f"assess_marine_risk: conditions check failed: {conditions_result}")
+        could_not_verify.append(f"{conditions_label} ({conditions_result})")
         conditions_result = None
     else:
-        checked.append("current sea/weather conditions")
+        checked.append(conditions_label)
+        current = conditions_result.get("current") or {}
+        if valid_time is None:
+            valid_time = current.get("time")
+        sea_state_verified = (
+            current.get("wave_height") is not None or current.get("wind_speed") is not None
+        )
+        if not sea_state_verified:
+            could_not_verify.append(
+                f"{conditions_label}: wave height and wind speed were not reported for this point"
+            )
         level, condition_reasons = _assess_conditions(level, conditions_result)
         reasons.extend(condition_reasons)
 
@@ -189,13 +249,22 @@ async def assess(latitude: float, longitude: float) -> dict[str, Any]:
     level, geofence_reasons = _assess_geofence(level, geofence)
     reasons.extend(geofence_reasons)
 
+    if not sea_state_verified and level == "low":
+        level = "unknown"
+
     if not reasons:
-        reasons.append("no hazard condition crossed a fixed threshold in the checks that ran")
+        reasons.append(
+            "no hazard condition crossed a fixed threshold in the checks that ran"
+            if sea_state_verified
+            else "the sea state could not be verified, so no verdict is given"
+        )
 
     return {
         "latitude": latitude,
         "longitude": longitude,
         "risk_level": level,
+        "verified": sea_state_verified,
+        "valid_time": valid_time,
         "reasons": reasons,
         "checked": checked,
         "could_not_verify": could_not_verify,
@@ -205,7 +274,11 @@ async def assess(latitude: float, longitude: float) -> dict[str, Any]:
         "geofence": geofence,
         "note": (
             "risk_level is computed by a fixed rule table over live checks, not "
-            "generated text — the same conditions always produce the same level. "
+            "generated text - the same conditions always produce the same level. "
+            "'unknown' means the sea state could not be verified, not that it is calm. "
+            "For a future time, conditions are the hourly forecast at valid_time "
+            "(local), IMD alerts are those active then, and cyclones are their last "
+            "reported position. "
             f"Thresholds: wave height {_WAVE_CAUTION_M}/{_WAVE_HAZARD_M} m "
             f"(caution/hazard), wind speed {_WIND_CAUTION_KMH:.0f}/{_WIND_HAZARD_KMH:.0f} "
             "km/h (caution/hazard), any active IMD severe-weather alert covering this "

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any
+from datetime import datetime, timedelta, timezone
+from typing import Any, Literal
 
 import httpx
 
@@ -123,6 +123,115 @@ async def get_realtime_ocean_conditions(latitude: float, longitude: float) -> di
             "provider_name": "DWD",
             "provider_url": "https://www.dwd.de/",
         },
+    }
+
+
+# A future time for a safety question, in words the assistant can pass
+# through without doing time-zone arithmetic itself. Resolved in the point's
+# own local time (Open-Meteo `timezone=auto`), never server or UTC time.
+When = Literal["now", "tonight", "tomorrow_morning", "tomorrow_afternoon", "tomorrow_evening"]
+
+_WHEN_HOUR: dict[str, tuple[int, int]] = {
+    # (days ahead, local hour)
+    "tomorrow_morning": (1, 6),
+    "tomorrow_afternoon": (1, 14),
+    "tomorrow_evening": (1, 18),
+}
+_TONIGHT_HOUR = 21
+FORECAST_DAYS = 4
+MAX_HOURS_AHEAD = 72
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def resolve_target(when: When, hours_ahead: int | None, now_local: datetime) -> datetime:
+    """The local wall-clock hour a question refers to.
+
+    `hours_ahead` (1-72) overrides `when`. The result is on the hour, because
+    the hourly forecast is.
+    """
+    if hours_ahead is not None:
+        target = now_local + timedelta(hours=hours_ahead)
+        return target.replace(minute=0, second=0, microsecond=0)
+    if when == "now":
+        return now_local.replace(minute=0, second=0, microsecond=0)
+    if when == "tonight":
+        target = now_local.replace(hour=_TONIGHT_HOUR, minute=0, second=0, microsecond=0)
+        return target if target > now_local else target + timedelta(days=1)
+    days, hour = _WHEN_HOUR[when]
+    return (now_local + timedelta(days=days)).replace(hour=hour, minute=0, second=0, microsecond=0)
+
+
+def _hourly_value(payload: dict[str, Any], variable: str, stamp: str) -> Any:
+    hourly = payload.get("hourly") or {}
+    times = hourly.get("time") or []
+    values = hourly.get(variable) or []
+    if stamp in times:
+        index = times.index(stamp)
+        if index < len(values):
+            return values[index]
+    return None
+
+
+async def get_forecast_ocean_conditions(
+    latitude: float, longitude: float, *, when: When, hours_ahead: int | None = None
+) -> dict[str, Any]:
+    """Sea state at a future local hour, in the same `current`-shaped block
+    `get_realtime_ocean_conditions` returns, plus `valid_time` (local ISO
+    hour) and the point's `timezone`. A value the forecast does not carry for
+    that hour is None, never a substitute.
+    """
+    common = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "timezone": "auto",
+        "cell_selection": "sea",
+        "forecast_days": FORECAST_DAYS,
+    }
+    async with httpx.AsyncClient(timeout=httpx.Timeout(20.0), follow_redirects=True) as client:
+        marine, weather = await asyncio.gather(
+            _fetch_json(
+                client,
+                MARINE_API_URL,
+                {**common, "hourly": "wave_height,wave_direction,wave_period"},
+                source="Open-Meteo Marine API",
+            ),
+            _fetch_json(
+                client,
+                FORECAST_API_URL,
+                {**common, "hourly": "wind_speed_10m,wind_direction_10m,precipitation,visibility"},
+                source="Open-Meteo Weather API",
+            ),
+        )
+
+    offset = timedelta(seconds=int(weather.get("utc_offset_seconds") or marine.get("utc_offset_seconds") or 0))
+    now_local = _now_utc().astimezone(timezone(offset))
+    target = resolve_target(when, hours_ahead, now_local)
+    stamp = target.strftime("%Y-%m-%dT%H:00")
+
+    return {
+        "requested": {"latitude": latitude, "longitude": longitude},
+        "valid_time": stamp,
+        "utc_offset_seconds": int(offset.total_seconds()),
+        "timezone": weather.get("timezone") or marine.get("timezone"),
+        "fetched_at": _now_utc().isoformat(),
+        "current": {
+            "time": stamp,
+            "wave_height": _hourly_value(marine, "wave_height", stamp),
+            "wave_direction": _hourly_value(marine, "wave_direction", stamp),
+            "wave_period": _hourly_value(marine, "wave_period", stamp),
+            "wind_speed": _hourly_value(weather, "wind_speed_10m", stamp),
+            "wind_direction": _hourly_value(weather, "wind_direction_10m", stamp),
+            "precipitation": _hourly_value(weather, "precipitation", stamp),
+            "visibility": _hourly_value(weather, "visibility", stamp),
+        },
+        "units": {
+            "wave_height": (marine.get("hourly_units") or {}).get("wave_height"),
+            "wind_speed": (weather.get("hourly_units") or {}).get("wind_speed_10m"),
+        },
+        "attribution": {"name": "Open-Meteo", "url": "https://open-meteo.com/"},
     }
 
 

@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
@@ -97,6 +97,20 @@ class PointArgs(BaseModel):
     latitude: float = Field(..., ge=-90, le=90, description="Latitude in degrees north.")
     longitude: float = Field(
         ..., ge=-180, le=180, description="Longitude in degrees east, -180 to 180."
+    )
+
+
+class MarineRiskArgs(PointArgs):
+    when: Literal["now", "tonight", "tomorrow_morning", "tomorrow_afternoon", "tomorrow_evening"] = Field(
+        "now",
+        description=(
+            "When the question is about, in the point's own local time: 'now' "
+            "(default), 'tonight' (21:00), 'tomorrow_morning' (06:00), "
+            "'tomorrow_afternoon' (14:00) or 'tomorrow_evening' (18:00)."
+        ),
+    )
+    hours_ahead: int | None = Field(
+        None, ge=1, le=72, description="Hours from now, for any other future time. Overrides `when`."
     )
 
 
@@ -602,10 +616,12 @@ async def _safe_route(
     )
 
 
-async def _assess_risk(latitude: float, longitude: float) -> dict[str, Any]:
-    from services.marine_risk import assess
+async def _assess_risk(
+    latitude: float, longitude: float, when: str = "now", hours_ahead: int | None = None
+) -> dict[str, Any]:
+    from services import marine_risk
 
-    return await assess(latitude, longitude)
+    return await marine_risk.assess(latitude, longitude, when=when, hours_ahead=hours_ahead)
 
 
 async def _correlate(
@@ -850,14 +866,18 @@ _SPECS: list[tuple[str, str, type[BaseModel], Any]] = [
     ),
     (
         "assess_marine_risk",
-        "Deterministic 'is it safe to go out' verdict for a coordinate: a "
-        "fixed rule table over live sea conditions, IMD severe-weather "
-        "alerts, active cyclones and boundary/Marine Protected Area "
-        "proximity, producing a risk_level (low/moderate/high/extreme) that "
-        "does not vary with how the model phrases it. Prefer this over "
+        "Deterministic 'is it safe to go out' verdict for a coordinate, now or "
+        "at a future time (pass when='tomorrow_morning' for 'tomorrow morning', "
+        "when='tonight' for tonight, or hours_ahead for any other time): a "
+        "fixed rule table over sea conditions (the hourly forecast for a future "
+        "time), IMD severe-weather alerts active then, active cyclones and "
+        "boundary/Marine Protected Area proximity, producing a risk_level "
+        "(unknown/low/moderate/high/extreme) that does not vary with how the "
+        "model phrases it. 'unknown' means the sea state could not be verified; "
+        "never describe it as safe. Always state valid_time. Prefer this over "
         "combining the individual condition/alert tools yourself when the "
         "question is explicitly about safety.",
-        PointArgs,
+        MarineRiskArgs,
         _assess_risk,
     ),
     (
