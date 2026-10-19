@@ -20,6 +20,8 @@ from pathlib import Path
 import xarray as xr
 from loguru import logger
 
+from app.core.netcdf_lock import NETCDF_LOCK
+
 # `backend/models/climatology/<variable>.nc`. `models/` already holds trained
 # artifacts and is already git-tracked through LFS.
 ROOT = Path(__file__).resolve().parents[2] / "models" / "climatology"
@@ -55,7 +57,8 @@ def save(climatology: xr.Dataset, variable: str, root: Path | None = None) -> Pa
     path = climatology_path(variable, root)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".nc.tmp")
-    climatology.to_netcdf(temporary)
+    with NETCDF_LOCK:
+        climatology.to_netcdf(temporary)
     temporary.replace(path)
     logger.info(f"wrote climatology to {path}")
     return path
@@ -69,4 +72,8 @@ def load(variable: str, root: Path | None = None) -> xr.Dataset:
             f"no climatology built for {variable!r} — run "
             f"`python scripts/build_climatology.py --variable {variable}`"
         )
-    return xr.open_dataset(path)
+    # Loaded eagerly (not returned as a lazy handle) so the HDF5 read happens
+    # here, inside the lock, rather than whenever a caller first touches a
+    # variable — see app/core/netcdf_lock.py.
+    with NETCDF_LOCK, xr.open_dataset(path) as handle:
+        return handle.load()

@@ -42,6 +42,7 @@ from typing import Any
 import numpy as np
 import xarray as xr
 
+from app.core.netcdf_lock import NETCDF_LOCK
 from services import field_sampling
 from services.dashboard.copernicus_series import OHC_LAYERS_M, ohc_key
 
@@ -102,7 +103,7 @@ def _load() -> OceanHeatContentField:
             "`python scripts/build_ocean_heat_content_grid.py` first"
         )
     try:
-        with xr.open_dataset(GRID_PATH) as handle:
+        with NETCDF_LOCK, xr.open_dataset(GRID_PATH) as handle:
             dataset = handle.load()
     except Exception as exc:  # xarray raises a range of backend-specific types
         raise OceanHeatContentFieldError(f"could not read {GRID_PATH}: {exc}") from exc

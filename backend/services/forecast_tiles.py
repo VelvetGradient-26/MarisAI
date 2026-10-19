@@ -39,6 +39,7 @@ import numpy as np
 import xarray as xr
 from PIL import Image
 
+from app.core.netcdf_lock import NETCDF_LOCK
 from forecasting.grid_history import ungriddable_reason
 from forecasting.grid_predictor import (
     GRID_DIR,
@@ -146,7 +147,7 @@ def _load_grid(variable: str, directory: str) -> xr.Dataset:
         # Read fully and close the handle, so a scheduled rebuild can replace
         # the file while the API is running — holding it open fails with EACCES
         # on macOS, which is a confusing way to discover a lock.
-        with xr.open_dataset(path) as handle:
+        with NETCDF_LOCK, xr.open_dataset(path) as handle:
             return handle.load()
     except ForecastTileError:
         raise
@@ -576,7 +577,7 @@ def _derive_grid_from_components(variable: str):
             f"{variable} needs the {spec.east} and {spec.north} grids, and at "
             "least one is missing"
         )
-    with xr.open_dataset(east_path) as east, xr.open_dataset(north_path) as north:
+    with NETCDF_LOCK, xr.open_dataset(east_path) as east, xr.open_dataset(north_path) as north:
         return derived.derive_grid(east, north, variable)
 
 

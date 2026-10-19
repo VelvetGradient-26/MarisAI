@@ -49,6 +49,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from app.core.netcdf_lock import NETCDF_LOCK
 from forecasting import ForecastingError, progress
 from forecasting.config import ForecastingConfig, get_config
 from forecasting.feature_engineering import build_features
@@ -564,7 +565,8 @@ def save_grid(dataset: xr.Dataset, variable: str, root: Path | None = None) -> P
     path = grid_path(variable, root)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".nc.tmp")
-    dataset.to_netcdf(temporary)
+    with NETCDF_LOCK:
+        dataset.to_netcdf(temporary)
     temporary.replace(path)
     logger.info(f"wrote forecast grid to {path}")
     return path

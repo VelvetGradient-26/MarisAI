@@ -46,6 +46,7 @@ import xarray as xr
 from PIL import Image
 
 from app.core.config import settings
+from app.core.netcdf_lock import NETCDF_LOCK
 from forecasting.shap_explainer import FeatureContribution, humanise
 from services.colormaps import ColorStop, build_colormap
 from services.field_sampling import Sampler, build_sampler
@@ -134,7 +135,7 @@ def _load_grid(filename: str) -> xr.Dataset:
         # re-export fails outright with EACCES while the API is running, which
         # is a genuinely confusing way to discover a lock. The grids are a few
         # MB, so there is nothing to gain from lazy access anyway.
-        with xr.open_dataset(path) as handle:
+        with NETCDF_LOCK, xr.open_dataset(path) as handle:
             return handle.load()
     except Exception as exc:  # xarray raises a range of backend-specific types
         raise PredictionError(f"could not read prediction grid {filename}: {exc}") from exc

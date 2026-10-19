@@ -33,6 +33,8 @@ import httpx
 import xarray as xr
 from loguru import logger
 
+from app.core.netcdf_lock import NETCDF_LOCK
+
 ERDDAP_URL = "https://coastwatch.pfeg.noaa.gov/erddap/griddap/ncdcOisst21Agg_LonPM180.nc"
 
 # The dataset's own coverage, read off its time axis rather than from the
@@ -227,7 +229,8 @@ def _open(payload: bytes, destination, start: date, end: date) -> xr.Dataset:
     axis — turning a transient server symptom into a permanent bad artifact.
     """
     if destination is None:
-        dataset = _drop_zlev(xr.open_dataset(payload))
+        with NETCDF_LOCK:
+            dataset = _drop_zlev(xr.open_dataset(payload))
         verify_span(dataset, start, end)
         return dataset
 
@@ -235,13 +238,14 @@ def _open(payload: bytes, destination, start: date, end: date) -> xr.Dataset:
     temporary = destination.with_suffix(".nc.tmp")
     temporary.write_bytes(payload)
     try:
-        with xr.open_dataset(temporary) as probe:
+        with NETCDF_LOCK, xr.open_dataset(temporary) as probe:
             verify_span(probe, start, end)
     except Exception:
         temporary.unlink(missing_ok=True)
         raise
     temporary.replace(destination)
-    return _drop_zlev(xr.open_dataset(destination))
+    with NETCDF_LOCK:
+        return _drop_zlev(xr.open_dataset(destination))
 
 
 def _drop_zlev(dataset: xr.Dataset) -> xr.Dataset:
@@ -290,7 +294,10 @@ async def fetch_recent(days: int, *, resolution_deg: float = 1.0) -> xr.Dataset:
     """The dataset's most recent `days` daily fields, whenever they end."""
     query = build_recent_query(days, stride_for(resolution_deg))
     payload = await _get(f"{ERDDAP_URL}?{query}")
-    dataset = _drop_zlev(xr.open_dataset(payload))
+    # Loaded inside the lock: a lazy handle would do its HDF5 reads later,
+    # outside it, which is the race app/core/netcdf_lock.py exists to stop.
+    with NETCDF_LOCK, xr.open_dataset(payload) as handle:
+        dataset = _drop_zlev(handle.load())
     if "time" not in dataset.sizes or int(dataset.sizes["time"]) == 0:
         raise OisstError("OISST returned no recent daily fields")
     return dataset

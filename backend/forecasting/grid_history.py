@@ -87,6 +87,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
+from app.core.netcdf_lock import NETCDF_LOCK
 from forecasting import ForecastingError, progress
 from services.download import catalog
 from services.download.catalog import ProviderSpec
@@ -309,7 +310,7 @@ def _read_cached(path: Path, ttl: timedelta) -> xr.Dataset | None:
     if age > ttl:
         return None
     try:
-        with xr.open_dataset(path) as handle:
+        with NETCDF_LOCK, xr.open_dataset(path) as handle:
             # Read fully and close, exactly as `services/predictions.py` does:
             # holding the handle open blocks the next refresh from replacing the
             # file, which on macOS fails with EACCES.
@@ -369,7 +370,8 @@ def _cache_put(key: str, dataset: xr.Dataset) -> None:
     path = CACHE_DIR / f"{key}.nc"
     try:
         temporary = path.with_suffix(".nc.tmp")
-        dataset.to_netcdf(temporary)
+        with NETCDF_LOCK:
+            dataset.to_netcdf(temporary)
         temporary.replace(path)
     except Exception as exc:  # noqa: BLE001 - caching is an optimisation
         logger.warning(f"could not cache grid to {path.name}: {exc}")
