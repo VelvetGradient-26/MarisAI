@@ -313,3 +313,67 @@ class TestVesselProfile:
 
         assert result["vessel_profile"]["within_fuel_range"] is True
         assert "fuel_range_exceeded_by_km" not in result["vessel_profile"]
+
+
+def test_unknown_hazard_costs_more_than_calm():
+    calm = routing._Hazard(wave_height_m=0.5, wind_speed=10.0)
+    a_calm, b_calm = routing._Node(10.0, 75.0, calm), routing._Node(10.0, 75.1, calm)
+    a_unknown, b_unknown = routing._Node(10.0, 75.0), routing._Node(10.0, 75.1)
+    assert routing._edge_cost(a_unknown, b_unknown) > routing._edge_cost(a_calm, b_calm)
+
+
+@pytest.mark.asyncio
+async def test_wind_gale_marks_route_hazardous(monkeypatch):
+    _install_bathymetry(monkeypatch, is_land=lambda lat, lon: False)
+
+    async def gale(points):
+        return {point: routing._Hazard(wave_height_m=0.5, wind_speed=70.0, wind_speed_unit="km/h") for point in points}
+
+    monkeypatch.setattr(routing, "_fetch_hazard_grid", gale)
+    result = await routing.plan_route(10.0, 75.0, 10.3, 75.3)
+    assert result["hazard_level"] == "hazardous"
+    assert result["max_wind_speed_kmh"] == 70.0
+
+
+@pytest.mark.asyncio
+async def test_wind_in_metres_per_second_is_converted():
+    import httpx
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "marine" in request.url.host:
+            return httpx.Response(200, json={"current": {"wave_height": 0.4}})
+        return httpx.Response(200, json={"current": {"wind_speed_10m": 20.0}, "current_units": {"wind_speed_10m": "m/s"}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        [hazard] = await routing._fetch_hazard_batch(client, [(10.0, 75.0)])
+    assert hazard.wind_speed == pytest.approx(72.0)
+    assert hazard.wind_speed_unit == "km/h"
+
+
+@pytest.mark.asyncio
+async def test_route_never_crosses_a_small_mpa_between_nodes(monkeypatch):
+    # A thin protected strip lying wholly between two grid rows (10.000 and
+    # 10.041 for this box): no node is inside it, so only an edge check can
+    # stop a path from stepping straight across.
+    strip = geofencing.ProtectedArea(
+        "Test strip", "Test", geofencing.Polygon([(69.0, 10.012), (72.0, 10.012), (72.0, 10.028), (69.0, 10.028)])
+    )
+    monkeypatch.setattr(geofencing, "PROTECTED_AREAS", [strip])
+    _install_bathymetry(monkeypatch, is_land=lambda lat, lon: False)
+    _install_hazard(monkeypatch)
+
+    with pytest.raises(routing.RoutingError):
+        await routing.plan_route(10.2, 70.5, 9.8, 70.5)
+
+
+@pytest.mark.asyncio
+async def test_route_from_a_port_inside_the_imbl_band_still_plans(monkeypatch):
+    # Dhanushkodi (tip of Rameswaram island) sits within the 20 km IMBL band; the user's own endpoint is
+    # trusted, so the route must still leave it.
+    assert geofencing.check(9.18, 79.42)["india_sri_lanka_imbl"]["near"]
+    _install_bathymetry(monkeypatch, is_land=lambda lat, lon: False)
+    _install_hazard(monkeypatch)
+
+    result = await routing.plan_route(9.18, 79.42, 8.78, 78.40)
+
+    assert result["distance_km"] > 0

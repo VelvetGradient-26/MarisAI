@@ -72,6 +72,7 @@ from pathlib import Path
 from typing import Any
 
 from shapely.geometry import LineString, MultiPolygon, Point, Polygon
+from shapely.ops import nearest_points
 
 EARTH_RADIUS_KM = 6371.0088
 
@@ -340,6 +341,24 @@ def check(latitude: float, longitude: float) -> dict[str, Any]:
 # baselines (coastal again) and "connection lines" (sub-kilometre stubs) are
 # dropped. Stored as a static file for the same reason `india_eez.json` is:
 # this must keep working with every external provider down.
+def segment_restricted(a: tuple[float, float], b: tuple[float, float]) -> bool:
+    """Whether the straight segment a-b (each (lat, lon)) enters a registered
+    Marine Protected Area or comes within PROXIMITY_THRESHOLD_KM of the
+    India-Sri Lanka IMBL.
+
+    `check()` answers for a point; a route needs the whole edge between two
+    grid nodes, which can step clean over a small MPA box or the IMBL band
+    when the grid is coarser than either. Distance to the IMBL is measured
+    between the planar nearest points, then converted with haversine, the
+    same approximation `check()` makes.
+    """
+    line = LineString([(a[1], a[0]), (b[1], b[0])])
+    if any(area.polygon.intersects(line) for area in PROTECTED_AREAS):
+        return True
+    on_line, on_imbl = nearest_points(line, IMBL_INDIA_SRI_LANKA)
+    return _haversine_km(on_line.y, on_line.x, on_imbl.y, on_imbl.x) <= PROXIMITY_THRESHOLD_KM
+
+
 with (_GEO_DATA_DIR / "india_maritime_boundaries.json").open() as _boundaries_file:
     _MARITIME_BOUNDARIES: dict[str, Any] = json.load(_boundaries_file)
 

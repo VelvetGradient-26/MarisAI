@@ -847,7 +847,8 @@ _SPECS: list[tuple[str, str, type[BaseModel], Any]] = [
         "hazard grid — land, the IMBL and Marine Protected Areas are "
         "excluded from the search outright (the route cannot cross them, "
         "not merely flagged after the fact) and the path prefers lower wave "
-        "height when a calmer detour exists. May report that no route could "
+        "height and wind speed when a calmer detour exists (wind in km/h; "
+        "hazard_level 'unknown' means part of the path had no data). May report that no route could "
         "be planned if the points are too enclosed or a detour would exceed "
         "the search area.",
         RouteArgs,

@@ -156,3 +156,12 @@ def test_boundaries_are_seaward_lines_not_coastline():
     assert sum(k == "protected_area_outline" for k in (f["properties"]["kind"] for f in collection["features"])) == len(
         geofencing.PROTECTED_AREAS
     )
+
+
+def test_segment_crossing_imbl_is_restricted():
+    # Straight across Palk Strait, India to Sri Lanka.
+    assert geofencing.segment_restricted((9.6, 79.2), (9.6, 80.0))
+
+
+def test_segment_far_offshore_is_not_restricted():
+    assert not geofencing.segment_restricted((12.0, 60.0), (12.0, 60.5))

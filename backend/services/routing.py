@@ -5,9 +5,11 @@ offsets) that could never do what a real router does — route *around* a
 headland, a Marine Protected Area, or the India-Sri Lanka boundary, because
 none of its three fixed shapes could bend around an obstacle. This is a real
 grid search: land, the IMBL and MPAs are excluded from the search graph
-outright (a path cannot be routed through them, not merely flagged after the
-fact), and the surviving graph is weighted by live wave height so the router
-prefers calmer water when a calmer detour exists.
+outright, at every node and along every grid-to-grid edge (a path cannot be
+routed through them, not merely flagged after the fact), and the surviving
+graph is weighted by live wave height and wind speed so the router prefers
+calmer water when a calmer detour exists. Water with no hazard data is costed
+pessimistically, never as calm.
 
 **Two live sources feed the graph, at two different resolutions on purpose:**
 
@@ -40,7 +42,8 @@ budget.
 lat/lon lerp — the two agreed within measurement noise at this router's
 coastal/fishing-vessel scale (see DONE.md), so this was a correctness fix,
 not a behavior change. **No vessel profile** (speed, fuel range, draft) is an
-input; every route is still scored on wave hazard alone.
+input to the scoring; every route is scored on sea state (waves and wind)
+alone, and vessel inputs only exclude water or annotate the result.
 """
 
 from __future__ import annotations
@@ -56,7 +59,7 @@ import httpx
 import numpy as np
 from shapely.geometry import LineString
 
-from services import geofencing
+from services import geofencing, sea_state
 from services.download.providers.gebco import GebcoDownloadError
 from services.download.providers.gebco import fetch as fetch_bathymetry
 
@@ -91,8 +94,8 @@ _MAX_CONNECT_RADIUS_CELLS = 8.0
 # so a long path reads as its real turn points, not every grid step.
 _SIMPLIFY_TOLERANCE_DEG = 0.01
 
-_WAVE_CAUTION_M = 1.5
-_WAVE_HAZARD_M = 2.5
+# Unit factors to km/h for the wind units Open-Meteo can return.
+_TO_KMH = {"km/h": 1.0, "m/s": 3.6, "kn": 1.852, "mp/h": 1.609344, "mph": 1.609344}
 
 EARTH_RADIUS_KM = 6371.0088
 
@@ -151,14 +154,17 @@ def _interpolate(lat1: float, lon1: float, lat2: float, lon2: float, fraction: f
     return (np.degrees(phi), np.degrees(lambda_))
 
 
-def _hazard_level(wave_height_m: float | None) -> str:
-    if wave_height_m is None:
+def _route_hazard_level(path_nodes: list["_Node"]) -> str:
+    """Worst known sea state along the path; "unknown" when the worst known is
+    calm but some nodes had no data, because unmeasured water is not calm."""
+    levels = [sea_state.hazard_level(n.hazard.wave_height_m, n.hazard.wind_speed) for n in path_nodes]
+    known = [level for level in levels if level != "unknown"]
+    if not known:
         return "unknown"
-    if wave_height_m >= _WAVE_HAZARD_M:
-        return "hazardous"
-    if wave_height_m >= _WAVE_CAUTION_M:
-        return "caution"
-    return "calm"
+    worst = max(known, key=("calm", "caution", "hazardous").index)
+    if worst == "calm" and len(known) < len(levels):
+        return "unknown"
+    return worst
 
 
 # --------------------------------------------------------------------------
@@ -325,11 +331,18 @@ async def _fetch_hazard_batch(
     for i in range(len(points)):
         marine_entry = marine_list[i] if i < len(marine_list) else {}
         weather_entry = weather_list[i] if i < len(weather_list) else {}
+        wind = (weather_entry.get("current") or {}).get("wind_speed_10m")
+        unit = (weather_entry.get("current_units") or {}).get("wind_speed_10m") or "km/h"
+        factor = _TO_KMH.get(unit)
+        if wind is not None and factor is None:
+            # An unrecognised unit cannot be compared against km/h thresholds.
+            logger.warning(f"routing: unrecognised wind unit {unit!r}; treating wind as unknown")
+            wind = None
         hazards.append(
             _Hazard(
                 wave_height_m=(marine_entry.get("current") or {}).get("wave_height"),
-                wind_speed=(weather_entry.get("current") or {}).get("wind_speed_10m"),
-                wind_speed_unit=(weather_entry.get("current_units") or {}).get("wind_speed_10m"),
+                wind_speed=None if wind is None else float(wind) * factor,
+                wind_speed_unit="km/h",
             )
         )
     return hazards
@@ -381,12 +394,19 @@ class _Node:
 
 
 def _edge_cost(a: _Node, b: _Node) -> float:
+    """distance x (1 + wave term + wind term).
+
+    Unknown sea state is costed pessimistically (as hazard-threshold waves and
+    a gale-strength wind), never as flat calm: a failed hazard batch must not
+    make the water it covers the cheapest on the map. Both terms are >= 0, so
+    the factor stays >= 1 and the haversine A* heuristic stays admissible.
+    """
     distance_km = _haversine_km(a.lat, a.lon, b.lat, b.lon)
     waves = [h for h in (a.hazard.wave_height_m, b.hazard.wave_height_m) if h is not None]
-    # Unknown hazard is treated as neutral (factor 1x) rather than penalised
-    # or treated as calm — a missing sample is not evidence either way.
-    factor = 1.0 + (sum(waves) / len(waves) if waves else 0.0)
-    return distance_km * factor
+    winds = [w for w in (a.hazard.wind_speed, b.hazard.wind_speed) if w is not None]
+    wave_term = sum(waves) / len(waves) if waves else sea_state.WAVE_HAZARD_M
+    wind_term = (sum(winds) / len(winds)) / sea_state.WIND_HAZARD_KMH if winds else 1.0
+    return distance_km * (1.0 + wave_term + wind_term)
 
 
 def _is_geofence_excluded(lat: float, lon: float) -> bool:
@@ -601,6 +621,12 @@ async def plan_route(
                 (node.lat, node.lon), (neighbor.lat, neighbor.lon), min_depth_m=vessel_draft_m
             ):
                 continue
+            # Nodes are already outside every excluded zone, but an edge can
+            # still step over a small MPA or the IMBL band between them.
+            # Endpoint edges (_connect_endpoint) stay exempt: the user's own
+            # start and end are trusted, as they are for land.
+            if geofencing.segment_restricted((node.lat, node.lon), (neighbor.lat, neighbor.lon)):
+                continue
             adjacency[(i, j)].append((neighbor_key, _edge_cost(node, neighbor)))
 
     nodes[_START_KEY] = _Node(lat=start[0], lon=start[1])
@@ -637,6 +663,11 @@ async def plan_route(
     )
     waves = [n.hazard.wave_height_m for n in path_nodes if n.hazard.wave_height_m is not None]
     max_wave = max(waves) if waves else None
+    winds = [n.hazard.wind_speed for n in path_nodes if n.hazard.wind_speed is not None]
+    max_wind = round(max(winds), 1) if winds else None
+    unknown_nodes = sum(
+        1 for n in path_nodes if n.hazard.wave_height_m is None and n.hazard.wind_speed is None
+    )
 
     vessel_profile: dict[str, Any] = {
         "draft_m": vessel_draft_m,
@@ -656,15 +687,20 @@ async def plan_route(
         "great_circle_km": round(great_circle_km, 1),
         "waypoints": [_waypoint_dict(node) for node in simplified],
         "max_wave_height_m": max_wave,
-        "hazard_level": _hazard_level(max_wave),
+        "max_wind_speed_kmh": max_wind,
+        "hazard_level": _route_hazard_level(path_nodes),
+        "unknown_hazard_nodes": unknown_nodes,
         "search_grid_nodes": len(nodes) - 2,  # excluding the start/end keys
         "search_grid_spacing_deg": round(spacing, 3),
         "vessel_profile": vessel_profile,
         "note": (
             "A* search over a live grid: land, the India-Sri Lanka boundary and "
             "Marine Protected Areas are excluded from the search graph outright, "
-            "so this path structurally cannot cross any of them, weighted by live "
-            "wave height so a calmer detour is preferred when one exists. A draft "
+            "at every grid node and along every grid edge (only the legs to your own "
+            "start and end points are exempt), weighted by live wave height and wind "
+            "speed so a calmer detour is preferred when one exists; water with no "
+            "hazard data is treated as rough, and hazard_level is 'unknown' when part "
+            "of the path had none. A draft "
             "is likewise excluded outright (too-shallow water is not in the "
             "graph); speed and fuel range are only applied afterward, to the "
             "hazard-optimal route this search already found, and never change "
