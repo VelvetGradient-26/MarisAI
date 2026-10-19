@@ -318,3 +318,15 @@ def test_a_cold_detector_gives_a_reason_not_an_empty_section(monkeypatch):
     section = brief_service._events_section(9.5, 75.0)
     assert not section.available
     assert "climatology" in section.unavailable_reason
+
+
+def test_bloom_section_names_the_export_date_when_historical(monkeypatch):
+    def historical(horizon, latitude, longitude):
+        return {"horizon_days": horizon, "date": "2021-12-24", "risk": 0.62, "outside_coverage": False,
+                "is_historical": True, "export_window": {"start": "2021-11-25", "end": "2021-12-24"}}
+
+    monkeypatch.setattr(brief_service.predictions, "hab_point", historical)
+    section = brief_service._bloom_section(20.0, 68.5)
+    assert section.rows[0]["label"] == "+3 days (from 2021-12-24)"
+    assert "MODEL OUTPUT" in section.note
+    assert "HISTORICAL HINDCAST (2021-11-25 to 2021-12-24), not a current forecast." in section.note

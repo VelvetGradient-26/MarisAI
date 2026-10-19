@@ -421,7 +421,13 @@ async def _evaluate_one(sub: Any) -> tuple[list[str], list[str]]:
 
     try:
         bloom = predictions.hab_point(_BLOOM_HORIZON_DAYS, sub.latitude, sub.longitude)
-        if bloom["risk"] is not None and bloom["risk"] >= _BLOOM_ALERT_PROBABILITY:
+        # A historical export (the shipped grid is a 2021 hindcast) is not a
+        # condition at the watched place today, so it never alerts.
+        if (
+            not bloom.get("is_historical")
+            and bloom["risk"] is not None
+            and bloom["risk"] >= _BLOOM_ALERT_PROBABILITY
+        ):
             signature_parts.append("bloom")
             reasons.append(
                 f"Harmful algal bloom risk {bloom['risk']:.0%} at +{_BLOOM_HORIZON_DAYS}d"

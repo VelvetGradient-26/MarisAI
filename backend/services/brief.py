@@ -518,6 +518,7 @@ def _habitat_section(latitude: float, longitude: float, month: int) -> Section:
 
 def _bloom_section(latitude: float, longitude: float) -> Section:
     rows: list[dict[str, Any]] = []
+    window: dict[str, str] | None = None
     for horizon in (3, 5, 7):
         try:
             point = predictions.hab_point(horizon, latitude, longitude)
@@ -526,7 +527,12 @@ def _bloom_section(latitude: float, longitude: float) -> Section:
         risk = point.get("risk")
         if risk is None:
             continue
-        rows.append({"label": f"+{horizon} days", "value": f"{risk:.2f}"})
+        label = f"+{horizon} days"
+        if point.get("is_historical"):
+            # A 2021 hindcast row with no date reads as a current forecast.
+            window = point.get("export_window")
+            label = f"{label} (from {point.get('date')})"
+        rows.append({"label": label, "value": f"{risk:.2f}"})
 
     if not rows:
         return Section(
@@ -544,7 +550,13 @@ def _bloom_section(latitude: float, longitude: float) -> Section:
         available=True,
         rows=rows,
         note=(
-            "MODEL OUTPUT, and a screening tool. A 'bloom' here is model chlorophyll above "
+            (
+                f"MODEL OUTPUT. HISTORICAL HINDCAST ({window['start']} to {window['end']}), "
+                "not a current forecast. "
+                if window
+                else "MODEL OUTPUT. "
+            )
+            + "A screening tool: a 'bloom' here is model chlorophyll above "
             "the local seasonal 90th percentile — a proxy, not a verified bloom, and it says "
             "nothing about toxicity. At the +7 day lead four in five alerts are false "
             "(precision 0.202 at 80% recall); +3 days is the usable one at 0.449."

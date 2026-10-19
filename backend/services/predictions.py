@@ -37,6 +37,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+from datetime import UTC, date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -350,10 +351,29 @@ def _hab_drivers(horizon: int, date_str: str, latitude: float, longitude: float)
     return drivers or None
 
 
+# The exported HAB grid is a fixed window of the held-out period, not a live
+# forecast: the export on disk covers 2021-11-25..2021-12-24. Anything older
+# than this many days is labelled historical wherever it is shown, and never
+# drives an alert.
+HAB_CURRENT_MAX_AGE_DAYS = 7
+
+
+def _today() -> date:
+    return datetime.now(UTC).date()
+
+
+def hab_export_window() -> tuple[date, date]:
+    """First and last date in the exported HAB grid."""
+    dates = sorted(str(d)[:10] for d in _load_grid(HAB_GRID).date.values)
+    return date.fromisoformat(dates[0]), date.fromisoformat(dates[-1])
+
+
 def hab_point(horizon: int, latitude: float, longitude: float,
               day: str | None = None) -> dict[str, Any]:
     field = hab_slice(horizon, day)
     value = _nearest_value(field, latitude, longitude)
+    window_start, window_end = hab_export_window()
+    is_historical = window_end < _today() - timedelta(days=HAB_CURRENT_MAX_AGE_DAYS)
     date_str = str(field.date.values)
     return {
         "horizon_days": horizon,
@@ -361,6 +381,8 @@ def hab_point(horizon: int, latitude: float, longitude: float,
         "risk": value,
         "outside_coverage": value is None and not _within_hab_domain(latitude, longitude),
         "value_label": "probability of bloom",
+        "is_historical": is_historical,
+        "export_window": {"start": window_start.isoformat(), "end": window_end.isoformat()},
         "drivers": _hab_drivers(horizon, date_str, latitude, longitude) if value is not None else None,
     }
 

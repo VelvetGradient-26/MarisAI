@@ -800,7 +800,9 @@ _SPECS: list[tuple[str, str, type[BaseModel], Any]] = [
     (
         "get_bloom_risk",
         "Harmful algal bloom risk at a coordinate for a 3, 5 or 7 day horizon. "
-        "Covers the Arabian Sea only.",
+        "Covers the Arabian Sea only. Results carry is_historical; when true, "
+        "say plainly that this is a historical hindcast and give its date, "
+        "never present it as a current forecast.",
         BloomArgs,
         _bloom_risk,
     ),

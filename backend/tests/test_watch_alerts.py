@@ -400,3 +400,16 @@ def test_email_links_use_the_public_base_url(monkeypatch):
     monkeypatch.setattr(watch_alerts, "public_base_url", lambda: "http://13.233.129.231")
     assert watch_alerts._confirm_url("t") == "http://13.233.129.231/confirm-watch?token=t"
     assert watch_alerts._unsubscribe_url("t") == "http://13.233.129.231/unsubscribe-watch?token=t"
+
+
+@pytest.mark.asyncio
+async def test_historical_bloom_export_never_alerts(monkeypatch: pytest.MonkeyPatch):
+    _patch_all_clear(monkeypatch)
+
+    def bloom(horizon, lat, lon):
+        return {"horizon_days": 3, "date": "2021-12-24", "risk": 0.9, "outside_coverage": False,
+                "is_historical": True}
+
+    monkeypatch.setattr(watch_alerts.predictions, "hab_point", bloom)
+    signature_parts, reasons = await watch_alerts._evaluate_one(_Sub())
+    assert "bloom" not in signature_parts

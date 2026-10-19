@@ -157,3 +157,33 @@ def test_a_negative_driver_index_is_skipped_not_rendered_as_a_feature(export_dir
 
     assert len(result["drivers"]) == 1
     assert result["drivers"][0]["feature"] == "chl"
+
+
+def _write_hab_grid(export_dir, dates=("2021-11-25", "2021-12-24"), risk=0.62):
+    latitudes = np.array([20.0, 20.25])
+    longitudes = np.array([68.5, 68.75])
+    grid = np.full((1, len(dates), len(latitudes), len(longitudes)), risk, dtype="float32")
+    xr.Dataset(
+        {"risk": (("horizon", "date", "latitude", "longitude"), grid)},
+        coords={"horizon": [3], "date": list(dates), "latitude": latitudes, "longitude": longitudes},
+    ).to_netcdf(export_dir / predictions.HAB_GRID)
+    (export_dir / "manifest.json").write_text(json.dumps({"products": {"hab": {"region": {
+        "south": 6.0, "north": 23.0, "west": 68.0, "east": 78.0}}}}))
+
+
+def test_hab_point_marks_an_old_export_historical(export_dir, monkeypatch):
+    from datetime import date
+
+    _write_hab_grid(export_dir)
+    monkeypatch.setattr(predictions, "_today", lambda: date(2026, 10, 24))
+    point = predictions.hab_point(3, 20.0, 68.5)
+    assert point["is_historical"] is True
+    assert point["export_window"] == {"start": "2021-11-25", "end": "2021-12-24"}
+
+
+def test_hab_point_is_current_when_the_export_is_recent(export_dir, monkeypatch):
+    from datetime import date
+
+    _write_hab_grid(export_dir, dates=("2026-10-20", "2026-10-22"))
+    monkeypatch.setattr(predictions, "_today", lambda: date(2026, 10, 24))
+    assert predictions.hab_point(3, 20.0, 68.5)["is_historical"] is False
