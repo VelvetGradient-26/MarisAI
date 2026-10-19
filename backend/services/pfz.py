@@ -25,7 +25,7 @@ fetches.
 
 from __future__ import annotations
 
-from math import cos, radians
+from math import asin, cos, radians, sin, sqrt
 from typing import Any
 
 from services import copernicus_chlorophyll, copernicus_sst
@@ -42,6 +42,14 @@ _FAVOURABLE_SST_MAX_C = 30.0
 _STEP_DEG = 0.5
 
 TOP_N = 5
+
+EARTH_RADIUS_KM = 6371.0088
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    phi1, phi2 = radians(lat1), radians(lat2)
+    a = sin(radians(lat2 - lat1) / 2) ** 2 + cos(phi1) * cos(phi2) * sin(radians(lon2 - lon1) / 2) ** 2
+    return 2 * EARTH_RADIUS_KM * asin(sqrt(a))
 
 
 def _candidate_grid(latitude: float, longitude: float, radius_km: float) -> list[tuple[float, float]]:
@@ -83,6 +91,7 @@ def find_zones(latitude: float, longitude: float, radius_km: float = 100.0) -> d
             {
                 "latitude": round(lat, 3),
                 "longitude": round(lon, 3),
+                "distance_km": round(_haversine_km(latitude, longitude, lat, lon), 1),
                 "chlorophyll_mg_m3": chl["chlorophyll_mg_m3"],
                 "sst_c": sst["temperature_c"],
             }
@@ -93,6 +102,7 @@ def find_zones(latitude: float, longitude: float, radius_km: float = 100.0) -> d
             "available": True,
             "candidates_scanned": 0,
             "zones": [],
+            "nearest_full_match": None,
             "note": "No open-ocean cells with data were found in this radius.",
         }
 
@@ -111,13 +121,19 @@ def find_zones(latitude: float, longitude: float, radius_km: float = 100.0) -> d
             reasons.append(f"SST {c['sst_c']}°C is inside the {_FAVOURABLE_SST_MIN_C}-{_FAVOURABLE_SST_MAX_C}°C screening band")
         scored.append({**c, "score": score, "reasons": reasons})
 
-    scored.sort(key=lambda c: (-c["score"], -c["chlorophyll_mg_m3"]))
+    # Nearest first within a score: the question is "where is the nearest
+    # favourable zone", and the highest chlorophyll is not the best cell (it
+    # is often turbid coastal or blooming water).
+    scored.sort(key=lambda c: (-c["score"], c["distance_km"]))
     top = scored[:TOP_N]
+    full_matches = [c for c in scored if c["score"] == 2]
+    nearest_full_match = min(full_matches, key=lambda c: c["distance_km"]) if full_matches else None
 
     return {
         "available": True,
         "candidates_scanned": len(candidates),
         "zones": top,
+        "nearest_full_match": nearest_full_match,
         "method": (
             "Heuristic screening: chlorophyll above the local sample's own "
             "median plus SST inside a broad pelagic-favourable band. This is "

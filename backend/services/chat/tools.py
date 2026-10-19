@@ -825,7 +825,9 @@ _SPECS: list[tuple[str, str, type[BaseModel], Any]] = [
     (
         "find_fishing_zones",
         "Scan the water around a coordinate for potentially favourable fishing "
-        "conditions (chlorophyll + SST), ranked. A heuristic screening aid, "
+        "conditions (chlorophyll + SST), ranked by score then nearest first, each "
+        "with distance_km; nearest_full_match is the closest cell meeting both "
+        "criteria. A heuristic screening aid, "
         "not a validated PFZ model or an official advisory.",
         FishingZoneArgs,
         _fishing_zones,
