@@ -43,6 +43,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.core.config import settings
+from app.core.public_url import public_base_url
 from services import cyclones, predictions, severe_weather, watch_tokens
 from services.cyclones import CycloneError
 from services.severe_weather import SevereWeatherError
@@ -259,11 +260,11 @@ async def list_for_client(client_id: str) -> list[dict[str, Any]]:
 
 
 def _confirm_url(token: str) -> str:
-    return f"{settings.FRONTEND_BASE_URL}/confirm-watch?token={token}"
+    return f"{public_base_url()}/confirm-watch?token={token}"
 
 
 def _unsubscribe_url(token: str) -> str:
-    return f"{settings.FRONTEND_BASE_URL}/unsubscribe-watch?token={token}"
+    return f"{public_base_url()}/unsubscribe-watch?token={token}"
 
 
 async def _send_confirmation_email(email: str, label: str, token: str) -> None:

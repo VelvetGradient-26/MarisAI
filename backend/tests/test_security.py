@@ -120,3 +120,54 @@ class TestProviderErrorsAreNotForwarded:
 
         assert "AIzaSyLEAKED_KEY_VALUE" not in str(error)
         assert "401" in str(error)
+
+
+class TestPublicBaseUrl:
+    def test_public_base_url_drives_email_links_and_cors(self):
+        from app.core.config import Settings
+
+        configured = Settings(PUBLIC_BASE_URL="http://13.0.0.1", _env_file=None)
+        assert configured.FRONTEND_BASE_URL == "http://13.0.0.1"
+        assert configured.cors_origins == ["http://13.0.0.1"]
+
+    def test_explicit_url_wins_over_ec2_metadata(self, monkeypatch):
+        from app.core import public_url
+
+        monkeypatch.setattr(public_url.settings, "PUBLIC_BASE_URL", "http://example.test")
+        monkeypatch.setattr(public_url.settings, "PUBLIC_BASE_URL_FROM_EC2", True)
+        public_url.public_base_url.cache_clear()
+        assert public_url.public_base_url() == "http://example.test"
+
+    def test_ec2_metadata_supplies_the_url_when_enabled(self, monkeypatch):
+        import httpx
+
+        from app.core import public_url
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "PUT" and request.url.path == "/latest/api/token":
+                return httpx.Response(200, text="tok")
+            if request.url.path == "/latest/meta-data/public-ipv4":
+                assert request.headers["X-aws-ec2-metadata-token"] == "tok"
+                return httpx.Response(200, text="13.233.129.231")
+            return httpx.Response(404)
+
+        monkeypatch.setattr(public_url.settings, "PUBLIC_BASE_URL", None)
+        monkeypatch.setattr(public_url.settings, "PUBLIC_BASE_URL_FROM_EC2", True)
+        monkeypatch.setattr(public_url, "_TRANSPORT", httpx.MockTransport(handler))
+        public_url.public_base_url.cache_clear()
+        assert public_url.public_base_url() == "http://13.233.129.231"
+
+    def test_unreachable_metadata_falls_back_to_frontend_base_url(self, monkeypatch):
+        import httpx
+
+        from app.core import public_url
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("no IMDS here")
+
+        monkeypatch.setattr(public_url.settings, "PUBLIC_BASE_URL", None)
+        monkeypatch.setattr(public_url.settings, "PUBLIC_BASE_URL_FROM_EC2", True)
+        monkeypatch.setattr(public_url.settings, "FRONTEND_BASE_URL", "http://localhost:5173")
+        monkeypatch.setattr(public_url, "_TRANSPORT", httpx.MockTransport(handler))
+        public_url.public_base_url.cache_clear()
+        assert public_url.public_base_url() == "http://localhost:5173"

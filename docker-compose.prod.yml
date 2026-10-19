@@ -1,0 +1,84 @@
+# Production stack: postgres + backend (FastAPI) + frontend (built bundle
+# served by nginx, which also reverse-proxies /api to the backend).
+#
+# Selected on the EC2 instance by a root `.env` (see deploy/env.prod.example):
+#   COMPOSE_FILE=docker-compose.prod.yml
+# so a plain `docker compose up -d --build` there uses this file, while local
+# development keeps using docker-compose.yml (Vite dev server, hot reload).
+#
+# Only port 80 is published. The browser talks to nginx alone: it serves the
+# SPA and proxies /api/* to the backend over the compose network, so there is
+# no API host to configure and no CORS to manage. The backend is never
+# exposed directly.
+#
+# Every service restarts on its own (`unless-stopped`), so starting the
+# instance is enough: Docker brings the stack back without a login.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    # PostGIS: alembic/env.py runs `CREATE EXTENSION IF NOT EXISTS postgis`.
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_USER: maris
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-oceanmind}
+      POSTGRES_DB: maris
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maris"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    logging: *logging
+    env_file:
+      - backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://maris:${POSTGRES_PASSWORD:-oceanmind}@db:5432/maris
+      # The instance has no fixed address; app/core/public_url.py reads the
+      # current public IPv4 from instance metadata for email links.
+      PUBLIC_BASE_URL_FROM_EC2: "true"
+      # nginx overwrites X-Forwarded-For with the real peer address, so it can
+      # be trusted for rate limiting here (and only here).
+      TRUST_FORWARDED_FOR: "true"
+      # A grid rebuild peaks around 3 GB per variable and competes with live
+      # requests; the 12-hourly scheduler still refreshes the grids.
+      FORECAST_GRID_REFRESH_ON_BOOT: "false"
+      COPERNICUS_MAX_CONCURRENT_FETCHES: "2"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./machine_learning/exports:/app/machine_learning/exports:ro
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile.prod
+    restart: unless-stopped
+    logging: *logging
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  # An existing volume, named in the root .env, so redeploying never touches
+  # the chat and dashboard history already in it.
+  db_data:
+    external: true
+    name: ${MARIS_DB_VOLUME:?set MARIS_DB_VOLUME in the root .env (see deploy/env.prod.example)}

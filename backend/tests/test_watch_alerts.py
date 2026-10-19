@@ -392,3 +392,11 @@ async def test_evaluate_and_notify_dedups_an_unchanged_alert_signature(monkeypat
     async with watch_alerts._session_factory()() as db:
         await db.execute(delete(AlertSubscription).where(AlertSubscription.client_id == client_id))
         await db.commit()
+
+
+def test_email_links_use_the_public_base_url(monkeypatch):
+    from services import watch_alerts
+
+    monkeypatch.setattr(watch_alerts, "public_base_url", lambda: "http://13.233.129.231")
+    assert watch_alerts._confirm_url("t") == "http://13.233.129.231/confirm-watch?token=t"
+    assert watch_alerts._unsubscribe_url("t") == "http://13.233.129.231/unsubscribe-watch?token=t"

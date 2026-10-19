@@ -149,7 +149,17 @@ body,
   font-family: var(--ocean-font-ui);
 }
 
-.map-container {
+/* `.map-root .map-container` rather than `.map-container` alone: MapLibre
+   adds its own `.maplibregl-map` class to this same element, carrying
+   `position: relative` at equal specificity — so whichever stylesheet
+   happens to load second wins. In dev, Vite's injection order put this rule
+   last; in a production build, Rollup's CSS chunk/link order puts
+   maplibre-gl's stylesheet last instead, silently flipping this back to
+   `relative` and collapsing the container to its content's height (the
+   canvas's own tiny default size) instead of filling `.map-root`. The extra
+   ancestor selector raises specificity so this rule wins regardless of load
+   order. */
+.map-root .map-container {
   position: absolute;
   inset: 0;
 }

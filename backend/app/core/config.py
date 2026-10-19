@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +25,19 @@ class Settings(BaseSettings):
     # "*" here: browsers reject a wildcard origin combined with
     # allow_credentials=True, which stays enabled (see main.py).
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    # The one address the deployed site is reached at. When set it replaces
+    # both FRONTEND_BASE_URL (email links) and CORS_ORIGINS. Production on EC2
+    # leaves it unset and sets PUBLIC_BASE_URL_FROM_EC2 instead, because the
+    # instance has no fixed address: its public IP changes on every start, so
+    # app/core/public_url.py reads it from instance metadata at runtime.
+    PUBLIC_BASE_URL: str | None = None
+    PUBLIC_BASE_URL_FROM_EC2: bool = False
+
+    # Whether X-Forwarded-For can be believed (services/rate_limit.py). Only
+    # true behind the production nginx, which overwrites the header with the
+    # real peer address; anywhere else a client can send any value it likes.
+    TRUST_FORWARDED_FOR: bool = False
 
     # Copernicus Marine
     COPERNICUS_USERNAME: str = ""
@@ -125,6 +139,13 @@ class Settings(BaseSettings):
         env_file=".env",
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def _apply_public_base_url(self) -> "Settings":
+        if self.PUBLIC_BASE_URL:
+            self.FRONTEND_BASE_URL = self.PUBLIC_BASE_URL
+            self.CORS_ORIGINS = self.PUBLIC_BASE_URL
+        return self
 
     @property
     def cors_origins(self) -> list[str]:
