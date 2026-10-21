@@ -45,6 +45,12 @@ function str(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
+// Validation splits began counting the embargo in whole dates (not rows of the
+// pooled multi-location frame) on this date. Artifacts trained earlier carry
+// scores from the old splits, which let training rows sit within hours of the
+// test window, so their skill numbers are likely optimistic.
+const EMBARGO_FIX_DATE = '2026-10-20';
+
 function fmtSkill(value: number | null): string {
   if (value == null) return '—';
   return value > 0 ? `+${value.toFixed(3)}` : value.toFixed(3);
@@ -286,6 +292,14 @@ export function ModelDossierPage() {
                     />
                     <Stat label="Validation" value="rolling-origin CV" hint={`${folds.length} folds`} />
                   </div>
+                  {typeof metadata?.trained_at === 'string' && metadata.trained_at < EMBARGO_FIX_DATE && (
+                    <p className="border-t border-[color:var(--oid-border)] px-4 py-3 text-[length:var(--oid-text-2xs)] text-[color:var(--oid-text-muted)]">
+                      Revalidation pending: these scores were computed before the validation embargo was
+                      corrected to count whole dates instead of rows of the pooled multi-location frame,
+                      so they are likely optimistic. The point forecast is unaffected; its uncertainty
+                      interval comes from the same validation residuals and may be too narrow.
+                    </p>
+                  )}
                   {(trainingPoints.length > 0 || covariates.length > 0) && (
                     <div className="grid grid-cols-1 gap-4 border-t border-[color:var(--oid-border)] p-4 sm:grid-cols-2">
                       {trainingPoints.length > 0 && (
