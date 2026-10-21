@@ -85,6 +85,7 @@ import pandas as pd
 import xarray as xr
 from loguru import logger
 
+from app.core import disk_cache
 from services import field_sampling, heatwave_tracking, sst_anomaly
 from services.climatology import build as climatology_build
 from services.climatology import oisst
@@ -300,6 +301,50 @@ _cache: HeatwaveField | None = None
 _lock = threading.Lock()
 
 
+_DISK_KEY = "heatwave_field"
+_ARRAYS = ("category", "exceedance", "run_days", "latitude", "longitude", "anomaly", "cold_exceedance")
+
+
+def save_to_disk(field: HeatwaveField) -> bool:
+    """Keep the last good field, so a restart during a NOAA outage (CoastWatch
+    flaps) serves it instead of a 503 until OISST answers again."""
+    return disk_cache.save(
+        _DISK_KEY,
+        {name: getattr(field, name) for name in _ARRAYS},
+        {
+            "timestamp": field.timestamp.isoformat(),
+            "computed_at": field.computed_at.isoformat(),
+            "baseline": list(field.baseline),
+            "window_days": field.window_days,
+        },
+    )
+
+
+def restore_from_disk() -> bool:
+    """Load the saved field when nothing is cached in this process yet."""
+    loaded = disk_cache.load(_DISK_KEY)
+    if loaded is None:
+        return False
+    arrays, meta = loaded
+    try:
+        field = HeatwaveField(
+            **{name: arrays[name] for name in _ARRAYS},
+            timestamp=datetime.fromisoformat(meta["timestamp"]),
+            computed_at=datetime.fromisoformat(meta["computed_at"]),
+            baseline=(int(meta["baseline"][0]), int(meta["baseline"][1])),
+            window_days=int(meta["window_days"]),
+        )
+    except (KeyError, ValueError, TypeError) as exc:
+        logger.warning(f"saved marine heatwave field unusable; ignoring it: {exc}")
+        return False
+    with _lock:
+        global _cache
+        if _cache is None:
+            _cache = field
+    logger.info(f"marine heatwave field restored from disk: timestep {field.timestamp.isoformat()}")
+    return True
+
+
 def _cached_field(field: HeatwaveField | None = None) -> HeatwaveField | None:
     """Read or replace the cached detection. Separate from the fetch so tests
     can drive `detect` without touching the network."""
@@ -463,6 +508,8 @@ async def refresh_cache(variable: str = "sea_surface_temperature") -> None:
         return
 
     with _refreshing:
+        if _cached_field() is None:
+            await asyncio.to_thread(restore_from_disk)
         try:
             climatology = climatology_store.load(variable)
         except climatology_store.ClimatologyNotBuilt as exc:
@@ -495,6 +542,7 @@ async def refresh_cache(variable: str = "sea_surface_temperature") -> None:
 
         _cached_field(field)
         log_detection(field)
+        await asyncio.to_thread(save_to_disk, field)
 
         try:
             # Same record and climatology already fetched above — tracking

@@ -221,7 +221,10 @@ SPECIALISTS: dict[str, Specialist] = {
             "port usually fall on land; get_seafloor_depth reporting is_land "
             "at a start or end point is expected and is not a failure, "
             "because the router already joined that point to the nearest "
-            "open water. "
+            "open water. Quote only the figures the tools returned: do not "
+            "work out distances between waypoints, durations or other "
+            "numbers yourself, because every figure in the answer is checked "
+            "against the tool results. "
             f"{_SHARED_RULES}"
         ),
         tool_names=(

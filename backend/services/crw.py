@@ -46,6 +46,8 @@ import httpx
 import numpy as np
 import pandas as pd
 from loguru import logger
+
+from app.core import disk_cache
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 ERDDAP_URL = "https://coastwatch.pfeg.noaa.gov/erddap/griddap/NOAA_DHW.csv"
@@ -227,10 +229,53 @@ def _load() -> _CrwCache:
     return _parse(text, latency_ms)
 
 
+_DISK_KEY = "crw"
+_GRIDS = ("latitudes", "longitudes", "dhw", "anomaly", "hotspot", "baa", "seaice")
+
+
+def save_to_disk(cache: _CrwCache) -> bool:
+    """Keep the last good grid, so a restart during a CoastWatch outage serves
+    it instead of leaving coral heat-stress unavailable."""
+    return disk_cache.save(
+        _DISK_KEY,
+        {name: getattr(cache, name) for name in _GRIDS},
+        {
+            "timestamp": cache.timestamp.isoformat(),
+            "fetched_at": cache.fetched_at.isoformat(),
+            "latency_ms": cache.latency_ms,
+        },
+    )
+
+
+def restore_from_disk() -> bool:
+    """Load the saved grid when nothing is cached in this process yet."""
+    global _cache
+    loaded = disk_cache.load(_DISK_KEY)
+    if loaded is None:
+        return False
+    arrays, meta = loaded
+    try:
+        restored = _CrwCache(
+            **{name: arrays[name] for name in _GRIDS},
+            timestamp=datetime.fromisoformat(meta["timestamp"]),
+            fetched_at=datetime.fromisoformat(meta["fetched_at"]),
+            latency_ms=float(meta["latency_ms"]),
+        )
+    except (KeyError, ValueError, TypeError) as exc:
+        logger.warning(f"saved CRW grid unusable; ignoring it: {exc}")
+        return False
+    if _cache is None:
+        _cache = restored
+        logger.info(f"CRW restored from disk: timestep {restored.timestamp.isoformat()}")
+    return True
+
+
 async def refresh_cache() -> None:
     """Replace the cache, keeping the previous grid on any failure."""
     global _cache
     async with _refresh_lock:
+        if _cache is None:
+            await asyncio.to_thread(restore_from_disk)
         try:
             fresh = await asyncio.to_thread(_load)
         except Exception:  # noqa: BLE001 - stale heat-stress data beats none
@@ -239,6 +284,7 @@ async def refresh_cache() -> None:
 
         _cache = fresh
         logger.info(f"CRW cache refreshed: timestep {fresh.timestamp.isoformat()}")
+        await asyncio.to_thread(save_to_disk, fresh)
 
 
 def _require_cache() -> _CrwCache:
