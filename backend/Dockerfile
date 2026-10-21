@@ -43,7 +43,12 @@ ENV PATH="/app/backend/.venv/bin:$PATH" \
     FORECAST_GRID_REFRESH_ON_BOOT=false
 
 COPY backend/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+# The cache directories are mount points for named volumes in production
+# (docker-compose.prod.yml). Created here, owned by appuser, because Docker
+# initialises an empty named volume with the mount point's ownership; without
+# them the volumes came up root-owned and every cache write failed.
 RUN chmod +x /usr/local/bin/entrypoint.sh \
+    && mkdir -p /app/backend/downloads /app/backend/forecasting/.cache \
     && chown -R appuser:appuser /app
 
 USER appuser
