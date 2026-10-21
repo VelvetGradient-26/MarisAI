@@ -89,6 +89,10 @@ class Settings(BaseSettings):
     LLM_API_KEY: str = ""
     LLM_MODEL: str = ""
     LLM_BASE_URL: str = ""
+    # A second model on the same provider, tried when the primary call fails
+    # (Ollama Cloud was seen dropping both of two models for minutes at a
+    # time). Unset means no fallback.
+    LLM_FALLBACK_MODEL: str | None = None
 
     # Controlled internet tools for the Ocean Assistant's web_research
     # specialist (services/web_search.py, services/webpage.py,

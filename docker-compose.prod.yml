@@ -58,6 +58,9 @@ services:
       # requests; the 12-hourly scheduler still refreshes the grids.
       FORECAST_GRID_REFRESH_ON_BOOT: "false"
       COPERNICUS_MAX_CONCURRENT_FETCHES: "2"
+      # Second model on the same LLM provider, tried when the primary fails
+      # (see services/chat/agent.py::_WithFallback). Empty disables it.
+      LLM_FALLBACK_MODEL: ${LLM_FALLBACK_MODEL:-}
     depends_on:
       db:
         condition: service_healthy

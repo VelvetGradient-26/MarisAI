@@ -1531,3 +1531,72 @@ async def test_a_traced_earlier_answer_still_permits_its_numbers(patched, monkey
     reply = await agent.answer("Repeat that?", client_id="test-client-00000000")
 
     assert reply["grounded"] is True
+
+
+class _Failing:
+    """A model whose every call fails the way Ollama Cloud did on 19 Oct."""
+
+    def __init__(self, after_chunks: int = 0) -> None:
+        self.after_chunks = after_chunks
+        self.calls = 0
+
+    def bind_tools(self, tools):
+        return self
+
+    async def ainvoke(self, messages):
+        self.calls += 1
+        raise RuntimeError("provider unavailable")
+
+    async def astream(self, messages):
+        self.calls += 1
+        for i in range(self.after_chunks):
+            yield AIMessageChunk(content=f"part{i} ")
+        raise RuntimeError("provider unavailable")
+
+
+class _Streaming(ScriptedModel):
+    async def astream(self, messages):
+        reply = await self.ainvoke(messages)
+        yield AIMessageChunk(content=reply.content)
+
+
+@pytest.mark.asyncio
+async def test_fallback_model_answers_when_the_primary_fails():
+    fallback = ScriptedModel([AIMessage(content="from the fallback")])
+    model = agent._WithFallback(_Failing(), fallback).bind_tools([])
+
+    reply = await model.ainvoke([])
+
+    assert reply.content == "from the fallback"
+
+
+@pytest.mark.asyncio
+async def test_fallback_stream_takes_over_before_the_first_chunk():
+    model = agent._WithFallback(_Failing(), _Streaming([AIMessage(content="fallback text")]))
+
+    chunks = [chunk.content async for chunk in model.astream([])]
+
+    assert chunks == ["fallback text"]
+
+
+@pytest.mark.asyncio
+async def test_a_stream_that_fails_mid_answer_is_not_spliced_with_the_fallback():
+    model = agent._WithFallback(_Failing(after_chunks=1), _Streaming([AIMessage(content="fallback text")]))
+
+    seen = []
+    with pytest.raises(RuntimeError):
+        async for chunk in model.astream([]):
+            seen.append(chunk.content)
+    assert seen == ["part0 "]
+
+
+def test_model_factory_wraps_a_configured_fallback(monkeypatch):
+    monkeypatch.setattr(agent.settings, "LLM_PROVIDER", "ollama")
+    monkeypatch.setattr(agent.settings, "LLM_MODEL", "gpt-oss:120b-cloud")
+    monkeypatch.setattr(agent.settings, "LLM_FALLBACK_MODEL", "gpt-oss:20b-cloud")
+    model = agent._model()
+    assert isinstance(model, agent._WithFallback)
+    assert model.fallback.model == "gpt-oss:20b-cloud"
+
+    monkeypatch.setattr(agent.settings, "LLM_FALLBACK_MODEL", None)
+    assert not isinstance(agent._model(), agent._WithFallback)

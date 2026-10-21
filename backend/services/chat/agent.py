@@ -243,8 +243,57 @@ def _provider_error(exc: Exception) -> ChatError:
     return ChatError(f"The AI provider rejected the request: {exc}")
 
 
+class _WithFallback:
+    """A primary chat model with a second one tried when a call fails.
+
+    `ainvoke` falls back on any failure. `astream` falls back only if the
+    primary fails before yielding anything: once text has reached the client,
+    splicing a second model's answer onto the first model's half-sentence
+    would produce one incoherent reply, so a mid-stream failure is raised for
+    the caller's own retry/reset handling instead.
+    """
+
+    def __init__(self, primary: Any, fallback: Any) -> None:
+        self.primary = primary
+        self.fallback = fallback
+
+    def bind_tools(self, tools: Any) -> "_WithFallback":
+        return _WithFallback(self.primary.bind_tools(tools), self.fallback.bind_tools(tools))
+
+    async def ainvoke(self, messages: Any) -> Any:
+        try:
+            return await self.primary.ainvoke(messages)
+        except Exception as exc:  # noqa: BLE001 - provider clients raise widely
+            logger.warning(f"primary chat model failed, trying the fallback: {exc!r}")
+            return await self.fallback.ainvoke(messages)
+
+    async def astream(self, messages: Any):
+        started = False
+        try:
+            async for chunk in self.primary.astream(messages):
+                started = True
+                yield chunk
+            return
+        except Exception as exc:  # noqa: BLE001 - provider clients raise widely
+            if started:
+                raise
+            logger.warning(f"primary chat model stream failed, trying the fallback: {exc!r}")
+        async for chunk in self.fallback.astream(messages):
+            yield chunk
+
+
 def _model() -> Any:
-    """Resolve LLM_PROVIDER to a tool-calling chat model.
+    """Resolve LLM_PROVIDER to a tool-calling chat model, wrapped with
+    LLM_FALLBACK_MODEL (same provider and key) when one is configured."""
+    primary = _chat_model(settings.LLM_MODEL)
+    fallback_name = (settings.LLM_FALLBACK_MODEL or "").strip()
+    if fallback_name and fallback_name != (settings.LLM_MODEL or "").strip():
+        return _WithFallback(primary, _chat_model(fallback_name))
+    return primary
+
+
+def _chat_model(model_name: str | None) -> Any:
+    """One chat model for the configured provider.
 
     Adapters are imported lazily so an install only needs the package matching
     the configured provider.
@@ -262,7 +311,7 @@ def _model() -> Any:
             from langchain_google_genai import ChatGoogleGenerativeAI
 
             return ChatGoogleGenerativeAI(
-                model=settings.LLM_MODEL or "gemini-2.0-flash",
+                model=model_name or "gemini-2.0-flash",
                 google_api_key=settings.LLM_API_KEY,
                 temperature=0,
             )
@@ -282,7 +331,7 @@ def _model() -> Any:
                 else {}
             )
             return ChatOllama(
-                model=settings.LLM_MODEL or "llama3.1",
+                model=model_name or "llama3.1",
                 base_url=settings.LLM_BASE_URL or "http://localhost:11434",
                 client_kwargs=client_kwargs,
                 temperature=0,
@@ -292,7 +341,7 @@ def _model() -> Any:
 
         if provider == "openai":
             return ChatOpenAI(
-                model=settings.LLM_MODEL or "gpt-4o-mini",
+                model=model_name or "gpt-4o-mini",
                 api_key=settings.LLM_API_KEY,
                 base_url=settings.LLM_BASE_URL or None,
                 temperature=0,
