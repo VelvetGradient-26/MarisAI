@@ -15,3 +15,7 @@ backend/.mypy_cache
 backend/.ruff_cache
 backend/*.egg-info
 .git
+# Runtime caches: mounted as volumes in production, never baked into an image
+# (a baked copy is a stale snapshot every deploy would roll back to).
+backend/downloads
+backend/forecasting/.cache

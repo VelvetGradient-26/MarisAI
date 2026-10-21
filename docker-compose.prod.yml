@@ -66,6 +66,12 @@ services:
         condition: service_healthy
     volumes:
       - ./machine_learning/exports:/app/machine_learning/exports:ro
+      # Last good copy of every live layer (app/core/disk_cache.py) and the
+      # forecasting history/grid caches. On named volumes so a rebuild or
+      # recreate keeps them; inside the container they were reset to whatever
+      # snapshot the image was built with on every deploy.
+      - layer_cache:/app/backend/downloads
+      - forecast_cache:/app/backend/forecasting/.cache
 
   frontend:
     build:
@@ -80,6 +86,8 @@ services:
         condition: service_healthy
 
 volumes:
+  layer_cache:
+  forecast_cache:
   # An existing volume, named in the root .env, so redeploying never touches
   # the chat and dashboard history already in it.
   db_data:
