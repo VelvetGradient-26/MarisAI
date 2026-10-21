@@ -76,6 +76,15 @@ async def invoke_with_retry(model: Any, messages: list[BaseMessage]) -> Any:
 # own "two or three depth calls" bound (up to 3) plus a final answer (1).
 SUB_MAX_ITERATIONS = 5
 
+# Sent, with no tools bound, when a specialist used every call without
+# writing an answer: its tool results are real and usually enough, so they
+# are turned into a reply instead of a canned "could not answer".
+_OUT_OF_CALLS_PROMPT = (
+    "You have used all of your tool calls for this question. Do not call any "
+    "tool. Answer now, using only the tool results above; if they do not "
+    "cover part of the question, say which part."
+)
+
 
 class SpecialistResult:
     __slots__ = ("text", "truncated")
@@ -147,6 +156,13 @@ async def run_specialist(
             messages.append(ToolMessage(content=output, tool_call_id=call["id"]))
     else:
         truncated = True
+        try:
+            final = await invoke_with_retry(
+                model_factory(), [*messages, HumanMessage(content=_OUT_OF_CALLS_PROMPT)]
+            )
+            messages.append(final)
+        except Exception:
+            logger.exception("specialist %r final answer call failed", name)
 
     text = ""
     for message in reversed(messages[turn_start:]):

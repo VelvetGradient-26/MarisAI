@@ -214,7 +214,14 @@ SPECIALISTS: dict[str, Specialist] = {
             "report exactly that — reasoning from the map in your head "
             "about which corridor 'must' be blocked is exactly the kind of "
             "specific-sounding claim this rule exists to stop, whether it "
-            "names a number or not. "
+            "names a number or not. A plan_safe_route result that carries "
+            "distance_km and waypoints is a successful route: always present "
+            "it - total distance, the main waypoints, hazard_level and the "
+            "maximum wave height and wind speed. Coordinates for a town or "
+            "port usually fall on land; get_seafloor_depth reporting is_land "
+            "at a start or end point is expected and is not a failure, "
+            "because the router already joined that point to the nearest "
+            "open water. "
             f"{_SHARED_RULES}"
         ),
         tool_names=(

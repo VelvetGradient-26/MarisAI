@@ -142,12 +142,38 @@ async def test_a_specialist_loop_is_bounded():
             for i in range(SUB_MAX_ITERATIONS + 5)
         ]
     )
+    synthesis = ScriptedModel([AIMessage(content="summary from what was gathered")])
+    models = iter([model, synthesis])
     ledger = Ledger()
 
-    result = await run_specialist("weather_safety", "loop", ledger, [], lambda: model)
+    result = await run_specialist("weather_safety", "loop", ledger, [], lambda: next(models))
 
     assert len(model.seen) == SUB_MAX_ITERATIONS
     assert result.truncated is True
+
+
+@pytest.mark.asyncio
+async def test_a_specialist_out_of_tool_calls_still_answers_from_its_results():
+    """Live 2026-10-21: a route question spent all five calls on depth and
+    geofence checks plus the route itself, and the specialist returned no
+    text, so the orchestrator apologised for a route it actually had. When
+    the cap is hit, one last call without tools must turn the gathered
+    results into an answer."""
+    looping = ScriptedModel(
+        [
+            _tool_call("get_current_conditions", {"latitude": 1.0, "longitude": 1.0}, f"c{i}")
+            for i in range(SUB_MAX_ITERATIONS)
+        ]
+    )
+    synthesis = ScriptedModel([AIMessage(content="Seas are calm: 0.4 m waves.")])
+    models = iter([looping, synthesis])
+
+    result = await run_specialist("weather_safety", "conditions?", Ledger(), [], lambda: next(models))
+
+    assert result.text == "Seas are calm: 0.4 m waves."
+    assert result.truncated is True
+    final_prompt = synthesis.seen[0][-1]
+    assert "Do not call any tool" in str(final_prompt.content)
 
 
 @pytest.mark.asyncio
