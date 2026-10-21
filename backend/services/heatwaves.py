@@ -554,6 +554,17 @@ async def refresh_cache(variable: str = "sea_surface_temperature") -> None:
             logger.warning(f"marine heatwave tracking update failed: {exc}")
 
 
+# How often to retry while there is no field at all (an OISST outage at
+# boot). The normal 12-hourly refresh is far too long to sit empty.
+EMPTY_RETRY_MINUTES = 15
+
+
+async def refresh_if_empty() -> None:
+    """Scheduler job: refetch only while nothing is cached."""
+    if _cached_field() is None:
+        await refresh_cache()
+
+
 def current_field() -> HeatwaveField:
     """The cached field, or a clear reason there is none.
 

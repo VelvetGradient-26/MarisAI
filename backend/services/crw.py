@@ -287,6 +287,17 @@ async def refresh_cache() -> None:
         await asyncio.to_thread(save_to_disk, fresh)
 
 
+# How often to retry while there is no grid at all (CoastWatch outage at
+# boot). The normal 6-hourly refresh is far too long to sit empty.
+EMPTY_RETRY_MINUTES = 15
+
+
+async def refresh_if_empty() -> None:
+    """Scheduler job: refetch only while nothing is cached."""
+    if _cache is None:
+        await refresh_cache()
+
+
 def _require_cache() -> _CrwCache:
     if _cache is None:
         raise CrwError(

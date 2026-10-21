@@ -74,3 +74,29 @@ def test_crw_is_restored_when_noaa_is_down(monkeypatch):
     assert crw.is_available()
     assert crw._cache.timestamp == saved.timestamp
     np.testing.assert_array_equal(crw._cache.dhw, saved.dhw)
+
+
+def test_an_empty_layer_is_retried_but_a_loaded_one_is_left_alone(monkeypatch):
+    calls = []
+
+    async def fake_refresh():
+        calls.append("crw")
+
+    monkeypatch.setattr(crw, "refresh_cache", fake_refresh)
+    monkeypatch.setattr(crw, "_cache", None)
+    asyncio.run(crw.refresh_if_empty())
+    monkeypatch.setattr(crw, "_cache", object())
+    asyncio.run(crw.refresh_if_empty())
+    assert calls == ["crw"]
+
+    hw_calls = []
+
+    async def fake_hw_refresh():
+        hw_calls.append("heatwaves")
+
+    monkeypatch.setattr(heatwaves, "refresh_cache", fake_hw_refresh)
+    monkeypatch.setattr(heatwaves, "_cache", None)
+    asyncio.run(heatwaves.refresh_if_empty())
+    monkeypatch.setattr(heatwaves, "_cache", _field())
+    asyncio.run(heatwaves.refresh_if_empty())
+    assert hw_calls == ["heatwaves"]

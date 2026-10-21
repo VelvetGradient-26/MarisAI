@@ -230,6 +230,9 @@ async def lifespan(_app: FastAPI):
         ndbc.refresh_cache, "interval", minutes=ndbc.REFRESH_INTERVAL_MINUTES
     )
     scheduler.add_job(crw.refresh_cache, "interval", hours=crw.REFRESH_INTERVAL_HOURS)
+    # CoastWatch flaps; while a NOAA layer has nothing at all, retry often.
+    scheduler.add_job(crw.refresh_if_empty, "interval", minutes=crw.EMPTY_RETRY_MINUTES)
+    scheduler.add_job(heatwaves.refresh_if_empty, "interval", minutes=heatwaves.EMPTY_RETRY_MINUTES)
     scheduler.add_job(gibs.refresh_cache, "interval", hours=gibs.REFRESH_INTERVAL_HOURS)
     scheduler.add_job(
         ocean_state.refresh_cache, "interval", hours=ocean_state.REFRESH_INTERVAL_HOURS
