@@ -255,9 +255,12 @@ body,
 /* The shared Navbar floats above the map as an overlay (map-root stays
    100vh, full-bleed underneath) — MapLibre's own built-in top-corner
    controls need the same offset the custom panels above get, or the
-   navbar covers them. */
-.maplibregl-ctrl-top-right,
-.maplibregl-ctrl-top-left {
+   navbar covers them. Scoped under `.map-root` for specificity, like
+   `.map-root .map-container`: in a production build maplibre-gl.css loads
+   after this file and its own `top: 0` won at equal specificity, hiding the
+   controls under the navbar. The dashboard embed sets --navbar-h to 0. */
+.map-root .maplibregl-ctrl-top-right,
+.map-root .maplibregl-ctrl-top-left {
   top: var(--navbar-h, 64px);
 }
 
