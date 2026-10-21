@@ -368,12 +368,18 @@ def hab_export_window() -> tuple[date, date]:
     return date.fromisoformat(dates[0]), date.fromisoformat(dates[-1])
 
 
+def hab_is_historical() -> bool:
+    """Whether the exported HAB grid is too old to describe today."""
+    _, window_end = hab_export_window()
+    return window_end < _today() - timedelta(days=HAB_CURRENT_MAX_AGE_DAYS)
+
+
 def hab_point(horizon: int, latitude: float, longitude: float,
               day: str | None = None) -> dict[str, Any]:
     field = hab_slice(horizon, day)
     value = _nearest_value(field, latitude, longitude)
     window_start, window_end = hab_export_window()
-    is_historical = window_end < _today() - timedelta(days=HAB_CURRENT_MAX_AGE_DAYS)
+    is_historical = hab_is_historical()
     date_str = str(field.date.values)
     return {
         "horizon_days": horizon,

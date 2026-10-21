@@ -6,12 +6,18 @@ import { Cursor, Grain, Preloader, ScrollRail, SmoothScroll } from '../component
 import { Navbar } from '../components/Navbar';
 import { RouteLoading } from '../components/RouteLoading';
 import { Toaster } from '../components/Toaster';
-import { DashboardPage } from '../pages/DashboardPage';
-import { LandingPage } from '../pages/LandingPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { useThemeStore } from '../store/themeStore';
 import { useAppRouter } from './routerContext';
 
+// Lazy like every other route: the landing page alone pulls in GSAP,
+// ScrollTrigger and its scroll scenes, which no other page needs on first load.
+const LandingPage = lazy(() =>
+  import('../pages/LandingPage').then((module) => ({ default: module.LandingPage }))
+);
+const DashboardPage = lazy(() =>
+  import('../pages/DashboardPage').then((module) => ({ default: module.DashboardPage }))
+);
 const MapView = lazy(() =>
   import('../features/map/MapView').then((module) => ({ default: module.MapView }))
 );
@@ -305,8 +311,20 @@ function renderPage(pathname: string) {
   // The original point-analytics view, kept on its own route: it answers a
   // narrower question (every metric at one coordinate) that the global
   // dashboard does not replace.
-  if (pathname === '/analytics') return <DashboardPage />;
-  if (pathname === '/') return <LandingPage />;
+  if (pathname === '/analytics') {
+    return (
+      <Suspense fallback={<RouteLoading label="Loading point analytics…" />}>
+        <DashboardPage />
+      </Suspense>
+    );
+  }
+  if (pathname === '/') {
+    return (
+      <Suspense fallback={<RouteLoading label="Loading…" />}>
+        <LandingPage />
+      </Suspense>
+    );
+  }
   // Anything else is genuinely not a route. This used to fall through to the
   // landing page, which made a stale or mistyped link look like a working one.
   return <NotFoundPage />;

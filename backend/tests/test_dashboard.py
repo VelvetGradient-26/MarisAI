@@ -528,3 +528,56 @@ async def test_kpi_persist_swallows_a_refused_connection(monkeypatch):
 
     monkeypatch.setattr(history, "_session_factory", lambda: (lambda: _Refusing()))
     await history._persist("sst_mean", 28.1, datetime.now(UTC))
+
+
+def _hab_export(tmp_path, monkeypatch, dates):
+    import json
+
+    import numpy as np
+    import xarray as xr
+
+    from services import predictions
+
+    monkeypatch.setattr(predictions.settings, "PREDICTIONS_DIR", str(tmp_path))
+    predictions._load_grid.cache_clear()
+    predictions._load_manifest.cache_clear()
+    grid = np.full((1, len(dates), 2, 2), 0.91, dtype="float32")
+    xr.Dataset(
+        {"risk": (("horizon", "date", "latitude", "longitude"), grid)},
+        coords={"horizon": [3], "date": list(dates), "latitude": [20.0, 20.25], "longitude": [68.5, 68.75]},
+    ).to_netcdf(tmp_path / predictions.HAB_GRID)
+    (tmp_path / "manifest.json").write_text(json.dumps({"generated": "2026-08-30T22:43:25Z", "products": {
+        "hab": {"region": {"name": "arabian_sea", "south": 6.0, "north": 23.0, "west": 68.0, "east": 78.0},
+                "horizons": [{"horizon_days": 3, "pr_auc": 0.661, "persistence_pr_auc": 0.511}]}}}))
+    return predictions
+
+
+def test_a_historical_bloom_export_raises_no_dashboard_alert(tmp_path, monkeypatch):
+    from datetime import date
+
+    from services.dashboard import alerts
+
+    predictions = _hab_export(tmp_path, monkeypatch, ("2021-11-25", "2021-12-24"))
+    monkeypatch.setattr(predictions, "available", lambda: True)
+    monkeypatch.setattr(predictions, "_today", lambda: date(2026, 10, 24))
+    try:
+        assert alerts._bloom_alerts() == []
+    finally:
+        predictions._load_grid.cache_clear()
+        predictions._load_manifest.cache_clear()
+
+
+def test_a_current_bloom_export_still_raises_a_dashboard_alert(tmp_path, monkeypatch):
+    from datetime import date
+
+    from services.dashboard import alerts
+
+    predictions = _hab_export(tmp_path, monkeypatch, ("2026-10-20", "2026-10-22"))
+    monkeypatch.setattr(predictions, "available", lambda: True)
+    monkeypatch.setattr(predictions, "_today", lambda: date(2026, 10, 24))
+    try:
+        [alert] = alerts._bloom_alerts()
+        assert alert["probability"] == 0.91
+    finally:
+        predictions._load_grid.cache_clear()
+        predictions._load_manifest.cache_clear()

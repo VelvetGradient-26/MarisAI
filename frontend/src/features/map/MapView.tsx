@@ -17,11 +17,18 @@ import './styles/map.css';
 // before MapManager constructs the first map instance.
 setWorkerUrl(workerUrl);
 
+interface MapViewProps {
+  /** Rendered inside another page (the dashboard panel) rather than as the
+   * /map route: the host page owns the tab title, and the guided tour, which
+   * takes over the whole view, belongs to the full map only. */
+  embedded?: boolean;
+}
+
 /** Public entry point for the map feature — this is what App.tsx renders. */
-export function MapView() {
+export function MapView({ embedded = false }: MapViewProps) {
   useEffect(() => {
-    document.title = 'Maris AI | Ocean Map';
-  }, []);
+    if (!embedded) document.title = 'Maris AI | Ocean Map';
+  }, [embedded]);
 
   return (
     <Map>
@@ -56,7 +63,7 @@ export function MapView() {
       </div>
       {/* Last child so it stacks above the panels above — it is the only
           overlay that deliberately takes precedence over the others. */}
-      <StoryMode />
+      {!embedded && <StoryMode />}
     </Map>
   );
 }

@@ -410,13 +410,15 @@ Image.new("RGBA", (1, 1), (0, 0, 0, 0)).save(_EMPTY_TILE, format="PNG")
 _EMPTY_TILE_BYTES = _EMPTY_TILE.getvalue()
 
 
-def render_tile_or_placeholder(z: int, x: int, y: int) -> bytes:
-    """Router-facing entry point: never raises, so a not-yet-loaded cache or
-    render error shows as an empty tile rather than a broken map."""
+def render_tile_for_response(z: int, x: int, y: int) -> tuple[bytes, bool]:
+    """Router-facing entry point: (png, rendered). Never raises, so a
+    not-yet-loaded cache or render error shows as an empty tile rather than a
+    broken map; `rendered` is False for that placeholder so it is never
+    cached."""
     if _cache is None:
-        return _EMPTY_TILE_BYTES
+        return _EMPTY_TILE_BYTES, False
     try:
-        return render_tile(z, x, y, _cache.timestamp.isoformat())
+        return render_tile(z, x, y, _cache.timestamp.isoformat()), True
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"SST tile render failed for {z}/{x}/{y}: {exc}")
-        return _EMPTY_TILE_BYTES
+        return _EMPTY_TILE_BYTES, False

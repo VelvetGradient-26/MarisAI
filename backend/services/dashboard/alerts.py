@@ -200,6 +200,10 @@ def _bloom_alerts() -> list[dict[str, Any]]:
         import numpy as np
 
         manifest = predictions.manifest()
+        # The shipped export is a 2021 hindcast: an alert built from it would
+        # present a December 2021 bloom as a warning about today.
+        if predictions.hab_is_historical():
+            return []
         field = predictions.hab_slice(_HAB_HORIZON_DAYS)
         values = np.asarray(field.values, dtype=float)
     except (predictions.PredictionError, KeyError):

@@ -51,7 +51,7 @@ export function DashboardMap() {
       />
       <div className="oid-map-embed relative min-h-[420px] flex-1 overflow-hidden">
         <Suspense fallback={<MapFallback />}>
-          <MapView />
+          <MapView embedded />
         </Suspense>
       </div>
     </Panel>

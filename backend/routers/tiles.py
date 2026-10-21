@@ -29,7 +29,9 @@ async def get_gfw_tile(dataset: str, z: int, x: int, y: int):
     except GfwError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    return Response(content=png_bytes, media_type="image/png")
+    # GFW effort layers change on a monthly cadence and each tile is a slow
+    # upstream proxy call, so an hour of shared caching (nginx) is safe.
+    return Response(content=png_bytes, media_type="image/png", headers={"Cache-Control": "public, max-age=3600"})
 
 
 @router.get("/sst/{z}/{x}/{y}.png")
@@ -38,8 +40,11 @@ async def get_sst_tile(z: int, x: int, y: int):
     # populated yet or a render fails, so the map shows nothing there instead
     # of a broken-image icon (same approach as the GFW proxy above). Run in a
     # thread since rendering is CPU-bound numpy/scipy/Pillow work, not I/O.
-    png_bytes = await asyncio.to_thread(copernicus_sst.render_tile_or_placeholder, z, x, y)
-    return Response(content=png_bytes, media_type="image/png")
+    png_bytes, rendered = await asyncio.to_thread(copernicus_sst.render_tile_for_response, z, x, y)
+    # Short-lived so a 3-hourly refresh shows up within minutes; a placeholder
+    # drawn before the data loaded must never be cached at all.
+    cache_control = "public, max-age=300" if rendered else "no-store"
+    return Response(content=png_bytes, media_type="image/png", headers={"Cache-Control": cache_control})
 
 
 @router.get("/wind/field.png")
