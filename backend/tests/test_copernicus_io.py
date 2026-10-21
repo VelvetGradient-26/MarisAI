@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pytest
@@ -128,3 +128,24 @@ def test_restore_never_replaces_a_fresher_in_memory_cache(monkeypatch):
     asyncio.run(copernicus_sst.restore_from_disk())
     assert copernicus_sst.get_point(0.0, 0.0)["temperature_c"] == 9.0
     assert copernicus_sst.get_meta()["from_disk_cache"] is False
+
+
+def test_restore_from_disk_serves_an_old_cache_marked_stale(monkeypatch):
+    """The instance can sit stopped for days. On start the saved grid must be
+    served at once, labelled with its real age, never dropped for being old."""
+    lat = np.linspace(-80, 80, 5)
+    lon = np.linspace(-180, 175, 8)
+    six_days_ago = datetime.now(timezone.utc) - timedelta(days=6)
+    disk_cache.save(
+        "sst",
+        {"lat": lat, "lon": lon, "grid": np.full((5, 8), 27.5, dtype=np.float32)},
+        {"timestamp": six_days_ago.isoformat(), "fetched_at": six_days_ago.isoformat()},
+    )
+    monkeypatch.setattr(copernicus_sst, "_cache", None)
+
+    assert asyncio.run(copernicus_sst.restore_from_disk()) == six_days_ago
+    assert copernicus_sst.is_available()
+    meta = copernicus_sst.get_meta()
+    assert meta["from_disk_cache"] is True
+    assert meta["fetched_at"] == six_days_ago.isoformat()
+    assert copernicus_sst.get_point(0.0, 0.0)["temperature_c"] == 27.5
